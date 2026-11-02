@@ -10,6 +10,8 @@ Milestone 1 supplies three presets, custom text rendering, and offline preview. 
 
 Rubric presets must agree with `execution.explanations`. Forced choice rejects `allow_ties: true`; a custom pairwise template can request ties using the separately validated tie contract. Endpoint compatibility remains a preflight concern: selecting an explanation preset cannot enable explanations on a score-only endpoint.
 
+For OpenAI Decisions score questions, preflight enforces the documented 2–10 ordered-level range. This endpoint rule cannot be widened by a caller-supplied capability profile; a stricter supplied limit still applies. The provider-neutral rubric schema remains unrestricted above its two-level minimum. Other endpoints do not inherit this rule. Independently checked TypeSafe documentation and the distinction between documented facts and implemented endpoint checks are recorded in the [provider matrix](provider-matrix.md); supply verified capability facts rather than assuming identical limits. The [official OpenAI Decisions guide](https://developers.openai.com/api/docs/guides/decisions#score-against-a-rubric) was checked on 2026-11-02; this local check is not a provider implementation or live qualification claim.
+
 ## Python and CLI interfaces
 
 ```python
@@ -72,10 +74,19 @@ Configure `prompt: {file: my_prompt.txt}`. A `.j2` extension does not itself ena
 | `response` | Identified rubric response and its complete original text |
 | `exemplars` | All supplied exemplars, with IDs, full text, scores, rationales, and metadata, in selected order |
 | `output_instructions` | Required output instructions and the separately enforced JSON schema |
-| `first_response`, `left_response` | Aliases for the first **presented** pairwise response |
-| `second_response`, `right_response` | Aliases for the second **presented** pairwise response |
+| `first_response` | First **presented** pairwise response; preferred position name |
+| `second_response` | Second **presented** pairwise response; preferred position name |
+| `left_response`, `right_response` | Compatibility aliases for `first_response`, `second_response`, respectively; these do **not** mean original left/right orientation |
 
-The pairwise aliases follow presentation order, including reversals; the identified blocks retain actual item IDs. Render arguments `left` and `right` always refer to original item orientation. No response placeholders are available for the other assessment kind.
+The built-in pairwise template and new custom templates use `first_response` and `second_response` to name presentation positions. Existing `left_response`/`right_response` templates retain their original behavior, following presentation order even after reversal. The identified blocks retain actual item IDs. Python render arguments `left` and `right` always refer to original item orientation, matching `PairTask.left_item_id` and `right_item_id`; `PairTask.presented_order` chooses which text is first. For original `[A, B]` presented as `[B, A]`, `first_response` (and legacy `left_response`) contains B, while `second_response` contains A. No response placeholders are available for the other assessment kind.
+
+```text
+{{ criterion }}
+{{ exemplars }}
+{{ output_instructions }}
+{{ first_response }}
+{{ second_response }}
+```
 
 Every response, selected criterion, selected exemplar, and output-instructions block must appear exactly once and remain unchanged. Thus, a rubric template needs `response`, one criteria alias, and `output_instructions`, plus `exemplars` when any are supplied. Pairwise templates need both presented responses, criteria, and output instructions. Missing or repeated blocks fail. Filters, statements, expressions, and loops require explicit advanced mode.
 

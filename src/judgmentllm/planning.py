@@ -205,7 +205,22 @@ def validate_run(
         issue("invalid_grouping", "execution.grouping", str(error))
     if spec.rubric is not None:
         for trait in spec.rubric.traits:
+            # Verified 2026-11-02: the Decisions score contract is 2–10 levels.
+            # https://developers.openai.com/api/docs/guides/decisions#score-against-a-rubric
+            # This endpoint bound cannot be widened by caller-supplied capabilities.
             if (
+                spec.provider == "openai"
+                and spec.endpoint == "decisions"
+                and not 2 <= len(trait.levels) <= 10
+            ):
+                issue(
+                    "incompatible_levels",
+                    f"rubric.{trait.trait_id}.levels",
+                    f"openai/decisions requires 2–10 ordered score levels; "
+                    f"received {len(trait.levels)}. Choose a compatible endpoint or "
+                    "revise the rubric explicitly; categories cannot be collapsed",
+                )
+            elif (
                 profile.max_levels is not None
                 and len(trait.levels) > profile.max_levels
             ):

@@ -7,7 +7,14 @@ import pytest
 from pydantic import ValidationError
 
 from judgmentllm.config import ExecutionSpec, InputSpec, RunSpec
-from judgmentllm.models import PairTask, PairwiseCriterion, ResponseItem, Rubric, Trait
+from judgmentllm.models import (
+    Level,
+    PairTask,
+    PairwiseCriterion,
+    ResponseItem,
+    Rubric,
+    Trait,
+)
 from judgmentllm.planning import (
     CapabilityProfile,
     PreflightError,
@@ -162,6 +169,57 @@ def test_score_only_explanations_fail(provider: str, endpoint: str) -> None:
     spec.provider, spec.endpoint = provider, endpoint
     with pytest.raises(PreflightError, match="score-only"):
         plan_run(spec, capabilities=CapabilityProfile(explanations=True))
+
+
+def _score_levels_spec(count: int, *, provider: str, endpoint: str) -> RunSpec:
+    spec = rubric_spec()
+    spec.provider, spec.endpoint = provider, endpoint
+    assert spec.rubric is not None
+    spec.rubric.traits = [
+        Trait(
+            trait_id="scale",
+            name="Synthetic ordinal scale",
+            description="Assess the complete synthetic scale.",
+            levels=[Level(label=str(index)) for index in range(count)],
+        )
+    ]
+    return spec
+
+
+@pytest.mark.parametrize("count", [2, 10])
+def test_decisions_documented_level_boundaries(count: int) -> None:
+    spec = _score_levels_spec(count, provider="openai", endpoint="decisions")
+    assert plan_run(spec).trait_groups == (("scale",),)
+
+
+@pytest.mark.parametrize("capabilities", [None, CapabilityProfile(max_levels=100)])
+def test_decisions_rejects_excess_levels_without_capability_override(
+    capabilities: CapabilityProfile | None,
+) -> None:
+    spec = _score_levels_spec(11, provider="openai", endpoint="decisions")
+    # The stored rubric is valid; the endpoint, not the neutral schema, limits it.
+    assert spec.rubric is not None and len(spec.rubric.traits[0].levels) == 11
+    with pytest.raises(PreflightError, match="requires 2–10 ordered score levels"):
+        plan_run(spec, capabilities=capabilities)
+
+
+def test_decisions_respects_a_stricter_supplied_limit() -> None:
+    spec = _score_levels_spec(10, provider="openai", endpoint="decisions")
+    with pytest.raises(PreflightError, match="known limit 5"):
+        plan_run(spec, capabilities=CapabilityProfile(max_levels=5))
+
+
+@pytest.mark.parametrize(
+    ("provider", "endpoint"),
+    [("openai", "responses"), ("typesafe", "jev"), ("other", "decisions")],
+)
+def test_other_endpoints_do_not_inherit_decisions_level_limit(
+    provider: str, endpoint: str
+) -> None:
+    spec = _score_levels_spec(12, provider=provider, endpoint=endpoint)
+    assert plan_run(spec).trait_groups == (("scale",),)
+    with pytest.raises(PreflightError, match="known limit 10"):
+        plan_run(spec, capabilities=CapabilityProfile(max_levels=10))
 
 
 def test_structured_mixed_label_warning() -> None:

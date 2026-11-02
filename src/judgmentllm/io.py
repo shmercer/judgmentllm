@@ -23,6 +23,7 @@ from judgmentllm.results import PairwiseResult, RubricResult
 
 Record = TypeVar("Record", bound=BaseModel)
 Result = RubricResult | PairwiseResult
+NormalizedResult = TypeVar("NormalizedResult", bound=Result)
 _NULL_CELL = "\\N"
 
 
@@ -70,8 +71,58 @@ def read_jsonl(path: str | Path, model: type[Record]) -> Generator[Record, None,
         yield _validate(model, data, source, line)
 
 
+def _record_data(value: object) -> object:
+    """Snapshot current values, including copied extras and nested models.
+
+    model_dump() alone drops unknown keys injected by model_copy(update=...).
+    Iterating models retains those keys so reconstruction can reject them.
+    """
+    if isinstance(value, BaseModel):
+        data = {name: _record_data(item) for name, item in value}
+        if value.__pydantic_root_model__:
+            if set(data) != {"root"}:
+                raise ValueError("root record contains undeclared fields")
+            return data["root"]
+        return data
+    if isinstance(value, dict):
+        return {
+            key: _record_data(item)
+            for key, item in cast(dict[object, object], value).items()
+        }
+    if isinstance(value, list):
+        return [_record_data(item) for item in cast(list[object], value)]
+    if isinstance(value, tuple):
+        return tuple(_record_data(item) for item in cast(tuple[object, ...], value))
+    return value
+
+
+def _revalidate_record(record: Record) -> Record:
+    """Reconstruct from current plain data and reject validator-induced repairs."""
+    validated = type(record).model_validate(_record_data(record), by_name=True)
+    if _record_data(validated) != _record_data(record):
+        raise ValueError(
+            "record data would change during validation; export requires valid current data"
+        )
+    return validated
+
+
+def revalidate_result(record: NormalizedResult) -> NormalizedResult:
+    """Validate a fresh snapshot of a normalized result before deriving exports.
+
+    This includes every current nested list/model and copied field. It does not
+    trust the original validation or repair mutated assessment data. Only one
+    record is copied, so exporters can continue to consume input iterators.
+    """
+    return _revalidate_record(record)
+
+
 def write_jsonl(path: str | Path, records: Iterable[BaseModel]) -> int:
     """Stream models to UTF-8 JSONL; return the number written.
+
+    Every record, including generic typed records, is freshly revalidated from
+    current nested values immediately before serialization. Invalid mutations
+    raise rather than being repaired. Pydantic's serializer methods by themselves
+    are not this validation boundary.
 
     The caller owns output directory creation. A failure may leave a partial
     file; this utility is not an execution journal or transaction system.
@@ -79,9 +130,12 @@ def write_jsonl(path: str | Path, records: Iterable[BaseModel]) -> int:
     count = 0
     with Path(path).open("w", encoding="utf-8", newline="\n") as stream:
         for record in records:
+            validated = _revalidate_record(record)
             stream.write(
                 json.dumps(
-                    record.model_dump(mode="json"), ensure_ascii=False, allow_nan=False
+                    validated.model_dump(mode="json"),
+                    ensure_ascii=False,
+                    allow_nan=False,
                 )
             )
             stream.write("\n")
@@ -277,7 +331,9 @@ def _csv_encode(value: object) -> str:
 def export_results_csv(path: str | Path, records: Iterable[Result]) -> int:
     """Stream normalized records to CSV, preserving all nested result fields.
 
-    A deterministic union header permits mixed result kinds without buffering.
+    Each current result is freshly revalidated before serialization; no invalid
+    mutation is repaired or written. A deterministic union header permits mixed
+    result kinds without buffering.
     Columns belonging only to the other kind contain the null sentinel.
     """
     fields = list(
@@ -288,7 +344,7 @@ def export_results_csv(path: str | Path, records: Iterable[Result]) -> int:
         writer = csv.DictWriter(stream, fieldnames=fields)
         writer.writeheader()
         for record in records:
-            data = record.model_dump(mode="json")
+            data = revalidate_result(record).model_dump(mode="json")
             writer.writerow({field: _csv_encode(data.get(field)) for field in fields})
             count += 1
     return count

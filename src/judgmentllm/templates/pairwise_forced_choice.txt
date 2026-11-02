@@ -7,6 +7,6 @@ Reference exemplars:
 
 {{ output_instructions }}
 
-{{ left_response }}
+{{ first_response }}
 
-{{ right_response }}
+{{ second_response }}

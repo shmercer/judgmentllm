@@ -114,6 +114,11 @@ def test_presets_and_safe_initialization(tmp_path: Path) -> None:
     for entry in presets:
         assert entry.description
         assert "{{ output_instructions }}" in get_template(entry.preset)
+    pair_template = get_template("pairwise_forced_choice")
+    assert "{{ first_response }}" in pair_template
+    assert "{{ second_response }}" in pair_template
+    assert "{{ left_response }}" not in pair_template
+    assert "{{ right_response }}" not in pair_template
     path = init_template("rubric_scores_only", tmp_path / "prompt.txt")
     assert path.read_text() == get_template("rubric_scores_only")
     with pytest.raises(FileExistsError):
@@ -422,6 +427,35 @@ def test_pairwise_presentation_and_explanations(
     assert "First response right" in result.text
     assert '"explanation"' in result.text
     assert '"const": false' in result.text
+
+
+def test_pairwise_position_names_preserve_legacy_alias_behavior(
+    pair: PairTask, criterion: PairwiseCriterion
+) -> None:
+    template = (
+        "{{ criterion }}\n{{ first_response }}\n{{ second_response }}\n"
+        "{{ output_instructions }}"
+    )
+    left = ResponseItem(item_id="left", text="Original left synthetic text.")
+    right = ResponseItem(item_id="right", text="Original right synthetic text.")
+    explicit = render_prompt(
+        pair=pair, criterion=criterion, left=left, right=right, template=template
+    )
+    legacy = render_prompt(
+        pair=pair,
+        criterion=criterion,
+        left=left,
+        right=right,
+        template=template.replace("first_response", "left_response").replace(
+            "second_response", "right_response"
+        ),
+    )
+    assert explicit.text == legacy.text
+    assert pair.original_order == ["left", "right"]
+    assert pair.presented_order == ["right", "left"]
+    assert explicit.text.index("First response right") < explicit.text.index(
+        "Second response left"
+    )
 
 
 def test_pairwise_custom_tie_contract(
