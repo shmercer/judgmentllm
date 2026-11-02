@@ -16,7 +16,7 @@ from judgmentllm.persistence.ownership import ExecutorOwnership
 from judgmentllm.persistence.repository import Repository
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
 
 
 @pytest.fixture
@@ -177,8 +177,11 @@ def test_wrong_process_cannot_heartbeat_or_unlock_parent(
 
 @pytest.mark.skipif(not hasattr(os, "fork"), reason="fork inheritance is Unix-specific")
 def test_forked_child_release_does_not_unlock_parent(registry: Repository) -> None:
+    fork: Callable[[], int] | None = getattr(os, "fork", None)
+    if fork is None:
+        pytest.skip("fork inheritance is Unix-specific")
     with ExecutorOwnership(registry, "run") as active:
-        pid = os.fork()
+        pid = fork()
         if pid == 0:
             try:
                 active.release()

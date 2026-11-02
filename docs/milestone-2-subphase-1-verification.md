@@ -109,6 +109,16 @@ record identities. Its services must not interpret hashes as response evidence.
 Later phases own provider reconciliation, scheduling, grouped normalization,
 selected retry execution and lifecycle CLI behavior.
 
+Explicit future handoff requirements (not implemented in this correction):
+
+1. **Subphase 2:** Extend the artifact store with bounded-memory streaming
+   publication for large source snapshots. Preserve exact-byte hashing, content
+   verification, atomic publication, and the existing immutability guarantees.
+2. **Subphase 3:** Enforce active executor ownership when claiming or advancing
+   executable work, including matching ownership tokens and competing-process
+   and stale-owner tests. General low-level repository operations must not be
+   mistaken for an authorization mechanism.
+
 No push, merge, release, live qualification, remote CI run or Subphase 2 work was
 performed. OS locks remain single-machine/local-filesystem only; Windows branches
 are covered by the preserved CI matrix rather than this Linux session.
