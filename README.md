@@ -2,6 +2,11 @@
 
 **Milestone 1 — assessment contracts and offline prompts. Version 0.1.0a2.**
 
+Milestone 2 Subphase 1 adds an [internal durable foundation](docs/persistence-contracts.md)
+for SQLite state, immutable artifacts, hashing, and local executor ownership.
+Execution and lifecycle commands remain unimplemented. The
+[approved Milestone 2 plan](docs/milestone-2-execution-plan.md) records the next steps.
+
 JudgmentLLM provides typed, provider-independent contracts for ordinal rubric scoring and pairwise judgments. It loads synthetic assessments, validates category coding, prepares deterministic task groups, renders prompts, and normalizes supplied categorical or probability results. Provider execution arrives in later milestones.
 
 Python 3.11+, Linux, Windows, and macOS are supported. The core uses Pydantic 2, PyYAML, Jinja2, and Typer; pandas and PyArrow are not required.
