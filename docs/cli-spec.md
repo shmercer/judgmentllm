@@ -2,7 +2,15 @@
 
 Executable name: `judgmentllm` (distribution and import name planned as `judgmentllm`). CLI must call the same library functions as the Python interface, never parallel implementations.
 
-## Main commands
+## Implemented in Milestone 0
+
+- `judgmentllm --help` displays the available global options and exits successfully.
+- `judgmentllm --version` prints `judgmentllm VERSION` and exits successfully; the initial development version is `0.1.0a1`.
+- `judgmentllm` without arguments displays help and exits successfully.
+
+These operations require no credentials and make no provider requests. The commands below are the design contract for later milestones and are not yet implemented.
+
+## Proposed main commands
 
 | Command | Function |
 |---|---|

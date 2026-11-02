@@ -10,9 +10,9 @@
 | Anthropic Messages | target | target | yes | generative | generative | Official SDK; token counting/batch/caching controls may vary |
 | Gemini Developer | target | target | yes | generative | generative | `google-genai` SDK; batch via generateContent |
 | Vertex AI Gemini | target | target (Google Cloud setup required) | yes | generative | generative | `google-genai` SDK; Gemini focus; GCS/BigQuery source and cloud IAM considerations |
-| Together AI | target | target, subject to current API qualification | yes | generative | generative | Use current official Together Python SDK v2; endpoint/model feature coverage must be tested |
+| Together AI | target | target, subject to current API qualification | yes | generative | generative | Use official Together Python SDK v3 (`together>=3,<4`); endpoint/model feature coverage must be tested |
 | Ollama local | target | no native provider batch | yes | generative | generative | Official Ollama SDK, local daemon; local model discovery; optional later cloud support separate |
-| TypeSafe AI Jev | target | not available | yes | typed score, 2-10 levels | typed choice | Confirm suitable SDK; otherwise narrow `httpx` adapter; no generated explanations |
+| TypeSafe AI Jev | target | not available | yes | typed score, 2-10 levels | typed choice | Official `typesafe-sdk` confirmed; no generated explanations |
 
 ### Required capability checks
 
@@ -44,7 +44,7 @@ Unknown capabilities remain unknown, not false and not true. Avoid hardcoded all
 - Google Gen AI SDK: https://googleapis.github.io/python-genai/
 - Gemini Batch: https://ai.google.dev/gemini-api/docs/batch-api
 - Vertex Gemini batch: https://docs.cloud.google.com/vertex-ai/generative-ai/docs/samples/generativeaionvertexai-batch-predict-gemini-createjob
-- Jev API: https://typesafe-jev.ai/jev-api/
+- TypeSafe Python SDK: https://docs.typesafe.ai/sdk/python/
 - Ollama local: https://github.com/ollama/ollama/blob/main/docs/api/introduction.mdx
 - Together provider documentation: https://docs.together.ai/
-- Together SDK v2 migration notes: https://www.together.ai/blog/together-python-sdk-2-0
+- Together SDK v3 release notes: https://github.com/togethercomputer/together-py/releases/tag/v3.0.0

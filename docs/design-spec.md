@@ -193,7 +193,7 @@ No provider-specific details should leak into normalized assessment interpretati
 - Google Gen AI Python SDK (Developer and Vertex): https://googleapis.github.io/python-genai/
 - Gemini Developer Batch: https://ai.google.dev/gemini-api/docs/batch-api
 - Vertex Gemini Batch: https://docs.cloud.google.com/vertex-ai/generative-ai/docs/samples/generativeaionvertexai-batch-predict-gemini-createjob
-- TypeSafe Jev: https://typesafe-jev.ai/jev-api/
+- TypeSafe Python SDK: https://docs.typesafe.ai/sdk/python/
 - Ollama API: https://github.com/ollama/ollama/blob/main/docs/api/introduction.mdx
 - Codecov Python: https://about.codecov.io/language/python/
 

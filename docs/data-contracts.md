@@ -1,6 +1,6 @@
 # Data contracts and scoring semantics
 
-**Draft v0.1.** The following names are conceptual public schema names for Milestone 1 to finalize in Pydantic models. No working code exists yet.
+**Draft v0.1.** The following names are conceptual public schema names for Milestone 1 to finalize in Pydantic models. Milestone 0 provides the package foundation; these assessment schemas are not implemented yet.
 
 ## Inputs
 
