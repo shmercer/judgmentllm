@@ -1,7 +1,8 @@
 """Install built distributions into clean uv environments and verify the core CLI.
 
 Run after syncing development dependencies and building distributions. Installation
-uses cached packages and the core dependency versions exported from uv.lock.
+may download packages at the core dependency versions exported from uv.lock.
+Constraint export and installed-package checks remain offline.
 """
 
 from __future__ import annotations
@@ -14,6 +15,8 @@ import subprocess
 import sys
 import tempfile
 from pathlib import Path
+
+from click import unstyle
 
 VERIFY_INSTALLED = """
 import importlib.metadata as metadata
@@ -44,12 +47,17 @@ print(distribution.version)
 """
 
 
-def run(command: list[str], *, cwd: Path) -> str:
-    """Run an offline command, retaining its diagnostics if verification fails."""
+def run(command: list[str], *, cwd: Path, offline: bool = True) -> str:
+    """Run offline by default, retaining diagnostics if verification fails."""
     result = subprocess.run(
         command,
         cwd=cwd,
-        env={**os.environ, "UV_OFFLINE": "1", "NO_COLOR": "1", "TERM": "dumb"},
+        env={
+            **os.environ,
+            "UV_OFFLINE": "1" if offline else "0",
+            "NO_COLOR": "1",
+            "TERM": "dumb",
+        },
         capture_output=True,
         text=True,
         timeout=180,
@@ -82,9 +90,10 @@ def smoke_install(uv: str, artifact: Path, constraints: Path, directory: Path) -
             str(artifact),
         ],
         cwd=directory,
+        offline=False,
     )
     version = run([str(python), "-I", "-c", VERIFY_INSTALLED], cwd=directory).strip()
-    help_text = run([str(console), "--help"], cwd=directory)
+    help_text = unstyle(run([str(console), "--help"], cwd=directory))
     if "--help" not in help_text or "--version" not in help_text:
         raise RuntimeError("Installed CLI help does not expose the supported options")
     version_text = run([str(console), "--version"], cwd=directory).strip()

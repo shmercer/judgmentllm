@@ -47,7 +47,7 @@ uv run --offline --no-sync judgmentllm --version
 
 The initial sync may download dependencies. Subsequent checks and builds use installed tools and cached build dependencies; standard tests make no network requests and require no API credentials. pytest reports statement and branch coverage and writes `coverage.xml`; the coverage target is 90%.
 
-The installation smoke helper creates a clean temporary environment, installs the built wheel with core dependencies from the uv cache, and verifies imports and CLI execution outside the checkout. On Linux, also verify the source distribution with `uv run --offline --no-sync python scripts/smoke_install.py dist/*.tar.gz`.
+The installation smoke helper creates a clean temporary environment and installs the built wheel with core dependency versions exported from `uv.lock`, downloading missing packages when needed. Only the installation subprocess allows network access; constraint export and installed-package/CLI checks remain offline. The helper also verifies that optional provider dependencies are absent. On Linux, also verify the source distribution with `uv run --offline --no-sync python scripts/smoke_install.py dist/*.tar.gz`.
 
 `uv.lock` is committed for reproducibility. Keep `--locked` for ordinary setup and CI so stale dependency metadata fails visibly. To update dependencies deliberately, run `uv lock --upgrade-package PACKAGE`, sync with the same extras and development group, review the lockfile diff, and rerun the checks before committing both metadata and lockfile changes. Do not commit `.venv` or install project dependencies into the system Python.
 
@@ -77,7 +77,7 @@ Installing an extra only installs dependencies. Provider adapters and Parquet op
 
 ## Continuous integration
 
-GitHub Actions runs Ruff, Pyright, offline tests with coverage, distribution builds and validation, and clean wheel installation smoke tests on Linux, Windows, and macOS with Python 3.11 and 3.15. Linux also verifies installation from the source distribution. Coverage reports are retained as workflow artifacts.
+GitHub Actions runs on pushes to `main`, pull requests, and manual dispatch. It runs Ruff, Pyright, offline tests with coverage, distribution builds and validation, and clean wheel installation smoke tests on Linux, Windows, and macOS with Python 3.11 and 3.15. Linux also verifies installation from the source distribution. Coverage reports are retained as workflow artifacts.
 
 Codecov upload is optional. Connect the public repository to Codecov, then set the GitHub Actions repository variable `CODECOV_ENABLED` to `true`. If the Codecov configuration requires an upload token, store it as the repository secret `CODECOV_TOKEN`. Upload errors do not fail the other CI checks; local coverage checks remain required.
 
