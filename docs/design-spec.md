@@ -147,6 +147,8 @@ No provider-specific details should leak into normalized assessment interpretati
 - Default capture stores actual rendered prompts, full original provider responses, error payloads and normalized outputs. Users may explicitly choose privacy-minimal capture and disable retention where supported.
 - Never store API keys or other access tokens in logs/results/manifests. Redact request headers. Default output directories excluded from git tracking; documentation warns about student data and provider privacy requirements.
 - Store run-id + request-id + task-id + attempt-id separately; support append-only audit trails and resumption after process interruption.
+- R interoperability is an ongoing contract across milestones: preserve audit/analysis separation, all attempt IDs, original and presented orientations, observed outcomes, probabilities, and score kinds. Milestone 1 provides derived R CSV views; the full bridge/wrapper remains Milestone 6.
+- Before any future submission, capture immutable hashes of original input content, rendered prompts, and the exact provider payload. Structural IDs do not substitute for content hashes. Resumption must detect changed referenced text and must not blindly reuse old submission identities for changed content.
 - Provide an export normalized to columns suitable for R `pairwiseLLM`: unique pair UID, presented IDs/order and winner, with raw probability fields preserved when present. Statistical fitting remains in R.
 
 ## 12. Model catalog and support classes

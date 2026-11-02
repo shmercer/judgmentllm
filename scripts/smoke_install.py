@@ -40,6 +40,18 @@ assert "Synthetic installation response." in render_prompt(rubric=rubric, respon
 score = normalize_rubric_result(rubric.traits[0], run_id="smoke", task_id="task",
     request_uid="request", attempt_id="attempt", item_id="synthetic", category_label="high")
 assert score.primary_score == 1 and score.expected_value is None
+from judgmentllm import export_rubric_r_csv, export_pairwise_r_csv, PairTask, normalize_pairwise_result
+assert export_rubric_r_csv("rubric_r.csv", [score]) == 1
+pair = PairTask(pair_id="smoke-pair", pair_uid="smoke-occurrence", left_item_id="001", right_item_id="002", trait_id="quality", presented_order=["002","001"])
+pair_result = normalize_pairwise_result(pair, run_id="smoke", task_id="task-pair", request_uid="request-pair", attempt_id="attempt", winner_id="001")
+assert export_pairwise_r_csv("pairwise_r.csv", [pair_result]) == 1
+score.primary_score = 123
+try:
+    export_rubric_r_csv("invalid.csv", [score])
+except ValueError:
+    pass
+else:
+    raise AssertionError("Mutated result escaped installed export validation")
 Path("responses.csv").write_text("item_id,text\\nsynthetic,Synthetic installation response.\\n".replace("\\n", chr(10)), encoding="utf-8")
 Path("run.json").write_text(json.dumps({"schema_version":1,"task_kind":"rubric",
     "input":"responses.csv","rubric":rubric.model_dump(mode="json"),

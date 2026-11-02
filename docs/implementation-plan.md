@@ -27,11 +27,13 @@ Implemented in `0.1.0a2`; see [public Python API](python-api.md) and [verificati
 ## Milestone 2 - Execution engine and persistence (mock provider)
 
 - Implement SQLite registry for runs, requests, tasks, batches, attempts and artifact hashes; immutable manifest on submit; resume states.
+- Before submission, capture immutable hashes of original input content, exact rendered prompts, and exact provider request payloads. Structural task/request IDs are not content hashes. Detect changed referenced text during resumption and refuse to reuse a submission identity for changed content; preserve all original task/pair/request/attempt IDs.
+- Preserve the R audit/export contracts throughout execution and resumption, including presented orientation, score kinds, complete probabilities, and all attempts. Full R bridge/wrapper work remains Milestone 6.
 - Implement async bounded execution plus clean synchronous wrappers; bounded retry/backoff for transport failures; explicit completed-output retry.
 - Implement `validate`, `plan`, `run`, `resume`, `runs list`, and `results export` CLI via shared library.
 - Add cost/token estimate interface with unknown values preserved, prompt caching policies and capability validation interfaces.
 
-**Acceptance:** Mock provider can process synthetic large streamed inputs with limited RAM; interrupted run resumes with no duplicate completed tasks; out-of-order and partial task results are correctly matched; ambiguous batch submission never blindly reissues a remote request; raw/prompt capture and redaction work.
+**Acceptance:** Content-change fixtures verify input/prompt/payload hashes, changed referenced text is detected on resume, and old submission identities are never blindly reused for changed content while original JudgmentLLM IDs are retained. Mock provider can process synthetic large streamed inputs with limited RAM; interrupted run resumes with no duplicate completed tasks; out-of-order and partial task results are correctly matched; ambiguous batch submission never blindly reissues a remote request; raw/prompt capture and redaction work.
 
 ## Milestone 3 - Generative live adapters
 

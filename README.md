@@ -52,7 +52,7 @@ Pair and repetition order stay fixed. A seed selects presentation orientation in
 
 `category_label` records only provider selection. `modal_category_label` records the distribution-derived mode. `expected_value` uses the complete distribution and numeric mapping; `primary_score_kind` distinguishes `expected` from `category_code`. Original probabilities and provider-reported expected indices are retained. `NormalizationOptions.probability_sum_tolerance` controls the documented absolute sum tolerance, default `1e-8`, without renormalization.
 
-See [the finalized data contracts](docs/data-contracts.md) and [public API examples](docs/python-api.md) for normalization and streaming JSONL/CSV operations. Nested result data survives CSV export as JSON cells.
+See [the finalized data contracts](docs/data-contracts.md) and [public API examples](docs/python-api.md) for normalization and streaming JSONL/CSV operations. Nested result data survives CSV export as JSON cells. Library writers revalidate each current nested result before export. Derived R-compatible audit exports preserve presented orientation, all attempts, ties/failures, and score kinds; see [R interoperability](docs/r-interoperability.md) for character-safe import and explicit analysis selection.
 
 ## Templates and validation
 

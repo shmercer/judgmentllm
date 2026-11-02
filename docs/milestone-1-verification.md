@@ -1,5 +1,7 @@
 # Milestone 1 implementation and verification
 
+**Latest corrective-pass result:** 425 tests passed; 99.79% statement and 99.13% branch coverage. The R smoke test passed with installed pairwiseLLM/jsonlite. See the pre-merge hardening record below; the original implementation figures are retained as historical verification.
+
 Date: 2026-11-02. Version: `0.1.0a2`. Schema version: integer `1`.
 Branch: `codex/milestone-1-contracts-prompts`. Base: refreshed `origin/main`,
 `62b8bcedfe594b841b1846f36f51b6472f2d4e0a` (merged Milestone 0 PR #1).
@@ -122,3 +124,81 @@ All commands passed. Preview emits explicit unknown-capability warnings and comp
 - `tests/test_cli.py`
 - `tests/test_package.py`
 - `uv.lock`
+
+## Pre-merge hardening and R interoperability corrective pass
+
+The pass began on the existing feature branch at `0b4c829`, matching PR #2 and its tracking branch, with a clean working tree. It adds no Milestone 2 execution, provider adapter, persistence, fitting, dependency, or schema-version changes. No push, merge, or publication was performed.
+
+### Implemented corrections
+
+- All library normalized JSONL/CSV writers and the new R CSV views reconstruct each record from current deep field data immediately before serialization. Nested mutations, invalid `model_copy(update=...)`, copied unknown fields, invalid IDs/outcomes/presentation/distributions/codes/scores, and validator-induced repairs are rejected. The generic typed-record JSONL writer follows the same invariant, including aliased and root models. Direct `.model_dump*()` calls remain lower-level Pydantic operations.
+- Added public `export_pairwise_r_csv(path, records, *, na_string="NA")` and `export_rubric_r_csv(...)` functions. These are streaming, provider-independent all-attempts audit views; they retain ties, failures, repeated/reversed occurrences, attempts, score distinctions, probability arrays, and provenance. Canonical formats remain unchanged. A configured missing marker cannot collide silently with an exported value.
+- Presented `ID1/ID2` (`A_id/B_id` aliases), observed `better_id`, numeric `result`, `winner_pos`, and presented probabilities are separate from original left/right fields. No winner is inferred. The R example selects explicit successful run/task/attempt triples and retains an audit copy before making binary or tie-capable model inputs.
+- Built-in prompts prefer `first_response/second_response`; legacy aliases keep their existing presented-position behavior. A reversal regression covers prompt order, result positions/winner, and both probability orientations together.
+- OpenAI Decisions preflight enforces its independently documented 2–10 score-level range even if a caller supplies a wider profile. Other endpoints do not inherit that limit; TypeSafe documentation independently establishes an upper ten-criteria bound and recommends at least two. No Jev adapter or unqualified identical-limit assumption was added.
+- Expanded the Milestone 2 acceptance contract: capture immutable original-input, rendered-prompt, and exact-provider-payload hashes before submission; detect changed references on resume; never blindly reuse submission identity for changed content; preserve original JudgmentLLM task/pair/request/attempt IDs. R interoperability remains ongoing, with the fuller bridge/wrapper in Milestone 6.
+
+Full derived schemas, representative CSV rows, missing-value/type conventions, base R imports, probability recovery, and source-qualified pairwiseLLM examples are in [r-interoperability.md](r-interoperability.md). The runnable files are `examples/export_r.py` and `examples/r_interoperability.R`.
+
+### Corrective-pass commands and results
+
+Commands ran from the repository root with `UV_CACHE_DIR=/tmp/judgmentllm-uv-cache`, using Linux/CPython 3.12.3 and the existing locked environment. Dependencies and `uv.lock` are unchanged.
+
+| Exact command | Result |
+|---|---|
+| `uv run --offline --no-sync ruff check .` | Passed. |
+| `uv run --offline --no-sync ruff format --check .` | Passed. |
+| `uv run --offline --no-sync pyright` | Passed, zero diagnostics. |
+| `uv run --offline --no-sync pyright examples/export_r.py` | Passed, zero diagnostics. |
+| `uv lock --check` | Passed, 93 packages. |
+| `uv run --offline --no-sync pytest` | **425 passed**, 3.86 seconds in the complete coverage run. |
+| `uv run --offline --no-sync coverage json -o /tmp/judgmentllm-m1-hardening-coverage.json` | Passed; separated totals below. |
+| `uv build --offline` | Wheel and source distribution built. |
+| `uv run --offline --no-sync twine check --strict dist/judgmentllm-0.1.0a2*` | Both artifacts passed. |
+| `uv run --offline --no-sync python scripts/smoke_install.py dist/judgmentllm-0.1.0a2-py3-none-any.whl dist/judgmentllm-0.1.0a2.tar.gz` | Both clean core-only installations passed, including both R exporters, invalid-mutated-result rejection, all presets, and offline preview. Dependency installation used authorized network access; package checks were offline. |
+| `uv run --offline --no-sync python examples/export_r.py --output /tmp/judgmentllm-m1-r` | Six pairwise and three rubric audit rows exported, plus canonical normalized JSONL. |
+| `Rscript --vanilla examples/r_interoperability.R /tmp/judgmentllm-m1-r` | Passed: six audit rows, four explicitly chosen observations, three binary wins, one retained tie, and two selected rubric outcomes; optional pairwiseLLM builder and jsonlite checks also passed. No fitting/network calls. |
+| `git diff --check` | Passed. |
+
+| Coverage measure | Covered / total | Percentage |
+|---|---:|---:|
+| Statements | 1,414 / 1,417 | **99.79%** |
+| Branches | 567 / 572 | **99.13%** |
+| Combined gate | 1,981 / 1,989 | **99.60%** |
+
+The unchanged coverage gate remains 90%. New R exports and hardened I/O have 100% statement and branch coverage. The existing cross-platform CI and Codecov workflow files are unchanged; the corrected commits have not been pushed, so that remote matrix was not rerun during this pass.
+
+### R source qualification and local verification
+
+The published pairwiseLLM source inspected is commit `3cf49a9a2559f341e30f2e77e8df2ad4883ab7f5` on its `master` branch. Source-pinned links for `build_bt_data`, `fit_bt_model`, and `build_btl_results_data` are recorded in [r-interoperability.md](r-interoperability.md). The binary adapter drops missing winners, including ties; direct sirt can accept ties, while the other documented wrappers reject them. The BTL adapter creates new pair occurrence IDs and synthetic epoch-based timestamps; its output is not a lossless JudgmentLLM provenance import.
+
+Local smoke environment: R 4.6.2 (2026-10-29), pairwiseLLM 1.6.0 with installed RemoteSha `4c4c01453077f90e987040c6a3c3d3cd711c6f21`, jsonlite 2.0.0, sirt 4.2.133, and BradleyTerry2 1.1.3. Published-source inspection and installed-package smoke checks are distinct evidence: both builders were exercised locally, but no statistical model was fitted. All R-side import/builder/JSON smoke checks requested for this environment completed; no R dependency was added to Python.
+
+### Remaining limits
+
+CSV is untyped: R callers must import identifiers as character strings to preserve leading zeros. Choose a different missing marker if a literal value collides. R-friendly CSVs are derived views; retain canonical audits and explicitly selected-attempt policies. Source builders can replace identity/timestamp information, so keep a row crosswalk and original records. Writers remain streaming utilities and may leave a valid prefix/header on failure; no transactional persistence was added. No local checks establish live provider qualification or substitute for the preserved remote cross-platform CI.
+
+### Files changed in this corrective pass
+
+- `README.md`
+- `docs/data-contracts.md`
+- `docs/decisions.md`
+- `docs/design-spec.md`
+- `docs/implementation-plan.md`
+- `docs/milestone-1-verification.md`
+- `docs/prompt-guidance.md`
+- `docs/provider-matrix.md`
+- `docs/python-api.md`
+- `docs/r-interoperability.md`
+- `examples/export_r.py`
+- `examples/r_interoperability.R`
+- `scripts/smoke_install.py`
+- `src/judgmentllm/__init__.py`
+- `src/judgmentllm/io.py`
+- `src/judgmentllm/planning.py`
+- `src/judgmentllm/r_exports.py`
+- `src/judgmentllm/templates/pairwise_forced_choice.txt`
+- `tests/test_export_validation.py`
+- `tests/test_planning.py`
+- `tests/test_prompts.py`
+- `tests/test_r_exports.py`

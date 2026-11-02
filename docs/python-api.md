@@ -79,3 +79,16 @@ Writers return record counts. Callers create output directories; errors may leav
 `preview_prompt(spec_or_config_path, *, item_id=None, trait_id=None, pair_uid=None, capabilities=None)` returns `RenderedPrompt(text, exemplar_ids, output_schema)`. Rubric preview requires an item ID; select a trait when there are multiple request groups. Selecting a trait in a grouped run renders its complete group. Pairwise preview requires its occurrence ID. No output is sent anywhere.
 
 See [prompt guidance](prompt-guidance.md) for `render_prompt`, template APIs, context, sandbox restrictions, and rendering limits. Run `uv run --offline --no-sync python examples/offline.py` for both preparation workflows.
+
+## Export revalidation and R interoperability
+
+Library writers revalidate current complete nested record data immediately before serialization. This includes generic `write_jsonl`, normalized JSONL, canonical CSV, and R views. They reconstruct from a field-name snapshot rather than trust `model_validate(existing_instance)`, reject invalid copies/mutations and validator-induced repairs, and retain only one current record. Direct Pydantic `.model_dump*()` calls are not protected export boundaries.
+
+`judgmentllm.r_exports` and the top-level package expose:
+
+- `export_pairwise_r_csv(path, records, *, na_string="NA") -> int`
+- `export_rubric_r_csv(path, records, *, na_string="NA") -> int`
+
+These functions export all supplied attempts without deduplication or status filtering. Missing values use the selected marker, with literal collisions rejected; booleans are `TRUE/FALSE` and nested columns contain JSON. Read IDs as character strings. Use explicit successful-attempt selection before analysis. See [R interoperability](r-interoperability.md) for full columns, source-qualified pairwiseLLM behavior, representative CSV, and base R imports.
+
+OpenAI Decisions preflight enforces its documented 2–10 ordered score levels even if a supplied capability profile is wider. Rubric storage remains unrestricted. Other endpoints receive no inferred Decisions limit; independently verified provider constraints can be supplied through `CapabilityProfile`.

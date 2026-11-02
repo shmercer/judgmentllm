@@ -22,6 +22,7 @@ from judgmentllm.planning import (
 )
 from judgmentllm.preview import preview_prompt
 from judgmentllm.prompts import RenderLimits, render_prompt
+from judgmentllm.r_exports import export_pairwise_r_csv, export_rubric_r_csv
 from judgmentllm.results import (
     NormalizationOptions,
     PairwiseResult,
@@ -60,4 +61,6 @@ __all__ = [
     "prepare_pairs",
     "render_prompt",
     "preview_prompt",
+    "export_pairwise_r_csv",
+    "export_rubric_r_csv",
 ]

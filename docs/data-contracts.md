@@ -17,6 +17,8 @@ include `schema_version: 1`. Omission defaults to version 1; an explicitly suppl
 version must be the integer `1`, excluding `true`, `1.0`, and `"1"`. Nested models
 such as traits and levels belong to their containing document's schema version.
 
+Models remain mutable for Python use. Library writers reconstruct a fresh deep snapshot immediately before serializing each record, including nested lists/models and unknown fields injected by `model_copy(update=...)`. Invalid current data or data that validators would repair is rejected; no cached instance validation is trusted. This invariant covers normalized JSONL, lossless CSV, derived R CSV, and the generic `write_jsonl` typed-record writer. Direct Pydantic serializer calls remain low-level operations and do not provide this export safeguard.
+
 Use `model_dump(mode="json")` for JSON-compatible values and `model_dump_json()`
 for JSON text. Default fields and nulls are included. Lists retain source order.
 `model_validate()` and `model_validate_json()` validate loaded records, including
@@ -207,3 +209,9 @@ Writers overwrite their destination and require its parent directory to exist.
 Failure can leave a partial file. These utilities are not a persistence journal.
 Capture modes describe future execution behavior; offline preview returns full
 requested text. Never put credentials in configuration, metadata, or examples.
+
+## Derived R-compatible audit views
+
+`export_pairwise_r_csv(path, records, *, na_string="NA")` and `export_rubric_r_csv(...)` are available from `judgmentllm` and `judgmentllm.r_exports`. These iterator-based views revalidate each current result and retain every supplied attempt, including failures and observed ties. They do not replace the canonical normalized formats. IDs must be imported as character strings in R. Missing values use a configurable marker with literal collisions rejected. See [the complete R export schemas and runnable examples](r-interoperability.md).
+
+Pairwise `ID1/ID2` (`A_id/B_id` aliases) represent presented order. `better_id` preserves an observed winner; numeric `result` is 1/0/0.5 only for successful observed wins/ties. Original `p_left/p_right` and presented `p_first/p_second` remain distinct. Rubric views retain score kinds, selected/modal categories, expected values, and complete probability/coding JSON. Selecting an analysis dataset requires explicit attempt choices; exporters never select or combine retries.
