@@ -36,6 +36,7 @@ The remaining commands below are future design contracts. Template rows are alre
 | `judgmentllm resume --run RUN_ID` | Continue safe live jobs or reconcile pending batches |
 | `judgmentllm results export --run RUN_ID --format csv` | Export normalized long-form rubric/pairwise results |
 | `judgmentllm runs list` | List local run IDs, states and timestamps |
+| `judgmentllm runs status --run RUN_ID` | Read durable run state and artifact paths in a new process (Milestone 2) |
 | `judgmentllm models list --provider openai` | List catalog models with discovery/implementation/test status |
 | `judgmentllm models inspect --provider ... --model ...` | Show model/endpoint capabilities and qualification timestamps |
 | `judgmentllm models refresh` | Refresh local provider model metadata (requires keys for some providers) |
@@ -50,16 +51,73 @@ All commands must provide structured `--help`, validation errors, and useful exi
 
 See `examples/run.yaml` and `examples/rubric.yaml`. These examples include synthetic responses, exemplars, pair occurrences, and criteria and support offline loading and preview now. No API key goes in YAML; use environment variables or cloud-default credentials.
 
-## Output behavior
+## CLI-first cross-language execution contract (Milestone 2 onward)
 
-`run`, `batch submit`: print run ID and run directory; optional `--json` machine-readable summary for R/shell integration. `status` supports concise table and `--json`. `collect` returns status counts, identifies missing/invalid tasks, and reports exported path(s). Streaming output should be available for long running live jobs, but resumption must never depend on an open terminal.
+The CLI is the primary execution bridge for R and other external applications. The planned thin `rubricLLM` R interface uses `processx` to invoke the standalone executable for complete runs, task groups, or batches. It does not embed Python or start one Python process per judgment. `reticulate` is an optional secondary method. Canonical normalized JSONL and documented R-compatible CSV are the primary data interchange contracts; ordinary local R use requires no HTTP server.
 
-## Future execution errors
+Each command calls the same Python validation, planning, execution, and persistence services as the library. `run`, `runs status`, `resume`, collection, and result export must operate across independent CLI processes using durable run IDs and artifact paths. A later action must not require the earlier Python process or R session to remain running. Milestone 2 tests this with the mock provider; native batch operations arrive in Milestone 5. Large results go to durable files rather than a complete dataset on stdout.
 
-- Invalid configuration, invalid scoring schema or unsupported capability: nonzero error, no request sent.
-- Authentication/permission error: nonzero, with provider, endpoint and safe diagnostic but never raw key.
-- Transient failure: retry within bounded policy, then preserve partial state and nonzero exit.
-- Completed run with some invalid model outputs: do not mark fully successful; preserve all valid outputs and produce a structured partial-completion status.
+No execution command or JSON control response is implemented in this documentation follow-up. Existing Milestone 1 template commands keep their documented text behavior. The requirements below apply to lifecycle commands as they reach their assigned milestones.
+
+### Versioned JSON control responses
+
+Applicable validation, planning, run/submission, status/listing, resumption, collection, and result-export commands must provide a documented `--json` option. Future batch equivalents use the same envelope. In JSON mode:
+
+- Stdout contains exactly one JSON control object followed by a newline, including handled errors; no banners, progress messages, or assessment result streams.
+- Diagnostics and progress go to stderr. In JSON mode they use documented JSON Lines records with `schema_version`, `event` (`diagnostic` or `progress`), `category`, safe `message`, and nullable `run_id`; progress records add documented counts when available. Command errors also appear in the final stdout control envelope. Human mode may render readable stderr text.
+- Operation is noninteractive: no prompts or browser authentication. Missing configuration/credentials fail predictably. Destructive operations require an explicit documented flag rather than an interactive question when automated.
+- The envelope carries a supported integer `schema_version`, command identity/outcome, durable run state when applicable, artifact paths, small command-specific metadata, and a structured error. Incompatible control-envelope changes require a version change and migration documentation.
+- Artifact paths returned to external callers are absolute filesystem paths. A path may be null until an artifact exists; a returned usable path must refer to durable data, not a temporary stdout stream. Secrets do not belong in diagnostics or control data.
+
+Intended version-1 envelope for Milestone 2 implementation (illustrative values, not executable output today):
+
+```json
+{
+  "schema_version": 1,
+  "command": "runs status",
+  "status": "ok",
+  "run_id": "run_example",
+  "run_status": "running",
+  "artifacts": {
+    "manifest": "/absolute/run_example/manifest.json",
+    "results_jsonl": null,
+    "results_csv": null
+  },
+  "data": {
+    "completed_tasks": 10,
+    "failed_tasks": 0,
+    "pending_tasks": 90
+  },
+  "error": null
+}
+```
+
+| Field | Planned meaning |
+|---|---|
+| `schema_version` | Integer control-envelope version, initially `1`; separate from assessment/file schema versions. |
+| `command` | Canonical command name, such as `validate`, `plan`, `run`, `runs status`, `resume`, or `results export`. |
+| `status` | Command outcome: `ok`, `partial`, or `error`. This is distinct from the state of an assessed run. |
+| `run_id` | Durable original run identifier, or null for operations that do not address/create a run. |
+| `run_status` | Documented durable lifecycle state, or null when inapplicable. The initial vocabulary covers `created`, `submitted`, `running`, `completed`, `partial`, `failed`, and `cancelled`; services and CLI must share the same state contract. |
+| `artifacts` | Object of documented artifact-name to absolute path/null entries. Empty for operations without artifacts. Includes canonical results and requested derived exports when available. |
+| `data` | Small versioned command-specific object: validation issues, plan summary, counts, or bounded run listings. Document each implemented command's fields; never pass through arbitrary provider bodies. |
+| `error` | Null on success; otherwise an object containing stable `category`, safe `message`, and boolean `retryable`. Partial completion includes `category: partial_completion` and retained artifact paths/counts. |
+
+Errors use provider-neutral categories: `usage`, `validation`, `unsupported_capability`, `not_found`, `execution`, `partial_completion`, `interrupted`, and `internal`. Provider/account details may refine a safe diagnostic when adapters exist, without changing the envelope or depending on an R package. Preserve explicit unknowns; never invent estimates or capabilities to fill control fields.
+
+### Exit codes, state, and process independence
+
+| Exit code | Meaning |
+|---|---|
+| `0` | The command succeeded, including a successful submission or status query. Inspect `run_status` to determine whether asynchronous work completed. A successful query of a failed run still returns `0` with `run_status: failed`. |
+| `1` | Execution, authentication/transport/provider, or internal failure; use structured error category/message for detail. |
+| `2` | Usage, validation, unsupported capability, or unknown run/resource error; invalid submissions do not send a provider request. |
+| `3` | A processing/collection operation completed partially, retaining successful outputs and reporting invalid/refused/failed judgments. |
+| `130` | Interrupted operation; report the durable run ID, state, and recoverable artifact paths when available. |
+
+Status, resumption, and collection reload durable state across process restarts. Resumption must not depend on an open terminal or an embedded Python interpreter. Before submission, persist immutable original-input, exact rendered-prompt, and provider-request-payload hashes; structural IDs alone cannot establish content identity. Detect changed referenced text and never blindly reuse an old submission identity for changed content. Preserve task, pair, request, run, and attempt IDs throughout.
+
+Required offline R-driven mock-provider tests in Milestone 2 exercise JSON parsing, exit codes, stdout/stderr separation, submission, independent-process status/export, interruption, and resumption without duplicate completed judgments. Later milestones extend these tests to the operations they introduce. See the [cross-language acceptance gate](implementation-plan.md#cross-language-interoperability-acceptance-gate).
 
 ## Python interface alignment
 
@@ -71,4 +129,4 @@ See `examples/run.yaml` and `examples/rubric.yaml`. These examples include synth
 - `collect_results(run_id) -> ResultManifest`
 - Async variants of the live execution API may be exposed as `arun_live` or through a documented client; the intended future names are synchronous `run_live` and asynchronous `arun_live`; neither is implemented in Milestone 1.
 
-R integration should initially call the installed Python library or the CLI via documented commands. Do not require an HTTP server for local R use. `judgmentllm serve` is introduced only in the committed late-stage Milestone 7; it exposes the same library operations and persistent runs without introducing a parallel scoring implementation. See [`http-api-spec.md`](http-api-spec.md).
+R integration is CLI-first through `processx`, with the functional `rubricLLM` wrapper delivered in Milestone 6 and `reticulate` remaining optional/secondary. Interchange files allow `pairwiseLLM` to consume comparison results without embedded Python. Do not require an HTTP server for local R use. `judgmentllm serve` is introduced only in the committed late-stage Milestone 7; it exposes the same library operations and persistent runs without introducing a parallel scoring implementation. See [`http-api-spec.md`](http-api-spec.md).

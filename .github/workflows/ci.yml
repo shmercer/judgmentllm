@@ -59,6 +59,36 @@ jobs:
       - name: Run offline tests with coverage
         run: uv run --offline --no-sync pytest
 
+      - name: Set up R for required interoperability checks
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
+        uses: r-lib/actions/setup-r@f9a764fea8d5c63df6ef9a5c7795bf7deb5d7e05 # v2
+        with:
+          r-version: '4.6.2'
+          use-public-rspm: false
+
+      - name: Install pinned jsonlite for R interoperability
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
+        shell: Rscript --vanilla {0}
+        run: |
+          # CRAN jsonlite 2.0.0 source, pinned to its immutable mirror commit.
+          # Runtime dependencies are base R's methods; no fitting packages.
+          utils::install.packages(
+            "https://github.com/cran/jsonlite/archive/2559608891cc42b9f857a5a0aff231738a670576.tar.gz",
+            repos = NULL, type = "source", dependencies = FALSE
+          )
+          stopifnot(requireNamespace("jsonlite", quietly = TRUE))
+          stopifnot(as.character(utils::packageVersion("jsonlite")) == "2.0.0")
+
+      - name: Verify required Python-to-R interoperability
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
+        shell: bash
+        env:
+          JUDGMENTLLM_R_STRICT: '1'
+        run: |
+          set -euo pipefail
+          uv run --offline --no-sync python examples/export_r.py --output "$RUNNER_TEMP/judgmentllm-r"
+          Rscript --vanilla examples/r_interoperability.R "$RUNNER_TEMP/judgmentllm-r"
+
       - name: Build distributions
         run: uv build --offline
 

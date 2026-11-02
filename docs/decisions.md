@@ -23,7 +23,8 @@
 | Runs | Immutable manifest after submit; new run ID when spec changes; resume without blind duplicate submission |
 | Models | Auto-generated reference catalog; distinguish discovered/implemented/qualified; omit primarily coding-only models from recommended catalog without blocking user-supplied IDs |
 | Dev stack | Python>=3.11, pure Python, uv, Hatchling, Pydantic 2, PyYAML, Jinja2, Typer, asyncio, official SDKs, SQLite, pytest, Ruff, Pyright, Codecov |
-| Packaging | Optional provider dependencies plus `[all]`, PyPI and GitHub; later thin R wrapper |
+| Packaging | Standalone Python/CLI; optional provider dependencies plus `[all]`, PyPI and GitHub; functional CLI-first `rubricLLM` wrapper in Milestone 6 |
+| R integration | Canonical JSONL/R-compatible CSV file contracts; CLI-first through `processx`; `reticulate` optional secondary; statistics remain in R |
 | HTTP | FastAPI is a committed late-stage development milestone (Milestone 7) after core/CLI/providers/batch/R bridge. Installed only via optional `[api]` extra; local loopback-only and single-user without authentication. No remote or multi-user features in this scope. Early library/CLI prereleases may precede HTTP support. |
 | Licensing | MIT; see the repository LICENSE |
 | Qual tests | Manual option and before every release, separate from offline CI |
@@ -65,3 +66,17 @@
 - Prefer `first_response` and `second_response` in built-in templates; retain legacy presentation-order aliases unchanged. Do not reinterpret left/right render arguments or original item IDs.
 - Enforce the independently documented OpenAI Decisions 2–10 level boundary in preflight; do not infer identical constraints for other endpoints. TypeSafe documents a maximum of ten criteria and recommends at least two, without independently establishing the same enforced minimum. Its verified maximum may be supplied by `CapabilityProfile`; no new Jev adapter/rule is implemented.
 - Treat R interoperability as a continuing design requirement, while the fuller bridge/wrapper remains Milestone 6. Milestone 2 must capture immutable input/prompt/provider-payload hashes before submission, detect changed references on resume, and never blindly reuse submission identity for changed content. Original task/pair/request/attempt IDs remain preserved. No execution/persistence work is included in this pass.
+
+## Approved R architecture and standing acceptance (2026-11-02)
+
+1. JudgmentLLM remains a standalone Python library and CLI. R clients use the same validated services and result contracts.
+2. Canonical JSONL and documented R-compatible CSV are the cross-language exchange formats. Preserve canonical audit records; derived R tables retain explicit outcome/score semantics and provenance.
+3. The ordinary R workflow is CLI-first, normally using `processx` to invoke the installed executable and read files/structured output.
+4. Milestone 6 must deliver a functional thin R wrapper, provisionally named `rubricLLM`, for configure, validate, plan, submit, status, resume, and collect operations. Documentation alone does not satisfy that deliverable. The wrapper does not duplicate Python execution, provider adapters, persistence, or scheduling.
+5. For this integration, `pairwiseLLM` consumes JudgmentLLM files for statistical analysis rather than embedding Python or becoming another execution engine.
+6. `reticulate` is an optional secondary route for users choosing to embed Python. It is not the primary R architecture or a compulsory dependency of the core or ordinary R workflow.
+7. FastAPI remains a committed Milestone 7 deliverable, installed as an optional extra. An HTTP server is not required for ordinary R or `rubricLLM` use.
+8. R-to-Python calls operate on whole runs/files or appropriately sized task groups/batches, not one Python process per judgment. The Python service owns request execution and durable identities.
+9. Statistical fitting, comparative-judgment analysis, and calibration remain in R; no statistical engine is added to the Python core.
+
+R interoperability is an acceptance condition throughout subsequent milestones, not work deferred entirely to Milestone 6. Required R round-trip steps in the existing Ubuntu/Python 3.11 CI matrix job generate synthetic Python exports and import them in R with `JUDGMENTLLM_R_STRICT=1` and required `jsonlite` distribution/mapping checks. Missing prerequisites fail that check; optional pairwiseLLM checks may report separately. Retain the existing Python matrix and 90% coverage gate. Current export, tie, attempt-selection, orientation, and provenance contracts remain unchanged. The functional wrapper, execution CLI, and HTTP service are future deliverables, not implemented by this documentation correction.

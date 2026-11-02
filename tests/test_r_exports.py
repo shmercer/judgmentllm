@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -430,3 +431,110 @@ def test_expected_scores_and_probabilities_are_not_rounded(tmp_path: Path) -> No
         entry["probability"] for entry in json.loads(row["probabilities_json"])
     ] == probabilities
     assert row["category_label"] == "NA" and row["response_id"] == "00001"
+
+
+def test_strict_r_mode_cannot_skip_missing_jsonlite(tmp_path: Path) -> None:
+    executable = shutil.which("Rscript")
+    if executable is None:
+        pytest.skip("Rscript is optional outside the required R CI step")
+    script = Path(__file__).resolve().parents[1] / "examples" / "r_interoperability.R"
+    harness = tmp_path / "without-jsonlite.R"
+    harness.write_text(
+        """
+arguments <- commandArgs(trailingOnly = TRUE)
+real_require_namespace <- requireNamespace
+requireNamespace <- function(package, ...) {
+  if (identical(package, "jsonlite")) return(FALSE)
+  real_require_namespace(package, ...)
+}
+commandArgs <- function(trailingOnly = FALSE) {
+  if (!trailingOnly) stop("Harness expects trailing arguments")
+  arguments[-1L]
+}
+source(arguments[[1L]])
+""",
+        encoding="utf-8",
+    )
+    completed = subprocess.run(
+        [executable, "--vanilla", str(harness), str(script), str(tmp_path)],
+        env={**os.environ, "JUDGMENTLLM_R_STRICT": "1"},
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert completed.returncode != 0
+    assert "Strict R interoperability requires jsonlite" in completed.stderr
+    assert "R interoperability smoke passed" not in completed.stdout
+
+
+@pytest.mark.parametrize("corruption", ["missing_column", "probability_values"])
+def test_strict_r_mode_rejects_invalid_export(tmp_path: Path, corruption: str) -> None:
+    executable = shutil.which("Rscript")
+    if executable is None:
+        pytest.skip("Rscript is optional outside the required R CI step")
+    probe = subprocess.run(
+        [
+            executable,
+            "--vanilla",
+            "-e",
+            'quit(status = if (requireNamespace("jsonlite", quietly = TRUE)) 0L else 42L)',
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if probe.returncode == 42:
+        pytest.skip("jsonlite is optional outside the required R CI step")
+    assert probe.returncode == 0, probe.stderr
+    root = Path(__file__).resolve().parents[1]
+    subprocess.run(
+        [
+            sys.executable,
+            str(root / "examples" / "export_r.py"),
+            "--output",
+            str(tmp_path),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    source = tmp_path / (
+        "pairwise_r.csv" if corruption == "missing_column" else "rubric_r.csv"
+    )
+    with source.open(encoding="utf-8", newline="") as stream:
+        content = list(csv.reader(stream))
+    if corruption == "missing_column":
+        content[0][content[0].index("p_first")] = "unrecognized_probability"
+    else:
+        probability_column = content[0].index("probabilities_json")
+        content[2][probability_column] = json.dumps(
+            [
+                {"level_label": "1", "probability": 0.9},
+                {"level_label": "2", "probability": 0.05},
+                {"level_label": "3", "probability": 0.05},
+            ]
+        )
+    with source.open("w", encoding="utf-8", newline="") as stream:
+        csv.writer(stream).writerows(content)
+    completed = subprocess.run(
+        [
+            executable,
+            "--vanilla",
+            str(root / "examples" / "r_interoperability.R"),
+            str(tmp_path),
+        ],
+        env={**os.environ, "JUDGMENTLLM_R_STRICT": "1"},
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert completed.returncode != 0
+    if corruption == "missing_column":
+        assert "Missing required CSV columns: p_first" in completed.stderr
+    else:
+        assert "probabilities$probability" in completed.stderr
+    assert "R interoperability smoke passed" not in completed.stdout

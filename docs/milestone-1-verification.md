@@ -1,6 +1,6 @@
 # Milestone 1 implementation and verification
 
-**Latest corrective-pass result:** 425 tests passed; 99.79% statement and 99.13% branch coverage. The R smoke test passed with installed pairwiseLLM/jsonlite. See the pre-merge hardening record below; the original implementation figures are retained as historical verification.
+**Latest CLI-first architecture / mandatory R gate follow-up:** 428 tests passed; 99.79% statement and 99.13% branch coverage. Strict R/jsonlite checks passed locally, including optional-pairwiseLLM absence and negative regressions. GitHub CI for this follow-up remains pending; it has not been pushed. Earlier verification figures below are retained as historical records.
 
 Date: 2026-11-02. Version: `0.1.0a2`. Schema version: integer `1`.
 Branch: `codex/milestone-1-contracts-prompts`. Base: refreshed `origin/main`,
@@ -201,4 +201,84 @@ CSV is untyped: R callers must import identifiers as character strings to preser
 - `tests/test_export_validation.py`
 - `tests/test_planning.py`
 - `tests/test_prompts.py`
+- `tests/test_r_exports.py`
+
+## CLI-first architecture and mandatory R acceptance follow-up
+
+This focused follow-up began at approved/pushed commit `c9e2905` on `codex/milestone-1-contracts-prompts`, with a clean working tree. It changes architecture documentation, future milestone acceptance criteria, the Ubuntu R CI steps, and the minimum R test assertions needed for that gate. Existing exports, Python implementation, dependencies/lockfile, package/schema versions, and milestone order are unchanged. No Milestone 2 execution commands or R wrapper were implemented. No push, merge, or publication was performed during this follow-up.
+
+### Architecture recorded
+
+JudgmentLLM remains a standalone Python library and CLI. Canonical JSONL and documented R-compatible CSV are the primary cross-language contracts. R normally uses `processx` to invoke the CLI for complete run operations, task groups, or batches, rather than embedding Python or spawning once per judgment. A functional thin R interface, provisionally `rubricLLM`, belongs to Milestone 6 and will cover configuration, validation, planning, submission, status, resumption, and collection. `pairwiseLLM` consumes comparison files for statistics in R. `reticulate` remains optional and secondary. Ordinary local R use needs no HTTP server; optional local FastAPI remains the committed Milestone 7 deliverable.
+
+The [CLI spec](cli-spec.md) now documents the future versioned control envelope, `--json`, command versus run statuses, absolute artifact paths, structured errors, JSON stdout and JSON Lines diagnostics/progress on stderr, noninteractive operation, and exit codes `0/1/2/3/130`. It requires independent-process status/resume/collection via shared Python services and durable IDs/files. These are explicit Milestone 2+ implementation contracts, not commands added by this follow-up.
+
+### Standing gate and milestone-specific acceptance
+
+The exact [Cross-language interoperability acceptance gate](implementation-plan.md#cross-language-interoperability-acceptance-gate) appears immediately before the review checklist and is also required by `AGENTS.md`. Every relevant schema/result/export/service/CLI change must preserve IDs, orientations, observed outcomes, all attempts, full distributions/mappings, selected/modal/expected distinctions, provenance, missing values, and leading-zero character IDs through actual Python-to-R files. Applicable deterministic synthetic tests must run offline in required CI without credentials/paid calls, and failures or missing prerequisites cannot be accepted as silent skips. Existing export verification is a mandatory baseline; new features are tested only as their milestones arrive.
+
+| Milestone | Added acceptance requirement |
+|---|---|
+| 1 | Actual Python-generated pairwise/rubric files imported in R, required JSON probability/mapping recovery, IDs/types/missing values/attempts/reversals/outcomes and score kinds preserved. |
+| 2 | R invokes mock execution through versioned noninteractive CLI controls; independent-process status/resume/export, durable IDs/artifacts, stderr diagnostics, interruption/resumption without duplicate completed judgments, and immutable input/prompt/payload hashes. |
+| 3 | Offline fixtures from every generative adapter produce the established normalized/R-facing contracts, including errors and missing provider fields. |
+| 4 | Separate Decisions/Jev fixtures preserve complete distributions, nonuniform mapped expectations, raw provider indices, selected/modal/expected distinctions, and pair probability orientation. |
+| 5 | R-driven submission/status/resume/collection/export across process restarts, preserving partial/error records, identities, attempts, and provenance using mocks. |
+| 6 | Functional CLI-first `rubricLLM`/`processx` lifecycle interface, executable/environment discovery, installation/first-run examples, actual version-recorded pairwiseLLM integration in required tests, and synthetic end-to-end workflows. Reticulate is only an optional justified enhancement. |
+| 7 | Normalized-result parity across Python, CLI, HTTP, and R-facing exports through shared services; retain optional installation and local-only HTTP security. |
+
+The review checklist now asks all five requested R-contract/testing/preservation/CI/documentation questions, applying stage-specific checks when relevant while keeping the established export baseline mandatory.
+
+### Required Ubuntu CI configuration
+
+Exactly three required steps were added to the existing `baseline` job and are conditioned on `matrix.os == 'ubuntu-latest' && matrix.python == '3.11'`. The six-entry Python matrix and all previous steps, including lint, formatting, Pyright, pytest/coverage, builds, metadata, clean installations, artifacts, and Codecov, are otherwise unchanged.
+
+1. Set up R 4.6.2 with official `r-lib/actions/setup-r` pinned to `f9a764fea8d5c63df6ef9a5c7795bf7deb5d7e05` (`v2`), with public RSPM disabled.
+2. Install only jsonlite 2.0.0 from the immutable CRAN-mirror source commit `2559608891cc42b9f857a5a0aff231738a670576`; confirm namespace and exact version. Its runtime dependency is base R's `methods`. No pairwiseLLM, Stan, processx, or R wrapper installation is required for this baseline.
+3. Under `set -euo pipefail`, generate actual synthetic files via the configured uv environment in `$RUNNER_TEMP/judgmentllm-r`, then run `Rscript --vanilla examples/r_interoperability.R` with `JUDGMENTLLM_R_STRICT=1`.
+
+There is no `continue-on-error` or missing-runtime fallback on these steps. Missing Rscript fails invocation/setup; missing jsonlite raises a fatal error in strict mode before any success message. Full probability, numeric mapping, and presentation-order JSON assertions execute in strict mode. Optional local examples may still report JSON recovery pending without jsonlite; that mode does not satisfy CI acceptance. PairwiseLLM adapter checks remain optional until Milestone 6 and are independent of the required file-contract assertions. Dependency setup may download tools/packages; test execution itself is offline and credential-free.
+
+### Exact local verification and outcomes
+
+Commands ran at repository root with `UV_CACHE_DIR=/tmp/judgmentllm-uv-cache` on Linux/CPython 3.12.3. Local R is 4.6.2, jsonlite 2.0.0, and optional pairwiseLLM 1.6.0.
+
+| Command | Result |
+|---|---|
+| `uv run --offline --no-sync ruff check .` | Passed. |
+| `uv run --offline --no-sync ruff format --check .` | Passed; 38 files formatted. |
+| `uv run --offline --no-sync pyright` | Passed, zero errors/warnings/information diagnostics. |
+| `uv run --offline --no-sync pytest` | **428 passed**, 4.87 seconds in the complete coverage run. |
+| `uv run --offline --no-sync coverage json -o /tmp/judgmentllm-r-gate-coverage.json` | Passed; statements 1,414/1,417 (**99.79%**), branches 567/572 (**99.13%**), combined **99.60%**, unchanged 90% gate. |
+| `uv lock --check` | Passed, 93 packages; dependency declarations and lockfile unchanged. |
+| `uv build --offline` | Wheel and source distribution built. |
+| `uv run --offline --no-sync twine check --strict dist/judgmentllm-0.1.0a2*` | Both artifacts passed. |
+| `uv run --offline --no-sync python scripts/smoke_install.py dist/judgmentllm-0.1.0a2-py3-none-any.whl dist/judgmentllm-0.1.0a2.tar.gz` | Both clean core-only installations passed; only dependency installation allowed network access, package checks were offline. |
+| `uv run --offline --no-sync python examples/export_r.py --output /tmp/judgmentllm-r-gate` | Six pairwise and three rubric audit rows generated by the actual Python export functions. |
+| `JUDGMENTLLM_R_STRICT=1 Rscript --vanilla examples/r_interoperability.R /tmp/judgmentllm-r-gate` | Passed all required schema/type/missing/ID/order/outcome/attempt/score/probability/mapping assertions. Log includes `Strict mode: required jsonlite checks completed`. Optional pairwiseLLM builders also passed. |
+| `uv run --offline --no-sync pytest tests/test_r_exports.py -q --no-cov -k strict_r_mode` | Three negative regressions passed: strict missing-jsonlite failure, missing required `p_first` column failure, and incorrect probability JSON values failure. Each asserts a nonzero R exit and absence of the smoke-success message. |
+| `JUDGMENTLLM_R_STRICT=1 Rscript --vanilla /tmp/judgmentllm-r-without-pairwise.R examples/r_interoperability.R /tmp/judgmentllm-r-gate` | Passed with only the optional pairwiseLLM namespace lookup masked as unavailable; actual jsonlite recovery and required assertions still executed. |
+| `git diff --check` | Passed. |
+| `git diff --exit-code -- src examples/export_r.py pyproject.toml uv.lock` | Passed; no Python implementation, export generator, dependency, or lock changes. |
+
+Local YAML inspection compared the new workflow against the approved head: the same single matrix job/six variants remain, exactly three R steps target only Ubuntu/Python 3.11, all prior step definitions are unchanged, strict mode is set, temporary files use RUNNER_TEMP, and the required R invocation has no failure suppression. This is workflow inspection plus local execution, not a GitHub-hosted CI run.
+
+### Limitations and Milestone 2 handoff
+
+The new workflow has **not** been pushed or executed on GitHub during this follow-up. GitHub CI remains pending and is not claimed to pass. Local tests exercised the required strict script and failure paths; GitHub setup of the pinned R binary/package must still succeed in the Ubuntu/Python 3.11 job. No expanded Windows/macOS/Python-version R setup was added. Branch protection settings were not changed; failure propagates through the existing baseline job.
+
+There are no unresolved architecture questions blocking Milestone 2. Implement its documented control envelope/command-specific data schemas, shared durable services, independent-process lifecycle tests, content-hash guarantees, and progressive R-facing operations at that milestone. The wrapper/discovery layer remains Milestone 6; HTTP remains Milestone 7. No execution CLI, wrapper, provider adapter, statistical fitting, or persistent engine was added here.
+
+### Files changed in this follow-up
+
+- `.github/workflows/ci.yml`
+- `AGENTS.md`
+- `README.md`
+- `docs/cli-spec.md`
+- `docs/decisions.md`
+- `docs/design-spec.md`
+- `docs/implementation-plan.md`
+- `docs/milestone-1-verification.md`
+- `docs/r-interoperability.md`
+- `examples/r_interoperability.R`
 - `tests/test_r_exports.py`

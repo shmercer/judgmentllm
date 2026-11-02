@@ -6,6 +6,8 @@ JudgmentLLM provides typed, provider-independent contracts for ordinal rubric sc
 
 Python 3.11+, Linux, Windows, and macOS are supported. The core uses Pydantic 2, PyYAML, Jinja2, and Typer; pandas and PyArrow are not required.
 
+The R architecture is CLI-first: call the standalone installed executable, normally with `processx`, and exchange canonical JSONL or R-compatible CSV files. `pairwiseLLM` consumes these files for statistical analysis in R. A functional thin `rubricLLM` wrapper for the run lifecycle belongs to Milestone 6; `reticulate` is optional and secondary. Ordinary R use requires no HTTP server. See [R interoperability](docs/r-interoperability.md) for the approved architecture and current offline examples.
+
 ## Install and preview
 
 ```bash
@@ -81,11 +83,11 @@ uv run --offline --no-sync python scripts/smoke_install.py dist/*.tar.gz
 
 Use a writable `UV_CACHE_DIR` when the default cache is read-only. Tests are synthetic and offline. The coverage gate remains 90%; statement and branch coverage are reported. The installation helper creates clean environments and may download locked core dependencies; installed import, template, and preview checks run offline. Provider SDKs must be absent from these core installations.
 
-CI retains the Milestone 0 Linux/Windows/macOS matrix on Python 3.11 and 3.15, lint/type checks, builds, clean installations, coverage artifacts, and optional Codecov upload. See [repository setup](docs/repository-setup.md) for Codecov configuration.
+CI retains the Milestone 0 Linux/Windows/macOS matrix on Python 3.11 and 3.15, lint/type checks, builds, clean installations, coverage artifacts, and optional Codecov upload. A required Ubuntu/Python 3.11 R round trip also checks synthetic file imports and full probability/mapping recovery with `jsonlite`; R compatibility is a standing requirement for later schema/export/CLI changes. See [repository setup](docs/repository-setup.md) for Codecov configuration.
 
 ## Optional dependencies and later milestones
 
-Extras remain `openai`, `anthropic`, `google`, `together`, `ollama`, `typesafe`, `parquet`, `api`, and `all`. Installing them adds dependencies, not implemented provider operations. Milestone 2 adds mock execution and persistence; live adapters, batching, catalogs, R integration, and the optional local FastAPI interface follow the [implementation plan](docs/implementation-plan.md).
+Extras remain `openai`, `anthropic`, `google`, `together`, `ollama`, `typesafe`, `parquet`, `api`, and `all`. Installing them adds dependencies, not implemented provider operations. Milestone 2 adds mock execution and persistence; live adapters, batching, catalogs, the functional CLI-first `rubricLLM` wrapper in Milestone 6, and the committed optional local FastAPI interface in Milestone 7 follow the [implementation plan](docs/implementation-plan.md). R calls will operate on runs/files or sized task groups, not spawn one Python process per judgment. These future services and wrapper operations are not implemented by the current offline tools.
 
 The repository is [shmercer/judgmentllm](https://github.com/shmercer/judgmentllm), licensed under [MIT](LICENSE), and not yet published to PyPI. The core does not implement Bradley–Terry fitting, adaptive pairing, or rubric calibration; these remain in `pairwiseLLM`.
 

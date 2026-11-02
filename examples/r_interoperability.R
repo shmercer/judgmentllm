@@ -1,19 +1,29 @@
 # Offline import/preparation example. No provider calls or statistical fitting.
 # First: uv run --offline --no-sync python examples/export_r.py --output /tmp/judgmentllm-r
-# Then:  Rscript examples/r_interoperability.R /tmp/judgmentllm-r
+# Then:  Rscript --vanilla examples/r_interoperability.R /tmp/judgmentllm-r
+# CI requires JSON recovery: JUDGMENTLLM_R_STRICT=1 Rscript --vanilla ...
 args <- commandArgs(trailingOnly = TRUE)
 if (length(args) != 1L) {
   stop("Usage: Rscript examples/r_interoperability.R EXPORT_DIRECTORY")
 }
 export_directory <- args[[1L]]
+strict <- identical(Sys.getenv("JUDGMENTLLM_R_STRICT"), "1")
+has_jsonlite <- requireNamespace("jsonlite", quietly = TRUE)
+if (strict && !has_jsonlite) {
+  stop("Strict R interoperability requires jsonlite; JSON checks cannot be skipped")
+}
 
-read_audit <- function(filename) {
+read_audit <- function(filename, required_columns) {
   # Read every column as character before converting named measurements only.
   # This protects identifiers such as '001', category labels, and JSON columns.
-  utils::read.csv(file.path(export_directory, filename),
+  data <- utils::read.csv(file.path(export_directory, filename),
     colClasses = "character", stringsAsFactors = FALSE, check.names = FALSE,
     na.strings = "NA", fileEncoding = "UTF-8", comment.char = ""
   )
+  missing <- setdiff(required_columns, names(data))
+  if (length(missing)) stop("Missing required CSV columns: ", paste(missing, collapse = ", "))
+  stopifnot(all(vapply(data, is.character, logical(1L))))
+  data
 }
 convert_numeric <- function(data, columns) {
   for (column in intersect(columns, names(data))) {
@@ -28,6 +38,7 @@ convert_numeric <- function(data, columns) {
 convert_logical <- function(data, columns) {
   for (column in intersect(columns, names(data))) {
     original <- data[[column]]
+    stopifnot(all(is.na(original) | original %in% c("TRUE", "FALSE")))
     converted <- as.logical(original)
     if (any(!is.na(original) & is.na(converted))) stop("Invalid logical CSV value")
     data[[column]] <- converted
@@ -55,15 +66,49 @@ select_attempts <- function(audit, choices) {
   selected
 }
 
-pair_audit <- read_audit("pairwise_r.csv")
+identity_columns <- c("run_id", "task_id", "request_uid", "attempt_id", "status", "provider", "model")
+pair_audit <- read_audit("pairwise_r.csv", c(
+  identity_columns, "ID1", "ID2", "A_id", "B_id", "better_id", "result", "winner_pos",
+  "pair_uid", "pair_id", "trait_id", "left_item_id", "right_item_id",
+  "original_order", "presented_order", "source_pair_uid", "repetition_index",
+  "is_reversal", "reversal_group", "p_left", "p_right", "p_first", "p_second", "p_tie",
+  "tie", "allow_ties", "endpoint"
+))
 pair_audit <- convert_numeric(pair_audit, c(
   "result", "winner_pos", "repetition_index", "p_left", "p_right", "p_first", "p_second", "p_tie"
 ))
 pair_audit <- convert_logical(pair_audit, c("is_reversal", "tie", "allow_ties"))
-stopifnot(is.logical(pair_audit$is_reversal), is.logical(pair_audit$tie))
+stopifnot(
+  is.logical(pair_audit$is_reversal), is.logical(pair_audit$tie),
+  is.logical(pair_audit$allow_ties), is.numeric(pair_audit$result),
+  is.numeric(pair_audit$p_first), is.numeric(pair_audit$p_second)
+)
 stopifnot(nrow(pair_audit) == 6L, all(c("001", "002") %in% pair_audit$ID1))
 stopifnot(is.character(pair_audit$ID1), is.character(pair_audit$pair_uid))
-stopifnot(all(pair_audit$A_id == pair_audit$ID1), all(pair_audit$B_id == pair_audit$ID2))
+stopifnot(
+  all(pair_audit$A_id == pair_audit$ID1), all(pair_audit$B_id == pair_audit$ID2),
+  all(pair_audit$left_item_id == "001"), all(pair_audit$right_item_id == "002"),
+  all(pair_audit$run_id == "synthetic-run"), all(pair_audit$trait_id == "quality"),
+  all(pair_audit$provider == "synthetic"), all(pair_audit$endpoint == "offline"),
+  all(pair_audit$model == "fixture"), length(unique(pair_audit$pair_uid)) == 5L,
+  length(unique(pair_audit$task_id)) == 5L
+)
+first_is_left <- pair_audit$ID1 == pair_audit$left_item_id
+stopifnot(
+  identical(pair_audit$p_first, ifelse(first_is_left, pair_audit$p_left, pair_audit$p_right)),
+  identical(pair_audit$p_second, ifelse(first_is_left, pair_audit$p_right, pair_audit$p_left))
+)
+retries <- pair_audit[pair_audit$task_id == "pair-task-001", , drop = FALSE]
+stopifnot(
+  nrow(retries) == 2L, all(retries$status == "complete"),
+  identical(retries$attempt_id, c("attempt-1", "attempt-2")),
+  all(retries$pair_uid == "pair-001")
+)
+no_probs <- pair_audit[pair_audit$task_id == "pair-task-005", , drop = FALSE]
+stopifnot(
+  nrow(no_probs) == 1L,
+  all(is.na(no_probs[c("p_left", "p_right", "p_first", "p_second", "p_tie")]))
+)
 reversed <- pair_audit[pair_audit$pair_uid == "pair-002", , drop = FALSE]
 stopifnot(
   nrow(reversed) == 1L, reversed$is_reversal, reversed$ID1 == "002", reversed$ID2 == "001",
@@ -72,7 +117,10 @@ stopifnot(
   reversed$p_first == 0.3, reversed$p_second == 0.7
 )
 failed <- pair_audit[pair_audit$status != "complete", , drop = FALSE]
-stopifnot(nrow(failed) == 1L, is.na(failed$result), is.na(failed$winner_pos))
+stopifnot(
+  nrow(failed) == 1L, failed$status == "errored", is.na(failed$result),
+  is.na(failed$winner_pos), is.na(failed$better_id), failed$p_first == 0.9
+)
 
 pair_choices <- data.frame(
   run_id = "synthetic-run",
@@ -100,7 +148,13 @@ binary <- pair_analysis[
     !is.na(pair_analysis$better_id), , drop = FALSE
 ]
 observed_ties <- pair_analysis[pair_analysis$result == 0.5, , drop = FALSE]
-stopifnot(nrow(binary) == 3L, nrow(observed_ties) == 1L)
+stopifnot(
+  nrow(binary) == 3L, nrow(observed_ties) == 1L,
+  observed_ties$tie, observed_ties$allow_ties, is.na(observed_ties$better_id),
+  is.na(observed_ties$winner_pos), observed_ties$p_tie == 0.5,
+  all(binary$result == ifelse(binary$better_id == binary$ID1, 1, 0)),
+  all(binary$winner_pos == ifelse(binary$better_id == binary$ID1, 1, 2))
+)
 bt_binary <- data.frame(
   object1 = binary$ID1, object2 = binary$ID2,
   result = binary$result, stringsAsFactors = FALSE
@@ -142,7 +196,12 @@ if (requireNamespace("pairwiseLLM", quietly = TRUE)) {
   cat("pairwiseLLM not installed: optional adapter checks pending\n")
 }
 
-rubric_audit <- read_audit("rubric_r.csv")
+rubric_audit <- read_audit("rubric_r.csv", c(
+  identity_columns, "response_id", "item_id", "trait_id", "category_label",
+  "numeric_category_value", "modal_category_label", "modal_numeric_category_value",
+  "expected_value", "primary_score", "primary_score_kind", "provider_expected_index",
+  "probabilities_json", "resolved_levels_json"
+))
 rubric_audit <- convert_numeric(rubric_audit, c(
   "numeric_category_value", "modal_numeric_category_value", "expected_value", "primary_score", "provider_expected_index"
 ))
@@ -151,7 +210,12 @@ rubric_choices <- data.frame(
   attempt_id = "attempt-1", stringsAsFactors = FALSE
 )
 rubric_analysis <- select_attempts(rubric_audit, rubric_choices)
-stopifnot(nrow(rubric_audit) == 3L, nrow(rubric_analysis) == 2L)
+stopifnot(
+  nrow(rubric_audit) == 3L, nrow(rubric_analysis) == 2L,
+  is.character(rubric_audit$item_id), all(rubric_audit$item_id == "001"),
+  is.character(rubric_audit$category_label), is.numeric(rubric_audit$primary_score),
+  all(rubric_audit$provider == "synthetic"), all(rubric_audit$model == "fixture")
+)
 stopifnot(all(rubric_analysis$response_id == rubric_analysis$item_id))
 by_item_trait <- split(rubric_analysis, list(rubric_analysis$item_id, rubric_analysis$trait_id), drop = TRUE)
 stopifnot(length(by_item_trait) == 2L)
@@ -162,19 +226,34 @@ stopifnot(
   categorical$category_label == "Proficient", categorical$primary_score == 2,
   is.na(categorical$expected_value), is.na(categorical$probabilities_json),
   expected$category_label == "2", expected$modal_category_label == "3",
-  expected$expected_value == 6.05, expected$primary_score == 6.05
+  expected$expected_value == 6.05, expected$primary_score == 6.05,
+  expected$numeric_category_value == 3, expected$modal_numeric_category_value == 8,
+  expected$provider_expected_index == 1.55
 )
-if (requireNamespace("jsonlite", quietly = TRUE)) {
+if (has_jsonlite) {
+  for (i in seq_len(nrow(pair_audit))) {
+    stopifnot(
+      identical(jsonlite::fromJSON(pair_audit$original_order[[i]]),
+        c(pair_audit$left_item_id[[i]], pair_audit$right_item_id[[i]])),
+      identical(jsonlite::fromJSON(pair_audit$presented_order[[i]]),
+        c(pair_audit$ID1[[i]], pair_audit$ID2[[i]]))
+    )
+  }
   probabilities <- jsonlite::fromJSON(expected$probabilities_json[[1L]])
   coding <- jsonlite::fromJSON(expected$resolved_levels_json[[1L]])
+  categorical_coding <- jsonlite::fromJSON(categorical$resolved_levels_json[[1L]])
   stopifnot(
     identical(probabilities$level_label, c("1", "2", "3")),
     identical(probabilities$probability, c(0.1, 0.25, 0.65)),
+    identical(coding$label, c("1", "2", "3")),
     identical(coding$numeric_value, c(1, 3, 8)),
+    identical(categorical_coding$label, c("Beginning", "Developing", "Proficient", "Advanced")),
+    identical(categorical_coding$numeric_value, c(0, 1, 2, 3)),
     sum(probabilities$probability * coding$numeric_value) == expected$expected_value
   )
-  cat("jsonlite", as.character(utils::packageVersion("jsonlite")), "probability recovery passed\n")
+  cat("jsonlite", as.character(utils::packageVersion("jsonlite")), "probability/mapping recovery and presentation JSON checks passed\n")
 } else {
   cat("jsonlite not installed: optional JSON decoding check pending\n")
 }
+cat(if (strict) "Strict mode: required jsonlite checks completed\n" else "Local mode: jsonlite checks remain optional\n")
 cat("R interoperability smoke passed: 6 pair audit rows, 4 chosen outcomes, 3 binary wins, 1 retained tie, 3 rubric audit rows, 2 chosen rubric outcomes\n")

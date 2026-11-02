@@ -1,10 +1,16 @@
 # R interoperability: explicit audit and analysis views
 
-Milestone 1 supplies provider-independent CSV views for R through
-`judgmentllm.r_exports.export_pairwise_r_csv` and `export_rubric_r_csv`. They need
-neither R nor pandas in the Python installation. R interoperability remains a
-contract for later milestones; the fuller R bridge/wrapper work stays in
-Milestone 6. Statistical estimation belongs in R, not JudgmentLLM's Python core.
+JudgmentLLM is a standalone Python library and CLI. Its primary R integration
+uses the installed CLI, normally through `processx`, and exchanges canonical
+JSONL or documented R-compatible CSV files. `reticulate` is an optional secondary
+interface; an embedded Python runtime is not required for the ordinary R
+workflow. Statistical estimation remains in R.
+
+Milestone 1 supplies provider-independent CSV views through
+`judgmentllm.r_exports.export_pairwise_r_csv` and `export_rubric_r_csv`, needing
+neither R nor pandas in the Python installation. The functional thin `rubricLLM`
+R wrapper is a Milestone 6 deliverable. FastAPI remains committed for Milestone 7
+as an optional local service; ordinary R use does not require that server.
 
 These exports are **all-attempts audit views**: every supplied record remains,
 including failures, observed ties, reversals, repeated judgments, and multiple
@@ -12,13 +18,55 @@ attempts for the same task. They perform no implicit success filter, retry
 selection, aggregation, or winner inference. The canonical normalized JSONL and
 lossless normalized CSV remain authoritative and keep their existing formats.
 
+## Approved R architecture and delivery boundaries
+
+| Component | Role |
+|---|---|
+| JudgmentLLM Python library and CLI | Own validation, prompt preparation, provider execution, scheduling, persistence, and durable identities as their milestones are implemented. |
+| Canonical JSONL / R-compatible CSV | Stable file exchange between Python and R, with original audit records retained. |
+| `rubricLLM` R wrapper, Milestone 6 | Provide a functional thin CLI client for configure, validate, plan, submit, status, resume, and collect operations. |
+| `pairwiseLLM` | Consume result files for comparative-judgment statistical analysis in this integration, without embedding Python or duplicating JudgmentLLM execution. |
+| `reticulate`, optional | Secondary direct-Python route for users deliberately choosing embedding. |
+| FastAPI, Milestone 7 | Committed optional local HTTP interface for applications needing it, separate from ordinary R use. |
+
+The wrapper must perform the complete listed run lifecycle, not merely document
+manual invocations. It will use shared Python/CLI contracts rather than recreate
+provider adapters, scheduling, persistence, or result normalization in R. These
+are future wrapper requirements; no `rubricLLM` package or execution CLI is
+implemented by this documentation update. Existing Milestone 1 commands remain
+limited to offline template tools.
+
+Call Python once per run operation, file, or appropriately sized group/batch of
+tasks. Do not spawn a new Python process for every judgment. Request-level
+concurrency and durable submission belong to the Python service, while model
+fitting, rubric calibration, and comparative statistics remain in R. The user
+chooses attempts and downstream analysis policies explicitly as shown below.
+
+For example, when `processx` and the standalone CLI are installed, this already
+supported command lists templates without embedding Python:
+
+```r
+command <- Sys.which("judgmentllm")
+if (!nzchar(command)) stop("Install JudgmentLLM and put its executable on PATH")
+result <- processx::run(command, c("templates", "list"), error_on_status = FALSE)
+if (result$status != 0L) stop(result$stderr)
+cat(result$stdout)
+```
+
+`processx` is an R-side integration dependency, not a Python-core dependency.
+The base-R CSV examples below require neither `processx` nor `reticulate` once
+files have been produced. The future wrapper should report process failures and
+reuse durable run IDs; it must not confuse a process restart with permission to
+submit changed content under an old submission identity. See the Milestone 2
+content-hash acceptance requirements in the [implementation plan](implementation-plan.md).
+
 ## Generate and read synthetic results
 
 From the repository checkout:
 
 ```bash
 uv run --offline --no-sync python examples/export_r.py --output /tmp/judgmentllm-r
-Rscript examples/r_interoperability.R /tmp/judgmentllm-r
+Rscript --vanilla examples/r_interoperability.R /tmp/judgmentllm-r
 ```
 
 The Python example writes `pairwise_r.csv` and `rubric_r.csv`. It uses synthetic
@@ -231,6 +279,34 @@ assignment `Proficient` has numeric code `2`, no invented probabilities, and no
 expected value. Do not average these two score kinds as if they were the same
 measurement, and do not silently round expected scores.
 
+## Standing R acceptance requirements
+
+Schema, export, and CLI changes in every subsequent milestone must continue to
+pass the Python-to-R file round trip. Preserve character IDs and leading zeros;
+original and presented orientation; repeated occurrences and every attempt;
+observed wins/ties versus unsuccessful records; exact category labels and
+mappings; complete probabilities; and categorical versus expected-score kinds.
+Analysis examples must select attempts explicitly and retain the audit source.
+Compatibility work cannot be postponed entirely until the Milestone 6 wrapper.
+
+Required steps in the existing Ubuntu/Python 3.11 matrix job generate the
+synthetic exports, import them in R, and require `jsonlite` to recover complete
+distributions and mappings. CI installs R 4.6.2 and pinned `jsonlite` 2.0.0 and
+sets `JUDGMENTLLM_R_STRICT=1`. Missing R or `jsonlite` is a failure of that check,
+not a skipped success. Optional pairwiseLLM adapter checks remain useful but are
+not prerequisites for the mandatory file-contract test; CI does not install
+pairwiseLLM or Stan. The existing cross-platform Python/coverage workflow remains
+in place.
+
+Run the strict file-contract check locally after generating the synthetic files:
+
+```bash
+JUDGMENTLLM_R_STRICT=1 Rscript --vanilla examples/r_interoperability.R /tmp/judgmentllm-r
+```
+
+The strict flag requires `jsonlite`; it does not require the optional
+pairwiseLLM adapters or enable statistical fitting.
+
 ## Verification and limits
 
 The Python suite verifies export columns, reversal mappings, all-attempt
@@ -240,7 +316,9 @@ verifies the same synthetic import without fitting a model. The verification rec
 includes exact local R/package versions and command results in the
 [Milestone 1 verification report](milestone-1-verification.md).
 
-If R or optional packages are absent, run the two commands at the top after
-installing them separately; Python tests remain required, and R-side checks are
-reported pending rather than treated as completed. No R package becomes a core
-Python dependency, and no network/provider request is made by the examples.
+For a local exploratory run, missing optional packages are reported separately;
+JSON recovery remains pending without `jsonlite`, and pairwiseLLM adapter checks
+remain pending without that package. This does not satisfy the required CI gate,
+which installs R/`jsonlite` and fails if full JSON verification cannot run. Python
+tests remain required. No R package becomes a core Python dependency, and no
+network/provider request is made by the examples.
