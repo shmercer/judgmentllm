@@ -77,7 +77,12 @@ class ArtifactStore:
         if current.relative_path != expected:
             raise ArtifactIntegrityError("artifact location does not match its digest")
         candidate = self.root / expected
-        if candidate.is_symlink() or not candidate.resolve().is_relative_to(self.root):
+        # The validated leaf is a digest, not a traversal component. Resolve its
+        # parent to detect escapes without canonicalizing a concurrently linked
+        # leaf, whose final-name spelling can change on Windows.
+        if candidate.is_symlink() or not candidate.parent.resolve().is_relative_to(
+            self.root
+        ):
             raise ArtifactIntegrityError("artifact location is outside its store")
         return candidate
 

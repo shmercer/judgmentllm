@@ -119,6 +119,15 @@ Explicit future handoff requirements (not implemented in this correction):
    and stale-owner tests. General low-level repository operations must not be
    mistaken for an authorization mechanism.
 
-No push, merge, release, live qualification, remote CI run or Subphase 2 work was
-performed. OS locks remain single-machine/local-filesystem only; Windows branches
-are covered by the preserved CI matrix rather than this Linux session.
+The Windows CI correction preserves the real Unix fork-inheritance test using a
+typed runtime lookup. Once type checking passed, Windows CI exposed a virtualenv
+launcher/worker PID distinction and a concurrent artifact-leaf resolution failure.
+The process-death test now verifies and terminates the PID reported by the actual
+worker. Artifact containment resolves the parent directory and separately rejects
+leaf symlinks; regression tests retain redirected-parent rejection. Exact-byte
+hashing, atomic publication, immutability, the schema, and R exports are unchanged.
+
+The original local verification above preceded pushing and remote CI. This
+correction performs no merge, release, live qualification, or Subphase 2 work.
+OS locks remain single-machine/local-filesystem only; Windows runtime verification
+uses the preserved CI matrix rather than this Linux session.

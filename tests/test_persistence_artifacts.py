@@ -128,6 +128,40 @@ def test_simultaneous_publication_preserves_one_complete_object(tmp_path: Path) 
     assert list(tmp_path.rglob(".pending-*")) == []
 
 
+def test_containment_does_not_resolve_concurrently_published_leaf(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = ArtifactStore(tmp_path / "store")
+    data = b"synthetic"
+    digest = bytes_digest(data)
+    original = Path.resolve
+
+    def resolve(path: Path, strict: bool = False) -> Path:
+        # Windows final-name resolution can spell a changing leaf differently.
+        # Only the resolved directory and the validated digest locate this file.
+        if path.name == digest:
+            return tmp_path / "alternate-spelling" / digest
+        return original(path, strict=strict)
+
+    monkeypatch.setattr(Path, "resolve", resolve)
+    identity = store.put(data)
+    assert store.read(identity) == data
+    assert store.put(data) == identity
+
+
+def test_parent_symlink_cannot_redirect_artifact(tmp_path: Path) -> None:
+    store = ArtifactStore(tmp_path / "store")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    try:
+        (store.root / "objects").symlink_to(outside, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlink creation is unavailable")
+    with pytest.raises(ArtifactIntegrityError, match="outside"):
+        store.put(b"original")
+    assert list(outside.iterdir()) == []
+
+
 def test_interrupted_publication_has_no_partial_target(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

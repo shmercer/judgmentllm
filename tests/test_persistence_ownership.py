@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
 import sys
 import time
@@ -106,12 +107,13 @@ def test_independent_process_cannot_take_live_lock(registry: Repository) -> None
 
 
 _HOLD = """
+import os
 import sys
 from judgmentllm.persistence.ownership import ExecutorOwnership
 from judgmentllm.persistence.repository import Repository
 with Repository(sys.argv[1]) as repository:
     with ExecutorOwnership(repository, 'run'):
-        print('ready', flush=True)
+        print(os.getpid(), flush=True)
         sys.stdin.readline()
 """
 
@@ -133,8 +135,12 @@ def test_process_death_releases_lock_and_recovers_stale_metadata(
             time.sleep(0.01)
         owner = registry.get_owner("run")
         assert owner is not None
-        assert owner.pid == child.pid
-        child.kill()
+        # A Windows venv launcher may spawn the interpreter that holds the lock.
+        assert child.stdout is not None
+        owner_pid = int(child.stdout.readline())
+        assert owner.pid == owner_pid
+        assert owner_pid != os.getpid()
+        os.kill(owner_pid, signal.SIGTERM)
         child.communicate(timeout=15)
         assert registry.get_owner("run") == owner
         with ExecutorOwnership(registry, "run") as recovered:
