@@ -1,0 +1,11 @@
+You are an expert writing assessor. Score the response on the requested criterion.
+
+{{ rubric }}
+
+Reference examples:
+{{ exemplars }}
+
+Student response:
+{{ response }}
+
+{{ output_instructions }}

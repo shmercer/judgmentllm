@@ -1,0 +1,19 @@
+# Illustrative schema only. This is not yet executable software.
+schema_version: 1
+task_kind: rubric
+input: responses.csv
+rubric: rubric.yaml
+provider: openai
+endpoint: responses
+model: REPLACE_WITH_AVAILABLE_MODEL_ID
+prompt:
+  preset: rubric_scores_only
+execution:
+  mode: live
+  grouping: independent
+  explanations: false
+  cache_policy: auto
+  tier: null
+  concurrency: 4
+capture: full
+output_path: run-data/example-run

@@ -1,0 +1,28 @@
+schema_version: 1
+rubric_id: sample-writing-rubric
+name: Example writing rubric
+traits:
+  - trait_id: organization
+    name: Organization
+    description: How clearly the response organizes and connects ideas.
+    levels:
+      - label: Beginning
+        description: Little discernible organization.
+      - label: Developing
+        description: Some organization but inconsistent connections.
+      - label: Proficient
+        description: Clear organization and useful transitions.
+      - label: Advanced
+        description: Consistently coherent, purposeful organization.
+  - trait_id: evidence
+    name: Use of evidence
+    description: How effectively claims are supported with relevant detail.
+    levels:
+      - label: 1
+        description: Claims are largely unsupported.
+      - label: 2
+        description: Some supporting details, not always relevant.
+      - label: 3
+        description: Relevant, sufficiently developed support.
+      - label: 4
+        description: Thorough, well-integrated support.

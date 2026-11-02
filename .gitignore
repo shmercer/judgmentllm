@@ -1,0 +1,22 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyright/
+.venv/
+dist/
+build/
+*.egg-info/
+.coverage
+coverage.xml
+htmlcov/
+.env
+.env.*
+!.env.example
+# Never commit student responses, scored runs, raw prompts, or credentials.
+run-data/
+results/
+private/
+*.sqlite
+*.sqlite3
