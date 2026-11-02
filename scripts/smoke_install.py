@@ -57,6 +57,26 @@ Path("run.json").write_text(json.dumps({"schema_version":1,"task_kind":"rubric",
     "input":"responses.csv","rubric":rubric.model_dump(mode="json"),
     "provider":"synthetic","endpoint":"synthetic","model":"synthetic"}), encoding="utf-8")
 
+# Subphase 1 has no executor or lifecycle CLI. Exercise only the installed
+# core's registry, immutable artifacts, and local OS ownership primitives.
+from judgmentllm.persistence.artifacts import ArtifactStore
+from judgmentllm.persistence.hashing import bytes_digest, semantic_digest
+from judgmentllm.persistence.models import RunRecord, ManifestReference
+from judgmentllm.persistence.ownership import ExecutorOwnership
+from judgmentllm.persistence.repository import Repository
+with Repository("registry") as registry:
+    registry.create_run(RunRecord(run_id="smoke", task_kind="rubric",
+        provider="synthetic", endpoint="offline", model="fixture"))
+    store = ArtifactStore(registry.run_directory("smoke"))
+    artifact = store.put(b'{"synthetic":true}', "application/json")
+    registry.seal_run("smoke", ManifestReference(artifact=artifact))
+    with ExecutorOwnership(registry, "smoke"):
+        assert registry.get_owner("smoke") is not None
+    assert registry.get_owner("smoke") is None
+with Repository("registry") as registry:
+    assert registry.get_manifest("smoke").artifact.sha256 == bytes_digest(b'{"synthetic":true}')
+assert semantic_digest("smoke", {"a":None}) != bytes_digest(b'{"a":null}')
+
 distribution = metadata.distribution("judgmentllm")
 assert judgmentllm.__version__ == distribution.version
 assert Path(judgmentllm.__file__).resolve().is_relative_to(Path(sys.prefix).resolve())

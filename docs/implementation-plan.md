@@ -28,6 +28,12 @@ Implemented in `0.1.0a2`; see [public Python API](python-api.md) and [verificati
 
 ## Milestone 2 - Execution engine and persistence (mock provider)
 
+The [approved detailed plan](milestone-2-execution-plan.md) preserves the six
+subphases. Subphase 1 provides the [internal persistence contracts](persistence-contracts.md)
+only; source freezing, providers, execution and lifecycle CLI commands remain
+assigned to their subsequent subphases. See the
+[Subphase 1 verification record](milestone-2-subphase-1-verification.md).
+
 - Implement SQLite registry for runs, requests, tasks, batches, attempts and artifact hashes; immutable manifest on submit; resume states.
 - Before submission, capture immutable hashes of original input content, exact rendered prompts, and exact provider request payloads. Structural task/request IDs are not content hashes. Detect changed referenced text during resumption and refuse to reuse a submission identity for changed content; preserve all original task/pair/request/attempt IDs.
 - Preserve the R audit/export contracts throughout execution and resumption, including presented orientation, score kinds, complete probabilities, and all attempts. Full R bridge/wrapper work remains Milestone 6.
