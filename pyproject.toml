@@ -1,0 +1,116 @@
+[build-system]
+requires = ["hatchling>=1.33,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "judgmentllm"
+dynamic = ["version"]
+description = "Python library and CLI foundation for reproducible LLM judgments."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Sterett H. Mercer" }]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
+    "Typing :: Typed",
+]
+dependencies = ["typer>=0.27.3,<1"]
+
+[project.urls]
+Repository = "https://github.com/shmercer/judgmentllm"
+Issues = "https://github.com/shmercer/judgmentllm/issues"
+
+[project.scripts]
+judgmentllm = "judgmentllm.cli:app"
+
+[project.optional-dependencies]
+openai = ["openai>=3.42.1,<4"]
+anthropic = ["anthropic>=2.3,<3"]
+google = ["google-genai>=2.34,<3"]
+together = ["together>=3,<4"]
+ollama = ["ollama>=0.6.3,<1"]
+typesafe = ["typesafe-sdk>=0.7.5,<1"]
+parquet = ["pyarrow>=26,<27"]
+api = ["fastapi>=0.162,<1", "uvicorn>=0.54,<1"]
+all = [
+    "openai>=3.42.1,<4",
+    "anthropic>=2.3,<3",
+    "google-genai>=2.34,<3",
+    "together>=3,<4",
+    "ollama>=0.6.3,<1",
+    "typesafe-sdk>=0.7.5,<1",
+    "pyarrow>=26,<27",
+    "fastapi>=0.162,<1",
+    "uvicorn>=0.54,<1",
+]
+
+[dependency-groups]
+dev = [
+    "click>=8.5,<9",
+    "hatchling>=1.33,<2",
+    "packaging>=26.1,<27",
+    "pyright[nodejs]>=1.1.414,<2",
+    "pytest>=9.2,<10",
+    "pytest-asyncio>=1.4.1.post1,<2",
+    "pytest-cov>=7.1,<8",
+    "ruff>=0.17.3,<0.18",
+    "twine>=7,<8",
+]
+
+[tool.hatch.version]
+path = "src/judgmentllm/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/judgmentllm"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/src",
+    "/tests",
+    "/scripts",
+    "/docs",
+    "/AGENTS.md",
+    "/README.md",
+    "/LICENSE",
+    "/pyproject.toml",
+    "/uv.lock",
+]
+
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "B", "UP"]
+
+[tool.pyright]
+include = ["src", "tests", "scripts"]
+venvPath = "."
+venv = ".venv"
+pythonVersion = "3.11"
+typeCheckingMode = "strict"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--strict-config --strict-markers --cov=judgmentllm --cov-branch --cov-report=term-missing --cov-report=xml --cov-fail-under=90"
+asyncio_mode = "strict"
+asyncio_default_fixture_loop_scope = "function"
+
+[tool.coverage.run]
+source = ["judgmentllm"]
+branch = true
+relative_files = true
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 90
+
+[tool.coverage.xml]
+output = "coverage.xml"

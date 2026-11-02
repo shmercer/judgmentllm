@@ -25,9 +25,17 @@
 | Dev stack | Python>=3.11, pure Python, uv, Hatchling, Pydantic 2, PyYAML, Jinja2, Typer, asyncio, official SDKs, SQLite, pytest, Ruff, Pyright, Codecov |
 | Packaging | Optional provider dependencies plus `[all]`, PyPI and GitHub; later thin R wrapper |
 | HTTP | FastAPI is a committed late-stage development milestone (Milestone 7) after core/CLI/providers/batch/R bridge. Installed only via optional `[api]` extra; local loopback-only and single-user without authentication. No remote or multi-user features in this scope. Early library/CLI prereleases may precede HTTP support. |
-| Licensing | MIT proposed |
+| Licensing | MIT; see the repository LICENSE |
 | Qual tests | Manual option and before every release, separate from offline CI |
 | Numeric labels | Ordered category indices equally spaced by default for nonnumeric labels; allow explicit numeric mapping; preserve original labels |
+
+## Milestone 0 implementation decisions (2026-11-02)
+
+- The initial package development version is `0.1.0a1`. The baseline implements import/version information and CLI help/version only; assessment schemas and operations remain assigned to later milestones. README, CLI, and data-contract status wording now distinguish the working foundation from the unimplemented assessment features.
+- Use the existing uv 0.13.6 installation for local development. Keep dependencies in the repository's ignored `.venv`, commit `uv.lock`, and use locked syncs in CI and routine development for reproducible environments. Typer is the only direct core runtime dependency; provider, Parquet, and HTTP dependencies are optional extras.
+- Update the Together dependency baseline from SDK v2 to `together>=3,<4`, as explicitly selected during Milestone 0 planning. The [official v3.0.0 release](https://github.com/togethercomputer/together-py/releases/tag/v3.0.0), published 2026-10-22, supersedes the version named in the original provider matrix. No adapter implementation or live qualification is implied.
+- Use the official [`typesafe-sdk`](https://docs.typesafe.ai/sdk/python/) rather than a new HTTP adapter dependency. The official maintained Python client was confirmed during dependency inspection. Replace the original Jev reference URL, which identifies itself as unaffiliated with TypeSafe AI, with official SDK documentation.
+- Record MIT as the existing repository license, correcting the earlier proposed-license wording without changing the license terms.
 
 ## Deliberately unresolved and nonblocking
 
