@@ -1,35 +1,72 @@
 # JudgmentLLM
 
-**Status: Milestone 0 — repository and engineering baseline. Version: 0.1.0a1.**
+**Milestone 1 — assessment contracts and offline prompts. Version 0.1.0a2.**
 
-JudgmentLLM is a Python package and command-line foundation for planned LLM-based comparative judgments and ordinal rubric scoring through multiple providers. The intended interfaces serve Python applications, local workflows, and R integrations such as `reticulate`.
+JudgmentLLM provides typed, provider-independent contracts for ordinal rubric scoring and pairwise judgments. It loads synthetic assessments, validates category coding, prepares deterministic task groups, renders prompts, and normalizes supplied categorical or probability results. Provider execution arrives in later milestones.
 
-Milestone 0 provides an importable typed package, version information, CLI help, packaging, offline tests, and CI. Scoring, data contracts, prompt rendering, provider calls, persistence, batching, model discovery, R integration, and the FastAPI server are not implemented. Provider/model compatibility must be tested before it is described as supported.
+Python 3.11+, Linux, Windows, and macOS are supported. The core uses Pydantic 2, PyYAML, Jinja2, and Typer; pandas and PyArrow are not required.
 
-## Install from source
+The R architecture is CLI-first: call the standalone installed executable, normally with `processx`, and exchange canonical JSONL or R-compatible CSV files. `pairwiseLLM` consumes these files for statistical analysis in R. A functional thin `rubricLLM` wrapper for the run lifecycle belongs to Milestone 6; `reticulate` is optional and secondary. Ordinary R use requires no HTTP server. See [R interoperability](docs/r-interoperability.md) for the approved architecture and current offline examples.
 
-Python 3.11 or later and [uv](https://docs.astral.sh/uv/getting-started/installation/) are required. Development and CI use uv 0.13.6. Use an existing uv installation; all project dependencies are installed in the repository's Git-ignored `.venv`.
-
-```bash
-git clone https://github.com/shmercer/judgmentllm.git
-cd judgmentllm
-uv --version
-uv sync --locked --no-dev
-uv run --no-sync judgmentllm --help
-uv run --no-sync judgmentllm --version
-```
-
-`uv sync` installs the local package in editable mode. Add `--no-editable` for a non-editable source installation. Environment activation is optional; `uv run` selects the project environment.
-
-The version command prints `judgmentllm 0.1.0a1`. Calling `judgmentllm` without arguments also displays help. These commands run locally without credentials or provider requests.
+## Install and preview
 
 ```bash
-uv run --no-sync python -c "import judgmentllm; print(judgmentllm.__version__)"
+uv sync --locked --all-extras --group dev
+uv run --offline --no-sync judgmentllm templates list
+uv run --offline --no-sync judgmentllm templates preview --config examples/run.yaml --item-id essay_001 --trait organization
+uv run --offline --no-sync judgmentllm templates preview --config examples/pairwise.yaml --pair-uid comparison_001_reverse
+uv run --offline --no-sync judgmentllm templates preview --config examples/advanced.yaml --item-id essay_001
+uv run --offline --no-sync judgmentllm templates init --preset rubric_scores_only --output rubric_prompt.txt
+uv run --offline --no-sync python examples/offline.py
 ```
 
-## Local development
+All bundled inputs are synthetic. Preview makes no network requests and needs no credentials. Example provider/model fields declare future intent; they do not establish provider support. The initial dependency installation may download packages. Use `uv sync --locked --no-dev` for core-only installation.
 
-From the repository root, install all optional dependencies and development tools into `.venv` using the committed lockfile:
+## Python preparation
+
+```python
+from judgmentllm import load_run_spec, iter_requests, preview_prompt
+
+spec = load_run_spec("examples/run.yaml")
+request = next(iter_requests(spec))  # lazy response × trait grouping
+print(request.request_uid, request.trait_ids, request.exemplar_ids)
+print(preview_prompt(spec, item_id="essay_001", trait_id="organization").text)
+```
+
+Independent scoring is the default. Fixed groups preserve their supplied order; auto grouping requires an explicit known trait-count limit. Planning is structural and provides no token/cost estimates or execution.
+
+```python
+from judgmentllm import load_run_spec, prepare_pairs
+from judgmentllm.io import read_pairs
+
+spec = load_run_spec("examples/pairwise.yaml")
+assert spec.pairs is not None
+source = next(read_pairs(spec.pairs))
+schedule = list(prepare_pairs([source], repetitions=2, include_reversals=True, seed=41))
+assert len({pair.pair_uid for pair in schedule}) == 4
+```
+
+Pair and repetition order stay fixed. A seed selects presentation orientation independently for each source occurrence/repetition; every reversal presents its exact opposite. Original pair IDs, occurrence IDs, repetition indices, and presentation metadata remain separate.
+
+## Results and ordinal semantics
+
+`normalize_rubric_result` accepts a provider-selected category, a complete ordered probability distribution, or both. Numeric category labels default to their numeric values; textual/mixed scales default to zero-based indices; complete explicit mappings override defaults. Invalid numeric orderings fail. Mixed numeric/text scales warn when a numeric label differs from its assigned index.
+
+`category_label` records only provider selection. `modal_category_label` records the distribution-derived mode. `expected_value` uses the complete distribution and numeric mapping; `primary_score_kind` distinguishes `expected` from `category_code`. Original probabilities and provider-reported expected indices are retained. `NormalizationOptions.probability_sum_tolerance` controls the documented absolute sum tolerance, default `1e-8`, without renormalization.
+
+See [the finalized data contracts](docs/data-contracts.md) and [public API examples](docs/python-api.md) for normalization and streaming JSONL/CSV operations. Nested result data survives CSV export as JSON cells. Library writers revalidate each current nested result before export. Derived R-compatible audit exports preserve presented orientation, all attempts, ties/failures, and score kinds; see [R interoperability](docs/r-interoperability.md) for character-safe import and explicit analysis selection.
+
+## Templates and validation
+
+Built-in presets cover rubric scores, scores with explanations, and pairwise forced choice. Simple templates use literal placeholders. Advanced Jinja2 is opt-in and supports a documented restricted syntax with rendering limits. Protected content blocks account for selected exemplars by ID, verifying completeness and order before returning a prompt. Omission or alteration fails clearly.
+
+Output-schema validation is separate from rendering. Unknown configuration fields, incompatible presets, invalid categories, duplicate IDs, and known unsupported explanations fail locally. Unknown capabilities remain explicit; arbitrary model identifiers are not blocked by a catalog.
+
+See [prompt guidance](docs/prompt-guidance.md) and [CLI documentation](docs/cli-spec.md). Default capture intent is `full`; `minimal` declares reduced future retention. Milestone 1 does not create manifests, raw-response stores, or persistent runs.
+
+## Development and verification
+
+Development uses uv 0.13.6 and the committed lockfile. Run from the repository root:
 
 ```bash
 uv sync --locked --all-extras --group dev
@@ -41,76 +78,17 @@ uv run --offline --no-sync pytest
 uv build --offline
 uv run --offline --no-sync twine check --strict dist/*
 uv run --offline --no-sync python scripts/smoke_install.py dist/*.whl
-uv run --offline --no-sync judgmentllm --help
-uv run --offline --no-sync judgmentllm --version
+uv run --offline --no-sync python scripts/smoke_install.py dist/*.tar.gz
 ```
 
-The initial sync may download dependencies. Subsequent checks and builds use installed tools and cached build dependencies; standard tests make no network requests and require no API credentials. pytest reports statement and branch coverage and writes `coverage.xml`; the coverage target is 90%.
+Use a writable `UV_CACHE_DIR` when the default cache is read-only. Tests are synthetic and offline. The coverage gate remains 90%; statement and branch coverage are reported. The installation helper creates clean environments and may download locked core dependencies; installed import, template, and preview checks run offline. Provider SDKs must be absent from these core installations.
 
-The installation smoke helper creates a clean temporary environment and installs the built wheel with core dependency versions exported from `uv.lock`, downloading missing packages when needed. Only the installation subprocess allows network access; constraint export and installed-package/CLI checks remain offline. The helper also verifies that optional provider dependencies are absent. On Linux, also verify the source distribution with `uv run --offline --no-sync python scripts/smoke_install.py dist/*.tar.gz`.
+CI retains the Milestone 0 Linux/Windows/macOS matrix on Python 3.11 and 3.15, lint/type checks, builds, clean installations, coverage artifacts, and optional Codecov upload. A required Ubuntu/Python 3.11 R round trip also checks synthetic file imports and full probability/mapping recovery with `jsonlite`; R compatibility is a standing requirement for later schema/export/CLI changes. See [repository setup](docs/repository-setup.md) for Codecov configuration.
 
-`uv.lock` is committed for reproducibility. Keep `--locked` for ordinary setup and CI so stale dependency metadata fails visibly. To update dependencies deliberately, run `uv lock --upgrade-package PACKAGE`, sync with the same extras and development group, review the lockfile diff, and rerun the checks before committing both metadata and lockfile changes. Do not commit `.venv` or install project dependencies into the system Python.
+## Optional dependencies and later milestones
 
-## Optional dependencies
+Extras remain `openai`, `anthropic`, `google`, `together`, `ollama`, `typesafe`, `parquet`, `api`, and `all`. Installing them adds dependencies, not implemented provider operations. Milestone 2 adds mock execution and persistence; live adapters, batching, catalogs, the functional CLI-first `rubricLLM` wrapper in Milestone 6, and the committed optional local FastAPI interface in Milestone 7 follow the [implementation plan](docs/implementation-plan.md). R calls will operate on runs/files or sized task groups, not spawn one Python process per judgment. These future services and wrapper operations are not implemented by the current offline tools.
 
-The core package requires Typer and its dependencies. Feature dependencies are grouped into these extras:
+The repository is [shmercer/judgmentllm](https://github.com/shmercer/judgmentllm), licensed under [MIT](LICENSE), and not yet published to PyPI. The core does not implement Bradley–Terry fitting, adaptive pairing, or rubric calibration; these remain in `pairwiseLLM`.
 
-| Extra | Installed dependencies |
-|---|---|
-| `openai` | Official OpenAI Python SDK |
-| `anthropic` | Official Anthropic Python SDK |
-| `google` | `google-genai`, for Gemini Developer API and Vertex AI Gemini |
-| `together` | Official Together Python SDK v3 |
-| `ollama` | Official Ollama Python SDK |
-| `typesafe` | Official `typesafe-sdk` |
-| `parquet` | PyArrow |
-| `api` | FastAPI and the minimal Uvicorn server dependency |
-| `all` | All the feature dependencies above; development tools remain a separate group |
-
-For example, install the local package with just the OpenAI extra:
-
-```bash
-uv sync --locked --no-dev --extra openai
-```
-
-Installing an extra only installs dependencies. Provider adapters and Parquet operations arrive in later milestones; the HTTP server and `serve` command arrive in Milestone 7.
-
-## Continuous integration
-
-GitHub Actions runs on pushes to `main`, pull requests, and manual dispatch. It runs Ruff, Pyright, offline tests with coverage, distribution builds and validation, and clean wheel installation smoke tests on Linux, Windows, and macOS with Python 3.11 and 3.15. Linux also verifies installation from the source distribution. Coverage reports are retained as workflow artifacts.
-
-Codecov upload is optional. Connect the public repository to Codecov, then set the GitHub Actions repository variable `CODECOV_ENABLED` to `true`. If the Codecov configuration requires an upload token, store it as the repository secret `CODECOV_TOKEN`. Upload errors do not fail the other CI checks; local coverage checks remain required.
-
-## Planned assessment features
-
-- Comparative judgment (forced-choice default) and ordinal rubric scoring.
-- Any number of rubric traits and stored exemplars, subject to provider request limits.
-- Independent-trait scoring by default, explicit grouped scoring when wanted.
-- Customizable prompts, score-only results, and scores with optional explanations.
-- Live requests, provider-native asynchronous batches, and managed bulk-live scheduling.
-- Reproducible request records, resilient job resumption, and a common result schema.
-- A **committed late-stage** local FastAPI HTTP interface for applications, distributed as optional `judgmentllm[api]` so library and CLI installations remain lightweight.
-- OpenAI (Chat, Responses, Decisions), Anthropic, Gemini Developer API, Vertex AI Gemini, Together AI, local Ollama, and TypeSafe AI Jev.
-
-## Design documentation
-
-- [`docs/design-spec.md`](docs/design-spec.md) - scope, requirements and behavior
-- [`docs/data-contracts.md`](docs/data-contracts.md) - data structures and normalized outputs
-- [`docs/prompt-guidance.md`](docs/prompt-guidance.md) - approachable prompts and validation
-- [`docs/provider-matrix.md`](docs/provider-matrix.md) - per-provider adapters and verification
-- [`docs/cli-spec.md`](docs/cli-spec.md) - command-line design
-- [`docs/http-api-spec.md`](docs/http-api-spec.md) - committed late-stage local FastAPI interface and HTTP contract
-- [`docs/implementation-plan.md`](docs/implementation-plan.md) - milestones and acceptance criteria
-- [`docs/decisions.md`](docs/decisions.md) - recorded design choices
-- [`AGENTS.md`](AGENTS.md) - directions for Codex and contributors
-- [`docs/repository-setup.md`](docs/repository-setup.md) - steps to create the public GitHub repository
-
-## Distribution and licensing
-
-GitHub repository: [`shmercer/judgmentllm`](https://github.com/shmercer/judgmentllm). The Python import and target PyPI distribution name are `judgmentllm`. The package has not been published to PyPI, and name registration remains to be confirmed. License: [MIT](LICENSE).
-
-This project is inspired by provider request, response normalization and durable-batch patterns in [`pairwiseLLM`](https://github.com/shmercer/pairwiseLLM), but does not aim to port its statistical modeling or adaptive selection estimators to Python.
-
-## Next step
-
-Milestone 1 implements the data contracts, rubrics, results, and prompt system described in [`docs/implementation-plan.md`](docs/implementation-plan.md). Milestone 7 commits to adding FastAPI once the core library, CLI, provider integrations, batch execution, and R bridge are stable; it does not block early prereleases. Real provider calls remain outside the regular CI suite.
+Design references: [design specification](docs/design-spec.md), [decisions](docs/decisions.md), [contributor instructions](AGENTS.md), and [Milestone 1 verification](docs/milestone-1-verification.md).

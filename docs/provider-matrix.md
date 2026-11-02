@@ -12,7 +12,13 @@
 | Vertex AI Gemini | target | target (Google Cloud setup required) | yes | generative | generative | `google-genai` SDK; Gemini focus; GCS/BigQuery source and cloud IAM considerations |
 | Together AI | target | target, subject to current API qualification | yes | generative | generative | Use official Together Python SDK v3 (`together>=3,<4`); endpoint/model feature coverage must be tested |
 | Ollama local | target | no native provider batch | yes | generative | generative | Official Ollama SDK, local daemon; local model discovery; optional later cloud support separate |
-| TypeSafe AI Jev | target | not available | yes | typed score, 2-10 levels | typed choice | Official `typesafe-sdk` confirmed; no generated explanations |
+| TypeSafe AI Jev | target | not available | yes | typed score; documented maximum 10 levels | typed choice | Official `typesafe-sdk` confirmed; score guide recommends at least two levels; no generated explanations |
+
+### Documented score bounds checked in the Milestone 1 hardening pass
+
+On 2026-11-02, the [official OpenAI Decisions guide](https://developers.openai.com/api/docs/guides/decisions#score-against-a-rubric) specified a 2–10 ordered-level range. Milestone 1 preflight enforces that endpoint bound independently of caller capability overrides. The provider-neutral rubric schema still permits any number of levels above its two-level minimum.
+
+TypeSafe's [official Score guide](https://docs.typesafe.ai/primitives/score#request-structure), checked separately on the same date, documents a maximum of 10 score criteria and recommends at least two. This independently supports the upper bound; it does not establish that the API enforces the same lower bound as OpenAI Decisions. The [System One API reference](https://docs.typesafe.ai/api/system-one) identifies the endpoint as `/v1/systemone`. No request was sent and no Jev adapter or model was live-qualified. Milestone 1 does not embed the Jev bound: callers can supply the independently documented `CapabilityProfile(max_levels=10)` until endpoint-specific adapter validation is implemented. Other providers do not inherit either endpoint's limits.
 
 ### Required capability checks
 
@@ -45,6 +51,8 @@ Unknown capabilities remain unknown, not false and not true. Avoid hardcoded all
 - Gemini Batch: https://ai.google.dev/gemini-api/docs/batch-api
 - Vertex Gemini batch: https://docs.cloud.google.com/vertex-ai/generative-ai/docs/samples/generativeaionvertexai-batch-predict-gemini-createjob
 - TypeSafe Python SDK: https://docs.typesafe.ai/sdk/python/
+- TypeSafe Score criteria: https://docs.typesafe.ai/primitives/score
+- TypeSafe System One API: https://docs.typesafe.ai/api/system-one
 - Ollama local: https://github.com/ollama/ollama/blob/main/docs/api/introduction.mdx
 - Together provider documentation: https://docs.together.ai/
 - Together SDK v3 release notes: https://github.com/togethercomputer/together-py/releases/tag/v3.0.0

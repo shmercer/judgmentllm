@@ -1,10 +1,11 @@
 schema_version: 1
 rubric_id: sample-writing-rubric
-name: Example writing rubric
+name: Synthetic writing rubric
+description: Assess only the stated dimension using the complete ordinal categories.
 traits:
   - trait_id: organization
     name: Organization
-    description: How clearly the response organizes and connects ideas.
+    description: How clearly the synthetic response organizes and connects ideas.
     levels:
       - label: Beginning
         description: Little discernible organization.
@@ -16,13 +17,14 @@ traits:
         description: Consistently coherent, purposeful organization.
   - trait_id: evidence
     name: Use of evidence
-    description: How effectively claims are supported with relevant detail.
+    description: How effectively claims are supported with relevant synthetic detail.
     levels:
       - label: 1
+        numeric_value: 1
         description: Claims are largely unsupported.
       - label: 2
-        description: Some supporting details, not always relevant.
+        numeric_value: 3
+        description: Relevant supporting details.
       - label: 3
-        description: Relevant, sufficiently developed support.
-      - label: 4
+        numeric_value: 8
         description: Thorough, well-integrated support.

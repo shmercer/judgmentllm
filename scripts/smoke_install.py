@@ -25,6 +25,37 @@ from pathlib import Path
 import sys
 
 import judgmentllm
+from judgmentllm import Rubric, ResponseItem, render_prompt, normalize_rubric_result
+from judgmentllm.prompts import get_template, list_templates
+import json
+
+rubric = Rubric.model_validate({"rubric_id":"smoke", "name":"Synthetic", "traits":[
+    {"trait_id":"quality", "name":"Quality", "description":"Synthetic criteria",
+     "levels":[{"label":"low"},{"label":"high"}]}]})
+response = ResponseItem(item_id="synthetic", text="Synthetic installation response.")
+assert len(list_templates()) == 3
+for info in list_templates():
+    assert get_template(info.preset)
+assert "Synthetic installation response." in render_prompt(rubric=rubric, response=response).text
+score = normalize_rubric_result(rubric.traits[0], run_id="smoke", task_id="task",
+    request_uid="request", attempt_id="attempt", item_id="synthetic", category_label="high")
+assert score.primary_score == 1 and score.expected_value is None
+from judgmentllm import export_rubric_r_csv, export_pairwise_r_csv, PairTask, normalize_pairwise_result
+assert export_rubric_r_csv("rubric_r.csv", [score]) == 1
+pair = PairTask(pair_id="smoke-pair", pair_uid="smoke-occurrence", left_item_id="001", right_item_id="002", trait_id="quality", presented_order=["002","001"])
+pair_result = normalize_pairwise_result(pair, run_id="smoke", task_id="task-pair", request_uid="request-pair", attempt_id="attempt", winner_id="001")
+assert export_pairwise_r_csv("pairwise_r.csv", [pair_result]) == 1
+score.primary_score = 123
+try:
+    export_rubric_r_csv("invalid.csv", [score])
+except ValueError:
+    pass
+else:
+    raise AssertionError("Mutated result escaped installed export validation")
+Path("responses.csv").write_text("item_id,text\\nsynthetic,Synthetic installation response.\\n".replace("\\n", chr(10)), encoding="utf-8")
+Path("run.json").write_text(json.dumps({"schema_version":1,"task_kind":"rubric",
+    "input":"responses.csv","rubric":rubric.model_dump(mode="json"),
+    "provider":"synthetic","endpoint":"synthetic","model":"synthetic"}), encoding="utf-8")
 
 distribution = metadata.distribution("judgmentllm")
 assert judgmentllm.__version__ == distribution.version
@@ -99,6 +130,37 @@ def smoke_install(uv: str, artifact: Path, constraints: Path, directory: Path) -
     version_text = run([str(console), "--version"], cwd=directory).strip()
     if version_text != f"judgmentllm {version}":
         raise RuntimeError(f"Installed CLI version mismatch: {version_text!r}")
+    presets = run([str(console), "templates", "list"], cwd=directory)
+    if "rubric_scores_only" not in presets:
+        raise RuntimeError("Installed templates are unavailable")
+    run(
+        [
+            str(console),
+            "templates",
+            "init",
+            "--preset",
+            "rubric_scores_only",
+            "--output",
+            "prompt.txt",
+        ],
+        cwd=directory,
+    )
+    preview = run(
+        [
+            str(console),
+            "templates",
+            "preview",
+            "--config",
+            "run.json",
+            "--item-id",
+            "synthetic",
+            "--trait",
+            "quality",
+        ],
+        cwd=directory,
+    )
+    if "Synthetic installation response." not in preview:
+        raise RuntimeError("Installed offline preview failed")
     print(f"Smoke installation passed: {artifact.name} (version {version})")
 
 

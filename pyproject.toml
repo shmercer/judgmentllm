@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "judgmentllm"
 dynamic = ["version"]
-description = "Python library and CLI foundation for reproducible LLM judgments."
+description = "Provider-independent assessment contracts and prompts for LLM judgments."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
@@ -22,7 +22,12 @@ classifiers = [
     "Programming Language :: Python :: 3.15",
     "Typing :: Typed",
 ]
-dependencies = ["typer>=0.27.3,<1"]
+dependencies = [
+    "typer>=0.27.3,<1",
+    "pydantic>=2.12,<3",
+    "PyYAML>=6,<7",
+    "Jinja2>=3.1.6,<4",
+]
 
 [project.urls]
 Repository = "https://github.com/shmercer/judgmentllm"
@@ -63,6 +68,7 @@ dev = [
     "pytest-cov>=7.1,<8",
     "ruff>=0.17.3,<0.18",
     "twine>=7,<8",
+    "types-PyYAML>=6,<7",
 ]
 
 [tool.hatch.version]
@@ -77,6 +83,7 @@ include = [
     "/tests",
     "/scripts",
     "/docs",
+    "/examples",
     "/AGENTS.md",
     "/README.md",
     "/LICENSE",

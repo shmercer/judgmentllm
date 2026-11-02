@@ -44,7 +44,7 @@ def test_package_declares_python_minimum_and_typing() -> None:
     assert resources.files("judgmentllm").joinpath("py.typed").is_file()
 
 
-def test_core_dependency_is_only_typer() -> None:
+def test_core_dependencies_match_contract() -> None:
     requirements = metadata.requires("judgmentllm")
     assert requirements is not None
     core = {
@@ -52,7 +52,7 @@ def test_core_dependency_is_only_typer() -> None:
         for value in requirements
         if (requirement := Requirement(value)).marker is None
     }
-    assert core == {"typer"}
+    assert {name.lower() for name in core} == {"typer", "pydantic", "pyyaml", "jinja2"}
 
 
 def test_distribution_exposes_requested_extras() -> None:

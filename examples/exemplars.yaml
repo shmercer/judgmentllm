@@ -1,0 +1,19 @@
+schema_version: 1
+exemplars:
+  - exemplar_id: anchor_001
+    text: A synthetic anchor introduces a claim, gives an example, and concludes.
+    scores:
+      organization: Proficient
+      evidence: 2
+    rationales:
+      organization: The synthetic ideas follow a clear sequence.
+    metadata:
+      synthetic: true
+  - exemplar_id: anchor_002
+    text: A synthetic reference without an assigned score.
+  - exemplar_id: anchor_003
+    text: A synthetic position appears without supporting details.
+    scores:
+      evidence: 1
+    rationales:
+      evidence: This synthetic claim has no elaboration.

@@ -1,10 +1,10 @@
 # JudgmentLLM: functional design specification
 
-**Draft:** 0.2 (2026-11-02). **Status:** Codex-oriented design specification, not an implementation or qualified provider support claim. Milestone 7 now explicitly commits to a local FastAPI interface after the Python/CLI foundation.
+**Design:** 0.4 (2026-11-02). **Implementation status:** Milestone 1 provides schema-version-1 contracts, synthetic normalization, structural planning, input/output, and offline prompt tools. Execution and provider support remain later milestones. The sections below describe the full approved direction; [data contracts](data-contracts.md) and [Python API](python-api.md) describe the implemented subset.
 
 ## 1. Goals
 
-Provide a simple, maintainable Python library and command-line program, followed by a committed late-stage **locally hosted FastAPI interface** for LLM judgment tasks. HTTP support is an optional installation extra, not an optional development deliverable. The package must be usable directly in Python, through a thin R integration (including `reticulate`), and by a separate application. Keep data contracts independent of transport and provider.
+Provide a standalone, maintainable Python library and command-line program for LLM judgment tasks. R workflows primarily call the installed CLI, normally through `processx`, and exchange canonical JSONL or documented R-compatible CSV files. A functional thin `rubricLLM` R wrapper is a Milestone 6 deliverable; `reticulate` is an optional secondary interface rather than the default or a required dependency. Keep data contracts independent of transport and provider. A **locally hosted FastAPI interface** remains a committed Milestone 7 deliverable and optional installation extra; ordinary R use does not require that server.
 
 Two first-class assessment types:
 
@@ -55,10 +55,10 @@ No provider-specific details should leak into normalized assessment interpretati
 ### 5.1 Ordinal scoring
 
 - Arbitrary number of distinct ordered category labels for each trait; zero or positive counts of traits only as allowed by input validation (a run must request at least one trait).
-- No continuous scale in v1. Arbitrary label types converted to stable string identifiers while preserving original input representations where possible.
+- No continuous scale in v1. String or finite numeric labels converted to stable string identifiers while preserving the original scalar in `source_label`; booleans and structured labels are rejected.
 - Users may define numeric values for ordered levels. Defaults: numeric category labels use their numeric values when unique and strictly increasing; nonnumeric labels use equally spaced 0-based indices. Explicit mappings override defaults and are retained verbatim in the manifest.
 - Native score APIs may restrict to 2-10 categories. A 12-level rubric must fail preflight on these endpoints; do not silently collapse levels.
-- For providers supplying a discrete probability distribution, compute expected numeric score from all probabilities and the selected numeric category coding; retain raw provider index score, per-level probabilities, selected/modal category when available, and confidence if supplied.
+- For providers supplying a discrete probability distribution, compute expected numeric score from all probabilities and the selected numeric category coding; retain raw provider index score, unchanged per-level probabilities, separate provider-selected and probability-derived modal categories, and confidence if supplied. Probability-sum tolerance is documented and configurable.
 - For ordinary generative outputs, record the exact selected category and its coded numeric value, *without labeling it a probability-weighted expectation*.
 - Common fields `primary_score` and `primary_score_kind` allow analysis without concealing the scoring distinction.
 - A score requiring an explanation on a score-only endpoint must fail during local preflight. No model substitution or second explanation request.
@@ -68,7 +68,7 @@ No provider-specific details should leak into normalized assessment interpretati
 
 - Default: independent scoring, one logical response x trait per request.
 - Configurable grouped scoring for generative APIs and structured APIs that can natively accept multiple questions.
-- All grouping plans must be deterministic and stored in the manifest: ordered trait IDs, request grouping, actual text context, and per-request token estimate/limit.
+- All grouping plans must be deterministic and, once execution is implemented, stored in the manifest: ordered trait IDs, request grouping, actual text context, and per-request token estimate/limit.
 - For oversized grouped requests: optionally split into smaller deterministic groups if the user explicitly requested `grouping: auto`; for `grouping: grouped` with a fixed group definition, error rather than alter it. Never split a single trait's exemplars implicitly.
 - For Decisions and Jev: questions grouped according to endpoint question count, content and level constraints; no assumption that calling multiple traits together yields an empirically equivalent assessment to independent scoring.
 - No hard-coded max number of traits in project schema; provider request limits constrain individual calls.
@@ -147,6 +147,8 @@ No provider-specific details should leak into normalized assessment interpretati
 - Default capture stores actual rendered prompts, full original provider responses, error payloads and normalized outputs. Users may explicitly choose privacy-minimal capture and disable retention where supported.
 - Never store API keys or other access tokens in logs/results/manifests. Redact request headers. Default output directories excluded from git tracking; documentation warns about student data and provider privacy requirements.
 - Store run-id + request-id + task-id + attempt-id separately; support append-only audit trails and resumption after process interruption.
+- R interoperability is an ongoing contract across milestones: preserve audit/analysis separation, all attempt IDs, original and presented orientations, observed outcomes, probabilities, and score kinds. Milestone 1 provides derived R CSV views; the full bridge/wrapper remains Milestone 6.
+- Before any future submission, capture immutable hashes of original input content, rendered prompts, and the exact provider payload. Structural IDs do not substitute for content hashes. Resumption must detect changed referenced text and must not blindly reuse old submission identities for changed content.
 - Provide an export normalized to columns suitable for R `pairwiseLLM`: unique pair UID, presented IDs/order and winner, with raw probability fields preserved when present. Statistical fitting remains in R.
 
 ## 12. Model catalog and support classes
@@ -160,17 +162,24 @@ No provider-specific details should leak into normalized assessment interpretati
 
 ## 13. Public interfaces and distribution
 
-- Pure-Python library first; `judgmentllm` command-line entry point from the same functions; optional R `reticulate` integration with documentation and a future thin R wrapper.
+- Standalone pure-Python library and `judgmentllm` CLI, backed by the same validated services. Canonical JSONL and documented R-compatible CSV are stable cross-language contracts; R views remain derived audit/analysis views, not replacements for canonical records.
+- R integration is CLI-first: normally use `processx` to invoke the installed executable and consume its structured results/files. Calls operate on whole runs, files, or appropriately sized task groups/batches; do not start a Python process for each judgment.
+- Milestone 6 delivers a functional thin `rubricLLM` wrapper covering configuration, validation, planning, submission, status, resumption, and collection through the CLI. It reuses Python execution and file contracts rather than duplicating provider adapters, persistence, or scheduling. This remains planned work; Milestone 1 implements only offline preparation/template commands.
+- For this integration, `pairwiseLLM` consumes JudgmentLLM result files and performs comparative-judgment statistical analysis in R. It does not embed Python or become a second JudgmentLLM execution engine. Rubric/statistical analysis, calibration, and fitting stay in R.
+- `reticulate` remains an optional secondary path for advanced users who deliberately embed Python. Neither JudgmentLLM core installation nor the ordinary CLI-first R workflow requires it.
 - Package name `judgmentllm`, optional extras: `openai`, `anthropic`, `google`, `together`, `ollama`, `typesafe`, `parquet`, `api`, `all`; avoid unneeded cloud SDK installs.
 - Use semantic versioning, GitHub Actions, PyPI Trusted Publishing once account and name are established; build platform-independent wheels when possible.
 - FastAPI is a **required Milestone 7 deliverable**, after the core library, CLI, integrations, batch engine, R bridge and catalog. Users install it only if needed via `judgmentllm[api]`; core Python/CLI dependencies stay independent. Early core prereleases may ship before Milestone 7.
 - The first HTTP interface is single-user and local-only: default and enforced loopback binding, no authentication or multi-user features, no public Internet exposure. The service must reuse validated library operations, persistent jobs and result contracts. See [`docs/http-api-spec.md`](http-api-spec.md) for the proposed versioned endpoints and safeguards.
+- Ordinary R and `rubricLLM` workflows do not depend on FastAPI or an HTTP server.
 - HTTP operations must not block on long-running scoring/batch work. Submit requests return a durable run ID; client polling and resumes survive HTTP client disconnects and service restarts. Preserve the same provider request/retry, provenance and privacy policies as direct Python and CLI use.
 
 ## 14. Quality requirements
 
 - Python>=3.11, pure Python core, Linux/Windows/macOS test matrix.
 - Offline tests use synthetic fixtures; no paid API calls or cloud credentials in required CI.
+- R compatibility is a standing acceptance condition for schema, export, and CLI changes in every milestone. Preserve IDs as character strings, original/presented orientation, all attempts and explicit analysis selection, observed ties/failures, complete probability/mapping data, and selected/category-code versus expected-score semantics.
+- Require R round-trip steps in the existing Ubuntu/Python 3.11 matrix job: generate synthetic Python exports, import them using base R, and require `jsonlite` for full distribution/mapping recovery checks. Run the R example with `JUDGMENTLLM_R_STRICT=1`; missing R or `jsonlite` must fail this check, not silently skip it; optional pairwiseLLM checks remain separate. This gate validates file interoperability and does not implement the future R wrapper or execution commands.
 - Coverage via `pytest-cov` and Codecov; proposed 90% line coverage goal, branch coverage visible. Target near-complete testing of validation/parsing and recovery edge cases, not an artificial 100% of every line.
 - Manual and prerelease live qualification tests with explicit budget ceiling and cleanup of test uploads/jobs.
 - Ruff format/lint, Pyright type checks on public modules, build validation with Hatchling, deterministic tests; documentation includes standard installation and CLI workflows.

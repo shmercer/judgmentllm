@@ -1,0 +1,17 @@
+# All inputs are synthetic; this configuration supports offline preview only.
+schema_version: 1
+task_kind: pairwise
+input: responses.csv
+criteria: criteria.yaml
+pairs: pairs.jsonl
+provider: openai
+endpoint: responses
+model: REPLACE_WITH_AVAILABLE_MODEL_ID
+prompt:
+  preset: pairwise_forced_choice
+execution:
+  mode: live
+  grouping: independent
+capture: full
+seed: 41
+output_path: run-data/pairwise-example

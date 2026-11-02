@@ -1,0 +1,10 @@
+Assess the synthetic response using every supplied criterion.
+{% for entry in traits %}
+{{ entry['block'] }}
+{% endfor %}
+{% for entry in exemplar_items %}
+{{ entry['block'] }}
+{% endfor %}
+Student response:
+{{ response }}
+{{ output_instructions }}

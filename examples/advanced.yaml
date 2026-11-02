@@ -1,0 +1,15 @@
+schema_version: 1
+task_kind: rubric
+input: responses.csv
+rubric: rubric.yaml
+exemplars: exemplars.yaml
+provider: openai
+endpoint: responses
+model: REPLACE_WITH_AVAILABLE_MODEL_ID
+execution:
+  grouping: grouped
+prompt:
+  file: advanced_prompt.j2
+  advanced: true
+normalization:
+  probability_sum_tolerance: 0.000001
