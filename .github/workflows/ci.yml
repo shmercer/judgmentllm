@@ -56,9 +56,6 @@ jobs:
       - name: Check types
         run: uv run --offline --no-sync pyright
 
-      - name: Run offline tests with coverage
-        run: uv run --offline --no-sync pytest
-
       - name: Set up R for required interoperability checks
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
         uses: r-lib/actions/setup-r@f9a764fea8d5c63df6ef9a5c7795bf7deb5d7e05 # v2
@@ -78,6 +75,9 @@ jobs:
           )
           stopifnot(requireNamespace("jsonlite", quietly = TRUE))
           stopifnot(as.character(utils::packageVersion("jsonlite")) == "2.0.0")
+
+      - name: Run offline tests with coverage
+        run: uv run --offline --no-sync pytest
 
       - name: Verify required Python-to-R interoperability
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
