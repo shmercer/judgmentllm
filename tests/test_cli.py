@@ -5,6 +5,9 @@ import subprocess
 from pathlib import Path
 
 import pytest
+
+# Click exposes this helper here without declaring a typed re-export.
+from click.utils import strip_ansi  # pyright: ignore[reportPrivateImportUsage]
 from typer.testing import CliRunner
 
 from judgmentllm import __version__
@@ -16,10 +19,11 @@ runner = CliRunner()
 def test_help_shows_supported_options() -> None:
     result = runner.invoke(app, ["--help"], color=False)
     assert result.exit_code == 0
-    assert "Usage:" in result.output
-    assert "--help" in result.output
-    assert "--version" in result.output
-    assert "Assessment commands are not implemented yet" in result.output
+    help_text = strip_ansi(result.output)
+    assert "Usage:" in help_text
+    assert "--help" in help_text
+    assert "--version" in help_text
+    assert "Assessment commands are not implemented yet" in help_text
 
 
 def test_version_matches_package() -> None:

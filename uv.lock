@@ -998,6 +998,7 @@ typesafe = [
 
 [package.dev-dependencies]
 dev = [
+    { name = "click" },
     { name = "hatchling" },
     { name = "packaging" },
     { name = "pyright", extra = ["nodejs"] },
@@ -1034,6 +1035,7 @@ provides-extras = ["all", "anthropic", "api", "google", "ollama", "openai", "par
 
 [package.metadata.requires-dev]
 dev = [
+    { name = "click", specifier = ">=8.5,<9" },
     { name = "hatchling", specifier = ">=1.33,<2" },
     { name = "packaging", specifier = ">=26.1,<27" },
     { name = "pyright", extras = ["nodejs"], specifier = ">=1.1.414,<2" },

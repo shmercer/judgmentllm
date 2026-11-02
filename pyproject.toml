@@ -54,6 +54,7 @@ all = [
 
 [dependency-groups]
 dev = [
+    "click>=8.5,<9",
     "hatchling>=1.33,<2",
     "packaging>=26.1,<27",
     "pyright[nodejs]>=1.1.414,<2",
