@@ -1,0 +1,2 @@
+{"schema_version":1,"pair_id":"comparison_001","pair_uid":"comparison_001_original","left_item_id":"essay_001","right_item_id":"essay_002","trait_id":"evidence"}
+{"schema_version":1,"pair_id":"comparison_001","pair_uid":"comparison_001_reverse","left_item_id":"essay_001","right_item_id":"essay_002","trait_id":"evidence","presented_order":["essay_002","essay_001"],"is_reversal":true,"source_pair_uid":"comparison_001_original","reversal_group":"audit_001"}

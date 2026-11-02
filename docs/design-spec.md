@@ -1,6 +1,6 @@
 # JudgmentLLM: functional design specification
 
-**Draft:** 0.2 (2026-11-02). **Status:** Codex-oriented design specification, not an implementation or qualified provider support claim. Milestone 7 now explicitly commits to a local FastAPI interface after the Python/CLI foundation.
+**Design:** 0.3 (2026-11-02). **Implementation status:** Milestone 1 provides schema-version-1 contracts, synthetic normalization, structural planning, input/output, and offline prompt tools. Execution and provider support remain later milestones. The sections below describe the full approved direction; [data contracts](data-contracts.md) and [Python API](python-api.md) describe the implemented subset.
 
 ## 1. Goals
 
@@ -55,10 +55,10 @@ No provider-specific details should leak into normalized assessment interpretati
 ### 5.1 Ordinal scoring
 
 - Arbitrary number of distinct ordered category labels for each trait; zero or positive counts of traits only as allowed by input validation (a run must request at least one trait).
-- No continuous scale in v1. Arbitrary label types converted to stable string identifiers while preserving original input representations where possible.
+- No continuous scale in v1. String or finite numeric labels converted to stable string identifiers while preserving the original scalar in `source_label`; booleans and structured labels are rejected.
 - Users may define numeric values for ordered levels. Defaults: numeric category labels use their numeric values when unique and strictly increasing; nonnumeric labels use equally spaced 0-based indices. Explicit mappings override defaults and are retained verbatim in the manifest.
 - Native score APIs may restrict to 2-10 categories. A 12-level rubric must fail preflight on these endpoints; do not silently collapse levels.
-- For providers supplying a discrete probability distribution, compute expected numeric score from all probabilities and the selected numeric category coding; retain raw provider index score, per-level probabilities, selected/modal category when available, and confidence if supplied.
+- For providers supplying a discrete probability distribution, compute expected numeric score from all probabilities and the selected numeric category coding; retain raw provider index score, unchanged per-level probabilities, separate provider-selected and probability-derived modal categories, and confidence if supplied. Probability-sum tolerance is documented and configurable.
 - For ordinary generative outputs, record the exact selected category and its coded numeric value, *without labeling it a probability-weighted expectation*.
 - Common fields `primary_score` and `primary_score_kind` allow analysis without concealing the scoring distinction.
 - A score requiring an explanation on a score-only endpoint must fail during local preflight. No model substitution or second explanation request.
@@ -68,7 +68,7 @@ No provider-specific details should leak into normalized assessment interpretati
 
 - Default: independent scoring, one logical response x trait per request.
 - Configurable grouped scoring for generative APIs and structured APIs that can natively accept multiple questions.
-- All grouping plans must be deterministic and stored in the manifest: ordered trait IDs, request grouping, actual text context, and per-request token estimate/limit.
+- All grouping plans must be deterministic and, once execution is implemented, stored in the manifest: ordered trait IDs, request grouping, actual text context, and per-request token estimate/limit.
 - For oversized grouped requests: optionally split into smaller deterministic groups if the user explicitly requested `grouping: auto`; for `grouping: grouped` with a fixed group definition, error rather than alter it. Never split a single trait's exemplars implicitly.
 - For Decisions and Jev: questions grouped according to endpoint question count, content and level constraints; no assumption that calling multiple traits together yields an empirically equivalent assessment to independent scoring.
 - No hard-coded max number of traits in project schema; provider request limits constrain individual calls.

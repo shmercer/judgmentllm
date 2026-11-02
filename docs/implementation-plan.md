@@ -14,6 +14,8 @@
 
 ## Milestone 1 - Data contracts, rubrics, results, prompts
 
+Implemented in `0.1.0a2`; see [public Python API](python-api.md) and [verification record](milestone-1-verification.md). Planning is structural only; token/cost estimates and persistent execution remain later milestones. Provider-selected and distribution-derived modal categories are separate, and probability-sum tolerance is configurable.
+
 - Implement Pydantic models for ResponseItem, Trait, Level, Rubric, Exemplar, PairTask, RunSpec and normalized result types; version schemas.
 - Validate ordered levels and explicit/default numeric coding, duplicate IDs, unknown config keys, and explanation capability requirements.
 - Implement built-in score-only, score+explanations and pairwise templates; beginner plain-text placeholders and sandboxed advanced Jinja2; offline preview and schema validation.

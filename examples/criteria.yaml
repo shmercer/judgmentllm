@@ -1,0 +1,5 @@
+schema_version: 1
+criteria:
+  - trait_id: evidence
+    name: Use of evidence
+    description: Choose the synthetic response that supports its claim more effectively.

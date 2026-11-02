@@ -1,0 +1,105 @@
+"""Offline prompt preview built on the same structural plans and renderer."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+from judgmentllm.config import RunSpec, load_run_spec
+from judgmentllm.io import read_pairs, read_responses
+from judgmentllm.models import ResponseItem
+from judgmentllm.planning import CapabilityProfile, plan_run
+from judgmentllm.prompts import RenderedPrompt, render_prompt
+
+
+def preview_prompt(
+    spec: RunSpec | str | Path,
+    *,
+    item_id: str | None = None,
+    trait_id: str | None = None,
+    pair_uid: str | None = None,
+    capabilities: CapabilityProfile | None = None,
+) -> RenderedPrompt:
+    """Render one planned request without credentials, networking, or execution.
+
+    For grouped rubric requests, selecting a trait previews its entire fixed
+    group. Pairwise input is scanned while retaining only the two required texts.
+    """
+    if not isinstance(spec, RunSpec):
+        spec = load_run_spec(spec)
+    plan = plan_run(spec, capabilities=capabilities)
+    template = (
+        spec.prompt.file.read_text(encoding="utf-8") if spec.prompt.file else None
+    )
+    if spec.task_kind == "rubric":
+        if item_id is None or pair_uid is not None:
+            raise ValueError(
+                "rubric preview requires item_id and does not accept pair_uid"
+            )
+        assert spec.rubric is not None
+        group = next((group for group in plan.trait_groups if trait_id in group), None)
+        if trait_id is None and len(plan.trait_groups) == 1:
+            group = plan.trait_groups[0]
+        if group is None:
+            raise ValueError("select a known trait_id to preview its request group")
+        responses = _responses(spec, {item_id})
+        traits = [
+            next(trait for trait in spec.rubric.traits if trait.trait_id == identifier)
+            for identifier in group
+        ]
+        return render_prompt(
+            rubric=spec.rubric,
+            traits=traits,
+            response=responses[item_id],
+            exemplars=spec.exemplars,
+            explanations=spec.execution.explanations,
+            preset=spec.prompt.preset,
+            template=template,
+            advanced=spec.prompt.advanced,
+            limits=spec.prompt.limits,
+        )
+    if pair_uid is None or item_id is not None or trait_id is not None:
+        raise ValueError(
+            "pairwise preview requires pair_uid and does not accept item_id/trait_id"
+        )
+    assert spec.pairs is not None
+    pair = None
+    for candidate in read_pairs(spec.pairs):
+        if candidate.pair_uid == pair_uid:
+            pair = candidate
+    if pair is None:
+        raise ValueError(f"Unknown pair_uid {pair_uid!r}")
+    criterion = next(
+        (
+            criterion
+            for criterion in spec.criteria
+            if criterion.trait_id == pair.trait_id
+        ),
+        None,
+    )
+    if criterion is None:
+        raise ValueError(f"Unknown pair criterion {pair.trait_id!r}")
+    responses = _responses(spec, {pair.left_item_id, pair.right_item_id})
+    return render_prompt(
+        pair=pair,
+        left=responses[pair.left_item_id],
+        right=responses[pair.right_item_id],
+        criterion=criterion,
+        exemplars=spec.exemplars,
+        explanations=spec.execution.explanations,
+        allow_ties=spec.allow_ties,
+        preset=spec.prompt.preset,
+        template=template,
+        advanced=spec.prompt.advanced,
+        limits=spec.prompt.limits,
+    )
+
+
+def _responses(spec: RunSpec, needed: set[str]) -> dict[str, ResponseItem]:
+    found: dict[str, ResponseItem] = {}
+    for response in read_responses(spec.input):
+        if response.item_id in needed:
+            found[response.item_id] = response
+    missing = needed - found.keys()
+    if missing:
+        raise ValueError(f"Missing response item IDs: {', '.join(sorted(missing))}")
+    return found

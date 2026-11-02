@@ -1,82 +1,209 @@
 # Data contracts and scoring semantics
 
-**Draft v0.1.** The following names are conceptual public schema names for Milestone 1 to finalize in Pydantic models. Milestone 0 provides the package foundation; these assessment schemas are not implemented yet.
+**Implemented schema version 1 (Milestone 1).** Assessment models live in
+`judgmentllm.models`, run configuration in `judgmentllm.config`, and normalized
+outputs in `judgmentllm.results`. These contracts prepare assessments offline;
+provider submission, persistence, and execution remain later milestones.
 
-## Inputs
+## Validation and serialization
 
-### `ResponseItem`
+Models reject unknown fields, implicit scalar conversions, booleans in numeric
+fields, and nonfinite numbers, including numbers nested in metadata. Metadata
+is an opaque JSON object. IDs are nonempty strings with no surrounding whitespace
+or ASCII control characters; IDs and text are never silently trimmed.
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `item_id` | nonempty unique string | yes | Stable unique ID |
-| `text` | string | yes | Complete original text; empty is permitted if explicitly configured |
-| `metadata` | object | no | User annotations, never interpreted as instructions |
+Root input documents, response/exemplar/pair records, and normalized results
+include `schema_version: 1`. Omission defaults to version 1; an explicitly supplied
+version must be the integer `1`, excluding `true`, `1.0`, and `"1"`. Nested models
+such as traits and levels belong to their containing document's schema version.
 
-### `Trait` and `Rubric`
+Use `model_dump(mode="json")` for JSON-compatible values and `model_dump_json()`
+for JSON text. Default fields and nulls are included. Lists retain source order.
+`model_validate()` and `model_validate_json()` validate loaded records, including
+score consistency. Original label scalars are preserved in `Level.source_label`;
+`Level.label` is the canonical string used by scores and probability records.
 
-- `trait_id`: stable unique string; `name`: human-readable; `description`: full scoring instructions.
-- `levels`: ordered list, at least two (endpoint may restrict). Each has a distinct `label`, optional `description`, and optional explicit `numeric_value`.
-- Validate numeric coding as finite, unique, strictly increasing in rubric order; do not collapse categories.
-- If all labels are numeric and strictly increasing, use those numbers as default coding. Otherwise assign 0, 1, ... K-1. This default MUST be explicit in saved results.
-- `Rubric` has unique trait IDs and optional shared rubric-level guidance. Individual traits may have different category counts and coding.
+## Assessment inputs
 
-### `Exemplar`
-
-`exemplar_id` (unique), `text` (required), `scores` mapping trait ID -> level label (optional), `rationales` mapping trait ID -> text (optional), and opaque `metadata` (optional). Exemplar references may include one or more traits. Exact inclusion order must be recorded.
-
-### `PairTask`
-
-`pair_uid` unique per **scheduled occurrence**; `left_item_id`, `right_item_id` distinct; texts referenced by ID or provided explicitly; `trait_id`; `original_order`, `presented_order`, optional repetition/reversal group, optional metadata. Repeated A-B tasks have different `pair_uid` values.
-
-### `RunSpec`
-
-- `schema_version`, `task_kind` = `rubric` or `pairwise`.
-- `input`, `rubric` or pairwise criteria; optional exemplars; `provider`, `endpoint`, `model`.
-- `execution`: `mode` = `live`, `bulk_live`, `batch_native`; `grouping` = `independent`, `grouped`, `auto`; `explanations` boolean; `cache_policy` = `off`, `auto`, `explicit`; `tier` when available; concurrency/retry/batch options.
-- `prompt`: `preset` or file path, optional advanced Jinja2 setting; `capture`: `full` (default) or `minimal`.
-- `seed`, `output_path`, optional estimated budget ceiling, validation strictness.
-- All fields versioned and validated before submission. Unexpected config keys cause clear errors rather than being dropped.
-
-## Normalized task result
-
-A rubric output is one row per `run_id` + `task_id` + `attempt_id`, including:
-
-| Column | Meaning |
+| Model | Fields and rules |
 |---|---|
-| `run_id`, `task_id`, `request_uid`, `attempt_id` | Separate immutable identifiers |
-| `item_id`, `trait_id` | Original assessment keys |
-| `status`, `error_kind`, `error_message` | Complete/invalid/refused/errored/etc. |
-| `provider`, `endpoint`, `model`, `tier`, `mode` | Execution provenance |
-| `category_label` | Actual selected/mode category if any |
-| `numeric_category_value` | Numeric mapping for selected category if any |
-| `expected_value` | Probability-weighted expected score when full probabilities provided |
-| `primary_score` | `expected_value` when available; otherwise `numeric_category_value` |
-| `primary_score_kind` | `expected` or `category_code` (no false equivalence) |
-| `provider_expected_index` | Raw zero-based expectation if supplied by native API |
-| `probabilities` | Full ordered array of `{level_label, probability}` when available |
-| `confidence`, `explanation` | Optional; never invent values when unavailable |
-| `input_tokens`, `output_tokens`, `cache_read_tokens`, `cache_write_tokens` | Usage where reported |
-| `raw_response_path`, `prompt_path`, `manifest_sha256` | Audit references |
+| `ResponseItem` | Required `item_id`, `text`; optional `metadata={}`. The model can represent empty text. Readers reject it unless `InputSpec.allow_empty_text` or the reader's keyword override permits it. |
+| `Level` | Required `label`; optional `description=""`, `numeric_value=null`, `source_label` inferred from the supplied label. Labels accept strings or finite numeric scalars, excluding booleans, objects, and blank strings. An explicit source label must represent the same canonical label. |
+| `Trait` | Required `trait_id`, `name`, `description`, and ordered `levels` of length at least two. Category labels must be unique after canonicalization. |
+| `Rubric` | Required `rubric_id`, `name`, and nonempty `traits`; optional shared `description=""`. Trait IDs must be unique. Each trait has its own scale and coding. |
+| `Exemplar` | Required `exemplar_id`, `text`; optional `scores={}` (trait ID to category label), `rationales={}` (trait ID to text), `metadata={}`. Scores and rationales are independently optional. |
+| `PairwiseCriterion` | Required `trait_id`, `name`, `description`. Comparison criteria have no ordinal levels. |
 
-Additional provenance (provider request/remote batch IDs, timestamps, retries, SDK/package version, error HTTP status) is always available in JSONL and normalized sidecars even if compact CSV omits nested structures.
+`validate_exemplars(exemplars, rubric=None, criteria=())` rejects duplicate
+exemplar/criterion IDs, unknown annotated traits, and unknown rubric categories.
+Pairwise exemplars can contain text and criterion-specific rationales; ordinal
+score annotations require a rubric and are rejected for pairwise criteria.
+Selected exemplar order remains unchanged. There is no schema limit on stored
+traits or exemplars and no automatic exemplar selection, omission, or truncation.
 
-**Score derivation example**: ordered labels `Beginning, Developing, Proficient` default to numeric 0,1,2. Probability vector 0.10, 0.25, 0.65 produces `expected_value=1.55`. If mapped explicitly to 1,2,3 the expectation is 2.55. If provider returns index 1.55, do not use it as the actual mapped score until conversion. A generative output `Proficient` yields `numeric_category_value=2` but no `expected_value`.
+### Ordinal numeric coding
 
-## Pairwise output
+`Trait.coding_kind` identifies the rule as `explicit`, `numeric`, or `indices`.
+`Trait.numeric_values` returns codes in category order, and
+`Trait.resolved_levels` returns ordered `{label, numeric_value}` models.
 
-One result row per attempted pair occurrence: `run_id`, `pair_uid`, `attempt_id`, `trait_id`, `left_item_id`, `right_item_id`, `presented_first`, `presented_second`, `winner_id`, optional `tie`, `p_left`, `p_right`, optional explanation, provider metadata and provenance. Reversal tasks preserve the original pair identity while using distinct pair occurrence IDs.
+1. If explicit `numeric_value` is used, supply it for every level. These values
+   override default label coding and must be finite, distinct, and strictly
+   increasing in rubric order.
+2. Otherwise, wholly numeric labels use their numeric values. Nonfinite,
+   duplicate numeric values (including `"1"` and `"1.0"`), and decreasing values
+   are errors; they do not silently become index codes.
+3. Textual and mixed numeric/text scales use `0, 1, ..., K-1`. A mixed scale warns
+   if a numeric label differs from its assigned index; preflight also reports
+   that warning structurally. For example, `[5, "Advanced"]` receives `[0, 1]`.
 
-## Persistence schema (conceptual)
+Explicit mappings may be nonuniform, for example `[1, 2, 7]`. Category labels
+remain categorical; this contract introduces no continuous scoring scale.
 
-- `runs`: immutable manifest hash, creation/submit timestamps and state.
-- `requests`: stable ID, sequence, request payload hash, mode/provider/endpoint/model, remote ID, state and attempts.
-- `tasks`: stable output unit and mapping to requests.
-- `attempts`: start/end timestamps, status, error class, remote receipt and response reference.
-- `batches`: provider IDs, submission payload hashes, state, created/polled/completed metadata.
-- `artifacts`: content SHA256 and paths for inputs, prompts, raw payloads, results.
+### Pair occurrences
 
-Use SQLite transactions and unique constraints to protect against duplicate task/attempt interpretation. Provider results must be joined by stable request IDs, not array position.
+`PairTask` requires `pair_id`, `pair_uid`, `left_item_id`, `right_item_id`, and
+`trait_id`. The two item IDs must differ. Text is referenced through response
+IDs; inline pair texts are not part of version 1.
 
-## Privacy
+`original_order` defaults to `[left_item_id, right_item_id]` and must equal that
+order if supplied. `presented_order` defaults to the same order and must be a
+permutation of the two IDs. Optional fields are `source_pair_uid=null`,
+`repetition_index=0`, `is_reversal=false`, `reversal_group=null`, and `metadata={}`.
+The repetition index is a nonnegative integer.
 
-Default `capture: full` stores full rendered prompt and raw provider reply. `minimal` can omit sensitive raw text but must document the reproducibility loss. Secrets must never appear in logs or manifests. Examples and tests must contain synthetic writing only.
+`pair_id` identifies the underlying pair; `pair_uid` identifies one scheduled
+occurrence. Repetitions and reversal audit occurrences have distinct `pair_uid`
+values. The preparation helper preserves the base occurrence as `source_pair_uid`.
+Seeded presentation changes order, not occurrence identity. Reversal presentations
+are opposite their corresponding base presentation.
+
+## Run configuration
+
+`load_run_spec(path) -> RunSpec` loads safe YAML/JSON, rejects duplicate keys,
+and resolves references against their containing configuration file.
+`load_rubric(path) -> Rubric` loads an individual rubric. Direct Pydantic model
+validation never opens files.
+
+| Field | Version 1 behavior |
+|---|---|
+| `task_kind` | Required `rubric` or `pairwise`. |
+| `input` | Required response `InputSpec`, or a path shorthand. `InputSpec` has `path`, optional `format: csv/jsonl` inferred from extension, and `allow_empty_text=false`. |
+| `rubric` | Required for rubric tasks; inline rubric or referenced YAML/JSON. |
+| `criteria`, `pairs` | Required nonempty criteria and pair input for pairwise tasks; incompatible with rubric tasks. Criteria can be inline or a referenced `{schema_version, criteria}` document. |
+| `exemplars` | Ordered inline list or referenced `{schema_version, exemplars}` document; defaults to empty. |
+| `provider`, `endpoint`, `model` | Required nonempty strings. Model IDs remain open; these values do not imply an implemented or qualified provider adapter. |
+| `execution` | `mode=live` (`live/bulk_live/batch_native` intent), `grouping=independent` (`independent/grouped/auto`), optional fixed `groups`, optional positive `max_traits_per_request`, `explanations=false`, optional `tier`, `concurrency=4`. `cache_policy` defaults to `auto` for rubric and `off` for pairwise; valid values are `off/auto/explicit`. No execution or cache behavior is performed yet. |
+| `prompt` | Choose `preset` or `file`; `advanced=false`; configurable rendering safeguards under `limits`. Default preset follows task kind and explanation setting. Advanced mode requires a custom file. |
+| `normalization` | `NormalizationOptions`, with `probability_sum_tolerance=1e-8`, configurable in `[0,1)`. |
+| `capture`, `output_path` | `capture=full` (`full/minimal`); output defaults to `run-data` relative to the run configuration. These record future capture/output intent. |
+| `seed`, `strict_capabilities`, `allow_ties` | Optional integer seed; strict capabilities defaults false; ties default false and are pairwise-only. Tie prompts require a custom template. |
+
+Pairwise preparation uses independent grouping. Fixed groups must partition all
+rubric traits exactly once without empty groups. Auto grouping requires an
+explicit or supplied capability limit; it never invents context windows or
+splits exemplars. Retry, native-batch controls, and budget configuration remain
+reserved for later milestones and are rejected as unknown fields today.
+
+## Normalized results
+
+Both `RubricResult` and `PairwiseResult` require separate `run_id`, `task_id`,
+`request_uid`, and `attempt_id`. Logical task IDs remain independent of grouping;
+request IDs identify ordered groups and assessment context. No attempt IDs are
+allocated or results produced by an execution engine in this milestone.
+
+Common fields include `status` (`complete/invalid/refused/errored/cancelled`),
+`error_kind`, `error_message`, `provider`, `endpoint`, `model`, `tier`, `mode`,
+`confidence`, `explanation`, optional usage counts (`input_tokens`, `output_tokens`,
+`cache_read_tokens`, `cache_write_tokens`), and optional audit references
+(`raw_response_path`, `prompt_path`, `manifest_sha256`). Unavailable values stay
+null. Confidence is bounded to `[0,1]`; usage counts are nonnegative integers.
+The effective `probability_sum_tolerance` is recorded when probabilities exist.
+Provider request/batch IDs, SDK diagnostics, persistent manifests, and sidecars
+will be supplied by later execution/provider milestones.
+
+### Rubric results
+
+`normalize_rubric_result(trait, *, run_id, task_id, request_uid, attempt_id,
+item_id, category_label=None, probabilities=None, provider_expected_index=None,
+explanation=None, options=None, provider=None, endpoint=None, model=None)`
+returns `RubricResult` with `task_kind="rubric"`, `trait_id`, and the complete
+ordered `resolved_levels` coding.
+
+| Field | Meaning |
+|---|---|
+| `category_label`, `numeric_category_value` | Observed provider-selected category and its code, if supplied. They are never inferred from probabilities. |
+| `modal_category_label`, `modal_numeric_category_value` | Highest-probability category and code when a distribution exists. Tied maxima choose the first category in rubric order. |
+| `probabilities` | Complete ordered array of `{level_label, probability}`; null for categorical scoring. |
+| `expected_value` | `sum(probability * numeric_value)` over every category; null without a distribution. |
+| `provider_expected_index` | Unmodified provider-reported zero-based expectation, if supplied; finite and within the category-index range. Never substituted for a mapped expectation. |
+| `primary_score`, `primary_score_kind` | Expected value and `expected` when probabilities exist; selected code and `category_code` otherwise. Unsuccessful results cannot claim a primary score. |
+
+Distributions must match every rubric label exactly once in rubric order. Each
+probability must be finite in `[0,1]`, and the sum must differ from one by no more
+than the configured absolute tolerance. Zero tolerance requests an exact sum.
+No malformed array is silently reordered, filled, or renormalized. A selected
+category can differ from the modal category; both observations are retained.
+Direct result validation also rejects inconsistent codes, expectations, modes,
+and primary scores.
+
+For labels `Beginning, Developing, Proficient` with default codes `[0,1,2]`,
+probabilities `[0.10,0.25,0.65]` yield `expected_value=1.55`. Explicit codes
+`[1,2,7]` yield `5.15`, while the provider index remains `1.55` if reported.
+A categorical `Proficient` yields only its code, without invented probabilities.
+
+`validate_categorical_output(data, traits, *, explanations=False)` independently
+validates generative JSON shaped as
+`{"scores":[{"trait_id":"quality","category_label":"Proficient"}]}`.
+It rejects missing, duplicate, and unrequested traits, unknown categories,
+unknown fields, numeric category labels (generative labels must be strings), and
+absent/blank explanations when required. If explanations are not requested, the
+`explanation` field is forbidden, including an explicitly supplied null. Prompt
+edits cannot disable this validation.
+
+### Pairwise results
+
+`normalize_pairwise_result(pair, *, run_id, task_id, request_uid, attempt_id,
+winner_id=None, tie=False, p_left=None, p_right=None, p_tie=None,
+allow_ties=False, explanation=None, options=None, provider=None, endpoint=None,
+model=None)` returns `PairwiseResult` with `task_kind="pairwise"` and the pair's
+original/presented order and occurrence/reversal metadata.
+
+A complete result requires a winner among the original two IDs or an explicitly
+permitted tie. A tie has `winner_id=null`; forced choice rejects ties. Optional
+probabilities must contain both `p_left` and `p_right`; when ties are permitted,
+`p_tie` is also required for a complete distribution. Probabilities always refer
+to original left/right IDs, regardless of presentation, and use the same sum
+validation as rubric distributions. Winners are observed, never inferred from
+probabilities. `presented_first` and `presented_second` are convenience Python
+properties; serialized records retain `presented_order`.
+
+`validate_pairwise_output(data, pair, *, allow_ties=False, explanations=False)`
+validates `PairwiseOutput` separately from normalization. Its shape is
+`{"winner_id":"A","tie":false}`; a permitted tie uses
+`winner_id=null` and `tie=true`. Both `winner_id` and `tie` must be supplied.
+Unknown fields, missing outcomes, invalid winners, forbidden ties, missing required
+explanations, and an explanation field when explanations are not requested are errors.
+
+## Streaming file formats
+
+`judgmentllm.io` provides lazy `read_responses`, `read_pairs`, `read_jsonl`,
+`read_results`, and `read_results_csv` readers. Response/pair readers retain only
+seen IDs for duplicate detection plus the current record; they do not allocate
+a response-by-trait Cartesian product. Late errors remain possible during
+iteration. CSV requires named columns; metadata and pair order fields contain
+JSON. Unknown/duplicate columns, malformed rows, duplicate IDs, and blank JSONL
+records fail with a source location.
+
+JSONL is the canonical normalized format. `write_results_jsonl` and generic
+`write_jsonl` consume iterables one record at a time and return the count written.
+`export_results_csv` uses a fixed union header for rubric/pairwise fields and
+preserves nested coding/probability arrays as JSON cells. Null is the literal
+`\N`; an empty string stays empty; string values beginning with a backslash gain
+one escape backslash. `read_results_csv` reverses these rules and revalidates
+models. The result kind's unused union columns must be null.
+
+Writers overwrite their destination and require its parent directory to exist.
+Failure can leave a partial file. These utilities are not a persistence journal.
+Capture modes describe future execution behavior; offline preview returns full
+requested text. Never put credentials in configuration, metadata, or examples.
