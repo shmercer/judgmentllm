@@ -123,8 +123,9 @@ The Windows CI correction preserves the real Unix fork-inheritance test using a
 typed runtime lookup. Once type checking passed, Windows CI exposed a virtualenv
 launcher/worker PID distinction and a concurrent artifact-leaf resolution failure.
 The process-death test now verifies and terminates the PID reported by the actual
-worker. Artifact containment resolves the parent directory and separately rejects
-leaf symlinks; regression tests retain redirected-parent rejection. Exact-byte
+worker. Artifact containment resolves the parent directory, checks the captured
+root filesystem identity when path spellings differ, and separately rejects leaf
+symlinks. Regression tests retain redirected-parent and replaced-root rejection. Exact-byte
 hashing, atomic publication, immutability, the schema, and R exports are unchanged.
 
 The original local verification above preceded pushing and remote CI. This

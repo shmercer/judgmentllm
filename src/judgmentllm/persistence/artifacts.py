@@ -52,6 +52,7 @@ class ArtifactStore:
             self.root.mkdir(parents=True, exist_ok=True)
             for created in reversed(missing):
                 _fsync_directory(created.parent)
+            self._root_identity = self.root.stat()
         except OSError:
             raise PersistenceError("artifact store could not be opened") from None
 
@@ -77,14 +78,31 @@ class ArtifactStore:
         if current.relative_path != expected:
             raise ArtifactIntegrityError("artifact location does not match its digest")
         candidate = self.root / expected
-        # The validated leaf is a digest, not a traversal component. Resolve its
-        # parent to detect escapes without canonicalizing a concurrently linked
-        # leaf, whose final-name spelling can change on Windows.
-        if candidate.is_symlink() or not candidate.parent.resolve().is_relative_to(
-            self.root
-        ):
+        # The leaf is a validated digest. Check its directory without depending
+        # on final-name spelling while other publishers create hard links.
+        if candidate.is_symlink() or not self._contains(candidate.parent):
             raise ArtifactIntegrityError("artifact location is outside its store")
         return candidate
+
+    def _contains(self, parent: Path) -> bool:
+        """Accept equivalent directory spellings, never a replaced store root."""
+        try:
+            if not os.path.samestat(self.root.stat(), self._root_identity):
+                return False
+            resolved = parent.resolve()
+            if resolved.is_relative_to(self.root):
+                return True
+            # Windows can spell the same directory with different path prefixes.
+            # Uncreated components are expected before first publication.
+            for ancestor in (resolved, *resolved.parents):
+                try:
+                    if os.path.samestat(ancestor.stat(), self._root_identity):
+                        return True
+                except FileNotFoundError:
+                    continue
+        except OSError:
+            return False
+        return False
 
     def verify(self, identity: ArtifactIdentity) -> Path | None:
         """Verify retained content; hash-only identities intentionally return None."""

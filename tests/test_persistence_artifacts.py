@@ -119,7 +119,18 @@ def test_simultaneous_publication_preserves_one_complete_object(tmp_path: Path) 
     data = b"synthetic" * 8192
 
     def publish(_: int) -> artifacts.ArtifactIdentity:
-        return ArtifactStore(tmp_path).put(data)
+        store = ArtifactStore(tmp_path)
+        try:
+            return store.put(data)
+        except ArtifactIntegrityError as error:
+            candidate = (
+                store.root / "objects" / bytes_digest(data)[:2] / bytes_digest(data)
+            )
+            error.add_note(
+                f"Synthetic publication: root={store.root!s}, "
+                f"parent={candidate.parent.resolve()!s}, symlink={candidate.is_symlink()}"
+            )
+            raise
 
     with ThreadPoolExecutor(max_workers=4) as pool:
         identities = list(pool.map(publish, range(8)))
@@ -160,6 +171,31 @@ def test_parent_symlink_cannot_redirect_artifact(tmp_path: Path) -> None:
     with pytest.raises(ArtifactIntegrityError, match="outside"):
         store.put(b"original")
     assert list(outside.iterdir()) == []
+
+
+def test_equivalent_root_spelling_uses_directory_identity(tmp_path: Path) -> None:
+    store = ArtifactStore(tmp_path / "store")
+    alias = tmp_path / "alias"
+    try:
+        alias.symlink_to(store.root, target_is_directory=True)
+    except OSError:
+        pytest.skip("symlink creation is unavailable")
+    # Exercise the same directory with a spelling unlike its resolved parents.
+    store.root = alias
+    identity = store.put(b"synthetic")
+    assert store.read(identity) == b"synthetic"
+
+
+def test_replaced_or_missing_root_is_not_a_valid_alias(tmp_path: Path) -> None:
+    store = ArtifactStore(tmp_path / "store")
+    identity = store.put(b"original")
+    store.root.rename(tmp_path / "original-store")
+    with pytest.raises(ArtifactIntegrityError, match="outside"):
+        store.verify(identity)
+    store.root.mkdir()
+    with pytest.raises(ArtifactIntegrityError, match="outside"):
+        store.put(b"original")
+    assert list(store.root.iterdir()) == []
 
 
 def test_interrupted_publication_has_no_partial_target(
