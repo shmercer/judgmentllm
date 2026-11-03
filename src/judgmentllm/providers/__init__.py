@@ -5,7 +5,12 @@ from judgmentllm.providers.ledger import (
     MockAcceptanceLedger,
     ObservationRecipe,
 )
-from judgmentllm.providers.mock import MockAdapter, MockPayload, MockScenario
+from judgmentllm.providers.mock import (
+    MockAdapter,
+    MockMemberScenario,
+    MockPayload,
+    MockScenario,
+)
 from judgmentllm.providers.protocol import (
     ParsedResponse,
     PreparedRequest,
@@ -17,6 +22,7 @@ from judgmentllm.providers.protocol import (
     ReconciliationEvidence,
     RetrievalUnavailable,
     SubmissionUncertain,
+    TransientNotSubmitted,
     TransportNotSubmitted,
 )
 
@@ -25,6 +31,7 @@ __all__ = [
     "MockAcceptanceLedger",
     "MockAdapter",
     "MockPayload",
+    "MockMemberScenario",
     "MockScenario",
     "ObservationRecipe",
     "ParsedResponse",
@@ -38,4 +45,5 @@ __all__ = [
     "RetrievalUnavailable",
     "SubmissionUncertain",
     "TransportNotSubmitted",
+    "TransientNotSubmitted",
 ]

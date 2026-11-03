@@ -235,3 +235,13 @@ class MockAcceptanceLedger:
             ).fetchone()
             assert row is not None
             return int(row["total"])
+
+    def nonacceptance_count(self, payload_sha256: str) -> int:
+        """Scalar authoritative fixture progression without retaining wire text."""
+        with closing(self._connect()) as connection:
+            row = connection.execute(
+                "SELECT COUNT(*) FROM acceptances WHERE payload_sha256=? AND accepted=0",
+                (payload_sha256,),
+            ).fetchone()
+            assert row is not None
+            return int(row[0])

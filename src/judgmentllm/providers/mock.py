@@ -42,9 +42,27 @@ from judgmentllm.providers.protocol import (
     ReconciliationEvidence,
     RetrievalUnavailable,
     SubmissionUncertain,
+    TransientNotSubmitted,
     TransportNotSubmitted,
 )
 from judgmentllm.results import CategoryProbability
+
+
+class MockMemberScenario(ExecutionModel):
+    """One synthetic rubric member; text is excluded from acceptance recipes."""
+
+    outcome: Literal[
+        "valid",
+        "invalid_category",
+        "missing",
+        "duplicate",
+        "malformed",
+        "missing_explanation",
+        "invalid_explanation",
+    ] = "valid"
+    category_index: int | None = Field(default=None, ge=0)
+    probabilities: bool | None = None
+    explanation: str | None = None
 
 
 class MockScenario(ExecutionModel):
@@ -54,6 +72,7 @@ class MockScenario(ExecutionModel):
     transport: Literal[
         "success",
         "not_submitted",
+        "transient_not_submitted",
         "timeout_before_acceptance",
         "timeout_after_acceptance",
     ] = "success"
@@ -64,6 +83,18 @@ class MockScenario(ExecutionModel):
     raw_marker: str | None = None
     payload_marker: str | None = None
     delay_seconds: float = Field(default=0, ge=0)
+    transient_failures: int = Field(default=0, ge=0, exclude_if=lambda value: not value)
+    retry_after: float | None = Field(
+        default=None, ge=0, exclude_if=lambda value: value is None
+    )
+    members: dict[str, MockMemberScenario] = Field(
+        default_factory=dict, exclude_if=lambda value: not value
+    )
+    reverse_members: bool = Field(default=False, exclude_if=lambda value: not value)
+    unexpected_members: int = Field(default=0, ge=0, exclude_if=lambda value: not value)
+    unattributable_members: int = Field(
+        default=0, ge=0, exclude_if=lambda value: not value
+    )
 
 
 class MockMember(ExecutionModel):
@@ -107,6 +138,12 @@ class MockResponseEnvelope(ExecutionModel):
     output: dict[str, JsonValue] | None = None
     rubric_probabilities: tuple[CategoryProbability, ...] | None = None
     provider_expected_index: float | None = None
+    member_probabilities: dict[str, tuple[CategoryProbability, ...]] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    member_expected_indices: dict[str, float] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     p_left: float | None = None
     p_right: float | None = None
     p_tie: float | None = None
@@ -117,7 +154,9 @@ def _fixture_digest(scenario: MockScenario) -> str:
     # Availability, delay and transport faults do not change an accepted answer.
     return semantic_digest(
         "mock-observation-fixture",
-        scenario.model_dump(exclude={"transport", "delay_seconds"}),
+        scenario.model_dump(
+            exclude={"transport", "delay_seconds", "transient_failures", "retry_after"}
+        ),
     )
 
 
@@ -238,8 +277,6 @@ class MockAdapter:
                 and not spec.allow_ties
             ):
                 raise ValueError("fixture tie is not permitted")
-            if scenario.probabilities and len(request.tasks) != 1:
-                raise ValueError("grouped probability fixture is unsupported")
             members: list[MockMember] = []
             for task in request.tasks:
                 if spec.task_kind == "rubric":
@@ -249,10 +286,13 @@ class MockAdapter:
                         for trait in spec.rubric.traits
                         if trait.trait_id == task.trait_id
                     )
-                    if (
-                        scenario.category_index is not None
-                        and scenario.category_index >= len(trait.levels)
-                    ):
+                    recipe = scenario.members.get(task.trait_id)
+                    member_index = (
+                        recipe.category_index
+                        if recipe is not None and recipe.category_index is not None
+                        else scenario.category_index
+                    )
+                    if member_index is not None and member_index >= len(trait.levels):
                         raise ValueError("fixture category index is outside the rubric")
                     members.append(
                         MockMember(
@@ -348,32 +388,82 @@ class MockAdapter:
         elif scenario.outcome == "invalid":
             fields["output"] = {"synthetic_invalid": True}
         elif payload.task_kind == "rubric":
-            scores: list[dict[str, JsonValue]] = []
+            scores: list[JsonValue] = []
+            distributions: dict[str, tuple[CategoryProbability, ...]] = {}
+            expected_indices: dict[str, float] = {}
             for member in payload.members:
-                index = selection_index % len(member.category_labels)
+                recipe = scenario.members.get(member.trait_id, MockMemberScenario())
+                if recipe.outcome == "missing":
+                    continue
+                selected = (
+                    recipe.category_index
+                    if recipe.category_index is not None
+                    else selection_index
+                )
+                index = selected % len(member.category_labels)
                 score: dict[str, JsonValue] = {
                     "trait_id": member.trait_id,
                     "category_label": member.category_labels[index],
                 }
                 if payload.explanations:
-                    score["explanation"] = scenario.explanation
-                scores.append(score)
-            fields["output"] = {"scores": scores}
-            if scenario.probabilities:
-                labels = payload.members[0].category_labels
-                modal = (selection_index + 1) % len(labels)
-                probabilities = tuple(
-                    CategoryProbability(
-                        level_label=label,
-                        probability=0.6 if index == modal else 0.4 / (len(labels) - 1),
+                    score["explanation"] = (
+                        recipe.explanation
+                        if recipe.explanation is not None
+                        else scenario.explanation
                     )
-                    for index, label in enumerate(labels)
-                )
-                fields["rubric_probabilities"] = probabilities
-                fields["provider_expected_index"] = sum(
-                    index * entry.probability
-                    for index, entry in enumerate(probabilities)
-                )
+                if recipe.outcome == "invalid_category":
+                    invalid = "synthetic-invalid-category"
+                    while invalid in member.category_labels:
+                        invalid += "-invalid"
+                    score["category_label"] = invalid
+                elif recipe.outcome == "malformed":
+                    score = {"trait_id": member.trait_id, "synthetic_malformed": True}
+                elif recipe.outcome == "missing_explanation":
+                    score.pop("explanation", None)
+                elif recipe.outcome == "invalid_explanation":
+                    score["explanation"] = 17
+                scores.append(score)
+                if recipe.outcome == "duplicate":
+                    scores.append(dict(score))
+                if (
+                    recipe.probabilities
+                    if recipe.probabilities is not None
+                    else scenario.probabilities
+                ):
+                    labels = member.category_labels
+                    modal = (selected + 1) % len(labels)
+                    distribution = tuple(
+                        CategoryProbability(
+                            level_label=label,
+                            probability=0.6
+                            if position == modal
+                            else 0.4 / (len(labels) - 1),
+                        )
+                        for position, label in enumerate(labels)
+                    )
+                    distributions[member.trait_id] = distribution
+                    expected_indices[member.trait_id] = sum(
+                        position * entry.probability
+                        for position, entry in enumerate(distribution)
+                    )
+            known = {member.trait_id for member in payload.members}
+            for index in range(scenario.unexpected_members):
+                trait_id = f"synthetic-unrequested-{index}"
+                while trait_id in known:
+                    trait_id += "-unknown"
+                scores.append({"trait_id": trait_id, "category_label": "synthetic"})
+            scores.extend(None for _ in range(scenario.unattributable_members))
+            if scenario.reverse_members:
+                scores.reverse()
+            fields["output"] = {"scores": scores}
+            if distributions:
+                if len(payload.members) == 1:
+                    trait_id = payload.members[0].trait_id
+                    fields["rubric_probabilities"] = distributions.get(trait_id)
+                    fields["provider_expected_index"] = expected_indices.get(trait_id)
+                else:
+                    fields["member_probabilities"] = distributions
+                    fields["member_expected_indices"] = expected_indices
         else:
             member = payload.members[0]
             tie = scenario.winner == "tie"
@@ -434,7 +524,20 @@ class MockAdapter:
             raise SubmissionUncertain(
                 "synthetic transport timeout with unknown acceptance"
             )
-        if scenario.transport == "not_submitted":
+        transient = scenario.transport == "transient_not_submitted"
+        if scenario.transient_failures:
+            previous = await asyncio.to_thread(
+                self.ledger.nonacceptance_count, prepared.payload_sha256
+            )
+            recorded = await asyncio.to_thread(
+                self.ledger.get,
+                submission_id,
+                service_identity=payload.service_identity,
+            )
+            transient = previous < scenario.transient_failures or (
+                recorded is not None and not recorded.accepted
+            )
+        if scenario.transport == "not_submitted" or transient:
             await self._establish(
                 AcceptanceRecord(
                     submission_id=submission_id,
@@ -448,6 +551,8 @@ class MockAdapter:
                 ),
                 payload.service_identity,
             )
+            if transient:
+                raise TransientNotSubmitted(retry_after=scenario.retry_after)
             raise TransportNotSubmitted(
                 "synthetic transport conclusively did not submit"
             )

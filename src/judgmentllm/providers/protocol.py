@@ -24,6 +24,23 @@ class TransportNotSubmitted(ProviderError):
     """An invoked call conclusively did not reach acceptance."""
 
 
+class TransientNotSubmitted(TransportNotSubmitted):
+    """Authoritatively unaccepted transient failure, optionally with retry-after."""
+
+    def __init__(
+        self,
+        message: str = "transient authoritative nonacceptance",
+        *,
+        retry_after: float | None = None,
+    ):
+        super().__init__(message)
+        if retry_after is not None and (
+            type(retry_after) not in (int, float) or not 0 <= retry_after < float("inf")
+        ):
+            raise ValueError("retry-after must be a finite nonnegative duration")
+        self.retry_after = retry_after
+
+
 class SubmissionUncertain(ProviderError):
     """The caller lacks acceptance evidence; authoritative lookup is required."""
 
@@ -91,6 +108,8 @@ class ParsedResponse(ExecutionModel):
     output: dict[str, JsonValue] | None = None
     rubric_probabilities: tuple[CategoryProbability, ...] | None = None
     provider_expected_index: float | None = None
+    member_probabilities: dict[str, tuple[CategoryProbability, ...]] | None = None
+    member_expected_indices: dict[str, float] | None = None
     p_left: float | None = None
     p_right: float | None = None
     p_tie: float | None = None
