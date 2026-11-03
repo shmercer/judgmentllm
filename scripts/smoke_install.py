@@ -57,6 +57,18 @@ Path("run.json").write_text(json.dumps({"schema_version":1,"task_kind":"rubric",
     "input":"responses.csv","rubric":rubric.model_dump(mode="json"),
     "provider":"synthetic","endpoint":"synthetic","model":"synthetic"}), encoding="utf-8")
 
+from judgmentllm import GenerationSpec, GenerationCapabilities, load_run_spec
+from judgmentllm.persistence.generation import build_generation_commitment, validate_generation_compatibility
+spec = load_run_spec("run.json")
+assert "generation" not in spec.model_dump(mode="json")
+spec.generation = GenerationSpec(temperature=0, max_output_tokens=257)
+assert spec.generation.model_dump(mode="json") == {"temperature":0,"max_output_tokens":257}
+facts = GenerationCapabilities.model_validate({"provider":"synthetic",
+    "endpoint":"synthetic","model":"synthetic",
+    "temperature":{"supported":True},"max_output_tokens":{"supported":True}})
+commitment = build_generation_commitment(spec, capabilities=facts)
+assert validate_generation_compatibility(commitment, spec, capabilities=facts).valid
+
 # Subphase 1 has no executor or lifecycle CLI. Exercise only the installed
 # core's registry, immutable artifacts, and local OS ownership primitives.
 from judgmentllm.persistence.artifacts import ArtifactStore

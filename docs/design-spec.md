@@ -1,6 +1,6 @@
 # JudgmentLLM: functional design specification
 
-**Design:** 0.4 (2026-11-02). **Implementation status:** Milestone 1 provides schema-version-1 contracts, synthetic normalization, structural planning, input/output, and offline prompt tools. Execution and provider support remain later milestones. The sections below describe the full approved direction; [data contracts](data-contracts.md) and [Python API](python-api.md) describe the implemented subset.
+**Design:** 0.5 (2026-11-02). **Implementation status:** Milestone 1 provides schema-version-1 contracts, synthetic normalization, structural planning, input/output, and offline prompt tools. Milestone 2 has a durable persistence foundation and an initial Subphase 2 generation-configuration foundation. Complete source preparation, execution, and provider support remain unimplemented. The sections below describe the full approved direction; [data contracts](data-contracts.md) and [Python API](python-api.md) describe the implemented subset.
 
 ## 1. Goals
 
@@ -49,6 +49,15 @@ Implement the following adapters, reusing suitable official SDKs:
 Every adapter must expose a narrow **capability description** and implement only its supported operations: validate, build live request, send live, parse response, optional batch create/poll/download/cancel, optional model listing, optional token counting, optional cache controls, and optional service-tier controls. An operation may explicitly be unsupported; never silently emulate native batch unless the user chose managed bulk-live mode.
 
 No provider-specific details should leak into normalized assessment interpretation except via structured metadata.
+
+### Generation and provider request parameters
+
+- `RunSpec.generation` is optional and strictly typed. The initial Subphase 2 foundation accepts `temperature`, `top_p`, and `max_output_tokens`; omitted values stay omitted. It supplies no provider defaults and never changes explicitly requested values.
+- Generation controls are separate from `execution` concurrency, retries and rate limits. The existing top-level `seed` controls pairing/presentation; it is not a generation seed or a promise of deterministic model output.
+- Validate support, bounds and incompatible combinations for the exact provider/model/endpoint. Known incompatibilities fail locally before submission; missing evidence produces an explicit unknown report, promoted to an error by `strict_capabilities`. An unknown model ID is still permitted subject to this validation. Caller-supplied or offline evidence does not establish live qualification.
+- Add `top_k`, ordered `stop_sequences`, `repetition_penalty`, `frequency_penalty`, `presence_penalty`, a separate `generation.seed`, and typed reasoning/thinking controls as adapters implement them. Provider-specific extensions require adapter-owned typed schemas and validation; unrestricted provider JSON remains prohibited. Do not assume different providers' similarly named controls have identical semantics.
+- Every requested generation value belongs in immutable manifest/reproducibility commitments. Its exact adapter representation must enter the actual prepared payload and byte hash when request preparation exists. Changing generation settings invalidates resume compatibility; unchanged Milestone 1 configurations retain their structural IDs.
+- Subphase 2 implements configuration, capability-validation interfaces and generation commitments only. Milestone 3 must implement and fixture-test supported generative controls per provider/model/endpoint; Milestone 4 must reject generative settings inapplicable to native score/decision endpoints; Milestone 5 must preserve live/batch parameter parity. The CLI and Milestone 6 `rubricLLM` wrapper use this same run configuration.
 
 ## 5. Rubric and comparative assessment
 
@@ -143,7 +152,7 @@ No provider-specific details should leak into normalized assessment interpretati
 
 - SQLite (`sqlite3`) holds runs, request/batch registry, task IDs, attempts, statuses and file references; use transactions, unique constraints, WAL where appropriate and indexed lookups.
 - JSONL is the canonical streaming record format; CSV for tabular interoperability and optional Parquet via a separate extra for larger datasets. Do not require Pandas or PyArrow for basic use.
-- A run manifest becomes immutable on submission; it references exact data/rubric/prompt hashes, model ID, SDK/package versions, parameters, grouping, caching, tiers, seed, units, selected exemplars and provider qualification snapshot.
+- A run manifest becomes immutable on submission; it references exact data/rubric/prompt hashes, model ID, SDK/package versions, explicitly requested generation parameters, grouping, caching, tiers, pairing seed, units, selected exemplars and provider qualification snapshot. Requested configuration identity is separate from dated capability evidence and qualification state.
 - Default capture stores actual rendered prompts, full original provider responses, error payloads and normalized outputs. Users may explicitly choose privacy-minimal capture and disable retention where supported.
 - Never store API keys or other access tokens in logs/results/manifests. Redact request headers. Default output directories excluded from git tracking; documentation warns about student data and provider privacy requirements.
 - Store run-id + request-id + task-id + attempt-id separately; support append-only audit trails and resumption after process interruption.
@@ -184,6 +193,7 @@ No provider-specific details should leak into normalized assessment interpretati
 - Manual and prerelease live qualification tests with explicit budget ceiling and cleanup of test uploads/jobs.
 - Ruff format/lint, Pyright type checks on public modules, build validation with Hatchling, deterministic tests; documentation includes standard installation and CLI workflows.
 - Explicit test cases for: ordinal coding, invalid category, score vs probability expectation, missing explanation support, large traits, 0/many exemplars, unknown context limits, duplicate/out-of-order batch results, interrupted resume, cache off/auto/explicit policies, fallback rules, output provenance, malformed transport outcomes and secret redaction.
+- Generation acceptance includes offline strict-schema and capability cases, sparse serialization, omitted-versus-explicit settings, immutable generation commitments, stable legacy structural IDs, changed-setting resume rejection, and Python-generated provenance consumed in R. Exact payload tests belong to the implementing adapter milestones.
 - Milestone 7 adds offline FastAPI/ASGI tests for schema parity, local-only binding, error responses, non-blocking job submission, status/result polling and recovery after service restart; no provider credentials required.
 
 ## 15. Safety/privacy and operational limits

@@ -1,11 +1,13 @@
-# Internal persistence contracts — Milestone 2, Subphase 1
+# Internal persistence contracts — Milestone 2 foundation
 
 The approved [execution plan](milestone-2-execution-plan.md) is preserved as
-reviewed. This document describes the implemented durable foundation only.
+reviewed, with the generation requirement added at the start of Subphase 2.
+This document describes the implemented durable foundation and its generation
+manifest section only.
 `judgmentllm.persistence` is an internal Python package. Its records use version
 1 independently of the unchanged assessment and normalized-result schemas.
-There is no executor, source loader, provider protocol, mock provider, or new
-lifecycle CLI command in this subphase.
+There is no executor, source loader, provider protocol, mock provider, complete
+executable manifest, or new lifecycle CLI command in this foundation.
 
 ## Registry and transactions
 
@@ -141,8 +143,9 @@ to replacement. A crash may leave an unreferenced object/temporary file.
 objects raise safe integrity errors. `hash_only()` describes intentionally absent
 bytes; it never implies recoverability. Registered identity/retention cannot be
 silently changed. `get_artifact()` and `get_manifest()` verify retained bytes.
-Sealing here stores only a retained manifest reference; phase 2 owns its complete
-content schema, source commitments, and fixed `manifest.json` publication.
+Sealing here stores only a retained manifest reference; the rest of phase 2 owns
+its complete content schema, source commitments, and fixed `manifest.json`
+publication. A retained generation-only fixture is not an executable manifest.
 
 `canonical_bytes()` revalidates model snapshots and emits sorted compact JSON as
 UTF-8, preserving list order, defaults, nulls, Unicode and newline distinctions.
@@ -157,9 +160,48 @@ assessment-text field. Normalized outputs, including explanations, remain
 authorized sensitive data even under minimal capture. Hashes are identities,
 not response evidence or anonymization.
 
+## Generation manifest section
+
+`judgmentllm.persistence.generation` provides the internal frozen version-1
+`GenerationCommitment` and two helpers:
+
+- `build_generation_commitment(spec, *, capabilities=None)` deep-validates and
+  snapshots exact provider/endpoint/model scope, requested settings, original
+  capability evidence and `requested_sha256`. Invalid generation preflight fails
+  before returning a section.
+- `validate_generation_compatibility(commitment, spec, *, capabilities=None)`
+  returns the existing `ValidationReport`, rejecting changed scope/settings and
+  applying current supplied capability restrictions. It does not reuse frozen
+  evidence as current authorization.
+
+`requested_sha256` uses the existing domain-separated semantic digest with
+`generation-request-settings`, exact provider/endpoint/model and sparse requested
+numeric settings. It excludes capability evidence. Settings preserve explicit
+integer/float values and omission; unset settings serialize as an empty object
+inside this section. Source, capture and pairing-seed commitments belong to the
+enclosing complete manifest rather than this generation digest.
+
+Retain the original evidence in immutable manifest bytes. Changing evidence
+can change those bytes without changing requested-settings identity. Before
+submission or resume, validate against the latest available applicable evidence;
+newly known incompatibilities block continuation while the original snapshot
+remains intact. Unknown support obeys the run's `strict_capabilities` policy and
+does not establish fixture or live qualification.
+
+The section may be retained under full or minimal capture because implemented
+controls are numeric. Future text-bearing extensions such as stop sequences
+must obey capture policy rather than being copied into minimal metadata.
+Repository/artifact tests may retain a generation-only fixture to demonstrate
+immutability, hashing and compatibility checks. That fixture neither completes
+source freezing/full preflight nor authorizes submission. Actual provider payload
+hashes continue to hash actual prepared bytes when adapters exist; no cloud
+body construction or operational resume is implemented here.
+
 ## Subphase 2 handoff
 
-Implement consistent source discovery/freezing, staged/indexed input access,
+The initial generation configuration/validation/manifest-section foundation is
+implemented at the beginning of this subphase. Continue with consistent source
+discovery/freezing, staged/indexed input access,
 full/minimal policies and complete manifest construction next. Reuse the reserved
 source tables and artifact identities; keep provider/execution work for phase 3.
 Build complete byte locators for multiline CSV through shared strict readers.
@@ -173,5 +215,9 @@ authoritative observation or remain unresolved; a request hash is insufficient.
 
 The package remains at its existing development version during this independently
 reviewable subphase; the approved `0.1.0a3` target remains the next milestone
-package version. Public assessment, configuration, prompts, planning, CLI and
-export schemas are unchanged. See the [verification record](milestone-2-subphase-1-verification.md).
+package version. Generation configuration and capability interfaces are additive;
+no-generation serialization/IDs/diagnostics and normalized result/export schemas
+remain unchanged. The [Subphase 1 verification record](milestone-2-subphase-1-verification.md)
+continues to describe its earlier durable-foundation checks only.
+The [generation verification record](milestone-2-generation-verification.md)
+records this addition and the remaining source-preparation handoff.

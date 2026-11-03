@@ -16,6 +16,7 @@
 | Pairwise | Forced winner default, optional ties where compatible, repetitions and presentation-reversal audits, optional explanations when available |
 | Cache | Pairwise off by default, rubric auto by default; `off`, `auto`, `explicit`; explain provider implicit caching constraints |
 | Execution | Live (provider tiers where supported), native Batch (where supported), and managed bulk-live; no unapproved fallback in model/tier |
+| Generation | Optional strict RunSpec generation controls, separate from execution and pairing seed; preserve omission, validate exact model/endpoint capabilities, commit requested values for reproducibility |
 | Scale | Design for 100,000 response input, hundreds of traits, thousands of stored exemplars; do not hold entire work in RAM |
 | Data | CSV/JSONL, optional Parquet, Python and R data frames; stable long-form outputs and complete audit records by default with opt-out |
 | Retries | Transient transport errors automatically with bounded backoff; malformed/completed judgments retained, re-score only on explicit request |
@@ -80,3 +81,12 @@
 9. Statistical fitting, comparative-judgment analysis, and calibration remain in R; no statistical engine is added to the Python core.
 
 R interoperability is an acceptance condition throughout subsequent milestones, not work deferred entirely to Milestone 6. Required R round-trip steps in the existing Ubuntu/Python 3.11 CI matrix job generate synthetic Python exports and import them in R with `JUDGMENTLLM_R_STRICT=1` and required `jsonlite` distribution/mapping checks. Missing prerequisites fail that check; optional pairwiseLLM checks may report separately. Retain the existing Python matrix and 90% coverage gate. Current export, tie, attempt-selection, orientation, and provenance contracts remain unchanged. The functional wrapper, execution CLI, and HTTP service are future deliverables, not implemented by this documentation correction.
+
+## Milestone 2 generation configuration foundation (2026-11-02)
+
+- Begin Subphase 2 with optional `RunSpec.generation`, accepting strictly typed `temperature`, `top_p`, and `max_output_tokens`. Omission, null, and an empty generation object all mean no requested controls. Sparse serialization retains explicit zero values and never supplies provider defaults.
+- Keep generation separate from execution controls and top-level pairing/presentation `seed`. Reserve `top_k`, ordered `stop_sequences`, `repetition_penalty`, `frequency_penalty`, `presence_penalty`, a separate `generation.seed`, and typed reasoning/thinking controls for additions owned and validated by the implementing adapters. Unsupported extension keys remain errors; arbitrary provider JSON is not accepted.
+- Scope generation capability evidence to provider, endpoint and model. Known unsupported values/combinations fail preflight; unknowns remain explicit and obey `strict_capabilities`. No built-in cloud capability matrix, model allowlist, provider request builder or live qualification is introduced by this foundation.
+- Commit requested generation identity separately from capability evidence. Include it in the eventual full manifest and prepared-payload commitments; changing a requested value is incompatible with resume under the same frozen specification. Preserve global canonical hashing behavior and existing Milestone 1 request IDs for no-generation configurations; explicit controls enter request context identity while item/pair/task IDs stay stable.
+- Retained generation-only fixtures exercise immutability and compatibility foundations; they are not complete executable run manifests. Source freezing/indexing, complete manifest publication and operational resume remain subsequent Subphase 2/lifecycle work.
+- Milestone 3 implements and tests provider/model/endpoint parameter mappings; Milestone 4 rejects generative settings inapplicable to native score/decision endpoints; Milestone 5 proves live/batch parameter parity; Milestone 6 passes the same configuration through `rubricLLM`. Required offline R provenance checks continue from the current foundation.

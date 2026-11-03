@@ -34,7 +34,14 @@ only; source freezing, providers, execution and lifecycle CLI commands remain
 assigned to their subsequent subphases. See the
 [Subphase 1 verification record](milestone-2-subphase-1-verification.md).
 
+Begin Subphase 2 with the generation configuration, capability-validation and
+manifest-commitment foundation. Generation-only retained fixtures do not complete
+source freezing, complete manifest construction, preflight or operational resume.
+See the [generation verification and source-preparation handoff](milestone-2-generation-verification.md).
+
 - Implement SQLite registry for runs, requests, tasks, batches, attempts and artifact hashes; immutable manifest on submit; resume states.
+- Add optional strict `RunSpec.generation` with `temperature`, `top_p`, and `max_output_tokens`, separate from execution controls and the pairing/orientation seed. Preserve unspecified values and existing no-generation serialization, structural IDs and diagnostics. Document typed adapter-owned extensions for top-k, stop sequences, penalties, generation seed and reasoning/thinking controls without accepting arbitrary provider JSON.
+- Validate model/endpoint-specific parameter support, bounds and combinations; reject known incompatibilities and report unknown support without implying qualification. Freeze requested generation identity separately from capability evidence and revalidate current restrictions before submission/resume. Include requested controls in complete manifests and exact prepared payload identities as preparation is implemented; reject changed controls under the original frozen specification.
 - Before submission, capture immutable hashes of original input content, exact rendered prompts, and exact provider request payloads. Structural task/request IDs are not content hashes. Detect changed referenced text during resumption and refuse to reuse a submission identity for changed content; preserve all original task/pair/request/attempt IDs.
 - Preserve the R audit/export contracts throughout execution and resumption, including presented orientation, score kinds, complete probabilities, and all attempts. Full R bridge/wrapper work remains Milestone 6.
 - Implement async bounded execution plus clean synchronous wrappers; bounded retry/backoff for transport failures; explicit completed-output retry.
@@ -44,14 +51,28 @@ assigned to their subsequent subphases. See the
 
 **Acceptance:** Content-change fixtures verify input/prompt/payload hashes, changed referenced text is detected on resume, and old submission identities are never blindly reused for changed content while original JudgmentLLM IDs are retained. Mock provider can process synthetic large streamed inputs with limited RAM; interrupted run resumes with no duplicate completed tasks; out-of-order and partial task results are correctly matched; ambiguous batch submission never blindly reissues a remote request; raw/prompt capture and redaction work. Required offline R tests invoke the installed CLI against mock execution, parse the versioned JSON control responses, retain durable IDs/artifact paths, terminate the original Python process, and then query status, resume, and export in later processes. Python and CLI reuse the same services; R requires no resident Python process or HTTP server, and existing export/score/provenance guarantees remain intact.
 
+**Generation foundation acceptance:** Offline tests cover strict schemas,
+boundary and combination validation, scoped unknown capabilities, sparse
+serialization, hashing, immutable commitment retention and resume compatibility.
+No-generation fixtures preserve Milestone 1 IDs/serialization and add no
+generation warnings, including strict mode. Capability-evidence changes preserve
+requested identity; newly known restrictions still block continuation. Actual
+Python-generated generation provenance is consumed in the required R/jsonlite
+gate. No cloud request builder or complete executable manifest is claimed.
+
 ## Milestone 3 - Generative live adapters
 
 - Implement OpenAI Responses and Chat; Anthropic Messages; Gemini Developer; Vertex Gemini; Together AI; Ollama local, with maintained SDKs when available.
 - Per-adapter offline fixtures validate request building, response parsing, errors, usage, optional explanations, tier/cache settings and output schemas.
+- Implement and test supported generation parameters for every implemented provider/model/endpoint, including exact wire mappings, omitted values, bounds and incompatible combinations. Add supported extensions only through typed documented adapter-owned schemas. Exact prepared bodies and hashes must reflect every explicitly requested control; distinguish fixture evidence from live qualification.
 - Exercise each adapter's normalized synthetic outputs through the established Python-to-R exports, covering successful rubric/pairwise judgments, refusals, invalid outputs, errors, and missing optional usage/probability/provenance fields.
 - Implement provider model discovery where officially available; unknown-model pass-through with documented limits.
 
 **Acceptance:** Each adapter passes the shared contract tests without API credentials and has an opt-in live smoke test plan. A validated score-only task and paired-choice task can be exercised against each available provider in prerelease qualification. Required R interoperability fixtures consume actual normalized exports from every implemented generative adapter without credentials or network calls and preserve IDs, statuses, original/presented positions, optional/missing values, and categorical score semantics rather than dropping unsuccessful outcomes.
+
+Generation fixtures prove each supported setting reaches the correct endpoint
+field unchanged, unset controls remain absent, and known unsupported settings or
+combinations fail before submission. Do not claim untested models are qualified.
 
 ## Milestone 4 - Native decision/score adapters
 
@@ -59,8 +80,12 @@ assigned to their subsequent subphases. See the
 - Map probability-weighted zero-based score indices to user numeric category coding, preserve the entire distribution and raw index, support pairwise choices.
 - For both native endpoints, verify complete ordinal and choice distributions through Python normalization and R import, using differing and nonuniform numeric mappings. Preserve provider-selected categories when explicitly supplied, distribution-derived modes, mapped means, raw provider expected indices, and original/presented pairwise probability orientation as distinct evidence.
 - Reject explanation generation, unsupported level counts and unsupported batch operations before sending.
+- Explicitly validate generation applicability for each native score/decision endpoint and reject every inapplicable requested control before submission rather than dropping it or routing through a generative endpoint.
 
 **Acceptance:** Synthetic fixtures confirm correct 2-10 level mapping and explicit errors for >=11 categories under independently verified endpoint limits; no arithmetic or semantics confusion between index score and rubric score; explanation request fails locally. Required offline Python-to-R fixtures cover OpenAI Decisions and TypeSafe Jev separately, retaining every probability and nonuniform code, raw provider index, selected category when available, mode, expected value, and score kind. Pairwise fixtures verify both original and presented probability orientation after reversal, without inferring an observed winner. Limits are taken from each endpoint's verified contract rather than assumed identical; the neutral assessment schema remains unrestricted by provider bounds.
+
+Endpoint-specific offline tests prove inapplicable generative settings fail
+locally and are never silently ignored.
 
 ## Milestone 5 - Native batches, managed bulk-live and caching
 
@@ -68,15 +93,20 @@ assigned to their subsequent subphases. See the
 - Implement deterministic splitting, upload, durable submission ID registry, cancel/status/collect, partial outputs, reordered results and safe resumption.
 - Deliver managed bulk-live mode for every live provider, including Ollama, Decisions and Jev.
 - Implement `off`/`auto`/`explicit` cache policies and provider-specific availability checks, with true usage accounting where reported.
+- Preserve generation parameter parity across live, managed bulk-live and native batch. Use the same validated run configuration and adapter mappings; report unsupported mode-specific combinations before submission and retain requested values in manifests, prepared payloads and recovery checks.
 - Verify R-driven CLI submission/status/resumption/collection/export across separate processes using offline native-batch and managed bulk-live mocks. Retain durable IDs and artifacts across restarts, including partial collections, reordered outputs, repeated attempts, errors, and provider provenance.
 
 **Acceptance:** Reproduce interruption/partial/duplicate-result fixture scenarios for every provider; no silent fallback across tiers/models; no fabricated cache savings; native-batch unsupported endpoints fail before network. Required R CLI tests complete submit/status/resume/collect/export workflows after process restarts against deterministic mocks, preserving original run/task/pair/request/attempt identities, partial/error records, original/presented probabilities, missing fields, and provenance in audit exports. Collection must not silently deduplicate audit attempts or reinterpret unfinished work as a winner. For actual provider batch acceptance, require manual paid qualifications.
+
+Paired live/batch payload fixtures verify identical requested generation values
+and omission semantics, including after recovery and collection.
 
 ## Milestone 6 - Catalog, R bridge, docs and prerelease qualification
 
 - Implement generated `models.json` and `docs/model-support.md` with dated sources/qualifications; GitHub Action opens reviewable PR for catalog changes.
 - Deliver a functional thin `rubricLLM` R package (provisional name) around the versioned CLI control contract using `processx`, with documented executable/virtual-environment discovery and configuration. Reuse Python services; do not implement a second scoring, normalization, or persistence engine in R.
 - Expose the implemented validation, planning, prompt preview, rubric scoring, pairwise judging, run/status/resume, batch submission/status/collection/cancellation, and result-export operations through that wrapper. Provide installation and first-run documentation with actual synthetic end-to-end examples and clear diagnostics for missing executables/environments.
+- Supply generation controls through the same RunSpec used by Python and CLI. Test wrapper serialization of absent and explicit values, capability diagnostics and frozen-generation resume compatibility; do not add R-side provider defaults or arbitrary request bodies.
 - Verify the actual `pairwiseLLM` source/version in required R integration tests. Demonstrate explicit successful-attempt selection, binary winner preparation for `build_bt_data()`, supported `object1`/`object2`/numeric-`result` workflows including deliberate tie handling, and rubric/probability import. Keep JudgmentLLM's audit IDs/provenance authoritative when conversion helpers generate their own occurrence IDs or timestamps.
 - Evaluate `reticulate` as an optional secondary enhancement, implementing it only when justified by a demonstrated need; CLI/`processx` operation must not depend on `reticulate`, a resident Python process, or HTTP.
 - Document install, authentication, cost estimation, privacy, resumption, exemplar scaling, scores vs probability expectations, and per-provider constraints.
@@ -110,6 +140,7 @@ Applicable deterministic, synthetic, offline, credential-free CI fixtures must v
 - Observed winners, explicitly permitted ties, unsuccessful/partial records, repeated judgments, and every attempt without silent selection or deduplication. Analysis datasets require explicit attempt/outcome selection and remain distinct from audit exports.
 - Original-orientation and presented-orientation choice probabilities, complete ordinal distributions, nonuniform numeric mappings, provider expected indices, and separate provider-selected category, modal category, and probability-weighted mean.
 - Categorical assignments versus expected-score kinds, unrounded numeric scores, documented missing values, and complete available provider/model/execution/audit provenance.
+- Requested generation provenance and omission semantics where applicable, kept distinct from capability evidence; changing generation settings cannot silently resume an existing frozen run.
 
 The relevant R interoperability checks must actually consume Python-generated outputs. Missing required R/`jsonlite` dependencies, failed tests, or silent skips do not satisfy acceptance. A milestone cannot be accepted while an applicable required interoperability check fails. No R runtime or package becomes a compulsory dependency of the Python core; optional live provider qualification remains separate from required offline CI.
 

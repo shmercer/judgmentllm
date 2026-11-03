@@ -13,6 +13,7 @@ from typing import Literal, cast
 
 import yaml
 from pydantic import (
+    ConfigDict,
     Field,
     ValidationError,
     ValidationInfo,
@@ -36,6 +37,27 @@ from judgmentllm.results import NormalizationOptions
 
 class ConfigurationError(ValueError):
     """A configuration document could not be read or validated safely."""
+
+
+class GenerationSpec(StrictModel):
+    """Explicit requested controls, never provider defaults or wire JSON.
+
+    Null members are unspecified and omitted from serialization. Integer and
+    float inputs retain their representation; booleans and strings are rejected.
+    Provider/model-specific bounds are checked separately by preflight.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    temperature: int | float | None = Field(
+        default=None, ge=0, exclude_if=lambda value: value is None
+    )
+    top_p: int | float | None = Field(
+        default=None, ge=0, le=1, exclude_if=lambda value: value is None
+    )
+    max_output_tokens: int | None = Field(
+        default=None, gt=0, exclude_if=lambda value: value is None
+    )
 
 
 class InputSpec(StrictModel):
@@ -125,6 +147,9 @@ class RunSpec(VersionedModel):
     provider: ID
     endpoint: ID
     model: ID
+    generation: GenerationSpec | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     execution: ExecutionSpec = Field(default_factory=ExecutionSpec)
     prompt: PromptSpec = Field(default_factory=PromptSpec)
     normalization: NormalizationOptions = Field(default_factory=NormalizationOptions)
@@ -133,6 +158,18 @@ class RunSpec(VersionedModel):
     output_path: Path = Path("run-data")
     strict_capabilities: bool = False
     allow_ties: bool = False
+
+    @field_validator("generation")
+    @classmethod
+    def normalize_generation(
+        cls, value: GenerationSpec | None
+    ) -> GenerationSpec | None:
+        if value is None:
+            return None
+        # Reconstruct instances too: model_copy can inject invalid/unknown fields
+        # that an ordinary serializer would silently drop before normalization.
+        checked = GenerationSpec.model_validate(dict(value))
+        return checked if checked.model_dump() else None
 
     @field_validator("input", "pairs", mode="before")
     @classmethod
