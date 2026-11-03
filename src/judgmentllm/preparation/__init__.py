@@ -35,6 +35,7 @@ from judgmentllm.persistence.models import (
     ExecutionModel,
     ManifestReference,
     NotFoundError,
+    OwnershipError,
     RunRecord,
     utc_now,
 )
@@ -482,6 +483,7 @@ def open_prepared_run(
     spec: RunSpec | None = None,
     capabilities: CapabilityProfile | None = None,
     use_frozen_snapshot: bool = False,
+    owner_token: str | None = None,
 ) -> PreparedRun:
     """Verify and reopen; explicit snapshot permission is scoped to this call.
 
@@ -495,7 +497,11 @@ def open_prepared_run(
         run = repository.get_run(run_id)
         unsealed = run.manifest_sha256 is None
         with ExitStack() as stack:
-            if unsealed or use_frozen_snapshot:
+            if owner_token is not None:
+                owner = repository.get_owner(run_id)
+                if owner is None or owner.token != owner_token:
+                    raise OwnershipError("executor owner token does not match")
+            elif unsealed or use_frozen_snapshot:
                 stack.enter_context(ExecutorOwnership(repository, run_id))
             manifest = _load_manifest(repository, run_id, unsealed=unsealed)
             _verify_metadata(repository, manifest)

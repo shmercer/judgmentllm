@@ -5,7 +5,8 @@ Milestone 2 Subphase 2 adds provider-free immutable source preparation, indexed
 input access, complete manifests, and generation compatibility validation.
 All examples below run without credentials. Public assessment models, common
 normalization functions, planning functions, and preview are also exported from
-`judgmentllm`. Execution and lifecycle CLI commands remain later subphases.
+`judgmentllm`. Subphase 3 adds internal mock execution/recovery. Public lifecycle APIs and CLI
+commands remain later subphases.
 
 ## Models and loading
 
@@ -212,3 +213,65 @@ Library writers revalidate current complete nested record data immediately befor
 These functions export all supplied attempts without deduplication or status filtering. Missing values use the selected marker, with literal collisions rejected; booleans are `TRUE/FALSE` and nested columns contain JSON. Read IDs as character strings. Use explicit successful-attempt selection before analysis. See [R interoperability](r-interoperability.md) for full columns, source-qualified pairwiseLLM behavior, representative CSV, and base R imports.
 
 OpenAI Decisions preflight enforces its documented 2–10 ordered score levels even if a supplied capability profile is wider. Rubric storage remains unrestricted. Other endpoints receive no inferred Decisions limit; independently verified provider constraints can be supplied through `CapabilityProfile`.
+
+## Mock submission and recovery (internal, Subphase 3)
+
+`judgmentllm.providers.ProviderAdapter` separates capability discovery/validation,
+exact-byte preparation, submission, authoritative reconciliation/retrieval, and
+transport parsing. `PreparedRequest` is an in-memory strict record; its actual
+serialized bytes are the payload commitment. It must never be serialized into
+minimal-capture persistence. The mock defines its own versioned canonical JSON
+protocol; it does not imitate a cloud endpoint.
+
+`MockAdapter(ledger_path, *, scenario=None, scenarios=None,
+retrieval_available=True, reconciliation_available=True)` supports provider
+`mock`, endpoint `synthetic`, and arbitrary model IDs. Its live synthetic service
+supports explanations, ties with compatible custom templates, the three existing
+generation controls, and cache `off`/`auto` (uncached). Explicit cache, tier,
+managed bulk/native batch, and real providers fail before submission.
+`MockScenario` selects synthetic judgments, distributions, delays, refusals,
+invalid outputs, provider errors, and transport failures. Scenario text stays in
+memory; recovery needs the same fixture configuration. Lost fixture configuration
+cannot be reconstructed from a hash.
+
+```python
+import asyncio
+from judgmentllm.preparation import prepare_run
+from judgmentllm.providers import MockAdapter, MockScenario
+from judgmentllm.execution import execute_run, recover_run
+
+adapter = MockAdapter(
+    "/local/runtime/mock-service.sqlite3", scenario=MockScenario(probabilities=True)
+)
+# spec must declare provider="mock", endpoint="synthetic".
+with prepare_run(
+    spec,
+    store="/local/runtime/store",
+    run_id="001",
+    capabilities=adapter.capabilities(spec),
+):
+    pass
+report = asyncio.run(
+    execute_run("001", store="/local/runtime/store", adapter=adapter, spec=spec)
+)
+# Reopening uses the original submission; it never allocates a retry.
+report = asyncio.run(
+    recover_run("001", store="/local/runtime/store", adapter=adapter, spec=spec)
+)
+```
+
+Both async internal services accept `use_frozen_snapshot=False` and a content-free
+`fault(stage, request_uid)` injection hook. They acquire exclusive lifetime run
+ownership before source verification and release it after durable processing.
+`ExecutionReport` contains the existing summary, `recovery_required`, fixed worker
+count, and request/result queue high-water marks. Minimal Python-origin runs
+require their original `spec`; file-origin runs can reconstruct verified sources.
+Full-capture changed originals need explicit snapshot authorization on each call.
+
+Only single-member requests execute. Grouped requests are rejected without
+changing their logical membership. Unknown acceptance and lost observations stay
+unresolved until authoritative recovery succeeds; matching hashes do not prove an
+observation existed. Full receipts permit local recovery of retained raw bytes;
+minimal receipts contain identity/hash metadata only. Committed results resume
+without submission or observation retrieval. Real adapters, retries, grouped
+salvage, public lifecycle APIs/CLI, and export lifecycle remain deferred.

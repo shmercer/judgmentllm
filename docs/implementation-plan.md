@@ -62,6 +62,21 @@ requested identity; newly known restrictions still block continuation. Actual
 Python-generated generation provenance is consumed in the required R/jsonlite
 gate. No cloud request builder or complete executable manifest is claimed.
 
+### Milestone 2 Subphase 3 implementation status
+
+Submission/recovery core is implemented as internal services with a typed mock
+protocol, independent acceptance ledger, exact payload commitments, owner-checked
+execution, bounded queues, receipts, and single-member rubric/pairwise result
+processing. Verification and limitations are recorded in
+[milestone-2-subphase-3-verification.md](milestone-2-subphase-3-verification.md).
+A fifth required Ubuntu/Python 3.11 offline R/jsonlite gate consumes separately
+executed/reopened mock attempt, submission, observation, and normalized-result
+records. The original four gates and cross-platform matrix remain unchanged.
+Subphase 4 owns grouped salvage, retry/subset selection, cancellation and export
+lifecycle; Subphase 5 owns public execution CLI controls. Large scale qualification
+remains Subphase 6. The unreleased package version remains `0.1.0a2` during this
+independently reviewed subphase; the complete milestone target remains `0.1.0a3`.
+
 ## Milestone 3 - Generative live adapters
 
 - Implement OpenAI Responses and Chat; Anthropic Messages; Gemini Developer; Vertex Gemini; Together AI; Ollama local, with maintained SDKs when available.

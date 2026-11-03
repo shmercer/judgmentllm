@@ -298,3 +298,23 @@ requested text. Never put credentials in configuration, metadata, or examples.
 `export_pairwise_r_csv(path, records, *, na_string="NA")` and `export_rubric_r_csv(...)` are available from `judgmentllm` and `judgmentllm.r_exports`. These iterator-based views revalidate each current result and retain every supplied attempt, including failures and observed ties. They do not replace the canonical normalized formats. IDs must be imported as character strings in R. Missing values use a configurable marker with literal collisions rejected. See [the complete R export schemas and runnable examples](r-interoperability.md).
 
 Pairwise `ID1/ID2` (`A_id/B_id` aliases) represent presented order. `better_id` preserves an observed winner; numeric `result` is 1/0/0.5 only for successful observed wins/ties. Original `p_left/p_right` and presented `p_first/p_second` remain distinct. Rubric views retain score kinds, selected/modal categories, expected values, and complete probability/coding JSON. Selecting an analysis dataset requires explicit attempt choices; exporters never select or combine retries.
+
+## Internal mock execution evidence (Subphase 3)
+
+Normalized results remain schema version 1 with unchanged canonical/R export
+columns. Submission and observation IDs are linked through repository evidence,
+not added as competing result columns. Real task/request/attempt identities and
+existing provider/model/mode/manifest/audit-path fields are populated through
+validated reconstruction. Synthetic distributions preserve selected categories,
+modes, expectations, and complete mappings separately; pair probabilities remain
+in original orientation despite reversed presentation.
+
+The typed mock wire protocol is `judgmentllm-mock-v1`. It commits original ordered
+membership, exact dependency, scope, prompt, output contract, and sparse requested
+generation controls. Unspecified generation is omitted. Prompt hash, actual-byte
+payload hash, logical request, attempt, correlation, and observation identities
+have separate meanings. An independent accepted observation must exist before
+retrieval/normalization; deterministic recipes and hashes alone cannot establish
+acceptance. Local preparation failures and unresolved submissions create no
+normalized judgments. Refusal, invalid received output, authoritative provider
+error, and definite invoked transport nonacceptance retain distinct evidence.

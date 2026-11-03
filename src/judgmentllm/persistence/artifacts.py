@@ -312,3 +312,47 @@ class ArtifactStore:
                 "fixed manifest could not be durably published"
             ) from None
         return target
+
+    def reference_path(self, relative_path: str) -> Path:
+        """Resolve a safe immutable metadata reference inside this store.
+
+        Named references identify durable receipts before SQLite binds their
+        objects. They never permit symlink indirection, even within the store.
+        """
+        try:
+            ArtifactIdentity.safe_path(relative_path)
+        except ValueError:
+            raise ArtifactIntegrityError("reference location is invalid") from None
+        target = self.root / relative_path
+        if not self._contains(target.parent):
+            raise ArtifactIntegrityError("reference location is outside its store")
+        current = target
+        while current != self.root:
+            if current.is_symlink():
+                raise ArtifactIntegrityError("reference location must not be a symlink")
+            current = current.parent
+        return target
+
+    def publish_reference(self, identity: ArtifactIdentity, relative_path: str) -> Path:
+        """Atomically publish a named verified object without replacing evidence."""
+        source = self.verify(identity)
+        if source is None:
+            raise ArtifactIntegrityError("reference requires retained metadata bytes")
+        target = self.reference_path(relative_path)
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target = self.reference_path(relative_path)
+            _fsync_directory(target.parent.parent)
+            try:
+                os.link(source, target)
+            except FileExistsError:
+                if _file_digest(target) != (identity.sha256, identity.byte_length):
+                    raise ArtifactIntegrityError(
+                        "reference already has conflicting content"
+                    ) from None
+            _fsync_directory(target.parent)
+            if _file_digest(target) != (identity.sha256, identity.byte_length):
+                raise ArtifactIntegrityError("reference failed content verification")
+        except OSError:
+            raise PersistenceError("reference could not be durably published") from None
+        return target
