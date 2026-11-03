@@ -488,20 +488,59 @@ def _requests_for_record(
     )
     for group in groups:
         members = tuple(by_trait[trait] for trait in group)
-        request_uid = stable_id(
+        yield _request_for_group(
+            record, group, plan.exemplar_ids, fingerprint, members=members
+        )
+
+
+def _request_for_group(
+    record: ResponseItem | PairTask,
+    group: tuple[str, ...],
+    exemplar_ids: tuple[str, ...],
+    fingerprint: str,
+    *,
+    members: tuple[AssessmentTask, ...] | None = None,
+) -> PlannedRequest:
+    """Build one known group, reusing already planned members when available.
+
+    Unlike full record planning, selected-request verification needs only its
+    own tasks. Keep these exact version-one identities aligned with iter_tasks.
+    """
+    if members is not None:
+        tasks = members
+    elif isinstance(record, ResponseItem):
+        tasks = tuple(
+            AssessmentTask(
+                task_id=stable_id("task", "rubric", record.item_id, trait_id),
+                item_id=record.item_id,
+                trait_id=trait_id,
+            )
+            for trait_id in group
+        )
+    else:
+        if group != (record.trait_id,):
+            raise ValueError("selected group differs from the pair criterion")
+        tasks = (
+            AssessmentTask(
+                task_id=stable_id("task", "pairwise", record.pair_uid, record.trait_id),
+                trait_id=record.trait_id,
+                pair_uid=record.pair_uid,
+                pair_id=record.pair_id,
+            ),
+        )
+    return PlannedRequest(
+        request_uid=stable_id(
             "request",
-            [task.task_id for task in members],
+            [task.task_id for task in tasks],
             fingerprint,
             record.model_dump(mode="json"),
-        )
-        yield PlannedRequest(
-            request_uid=request_uid,
-            tasks=members,
-            trait_ids=group,
-            exemplar_ids=plan.exemplar_ids,
-            response=record if isinstance(record, ResponseItem) else None,
-            pair=record if isinstance(record, PairTask) else None,
-        )
+        ),
+        tasks=tasks,
+        trait_ids=group,
+        exemplar_ids=exemplar_ids,
+        response=record if isinstance(record, ResponseItem) else None,
+        pair=record if isinstance(record, PairTask) else None,
+    )
 
 
 def prepare_pairs(
