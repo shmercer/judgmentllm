@@ -644,3 +644,15 @@ submission; complete grouped salvage remains Subphase 4. See
 [milestone-2-subphase-3-verification.md](milestone-2-subphase-3-verification.md)
 for actual verification and the precise handoff. No public execution CLI or
 real-provider adapter is introduced.
+
+
+## Subphase 4 implementation record
+
+The internal executor now supports grouped rubric salvage, atomic member outcomes,
+explicit exact-subset retry authorization, bounded automatic retries only after
+authoritative transient nonacceptance, conservative cancellation and immutable
+streaming exports. Original request identities/membership, version-1 normalized
+results and R columns remain unchanged; no schema migration is needed. See
+[milestone-2-subphase-4-verification.md](milestone-2-subphase-4-verification.md)
+for verification evidence, limits and the precise Subphase 5 handoff. Public
+lifecycle CLI, real adapters and full scale qualification remain out of scope.

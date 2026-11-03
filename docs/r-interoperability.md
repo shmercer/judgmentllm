@@ -382,3 +382,23 @@ JUDGMENTLLM_R_STRICT=1 Rscript --vanilla examples/execution_interoperability.R /
 Missing Rscript/jsonlite fails the required Ubuntu/Python 3.11 step. This gate
 uses neither processx nor an installed rubricLLM wrapper. CLI lifecycle and
 failed-member retry acceptance remain in their assigned later subphases.
+
+Subphase 4 adds a sixth required offline gate. Its first Python process executes
+grouped rubric observations with two successful members and one invalid member,
+publishes an incomplete export, and authorizes an exact failed-member retry.
+Another Python process reopens the durable history and publishes canonical JSONL,
+canonical CSV and R-compatible CSV through the internal immutable export service.
+Base R/jsonlite verifies original and retry membership, all result/attempt/
+submission/observation links, independent acceptance counts, complete nonuniform
+category mappings and distributions, selected versus expected scores, leading-zero
+IDs, unsuccessful null fields and minimal-capture paths. Original unsuccessful
+rows and earlier immutable export snapshots remain available after retry.
+
+```bash
+uv run --offline --no-sync python scripts/grouped_lifecycle_r_fixture.py --phase persist --output /tmp/judgmentllm-grouped-lifecycle-r
+uv run --offline --no-sync python scripts/grouped_lifecycle_r_fixture.py --phase export --output /tmp/judgmentllm-grouped-lifecycle-r
+JUDGMENTLLM_R_STRICT=1 Rscript --vanilla examples/grouped_lifecycle_interoperability.R /tmp/judgmentllm-grouped-lifecycle-r
+```
+
+All five earlier strict gates remain required. This sixth gate uses only base R
+and jsonlite; installed CLI lifecycle testing remains assigned to Subphase 5.

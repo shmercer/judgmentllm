@@ -16,11 +16,13 @@ from collections.abc import Coroutine, Generator
 from pathlib import Path
 from types import CoroutineType
 from typing import Any
+from unittest.mock import patch
 
 from preparation_memory_fixture import native_peak_bytes
 
 from judgmentllm.config import RunSpec
 from judgmentllm.execution import execute_run
+from judgmentllm.execution.exports import export_run
 from judgmentllm.persistence.repository import Repository
 from judgmentllm.preparation import prepare_run
 from judgmentllm.providers.mock import MockAdapter
@@ -31,7 +33,12 @@ class SampleComplete(Exception):
 
 
 def measure(
-    directory: Path, responses: int, traits: int, concurrency: int = 4, sample: int = 64
+    directory: Path,
+    responses: int,
+    traits: int,
+    concurrency: int = 4,
+    sample: int = 64,
+    group_size: int = 1,
 ) -> dict[str, int | float]:
     directory.mkdir(parents=True)
     source = directory / "responses.jsonl"
@@ -48,7 +55,11 @@ def measure(
             "provider": "mock",
             "endpoint": "synthetic",
             "model": "fixture",
-            "execution": {"concurrency": concurrency},
+            "execution": {
+                "concurrency": concurrency,
+                "grouping": "auto" if group_size > 1 else "independent",
+                "max_traits_per_request": group_size,
+            },
             "rubric": {
                 "rubric_id": "001",
                 "name": "Synthetic execution memory fixture",
@@ -72,7 +83,17 @@ def measure(
         pass
     completed = created_tasks = execution_tasks = live_tasks = peak_tasks = 0
     native_baseline = 0
-    sample = min(sample, responses * traits)
+    sample = min(sample, responses * ((traits + group_size - 1) // group_size))
+    queue_high_water: dict[int, int] = {}
+
+    class MeasuredQueue(asyncio.Queue[Any]):
+        """Measure actual scheduler buffers without changing queue capacity."""
+
+        async def put(self, item: Any) -> None:
+            await super().put(item)
+            queue_high_water[self.maxsize] = max(
+                queue_high_water.get(self.maxsize, 0), self.qsize()
+            )
 
     def fault(stage: str, request_uid: str) -> None:
         nonlocal completed, native_baseline
@@ -115,9 +136,10 @@ def measure(
         loop.set_task_factory(factory)
         try:
             try:
-                await execute_run(
-                    "001", store=store, adapter=adapter, spec=spec, fault=fault
-                )
+                with patch("judgmentllm.execution.core.asyncio.Queue", MeasuredQueue):
+                    await execute_run(
+                        "001", store=store, adapter=adapter, spec=spec, fault=fault
+                    )
             except* SampleComplete:
                 pass
         finally:
@@ -134,22 +156,39 @@ def measure(
         tracemalloc.stop()
     with Repository(store) as repository:
         summary = repository.summary("001")
-        assert summary.results == sample
+        assert sample <= summary.results <= sample * group_size
+        request_count = repository.connection.execute(
+            "SELECT COUNT(*) FROM requests WHERE run_id='001'"
+        ).fetchone()[0]
+    tracemalloc.start()
+    try:
+        exported = export_run("001", store=store, page_size=8)
+        export_peak = tracemalloc.get_traced_memory()[1]
+        assert exported.row_count == summary.results
+    finally:
+        tracemalloc.stop()
     return {
         "response_count": responses,
         "trait_count": traits,
         "logical_task_count": responses * traits,
         "sample_count": completed,
+        "result_count": summary.results,
+        "group_size": group_size,
         "concurrency": concurrency,
         "created_asyncio_tasks": created_tasks,
         "execution_asyncio_tasks": execution_tasks,
         "peak_asyncio_tasks": peak_tasks,
         "prepared_count": summary.tasks,
+        "prepared_request_count": request_count,
+        "request_queue_high_water": queue_high_water.get(2 * concurrency, 0),
+        "result_queue_high_water": queue_high_water.get(concurrency, 0),
         "acceptance_count": adapter.ledger.acceptance_count(),
         "source_byte_length": source.stat().st_size,
         "python_peak_bytes": python_peak,
         "python_live_bytes": python_live,
         "python_after_gc_bytes": python_after_gc,
+        "export_python_peak_bytes": export_peak,
+        "export_row_count": exported.row_count,
         "native_baseline_bytes": native_baseline,
         "native_peak_bytes": native_peak_bytes(),
         "elapsed_seconds": time.monotonic() - started,
@@ -163,8 +202,18 @@ def main() -> None:
     parser.add_argument("--traits", type=int, required=True)
     parser.add_argument("--concurrency", type=int, default=4)
     parser.add_argument("--sample", type=int, default=64)
+    parser.add_argument("--group-size", type=int, default=1)
     options = parser.parse_args()
-    if min(options.responses, options.traits, options.concurrency, options.sample) < 1:
+    if (
+        min(
+            options.responses,
+            options.traits,
+            options.concurrency,
+            options.sample,
+            options.group_size,
+        )
+        < 1
+    ):
         parser.error("counts must be positive")
     measurement = measure(
         options.directory,
@@ -172,6 +221,7 @@ def main() -> None:
         options.traits,
         options.concurrency,
         options.sample,
+        options.group_size,
     )
     encoded = json.dumps(measurement)
     (options.directory / "measurement.json").write_text(encoded, encoding="utf-8")

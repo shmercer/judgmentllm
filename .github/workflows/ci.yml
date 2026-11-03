@@ -141,6 +141,17 @@ jobs:
           uv run --offline --no-sync python scripts/execution_r_fixture.py --phase export --output "$RUNNER_TEMP/judgmentllm-execution-r"
           Rscript --vanilla examples/execution_interoperability.R "$RUNNER_TEMP/judgmentllm-execution-r"
 
+      - name: Verify required grouped retry and export interoperability
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
+        shell: bash
+        env:
+          JUDGMENTLLM_R_STRICT: '1'
+        run: |
+          set -euo pipefail
+          uv run --offline --no-sync python scripts/grouped_lifecycle_r_fixture.py --phase persist --output "$RUNNER_TEMP/judgmentllm-grouped-lifecycle-r"
+          uv run --offline --no-sync python scripts/grouped_lifecycle_r_fixture.py --phase export --output "$RUNNER_TEMP/judgmentllm-grouped-lifecycle-r"
+          Rscript --vanilla examples/grouped_lifecycle_interoperability.R "$RUNNER_TEMP/judgmentllm-grouped-lifecycle-r"
+
       - name: Build distributions
         run: uv build --offline
 
