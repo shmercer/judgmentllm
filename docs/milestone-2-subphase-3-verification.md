@@ -294,6 +294,39 @@ local full suite passed **1,138 tests**, no skips or warnings, in 196.52 seconds
 with **96.43%** coverage and both warning categories as errors. Ruff lint/format,
 strict Pyright, unchanged offline lockfile, current wheel/sdist builds, strict
 metadata and clean installed smoke checks all passed. All five strict R/jsonlite
-checks passed in the full suite. Final remote matrix qualification remains pending
-the new head. No warning suppression or production/schema/ID/result/export change
-is introduced; all six CI jobs use both warning-error filters.
+checks passed in the full suite. No warning suppression or production/schema/ID/
+result/export change is introduced; all six CI jobs use both warning-error filters.
+
+### Remote qualification evidence
+
+All six configurations passed on correction head
+`426bf97a30094bc105e28c0b4e8f95d0a7fc284e` in
+[CI run 41573536116](https://github.com/shmercer/judgmentllm/actions/runs/41573536116).
+Both Windows jobs passed all 17 dedicated privacy/lock preflight tests and their
+complete suites, builds, metadata checks and clean wheel installation smoke.
+The Ubuntu/Python 3.11 job passed all five separate required R/jsonlite gates and
+clean wheel/sdist smoke checks.
+
+| Configuration | Conclusion | Full suite | Coverage |
+|---|---|---|---:|
+| [Ubuntu / Python 3.11](https://github.com/shmercer/judgmentllm/actions/runs/41573536116/job/125711722200) | Success | 1,138 passed | 96.43% |
+| [Ubuntu / Python 3.15](https://github.com/shmercer/judgmentllm/actions/runs/41573536116/job/125711721980) | Success | 1,131 passed, 7 skipped | 96.41% |
+| [macOS / Python 3.11](https://github.com/shmercer/judgmentllm/actions/runs/41573536116/job/125711722124) | Success | 1,131 passed, 7 skipped | 96.43% |
+| [macOS / Python 3.15](https://github.com/shmercer/judgmentllm/actions/runs/41573536116/job/125711722203) | Success | 1,131 passed, 7 skipped | 96.41% |
+| [Windows / Python 3.11](https://github.com/shmercer/judgmentllm/actions/runs/41573536116/job/125711722364) | Success | 1,131 passed, 7 skipped | 96.21% |
+| [Windows / Python 3.15](https://github.com/shmercer/judgmentllm/actions/runs/41573536116/job/125711722261) | Success | 1,131 passed, 7 skipped | 96.19% |
+
+No SQLite ResourceWarnings, pytest unraisable warnings, or pytest warning summaries
+remain in these six logs. The existing optional R-prerequisite/platform-specific
+skips outside Ubuntu/Python 3.11 remain; no skip or privacy exemption was added.
+Ubuntu's setup/optional Codecov steps still emit unrelated diagnostics (gdebi
+escape-sequence SyntaxWarnings, a jsonlite archive PAX-header notice, and Codecov
+signature-trust/optional collection-tool notices); integrity verification and
+coverage XML upload succeed. These do not suppress test warnings or affect any
+required gate.
+
+This evidence update is a documentation-only follow-up to that qualified code.
+The [current PR #6 checks](https://github.com/shmercer/judgmentllm/pull/6/checks)
+provide the exact final documentation-head commit and its six conclusions; that
+head must pass the same matrix before delivery. No merge or Subphase 4 work is
+part of these corrections.
