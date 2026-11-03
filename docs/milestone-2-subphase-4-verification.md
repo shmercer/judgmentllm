@@ -272,5 +272,8 @@ normalization, export, privacy, concurrency and retry contracts.
 The six-configuration CI matrix includes a focused native Windows regression step
 before the full quality gates. This runs export durability, all export tests,
 all grouped privacy interruption variants, three repeated exclusive-owner death
-cycles, and independent/grouped subprocess memory fixtures with the unchanged
-warning/error and memory limits. Native CI evidence and final results follow.
+cycles. Independent/grouped subprocess memory fixtures retain their unchanged
+assertions and limits in the complete coverage suite; they are not duplicated in
+the focused step. The existing 20-minute job timeout is unchanged. Full-suite
+skip reasons are printed explicitly with `-ra`. Native CI evidence and final
+results follow.

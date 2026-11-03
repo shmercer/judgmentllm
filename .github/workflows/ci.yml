@@ -49,7 +49,7 @@ jobs:
 
       - name: Verify Windows export durability and cancellation recovery
         if: runner.os == 'Windows'
-        run: uv run --offline --no-sync pytest --no-cov -q -rP tests/test_export_durability.py tests/test_execution_exports.py tests/test_grouped_execution.py::test_grouped_minimal_privacy_live_and_recovery tests/test_execution_cancellation_processes.py::test_competing_process_cannot_cancel_exclusive_executor tests/test_execution_resources.py tests/test_grouped_resources.py -Werror::ResourceWarning -Werror::pytest.PytestUnraisableExceptionWarning
+        run: uv run --offline --no-sync pytest --no-cov -q -rP tests/test_export_durability.py tests/test_execution_exports.py tests/test_grouped_execution.py::test_grouped_minimal_privacy_live_and_recovery tests/test_execution_cancellation_processes.py::test_competing_process_cannot_cancel_exclusive_executor -Werror::ResourceWarning -Werror::pytest.PytestUnraisableExceptionWarning
 
       - name: Lint
         run: uv run --offline --no-sync ruff check .
@@ -89,7 +89,7 @@ jobs:
         run: uv run --offline --no-sync pytest --no-cov -q tests/test_execution_privacy.py tests/test_execution.py::test_minimal_privacy_success_and_loss_windows -Werror::ResourceWarning -Werror::pytest.PytestUnraisableExceptionWarning
 
       - name: Run offline tests with coverage
-        run: uv run --offline --no-sync pytest -Werror::ResourceWarning -Werror::pytest.PytestUnraisableExceptionWarning
+        run: uv run --offline --no-sync pytest -ra -Werror::ResourceWarning -Werror::pytest.PytestUnraisableExceptionWarning
 
       - name: Verify required Python-to-R interoperability
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
