@@ -379,9 +379,23 @@ class PreparedRun:
 
     def render_attempt(self, dependency: RequestDependency) -> RenderedPrompt:
         """Render an exact ordered subset while retaining its parent identity."""
+        selected = tuple(t.task_id for t in dependency.request.tasks)
+        if selected == self.repository.request_task_ids(
+            self.manifest.run_id, dependency.request.request_uid
+        ):
+            if (
+                dependency.dependency_sha256
+                != self.repository.get_request(
+                    self.manifest.run_id, dependency.request.request_uid
+                ).dependency_sha256
+            ):
+                raise PreparationError("parent request dependency changed")
+            # Whole-membership attempts use the strict original-request path.
+            # It already rechecks sources, configuration, the original plan and
+            # every dependency before rendering; no parent render is discarded.
+            return self.render(dependency)
         parent = self.dependency_for_request(dependency.request.request_uid)
         self.render(parent)
-        selected = tuple(t.task_id for t in dependency.request.tasks)
         expected_tasks = tuple(t for t in parent.request.tasks if t.task_id in selected)
         expected = parent.model_copy(
             update={

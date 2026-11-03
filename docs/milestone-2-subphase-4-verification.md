@@ -277,3 +277,69 @@ assertions and limits in the complete coverage suite; they are not duplicated in
 the focused step. The existing 20-minute job timeout is unchanged. Full-suite
 skip reasons are printed explicitly with `-ra`. Native CI evidence and final
 results follow.
+
+### Native termination evidence
+
+The focused native Windows jobs in [run 41658008255](https://github.com/shmercer/judgmentllm/actions/runs/41658008255)
+passed **55 tests on each Windows version**, including the subprocess memory
+fixtures. Their logs establish that the venv launcher and lock-owning Python
+interpreter are different processes. For example:
+
+| Python / SQLite | Launcher PID | Owner PID | Native wait | Owner / launcher exit | Integrity / foreign keys |
+|---|---:|---:|---|---|---|
+| 3.11 / 3.45.1 | 6744 | 7300 | signaled (`0`) | 15 / 15 | ok / ok |
+| 3.15 / 3.53.4 | 8988 | 3312 | signaled (`0`) | 15 / 15 | ok / ok |
+
+All three repeated cycles per version passed with independent owner handles.
+Every competing cancellation while the owner was alive failed with
+`OwnershipError`; immediate cancellation after actual owner exit succeeded,
+recovered stale ownership and left zero accepted submissions/results. The
+previous test lacked this termination precondition: reaping the launcher after
+an asynchronous termination request did not establish interpreter exit.
+[Microsoft documents the required process-handle wait after TerminateProcess](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-terminateprocess).
+The evidence supports a test process-lifetime race, with no demonstrated
+production WAL defect. The correction uses a bounded 10-second native process
+wait, not a SQLite retry or post-exit sleep. SQLite errors still fail immediately.
+
+The first correction workflow also passed all four complete Linux/macOS jobs.
+Its two Windows full-suite jobs were superseded after their focused checks passed
+because the initial precheck duplicated the expensive memory fixtures. The
+subsequent workflow runs those fixtures exactly once in the complete suite,
+preserving their workloads/assertions and the existing 20-minute job limit.
+This sequencing change neither skips a required test nor changes resource limits.
+
+### Correction quality gates
+
+Local Linux/Python 3.12.3 verification passed **1,282 tests, 96.10% coverage**, in
+351.60 seconds, with `ResourceWarning` and `PytestUnraisableExceptionWarning` as
+errors, no skips and no reported warnings. Ruff lint/format and strict Pyright
+passed; lockfile validation, isolated offline wheel/sdist builds, strict metadata
+checks and clean wheel/source smoke installations passed. All six independent
+strict offline R/jsonlite gates passed again. Native Windows is verified in CI,
+not emulated locally; no new platform skip was introduced.
+
+### Resource timing follow-up
+
+[Run 41660152874](https://github.com/shmercer/judgmentllm/actions/runs/41660152874)
+passed both Windows focused prechecks and the complete Windows/Python 3.15 job
+(1,274 passed, eight existing skips, 95.89% coverage). Windows/Python 3.11 had one
+failure among 1,274 executed tests: the unchanged 200-response/200-trait memory
+subprocess exceeded its existing 180-second timeout. The same resource cases had
+passed the preceding native precheck. The timeout and all worker, queue, sample,
+workload and memory limits remain unchanged.
+
+Inspection identified discarded duplicate parent planning/rendering for whole-
+membership attempts. `render_attempt()` now delegates such attempts to the
+existing strict original-request renderer after checking exact original membership
+and the durable parent dependency commitment. Exact-subset rendering is unchanged.
+Regression tests require byte-identical output, strict source/configuration/
+membership/dependency rejection and one original-request rendering pass. The
+unchanged 64-request 200×200 diagnostic measured 64.11 seconds before and 62.50
+after on local Linux, with identical request/result/acceptance counts and bounded
+memory. This modest timing improvement is not a claim to eliminate hosted-runner
+variability; native CI remains the acceptance test.
+
+GitHub separately cancelled queued macOS jobs before assigning runners, annotating
+that macOS arm64 hosted capacity was unavailable after multiple allocation attempts.
+Those are infrastructure cancellations, not test failures. Successful macOS checks
+from an earlier head are not substituted for the required final-head checks.
