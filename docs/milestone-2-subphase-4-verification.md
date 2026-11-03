@@ -343,3 +343,45 @@ GitHub separately cancelled queued macOS jobs before assigning runners, annotati
 that macOS arm64 hosted capacity was unavailable after multiple allocation attempts.
 Those are infrastructure cancellations, not test failures. Successful macOS checks
 from an earlier head are not substituted for the required final-head checks.
+
+### Confirmed correction CI results
+
+All six configurations passed on source-correction head
+`f1b5dc532f89376ee81cc5f6fcbf187e204c0386` in
+[CI run 41665721335](https://github.com/shmercer/judgmentllm/actions/runs/41665721335).
+The macOS/Python 3.15 job passed after a runner-capacity rerun at the same head;
+the five successful jobs were retained. No failed test was skipped or limit raised.
+
+| Configuration | Full-suite passed | Existing skips | Coverage | Overall job |
+|---|---:|---:|---:|---|
+| Ubuntu / Python 3.11 | 1,297 | 0 | 96.12% | passed |
+| Ubuntu / Python 3.15 | 1,289 | 8 | 96.10% | passed |
+| macOS / Python 3.11 | 1,289 | 8 | 96.12% | passed |
+| macOS / Python 3.15 | 1,289 | 8 | 96.10% | passed |
+| Windows / Python 3.11 | 1,289 | 8 | 95.92% | passed |
+| Windows / Python 3.15 | 1,289 | 8 | 95.91% | passed |
+
+Both Windows jobs also passed all 52 focused correction tests before the complete
+quality suite, plus the unchanged 17-test live privacy/lock step. Their complete
+suites passed the independent/grouped subprocess memory fixtures with the original
+180-second fixture timeout, sample sizes and memory/queue limits. Ubuntu/Python
+3.11 passed all six separate strict R/jsonlite gates with no skips. Ruff, formatting,
+strict Pyright, builds, metadata and all applicable clean-install smoke steps
+passed across the matrix.
+
+The final local source verification passed **1,297 tests, 96.12% coverage**, in
+346.87 seconds, without warnings or skips; Ruff reports 119 formatted Python
+files. All six strict R gates and locked offline build/metadata/clean wheel/source
+smoke checks passed again after the rendering correction.
+
+Remaining skips are unchanged platform/environment cases: eight R-dependent tests
+on macOS and Ubuntu/Python 3.15 where Rscript is unavailable; seven jsonlite-dependent
+tests and one Unix-only fork test on Windows. Required R coverage is exercised on
+Ubuntu/Python 3.11. No pytest warning summaries were reported. Hosted macOS arm64
+capacity cancellation and the earlier Windows resource timeout remain recorded
+above as infrastructure/timing limitations; they are not hidden or substituted
+for final passing checks. No large-scale Subphase 6 qualification is claimed.
+
+This final recording changes documentation only. Handoff requires all six checks
+on the exact final PR head; [PR #7 checks](https://github.com/shmercer/judgmentllm/pull/7/checks)
+provides that final status. PR #7 remains unmerged and Subphase 5 has not begun.
