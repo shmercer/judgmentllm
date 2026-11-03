@@ -80,6 +80,25 @@ with open_prepared_run("001", store="prepared-registry") as prepared:
     assert prepared.manifest_sha256 == prepared_hash
     assert prepared.get_response("synthetic").item_id == "synthetic"
 
+# Execute and recover a real synthetic observation through the installed core.
+import asyncio
+from judgmentllm.execution import execute_run, recover_run
+from judgmentllm.providers.mock import MockAdapter, MockScenario
+mock_document = json.loads(Path("run.json").read_text(encoding="utf-8"))
+mock_document.update(provider="mock", endpoint="synthetic", capture="minimal",
+    generation={"temperature":0,"max_output_tokens":127})
+Path("mock-run.json").write_text(json.dumps(mock_document), encoding="utf-8")
+mock = MockAdapter(Path("mock-ledger.sqlite3"), scenario=MockScenario(probabilities=True))
+mock_spec = load_run_spec("mock-run.json")
+with prepare_run("mock-run.json", store="execution-registry", run_id="001",
+    capabilities=mock.capabilities(mock_spec)):
+    pass
+report = asyncio.run(execute_run("001", store="execution-registry", adapter=mock))
+assert report.summary.results == report.summary.successful_results == 1
+assert not report.recovery_required and mock.ledger.acceptance_count() == 1
+report = asyncio.run(recover_run("001", store="execution-registry", adapter=mock))
+assert report.summary.results == 1 and mock.ledger.acceptance_count() == 1
+
 # Exercise installed registry, immutable artifacts, and local OS ownership.
 from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.hashing import bytes_digest, semantic_digest

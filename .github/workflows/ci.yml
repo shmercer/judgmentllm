@@ -80,8 +80,12 @@ jobs:
         if: runner.os == 'Windows'
         run: uv run --offline --no-sync python scripts/source_signature_probe.py
 
+      - name: Verify Windows live privacy and lock behavior
+        if: runner.os == 'Windows'
+        run: uv run --offline --no-sync pytest --no-cov -q tests/test_execution_privacy.py tests/test_execution.py::test_minimal_privacy_success_and_loss_windows -Werror::ResourceWarning -Werror::pytest.PytestUnraisableExceptionWarning
+
       - name: Run offline tests with coverage
-        run: uv run --offline --no-sync pytest
+        run: uv run --offline --no-sync pytest -Werror::ResourceWarning -Werror::pytest.PytestUnraisableExceptionWarning
 
       - name: Verify required Python-to-R interoperability
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
@@ -125,6 +129,17 @@ jobs:
           uv run --offline --no-sync python scripts/source_preparation_r_fixture.py --phase persist --output "$RUNNER_TEMP/judgmentllm-source-preparation-r"
           uv run --offline --no-sync python scripts/source_preparation_r_fixture.py --phase export --output "$RUNNER_TEMP/judgmentllm-source-preparation-r"
           Rscript --vanilla examples/source_preparation_interoperability.R "$RUNNER_TEMP/judgmentllm-source-preparation-r"
+
+      - name: Verify required execution-to-R interoperability
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
+        shell: bash
+        env:
+          JUDGMENTLLM_R_STRICT: '1'
+        run: |
+          set -euo pipefail
+          uv run --offline --no-sync python scripts/execution_r_fixture.py --phase persist --output "$RUNNER_TEMP/judgmentllm-execution-r"
+          uv run --offline --no-sync python scripts/execution_r_fixture.py --phase export --output "$RUNNER_TEMP/judgmentllm-execution-r"
+          Rscript --vanilla examples/execution_interoperability.R "$RUNNER_TEMP/judgmentllm-execution-r"
 
       - name: Build distributions
         run: uv build --offline

@@ -633,3 +633,14 @@ Deferrals remain unchanged:
 - **Milestone 7:** Optional local FastAPI service.
 
 No real provider requests, statistical engine, arbitrary provider request JSON, background web service, or general workflow framework enters Milestone 2.
+
+## Subphase 3 implementation record
+
+The submission/recovery core implements the approved narrow provider protocol,
+independent mock ledger, exact-payload preparation, owner-checked bounded executor,
+receipts, and single-member rubric/pairwise normalization. The protocol represents
+grouped outputs, while this executor rejects multi-member requests before
+submission; complete grouped salvage remains Subphase 4. See
+[milestone-2-subphase-3-verification.md](milestone-2-subphase-3-verification.md)
+for actual verification and the precise handoff. No public execution CLI or
+real-provider adapter is introduced.

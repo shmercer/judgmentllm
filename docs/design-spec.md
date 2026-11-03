@@ -217,3 +217,16 @@ No provider-specific details should leak into normalized assessment interpretati
 - Codecov Python: https://about.codecov.io/language/python/
 
 All documented capabilities are subject to provider and account change. Date and qualify concrete model combinations rather than assuming live API availability from documentation alone.
+
+## Milestone 2 Subphase 3 implementation boundary
+
+Internal mock execution now integrates immutable preparation, exact adapter-owned
+payloads, bounded async workers, owner-token-checked durable writes, independent
+mock acceptance evidence, response receipts, and conservative recovery. It
+supports single-member rubric and pairwise assessments through the established
+validators/normalizers; every result remains explicitly synthetic and schema 1.
+Full/minimal privacy and source/capability compatibility apply at scheduling and
+submission. The service never retries a possibly submitted request because a
+process disappeared. Grouped salvage, retries, cancellation/export lifecycle and
+public lifecycle controls remain in their approved later subphases. See the
+[verification record](milestone-2-subphase-3-verification.md).

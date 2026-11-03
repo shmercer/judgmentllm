@@ -363,3 +363,22 @@ remain pending without that package. This does not satisfy the required CI gate,
 which installs R/`jsonlite` and fails if full JSON verification cannot run. Python
 tests remain required. No R package becomes a core Python dependency, and no
 network/provider request is made by the examples.
+
+Subphase 3 adds a fifth strict offline execution gate without introducing the
+Subphase 5 lifecycle CLI. One Python process executes four full/minimal rubric/
+pairwise runs; another reopens them, resumes committed results, and exports actual
+normalized results plus an evidence sidecar. Base R/jsonlite checks the joins to
+immutable attempts/submissions/observations and independent acceptance counts,
+character IDs, reversed orientation, explanations, nonuniform coding, complete
+probabilities, score kinds and missing retained paths. No v1 result or R-export
+column changes are required.
+
+```bash
+uv run --offline --no-sync python scripts/execution_r_fixture.py --phase persist --output /tmp/judgmentllm-execution-r
+uv run --offline --no-sync python scripts/execution_r_fixture.py --phase export --output /tmp/judgmentllm-execution-r
+JUDGMENTLLM_R_STRICT=1 Rscript --vanilla examples/execution_interoperability.R /tmp/judgmentllm-execution-r
+```
+
+Missing Rscript/jsonlite fails the required Ubuntu/Python 3.11 step. This gate
+uses neither processx nor an installed rubricLLM wrapper. CLI lifecycle and
+failed-member retry acceptance remain in their assigned later subphases.

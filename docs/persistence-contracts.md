@@ -1,4 +1,4 @@
-# Internal persistence contracts — Milestone 2 preparation
+# Internal persistence contracts — Milestone 2 submission/recovery
 
 The approved [execution plan](milestone-2-execution-plan.md) is preserved as
 reviewed, with the generation requirement added at the start of Subphase 2.
@@ -6,7 +6,7 @@ This document describes the implemented durable foundation, generation
 commitments, and immutable source-preparation services.
 `judgmentllm.persistence` is an internal Python package. Its records use version
 1 independently of the unchanged assessment and normalized-result schemas.
-There is no executor, provider protocol, mock provider, or lifecycle CLI command.
+Subphase 3 adds internal mock execution and recovery; public lifecycle CLI commands remain deferred.
 
 ## Registry and transactions
 
@@ -82,8 +82,8 @@ cancelled` vocabulary. `submitted` describes sealed local intent, not remote
 acceptance. Request/task/attempt states distinguish preparation, active work,
 terminal outcomes, and uncertainty. Submission states distinguish `prepared`,
 `submitting`, `acknowledged`, `confirmed_not_submitted`, `uncertain`, and `resolved`.
-The subphase does not automatically transition abandoned submissions or reconcile
-remote outcomes; later services must do so conservatively.
+The Subphase 1 foundation supplies these transitions; Subphase 3 execution now
+reconciles abandoned submissions conservatively using authoritative evidence.
 
 ## Successful and unsuccessful results
 
@@ -280,8 +280,8 @@ Windows has no stdlib directory-fsync equivalent. No overwrite fallback is used.
 
 ## Subphase 3 handoff
 
-Prepare request dependencies incrementally and bind exact prompt/payload bytes
-before submission in later phases. Retain original request membership and use
+Subphase 3 consumes request dependencies incrementally and binds exact prompt/
+payload bytes before submission. Retain original request membership and use
 attempt subsets for retries. Minimal response recovery must retrieve the same
 authoritative observation or remain unresolved; a request hash is insufficient.
 
@@ -295,3 +295,72 @@ The [generation verification record](milestone-2-generation-verification.md)
 records its earlier foundation only. The
 [source-preparation verification record](milestone-2-subphase-2-verification.md)
 records complete input preparation and the remaining submission-boundary work.
+
+## Subphase 3 execution ownership, receipts, and provider evidence
+
+The internal `judgmentllm.execution` service now executes prepared single-member
+mock requests. It reuses the version-1 registry, memberships, result schemas,
+validators, and normalizers. No registry migration or result/export-column change
+is introduced.
+
+`execution_transaction(run_id, owner_token)` checks ownership inside the short
+write transaction and attaches that owner to its events. Executable preparation,
+claims, submission-boundary changes, observations, and result commits use it.
+The lower-level foundation methods remain available for existing preparation and
+synthetic persistence fixtures; they are not an executor ownership API. Typed
+record/membership/result reads and bounded keyset iterators support reopening.
+The existing run checkpoint records the next durable preparation ordinal, not
+completion or permission to skip prior uncertain work.
+
+One I/O thread owns preparation, SQLite connections, source handles, artifacts,
+and receipts. It acquires `ExecutorOwnership` before reopening the manifest and
+retains it through cleanup. Async provider workers and queues remain bounded:
+request queue capacity is twice concurrency; result queue capacity is concurrency.
+No request/task product is materialized. Every selected request is rendered and
+revalidated again at the final submission boundary. Source signatures and selected
+record hashes, disk manifest/object identity, current capability restrictions,
+generation, and exact payload commitments are checked without modifying the seal.
+
+Tasks, original request membership, attempt identity, byte commitments, and local
+submission intent commit before claiming. The `submitting` transaction commits
+immediately before the adapter call and means the call might have occurred.
+Acceptance requires authoritative evidence. Pre-boundary work may reuse the same
+preparation; post-boundary work must reconcile. Authoritative nonacceptance is
+recorded independently of missing acknowledgments; it does not authorize this
+subphase to allocate another attempt. A conclusively failed invoked transport
+operation uses `submission_failures`, never a provider observation.
+
+`ResponseReceipt` binds run/attempt/submission/correlation/payload identities to
+observation identity/key/kind, receipt time, and exact raw artifact identity.
+Raw objects and canonical receipt references publish atomically without overwrite
+before the observation transaction. Recovery verifies all identities and retained
+bytes; mismatches or corruption block recovery. Observation insertion and
+normalization/result commits are separate durable boundaries. The result commit
+atomically writes the result and corresponding task/request/attempt/submission
+states. An interrupted transaction rolls back; committed records are reused.
+
+Full capture retains exact prompt/payload/raw artifacts. Minimal capture retains
+only their hash/length identities and receipt metadata, parsing/normalizing in
+memory. A hash-only observation still requires retrieval after response loss.
+Authorized normalized explanations remain permitted result data. No raw bytes
+are written to minimal artifacts, receipts, WAL, temporary files, or ledger rows.
+
+The mock service uses a separate SQLite acceptance ledger with FULL synchronous
+commits. Its service namespace is bound into actual payload bytes, preventing a
+replaced ledger from claiming nonacceptance for old preparations. The ledger
+records immutable acceptance/nonacceptance, payload/correlation identity, stable
+observation key, acceptance count, retrieval status, and a non-sensitive numeric/
+enum recipe with response and fixture hashes. Text-bearing fixture configuration
+must be supplied again in memory. Retrieval requires an existing accepted row
+and verifies its exact response hash; it never increases acceptance count. Missing
+reconciliation or retrieval leaves work blocked and `recovery_required` true.
+
+See [Subphase 3 verification](milestone-2-subphase-3-verification.md) for fault
+windows, privacy checks, independent-process/R tests, and the Subphase 4 handoff.
+
+Acknowledgment sidecars retain strict accepted remote/observation identities before
+the acknowledgment transaction. Recovery replays verified sidecars before remote
+lookup, keeping known acceptance even when lookup is unavailable. Retrieved
+observation keys must match durable acknowledgments. Completed runs require all
+tasks to have successful results; retained unsuccessful results yield `partial`,
+while unresolved evidence remains independently reported by `recovery_required`.

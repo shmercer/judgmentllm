@@ -86,6 +86,7 @@ class Repository:
             timeout=busy_timeout_ms / 1000,
         )
         self._depth = 0
+        self._execution_owner: tuple[str, str] | None = None
         try:
             self.connection.row_factory = sqlite3.Row
             self.connection.execute("PRAGMA foreign_keys=ON")
@@ -144,6 +145,67 @@ class Repository:
             raise NotFoundError("durable record was not found")
         return row
 
+    @contextmanager
+    def execution_transaction(self, run_id: str, owner_token: str) -> Generator[None]:
+        """Authorize one short execution write while the caller holds its OS lock.
+
+        The token is checked under the write transaction, so stale executors
+        cannot claim or advance work after ownership handoff. This does not
+        acquire the lifetime OS lock; use ``ExecutorOwnership`` first. General
+        low-level foundation methods remain available for preparation/fixtures.
+        """
+        previous = self._execution_owner
+        if previous is not None and previous != (run_id, owner_token):
+            raise OwnershipError("execution transaction owner does not match")
+        with self.transaction():
+            self.require_owner(run_id, owner_token)
+            self._execution_owner = (run_id, owner_token)
+            try:
+                yield
+                self.require_owner(run_id, owner_token)
+            finally:
+                self._execution_owner = previous
+
+    def require_owner(self, run_id: str, owner_token: str) -> None:
+        """Check the active diagnostics token, never heartbeat age or a PID."""
+        owner = self.get_owner(run_id)
+        if owner is None or owner.token != owner_token:
+            raise OwnershipError("execution ownership token does not match")
+
+    def get_execution_checkpoint(self, run_id: str) -> int:
+        """Return the next preparation ordinal; this is not completion evidence."""
+        row = self._one("SELECT checkpoint FROM runs WHERE run_id=?", (run_id,))
+        value = row["checkpoint"]
+        if value is None:
+            return 0
+        if (
+            not isinstance(value, str)
+            or len(value) > 19
+            or not value.isascii()
+            or not value.isdecimal()
+            or str(int(value)) != value
+            or int(value) > 2**63 - 1
+        ):
+            raise IntegrityError("execution preparation checkpoint is invalid")
+        return int(value)
+
+    def advance_execution_checkpoint(
+        self, run_id: str, ordinal: int, *, owner_token: str
+    ) -> None:
+        """Advance prepared progress atomically with the caller's request writes.
+
+        Recovery must still inspect prior unresolved submissions and results;
+        this marker never authorizes skipping evidence or another acceptance.
+        """
+        if type(ordinal) is not int or not 0 <= ordinal <= 2**63 - 1:
+            raise ValueError("checkpoint ordinal must be a nonnegative SQLite integer")
+        with self.execution_transaction(run_id, owner_token):
+            if ordinal < self.get_execution_checkpoint(run_id):
+                raise IntegrityError("execution preparation checkpoint cannot decrease")
+            self.connection.execute(
+                "UPDATE runs SET checkpoint=? WHERE run_id=?", (str(ordinal), run_id)
+            )
+
     def _insert(self, table: str, record: ExecutionModel) -> None:
         data = record.model_dump(exclude={"schema_version"})
         names = ",".join(data)
@@ -163,6 +225,12 @@ class Repository:
         target: str | None = None,
         owner_token: str | None = None,
     ) -> int:
+        if self._execution_owner is not None:
+            execution_run, execution_token = self._execution_owner
+            if run_id != execution_run:
+                raise OwnershipError("execution transaction belongs to another run")
+            self.require_owner(run_id, execution_token)
+            owner_token = execution_token
         cursor = self.connection.execute(
             "INSERT INTO events(run_id,kind,entity_kind,entity_id,previous_state,new_state,occurred_at,owner_token) VALUES (?,?,?,?,?,?,?,?)",
             (
@@ -392,6 +460,167 @@ class Repository:
             self._insert("tasks", record)
             self._event(record.run_id, "created", "task", record.task_id)
 
+    def get_task(self, run_id: str, task_id: str) -> TaskRecord:
+        return TaskRecord.model_validate(
+            dict(
+                self._one(
+                    "SELECT * FROM tasks WHERE run_id=? AND task_id=?",
+                    (run_id, task_id),
+                )
+            )
+        )
+
+    def get_request(self, run_id: str, request_uid: str) -> RequestRecord:
+        return RequestRecord.model_validate(
+            dict(
+                self._one(
+                    "SELECT run_id,request_uid,scheduling_ordinal,dependency_sha256,state FROM requests WHERE run_id=? AND request_uid=?",
+                    (run_id, request_uid),
+                )
+            )
+        )
+
+    def get_attempt(self, run_id: str, attempt_id: str) -> AttemptRecord:
+        return AttemptRecord.model_validate(
+            dict(
+                self._one(
+                    "SELECT run_id,attempt_id,request_uid,attempt_number,prompt_sha256,payload_sha256,membership_sha256,authorization_id,state,next_eligible_at FROM attempts WHERE run_id=? AND attempt_id=?",
+                    (run_id, attempt_id),
+                )
+            )
+        )
+
+    def get_submission(self, run_id: str, submission_id: str) -> SubmissionRecord:
+        return SubmissionRecord.model_validate(
+            dict(
+                self._one(
+                    "SELECT * FROM submissions WHERE run_id=? AND submission_id=?",
+                    (run_id, submission_id),
+                )
+            )
+        )
+
+    def get_observation(self, run_id: str, observation_id: str) -> ObservationRecord:
+        return ObservationRecord.model_validate(
+            dict(
+                self._one(
+                    "SELECT * FROM observations WHERE run_id=? AND observation_id=?",
+                    (run_id, observation_id),
+                )
+            )
+        )
+
+    def get_attempt_for_request(
+        self, run_id: str, request_uid: str, *, attempt_number: int = 1
+    ) -> AttemptRecord | None:
+        """Look up an existing attempt without allocating a new identity."""
+        row = self.connection.execute(
+            "SELECT attempt_id FROM attempts WHERE run_id=? AND request_uid=? AND attempt_number=?",
+            (run_id, request_uid, attempt_number),
+        ).fetchone()
+        return self.get_attempt(run_id, _text(row, "attempt_id")) if row else None
+
+    def get_submission_for_attempt(
+        self, run_id: str, attempt_id: str
+    ) -> SubmissionRecord | None:
+        row = self.connection.execute(
+            "SELECT submission_id FROM submissions WHERE run_id=? AND attempt_id=?",
+            (run_id, attempt_id),
+        ).fetchone()
+        return self.get_submission(run_id, _text(row, "submission_id")) if row else None
+
+    def get_observation_for_submission(
+        self, run_id: str, submission_id: str
+    ) -> ObservationRecord | None:
+        """Read the sole single-response observation; reject conflicting evidence."""
+        rows = self.connection.execute(
+            "SELECT observation_id FROM observations WHERE run_id=? AND submission_id=? ORDER BY observation_id LIMIT 2",
+            (run_id, submission_id),
+        ).fetchall()
+        if len(rows) > 1:
+            raise IntegrityError(
+                "submission has conflicting single-response observations"
+            )
+        return (
+            self.get_observation(run_id, _text(rows[0], "observation_id"))
+            if rows
+            else None
+        )
+
+    def request_task_ids(self, run_id: str, request_uid: str) -> tuple[str, ...]:
+        self.get_request(run_id, request_uid)
+        return tuple(
+            _text(row, "task_id")
+            for row in self.connection.execute(
+                "SELECT task_id FROM request_tasks WHERE run_id=? AND request_uid=? ORDER BY position",
+                (run_id, request_uid),
+            )
+        )
+
+    def attempt_task_ids(self, run_id: str, attempt_id: str) -> tuple[str, ...]:
+        self.get_attempt(run_id, attempt_id)
+        return tuple(
+            _text(row, "task_id")
+            for row in self.connection.execute(
+                "SELECT task_id FROM attempt_tasks WHERE run_id=? AND attempt_id=? ORDER BY position",
+                (run_id, attempt_id),
+            )
+        )
+
+    @staticmethod
+    def _page_size(page_size: int) -> None:
+        if type(page_size) is not int or page_size < 1:
+            raise ValueError("page size must be positive")
+
+    def iter_requests(
+        self, run_id: str, *, page_size: int = 128
+    ) -> Iterator[RequestRecord]:
+        """Traverse indexed logical scheduling order using bounded keyset pages."""
+        self._page_size(page_size)
+        self.get_run(run_id)
+        after = -1
+        while True:
+            rows = self.connection.execute(
+                "SELECT run_id,request_uid,scheduling_ordinal,dependency_sha256,state FROM requests WHERE run_id=? AND scheduling_ordinal>? ORDER BY scheduling_ordinal LIMIT ?",
+                (run_id, after, page_size),
+            ).fetchall()
+            if not rows:
+                return
+            for row in rows:
+                record = RequestRecord.model_validate(dict(row))
+                yield record
+                after = record.scheduling_ordinal
+
+    def iter_attempts(
+        self, run_id: str, *, page_size: int = 128
+    ) -> Iterator[AttemptRecord]:
+        """Traverse attempts in original request order, without task materialization."""
+        self._page_size(page_size)
+        self.get_run(run_id)
+        after = (-1, 0)
+        while True:
+            rows = self.connection.execute(
+                "SELECT r.scheduling_ordinal,a.attempt_number,a.attempt_id FROM attempts a JOIN requests r ON r.run_id=a.run_id AND r.request_uid=a.request_uid WHERE a.run_id=? AND (r.scheduling_ordinal,a.attempt_number)>(?,?) ORDER BY r.scheduling_ordinal,a.attempt_number LIMIT ?",
+                (run_id, *after, page_size),
+            ).fetchall()
+            if not rows:
+                return
+            for row in rows:
+                yield self.get_attempt(run_id, _text(row, "attempt_id"))
+                after = (
+                    cast(int, row["scheduling_ordinal"]),
+                    cast(int, row["attempt_number"]),
+                )
+
+    def iter_submissions(
+        self, run_id: str, *, page_size: int = 128
+    ) -> Iterator[SubmissionRecord]:
+        """Traverse prepared live submissions through the bounded attempt index."""
+        for attempt in self.iter_attempts(run_id, page_size=page_size):
+            submission = self.get_submission_for_attempt(run_id, attempt.attempt_id)
+            if submission is not None:
+                yield submission
+
     def create_request(self, record: RequestRecord, task_ids: Sequence[str]) -> None:
         record = _checked(record)
         if (
@@ -610,6 +839,31 @@ class Repository:
                 record.run_id, "result_recorded", "result", str(cursor.lastrowid)
             )
             return cursor.lastrowid
+
+    def get_result_for_attempt(self, run_id: str, attempt_id: str) -> Result | None:
+        """Read a committed single-member outcome before considering recovery."""
+        rows = self.connection.execute(
+            "SELECT record_json,record_sha256 FROM results WHERE run_id=? AND attempt_id=? ORDER BY result_seq LIMIT 2",
+            (run_id, attempt_id),
+        ).fetchall()
+        if len(rows) > 1:
+            raise IntegrityError(
+                "attempt has multiple results; single-member recovery is required"
+            )
+        if not rows:
+            return None
+        raw = _text(rows[0], "record_json")
+        kind = cast(dict[str, object], json.loads(raw)).get("task_kind")
+        result = (
+            RubricResult.model_validate_json(raw)
+            if kind == "rubric"
+            else PairwiseResult.model_validate_json(raw)
+        )
+        if semantic_digest("normalized-result", result) != _text(
+            rows[0], "record_sha256"
+        ):
+            raise IntegrityError("normalized result digest does not match")
+        return result
 
     def iter_results(self, run_id: str, *, page_size: int = 128) -> Iterator[Result]:
         """Read a bounded immutable high-water snapshot, including failures."""
