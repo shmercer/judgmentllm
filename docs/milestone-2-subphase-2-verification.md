@@ -361,7 +361,24 @@ from the original local results above.
 | Full local Python 3.15 / coverage / strict resource warnings | **944 passed**, no skips or warnings, 36.32 seconds; **97.08%** combined coverage. Used `-Werror::ResourceWarning -Werror::pytest.PytestUnraisableExceptionWarning`. Original memory assertion passes unchanged under SysMonitor coverage. |
 | Ruff / strict Pyright / lock / builds / metadata / clean installs | Passed: Ruff lint/format (84 Python files), zero Pyright errors/warnings, unchanged 93-package lock, wheel/sdist, strict Twine metadata and both current clean-install smoke checks. Sandbox DNS blocked final dependency resolution; an authorized network retry installed locked core dependencies. All installed behavioral checks remained offline. |
 | Four strict R/jsonlite gates | Passed both full local suites and all four standalone offline pipelines: baseline, persistence, generation and source preparation. R 4.6.2/jsonlite 2.0.0; optional local pairwiseLLM checks also passed. |
-| Six GitHub CI configurations | Pending pushed correction run. |
+| Six GitHub CI configurations | **All passed** on implementation commit `dadc41656b911b5c6c04abf3f09aeb312d07d53c`, [run 41559832676](https://github.com/shmercer/judgmentllm/actions/runs/41559832676). Native Windows 3.11 and 3.15 signature, restored-timestamp, lookup, full/minimal and installation checks passed. |
+
+Final implementation CI matrix:
+
+| Configuration | Result | Test evidence |
+|---|---|---|
+| Ubuntu / Python 3.11 | Passed | 944 tests; 97.10% coverage; all four required standalone R/jsonlite gates, wheel and sdist smoke checks. |
+| Ubuntu / Python 3.15 | Passed | 938 passed, 6 expected skips; 97.08% coverage; no SQLite resource warnings. |
+| macOS / Python 3.11 | Passed | Full lint/type/test/build/metadata/wheel-install job. |
+| macOS / Python 3.15 | Passed | 938 passed, 6 expected skips; 97.08% coverage; original memory regression passes without changing its bound. |
+| Windows / Python 3.11 | Passed | 938 passed, 6 expected skips; 96.82% coverage; 141.15-second test suite; build/metadata/wheel smoke passed. |
+| Windows / Python 3.15 | Passed | 938 passed, 6 expected skips; 96.80% coverage; 116.62-second test suite; build/metadata/wheel smoke passed. |
+
+The six skips outside the required Ubuntu/Python 3.11 R configuration are the
+existing environment-dependent interoperability cases. No signature, memory,
+source-integrity or rendering regression is skipped. The required R gates remain
+strict and complete on Ubuntu/Python 3.11. This documentation-only follow-up
+records the passing implementation run; the PR checks also track its final head.
 
 Corrected independent-process Python 3.15 measurements (un-instrumented child,
 tracemalloc enabled) were 2,278,013 → 2,596,668 peak Python bytes for 200 → 2,000
