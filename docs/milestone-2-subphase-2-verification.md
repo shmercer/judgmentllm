@@ -36,7 +36,7 @@ claim provider submission, scheduling, execution recovery, or lifecycle CLI.
 ## Interfaces and consistency boundaries
 
 `judgmentllm.preparation` is internal. `prepare_run(spec_or_path, *, store,
-run_id, capabilities=None)` returns a context-managed `PreparedRun` after complete
+run_id, capabilities=None, exhaustive_rendering=False)` returns a context-managed `PreparedRun` after complete
 validation and sealing. `open_prepared_run(run_id, *, store, spec=None,
 capabilities=None, use_frozen_snapshot=False)` verifies/reopens it. `validate_inputs`
 uses the same pipeline in a disposable local store. No lifecycle CLI or public
@@ -45,8 +45,9 @@ uses the same pipeline in a disposable local store. No lifecycle CLI or public
 Prepared sessions support indexed response/pair lookup, ordered iteration,
 `iter_request_dependencies()`, current-capability compatibility checking and
 `render()`. Rendering reconstructs verified inputs and checks the dependency
-commitment, then calls the existing renderer. Complete preparation also renders
-each planned group incrementally before publishing snapshots. There are no
+commitment, then calls the existing renderer. Corrected preparation renders one
+synthetic representative per group/criterion before publishing snapshots; explicit
+`exhaustive_rendering=True` also checks every actual request. There are no
 provider request bodies, submission records, attempts, or fabricated results.
 
 Source discovery retains every first-observed file identity, including references
@@ -110,7 +111,7 @@ or corrupt required snapshots always block. Minimal capture always requires
 unchanged originals. Current capabilities are reapplied without modifying the
 original evidence or generation commitment.
 
-## Verification record
+## Original local verification — commit `7d38305`
 
 Local environment: Linux, CPython 3.12.3, uv 0.13.6, R 4.6.2 and jsonlite 2.0.0.
 Commands used `UV_CACHE_DIR=/tmp/judgmentllm-uv-cache` because the default cache
@@ -148,7 +149,7 @@ rows, all artifacts/manifests/staging files and captured diagnostics using disti
 student, exemplar, template and free-form metadata sentinels. YAML syntax failures
 also produce safe diagnostics. Full-mode snapshots match exact source bytes.
 
-## Resource measurements
+## Original local resource measurements — commit `7d38305`
 
 Fresh-process standalone measurements below include actual source preparation,
 incremental renderer validation, first/last indexed lookup and a bounded sample of
@@ -223,6 +224,132 @@ boundary (new run after incomplete ingestion; verified completion after fixed
 manifest publication) implements the approved clarification without expanding into
 execution recovery. No scope deviation is intended.
 
+## PR #5 cross-platform corrections
+
+The original [CI run](https://github.com/shmercer/judgmentllm/actions/runs/41556352396)
+passed Linux/macOS Python 3.11 but failed both Windows configurations and both
+Unix Python 3.15 configurations. The original Linux-only results above did not
+establish cross-platform acceptance. The corrections retain the six-job matrix,
+four required Ubuntu R gates, 90% coverage requirement and 20-minute timeout.
+
+### Windows identity and generation metadata
+
+The original comparison incorrectly treated `Path.stat()` and `os.fstat()` as
+interchangeable observations on Windows. CPython 3.11 can fall back to directory
+attributes when path stat cannot open an already-open file, omitting device/inode;
+its descriptor `st_ctime` represents creation time. Newer CPython path stat
+substitutes birth time for `st_ctime`, while descriptor stat can expose true
+metadata change time. The original Windows 3.15 failures therefore occurred on
+ordinary unchanged files. Windows 3.11 also missed an in-place same-length edit
+with restored mtime because creation time is not a change detector.
+
+The corrected Windows implementation opens an independent path handle, obtains
+both handles' stable device/inode and size/mtime through `fstat`, and obtains
+true change time with standard-library `ctypes` calling
+[`GetFileInformationByHandleEx`](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getfileinformationbyhandleex),
+[`FILE_BASIC_INFO.ChangeTime`](https://learn.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-file_basic_info).
+The probe is rechecked around comparison. Native timestamps are converted from
+100 ns Windows-epoch units to Unix nanoseconds. Missing/unusable change metadata
+fails closed. Unix behavior is unchanged. See the
+[CPython issue](https://github.com/python/cpython/issues/157671) and the
+[3.11 path-stat implementation](https://github.com/python/cpython/blob/3.11/Modules/posixmodule.c)
+for the API differences.
+
+Stable identity, available generation metadata and exact SHA-256/length remain
+distinct. Independent full-byte hashing, complete-source final verification and
+per-record canonical verification still apply. No descriptor/path comparison or
+content-hash check is removed. Tests cover ordinary files, replaced paths,
+different descriptors with equal bytes/timestamps, same-length/restored-mtime edits,
+append/truncate, native query failure, simulated API discrepancies and full/minimal
+reopening. A Windows-only CI step prints metadata from a synthetic temporary file;
+it prints no input paths or assessment content.
+
+The same five serialized signature fields and schema versions are retained.
+Windows `ctime_ns` now consistently means actual metadata change time. A previously
+created Windows manifest containing creation-time signatures is conservatively
+incompatible with original-source continuation: full capture can use independently
+verified snapshots only with explicit operation-scoped authorization; minimal
+capture requires a new run. Frozen evidence is never rewritten. Structural IDs,
+exact source hashes and generation commitments are unchanged.
+
+### Memory investigation and resource cleanup
+
+CI Python 3.15 reported in-process peaks of 3,325,360 → 9,689,288 bytes on Linux
+and 3,171,893 → 9,762,684 on macOS. The unchanged test was reproduced on local
+Python 3.15.2 with coverage 7.17 SysMonitor: 5,355,610 → 10,044,286 bytes, failing
+the same +3 MiB bound. Without coverage the original workload peaked at
+2,840,472 → 3,507,107 bytes and passed.
+
+Tracemalloc snapshots identified compiled Jinja template code retained through
+coverage instrumentation: the large case retained about 5.4 MB at
+`jinja2/environment.py:709`, plus SysMonitor code dictionaries and generated
+template allocations. Explicit collection barely changed live allocations
+(7,777,031 → 7,662,479 bytes). Native peak rose about 78 → 98 MB. This was repeated
+template compilation/instrumentation retention, not retained essay text or an
+input-sized SQLite result list. Instrument-free subprocess measurements remained
+bounded. The production correction removes the unnecessary compilations; the
+original in-process +3 MiB assertion is retained unchanged and passes with Python
+3.15 coverage. Existing subprocess/native bounds are also unchanged, with added
+post-close/post-GC retention checks and optional allocation snapshots. Peak is
+measured before collection; collection does not conceal transient allocations.
+
+Python 3.15's SQLite warnings revealed test code using `with sqlite3.connect(...)`,
+which controls transactions but does not close the connection. These contexts now
+use `contextlib.closing`. Production failure cleanup also closes a constructed
+prepared session, including descriptors opened during interrupted sealing recovery;
+session close attempts every closer and SQLite even if another closer fails.
+Connection configuration is inside the repository's initialization cleanup guard.
+Failure-path tests verify closed descriptors/connections and idempotent cleanup.
+
+### Rendering-preflight boundary
+
+All source records, pair references, assessment/category/exemplar definitions,
+grouping and generation capabilities are still validated before sealing.
+Normal rendering preflight now checks synthetic representatives once per rubric
+group or pairwise criterion, even with empty inputs. This exercises the existing
+renderer's syntax, sandbox, inclusion, settings and static-context checks without
+rendering the response-by-trait product. It does not claim every actual response
+will satisfy content-dependent template conditions or output limits.
+
+`PreparedRun.render()` reconstructs verified selected inputs, checks the dependency
+commitment and fully renders/validates each actual request. Subphase 3 must call
+this boundary and bind exact prompt plus actual adapter payload hashes before any
+submission. Explicit `exhaustive_rendering=True` on internal `prepare_run` or
+`validate_inputs` preserves full actual-input pre-rendering when requested. The
+flag changes validation effort only and is excluded from RunSpec/manifest identity.
+Both modes obey capture policy and do not retain prompts. Tests count renderer
+calls independently of input size, verify empty-source validation, defer real-text
+limit failures correctly, exercise exhaustive rejection and prove identical
+manifest/request identities under both modes. No provider boundary is introduced.
+
+Corrected local and remote verification results follow below; these are separate
+from the original local results above.
+
+| Corrected check | Result |
+|---|---|
+| Targeted reported failures | 140 passed locally; final full suites additionally cover all 28 new signature/rendering/resource cases. |
+| Full local Python 3.12 / coverage | **935 passed**, no skips or warnings, 51.83 seconds; **97.06%** combined coverage. |
+| Full local Python 3.15 / coverage / strict resource warnings | **935 passed**, no skips or warnings, 34.76 seconds; **97.04%** combined coverage. Used `-Werror::ResourceWarning -Werror::pytest.PytestUnraisableExceptionWarning`. Original memory assertion passes unchanged under SysMonitor coverage. |
+| Ruff / strict Pyright / lock / builds / metadata / clean installs | Passed: Ruff lint/format (84 Python files), zero Pyright errors/warnings, unchanged 93-package lock, wheel/sdist, strict Twine metadata and both current clean-install smoke checks. Installation smoke completed with cached locked dependencies and `UV_OFFLINE=1`. |
+| Four strict R/jsonlite gates | Passed both full local suites and all four standalone offline pipelines: baseline, persistence, generation and source preparation. R 4.6.2/jsonlite 2.0.0; optional local pairwiseLLM checks also passed. |
+| Six GitHub CI configurations | Pending pushed correction run. |
+
+Corrected independent-process Python 3.15 measurements (un-instrumented child,
+tracemalloc enabled) were 2,263,418 → 2,588,375 peak Python bytes for 200 → 2,000
+responses (826,000 → 8,260,000 source bytes). Post-GC retained allocations were
+163,220 → 257,140 bytes, and native peaks 52,826,112 → 55,349,248 bytes. The original
+peak +3 MiB growth bound, 32 MiB Python and 256 MiB native ceilings remain in force;
+the resource regression also checks post-GC growth below 1 MiB. The 40-response ×
+20/200-trait subprocess regression still samples only 64 dependencies and asserts
+no execution rows. Deterministic render-count tests establish that normal preflight
+work grows with configured groups/criteria, independently of input record count.
+
+The correction touches only signatures, validation effort, resource cleanup,
+focused tests/diagnostics and documentation. There is no schema migration, new
+dependency, ID/generation/capture-policy change, provider adapter or Subphase 3
+implementation. Native Windows metadata semantics and the conservative old-Windows
+signature compatibility restriction above are the only source-compatibility refinement.
+
 ## Subphase 3 handoff
 
 1. Consume verified ordered request dependencies incrementally. Preserve all
@@ -242,4 +369,5 @@ execution recovery. No scope deviation is intended.
    controls in Subphase 5. Retain the later 5,000-response × 20-trait/256 MiB and
    100,000-response stress objectives for full qualification.
 
-No push, merge, release, or Subphase 3 implementation is authorized by this record.
+PR #5 review now authorizes pushing these corrections. Merge, release and
+Subphase 3 implementation remain excluded.

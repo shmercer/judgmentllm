@@ -108,10 +108,33 @@ Plans contain no provider request bodies, token/cost estimates, remote submissio
 
 `judgmentllm.preparation` provides provider-free internal services, separate from
 the future public run/CLI lifecycle. `prepare_run(spec_or_path, *, store, run_id,
-capabilities=None)` validates all inputs, consistently freezes every applicable
+capabilities=None, exhaustive_rendering=False)` validates all inputs, consistently freezes every applicable
 source, builds byte-accurate CSV/JSONL indexes, and seals a complete executable
 manifest. A direct `RunSpec` receives a validated canonical identity without an
 invented originating configuration-file hash.
+
+Source and record validation always covers the complete input set before sealing.
+Normal render preflight checks the full assessment/grouping/template configuration
+with one synthetic empty-text representative per rubric group or pairwise
+criterion. It validates syntax, sandbox rules, rendering settings, and assessment
+inclusion even when input sources are empty. It does not render every real
+response-by-trait combination. Content-specific output limits or conditional
+inclusion failures are checked when each actual request is selected.
+
+Call `run.render(dependency)` on each selected verified dependency before any
+future submission. This uses the existing full renderer and validates the real
+response texts, trait group, exemplars, exact output limits, and protected blocks.
+`iter_request_dependencies()` verifies content dependencies without implying that
+the request has rendered successfully.
+
+For an explicit diagnostic scan, `prepare_run(..., exhaustive_rendering=True)`
+additionally renders every actual request before sealing.
+`validate_inputs(spec_or_path, *, capabilities=None, exhaustive_rendering=False)`
+uses the same checks in a temporary local store and returns typed validity/counts;
+set its flag to request the same exhaustive render scan. The option changes
+validation work only, not frozen configuration, manifest compatibility, request
+IDs, or generation commitments. Neither path retains rendered prompts under
+minimal capture.
 
 ```python
 from pathlib import Path
@@ -131,7 +154,7 @@ with TemporaryDirectory(prefix="judgmentllm-runtime-") as directory:
 `PreparedRun` is a context manager; close it when finished. It exposes the typed
 `.manifest`, `.manifest_sha256`, `.repository`, `get_response(item_id)`,
 `get_pair(pair_uid)`, `iter_responses()`, `iter_pairs()`, and
-`iter_request_dependencies()`. Traversal follows original source order. Selected
+`iter_request_dependencies()`, and `render(dependency)`. Traversal follows original source order. Selected
 records are reparsed through the shared strict reader, and their IDs and canonical
 hashes are verified before use. Pairwise lookups resolve both referenced texts
 through the index; dependencies include both content identities while preserving

@@ -7,6 +7,7 @@ import json
 import os
 import sqlite3
 import tracemalloc
+from contextlib import closing
 from pathlib import Path
 from typing import BinaryIO, Literal
 
@@ -148,7 +149,7 @@ def _assert_no_private_bytes(store: Path) -> None:
 def _assert_unsealed(store: Path, run_id: str = "001") -> None:
     database = store / "registry.sqlite3"
     if database.exists():
-        with sqlite3.connect(database) as connection:
+        with closing(sqlite3.connect(database)) as connection:
             row = connection.execute(
                 "SELECT manifest_sha256 FROM runs WHERE run_id=?", (run_id,)
             ).fetchone()

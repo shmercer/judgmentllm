@@ -26,6 +26,7 @@ from judgmentllm.persistence.repository import Repository
 from judgmentllm.persistence.sources import InputRecord, PairStructure, SourceRecord
 from judgmentllm.planning import (
     CapabilityProfile,
+    PlannedRequest,
     plan_record,
     stable_id,
 )
@@ -314,8 +315,22 @@ class SourceBuilder:
         spec: RunSpec,
         template: str | None,
         capabilities: CapabilityProfile | None,
+        *,
+        exhaustive: bool = False,
     ) -> None:
+        """Validate static context with bounded representatives by default.
+
+        Real inputs are completely validated/indexed independently. Rendering
+        every real response/group combination is an explicit diagnostic option;
+        the normal path checks each configured group/criterion once, including
+        when its source has no records. Actual selected work must pass the same
+        renderer through PreparedRun.render before a future submission.
+        """
         self.input_spec, self.pair_spec = spec.input, spec.pairs
+        self._validate_representatives(spec, template, capabilities)
+        if not exhaustive:
+            self._checkpoint("rendering_verified", None)
+            return
         kind = "response" if spec.task_kind == "rubric" else "pair"
         for indexed in self.repository.iter_input_records(self.run_id, kind):
             record = self.lookup(kind, indexed.record_id)
@@ -324,6 +339,48 @@ class SourceBuilder:
             ):
                 _render_request(spec, template, request, self.lookup)
         self._checkpoint("rendering_verified", None)
+
+    def _validate_representatives(
+        self,
+        spec: RunSpec,
+        template: str | None,
+        capabilities: CapabilityProfile | None,
+    ) -> None:
+        # Empty synthetic text checks the common schema/template/assessment
+        # contract without imposing a made-up minimum response length. These
+        # objects never enter source indexes, manifests, or request registries.
+        left = ResponseItem(item_id="0", text="")
+        right = ResponseItem(item_id="1", text="")
+
+        def render(request: PlannedRequest) -> None:
+            def lookup(
+                kind: Literal["response", "pair"], identifier: str
+            ) -> ResponseItem | PairTask:
+                if kind == "pair":
+                    assert request.pair is not None
+                    return request.pair
+                return left if identifier == left.item_id else right
+
+            _render_request(spec, template, request, lookup)
+
+        if spec.task_kind == "rubric":
+            for request in plan_record(
+                spec, left, template_text=template, capabilities=capabilities
+            ):
+                render(request)
+        else:
+            for criterion in spec.criteria:
+                pair = PairTask(
+                    pair_id="0",
+                    pair_uid="0",
+                    left_item_id=left.item_id,
+                    right_item_id=right.item_id,
+                    trait_id=criterion.trait_id,
+                )
+                for request in plan_record(
+                    spec, pair, template_text=template, capabilities=capabilities
+                ):
+                    render(request)
 
     def verify_index(
         self, frozen: _Frozen, spec: InputSpec, kind: Literal["response", "pair"]

@@ -135,6 +135,23 @@ Default safeguards are configurable through `prompt.limits` or `render_prompt(li
 
 The loop budget sums each loop's list length multiplied by its AST size; it bounds work even when a loop produces no text. These are rendering safeguards, not limits on stored trait or exemplar counts. Exceeding a safeguard raises `PromptError`; nothing is truncated. Increase a documented limit explicitly when appropriate. Syntax, undefined names, incompatible arguments, invalid exemplar assignments, and inclusion failures also raise `PromptError`, a `ValueError` subclass.
 
+Immutable source preparation validates every source and record before sealing,
+and checks the template/assessment/grouping/rendering configuration using one
+synthetic empty-text representative per rubric group or pairwise criterion.
+This bounded preflight also runs with empty inputs. It avoids rendering the full
+response-by-trait product during normal preparation.
+
+Actual selected requests must pass `PreparedRun.render(dependency)` before any
+future provider submission. It checks their full verified texts and protected
+blocks with these same safeguards. A content-dependent output-size or template
+condition failure can therefore first appear at this request boundary; dependency
+iteration alone does not establish rendering success. Internal
+`prepare_run(..., exhaustive_rendering=True)` and
+`validate_inputs(..., exhaustive_rendering=True)` provide an explicit full render
+scan when wanted. The option changes validation work without changing manifest
+compatibility, request identities, or generation commitments, and does not retain
+prompts under minimal capture.
+
 ## Output validation and caching layout
 
 Prompt text and `output_schema` are separate. Rubric generative output is a `scores` list containing `trait_id`, `category_label`, and an explanation when requested. Local `validate_categorical_output` additionally rejects missing, duplicate, or unknown traits and invalid categories. Pairwise output contains `winner_id`, `tie`, and an explanation when requested; a tie requires a null winner. Editing wording cannot disable those checks, invent probabilities, or provide an arbitrary provider request body.

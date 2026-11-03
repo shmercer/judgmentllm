@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import gc
 import json
 import sys
 import time
@@ -66,7 +67,7 @@ def native_peak_bytes() -> int:
 
 
 def measure(
-    directory: Path, response_count: int, trait_count: int
+    directory: Path, response_count: int, trait_count: int, *, diagnostics: bool = False
 ) -> dict[str, int | float]:
     directory.mkdir(parents=True)
     source = directory / "responses.jsonl"
@@ -105,6 +106,7 @@ def measure(
     started = time.monotonic()
     tracemalloc.start()
     try:
+        baseline = tracemalloc.take_snapshot() if diagnostics else None
         with prepare_run(
             configuration, store=directory / "runtime", run_id="001"
         ) as prepared:
@@ -124,16 +126,43 @@ def measure(
                     == 0
                 )
             python_peak = tracemalloc.get_traced_memory()[1]
+            python_live = tracemalloc.get_traced_memory()[0]
+            sample_count = len(sample)
+        native_peak = native_peak_bytes()
+        after_close = tracemalloc.get_traced_memory()[0]
+        if baseline is not None:
+            snapshot = tracemalloc.take_snapshot()
+            allocations = [
+                {
+                    "filename": entry.traceback[0].filename,
+                    "line": entry.traceback[0].lineno,
+                    "bytes": entry.size_diff,
+                    "count": entry.count_diff,
+                }
+                for entry in snapshot.compare_to(baseline, "lineno")[:20]
+            ]
+            (directory / "allocation-diagnostics.json").write_text(
+                json.dumps(allocations), encoding="utf-8"
+            )
+            del snapshot, baseline
+        # Report retained allocations separately. Collection happens after peak
+        # measurement and never hides allocations from the required peak bounds.
+        del sample, prepared
+        gc.collect()
+        after_gc = tracemalloc.get_traced_memory()[0]
     finally:
         tracemalloc.stop()
     return {
         "response_count": response_count,
         "trait_count": trait_count,
         "logical_task_count": response_count * trait_count,
-        "sample_count": len(sample),
+        "sample_count": sample_count,
         "source_byte_length": source.stat().st_size,
         "python_peak_bytes": python_peak,
-        "native_peak_bytes": native_peak_bytes(),
+        "python_live_bytes": python_live,
+        "python_after_close_bytes": after_close,
+        "python_after_gc_bytes": after_gc,
+        "native_peak_bytes": native_peak,
         "elapsed_seconds": time.monotonic() - started,
     }
 
@@ -143,10 +172,20 @@ def main() -> None:
     parser.add_argument("--directory", type=Path, required=True)
     parser.add_argument("--responses", type=int, required=True)
     parser.add_argument("--traits", type=int, default=1)
+    parser.add_argument(
+        "--diagnostics",
+        action="store_true",
+        help="Write top live allocation locations.",
+    )
     options = parser.parse_args()
     if options.responses < 1 or options.traits < 1:
         parser.error("response and trait counts must be positive")
-    result = measure(options.directory, options.responses, options.traits)
+    result = measure(
+        options.directory,
+        options.responses,
+        options.traits,
+        diagnostics=options.diagnostics,
+    )
     encoded = json.dumps(result)
     (options.directory / "measurement.json").write_text(encoded, encoding="utf-8")
     print(encoded)

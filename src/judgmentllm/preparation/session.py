@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
+from contextlib import ExitStack
 from pathlib import Path
 from typing import Any, BinaryIO, Literal
 
@@ -168,11 +169,15 @@ class PreparedRun:
     def close(self) -> None:
         if self._closed:
             return
-        for handle in self._handles.values():
-            handle.close()
+        handles = tuple(self._handles.values())
         self._handles.clear()
-        self.repository.close()
         self._closed = True
+        # ExitStack runs every closer even when an earlier descriptor close
+        # fails. The repository must outlive, then close after, all source files.
+        with ExitStack() as cleanup:
+            cleanup.callback(self.repository.close)
+            for handle in handles:
+                cleanup.callback(handle.close)
 
     def __enter__(self) -> PreparedRun:
         return self

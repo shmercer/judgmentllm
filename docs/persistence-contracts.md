@@ -205,12 +205,30 @@ body construction or operational resume is implemented here.
 ## Immutable preparation and reopening
 
 `judgmentllm.preparation.prepare_run(spec_or_path, *, store, run_id,
-capabilities=None)` validates the complete assessment/input set, discovers all
+capabilities=None, exhaustive_rendering=False)` validates the complete assessment/input set, discovers all
 configuration/rubric/criteria/exemplar/template/response/pair files, builds ordered
 record indexes in the existing source tables, and seals a typed version-1
 `ExecutableRunManifest`. A direct Python `RunSpec` records its canonical identity
 without fabricating an originating source-file hash. The services are internal;
 the approved public lifecycle APIs/CLI remain assigned to later subphases.
+
+Source parsing, record validation, references, locators, hashes, and source-set
+consistency are always checked in full before sealing. Normal render preflight
+checks static assessment/grouping/template/settings with bounded synthetic
+empty-text representatives: once per configured rubric group or pairwise
+criterion, including empty input sources. It does not perform the complete
+response-by-trait rendering product. Content-dependent rendering failures remain
+request-boundary checks by default.
+
+Each selected dependency must pass `PreparedRun.render(dependency)` before future
+submission. This fully validates its verified real content through the existing
+renderer; dependency iteration alone does not prove rendering success. Explicit
+`prepare_run(..., exhaustive_rendering=True)` or
+`validate_inputs(..., exhaustive_rendering=True)` additionally scans and renders
+all actual requests, so those failures occur before sealing. This internal option
+does not enter configuration/manifest identities or change compatibility, request
+IDs, or generation commitments. Rendered prompts are not persisted under minimal
+capture, including in the exhaustive diagnostic path.
 
 Every file receives an initial descriptor/path signature and exact SHA-256/length.
 Full capture copies into private staging, independently rereads the original,

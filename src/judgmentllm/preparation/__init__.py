@@ -176,13 +176,19 @@ def prepare_run(
     store: str | Path,
     run_id: str,
     capabilities: CapabilityProfile | None = None,
+    exhaustive_rendering: bool = False,
 ) -> PreparedRun:
     """Freeze, validate, index and seal a new run under exclusive OS ownership.
 
     Interrupted scan rows are append-only: only a completely published verified
     manifest can be finished by open_prepared_run. Otherwise use a new run ID.
+    All sources/records are checked; rendering uses bounded representatives unless
+    exhaustive_rendering explicitly requests every response/group combination.
     """
+    if type(exhaustive_rendering) is not bool:
+        raise PreparationError("exhaustive_rendering must be a boolean")
     repository = Repository(store)
+    prepared: PreparedRun | None = None
     try:
         # Reject reused identities without attempting to delete/restart ingestion.
         try:
@@ -277,7 +283,9 @@ def prepare_run(
             builder.index(spec.input, "response")
             if spec.pairs is not None:
                 builder.index(spec.pairs, "pair")
-            builder.validate_rendering(spec, template, profile)
+            builder.validate_rendering(
+                spec, template, profile, exhaustive=exhaustive_rendering
+            )
             builder.finish()
             manifest = _manifest(builder, spec, origin, template, profile)
             artifact = builder.store.put(canonical_bytes(manifest), "application/json")
@@ -298,7 +306,10 @@ def prepare_run(
         prepared.verify_compatibility(capabilities=profile)
         return prepared
     except BaseException as error:
-        repository.close()
+        if prepared is not None:
+            prepared.close()
+        else:
+            repository.close()
         if isinstance(error, (OSError, ValueError, yaml.YAMLError)):
             raise PreparationError(
                 "source/configuration validation failed during preparation"
@@ -479,6 +490,7 @@ def open_prepared_run(
     ownership. Any earlier interrupted preparation requires a new run.
     """
     repository = Repository(store)
+    prepared: PreparedRun | None = None
     try:
         run = repository.get_run(run_id)
         unsealed = run.manifest_sha256 is None
@@ -543,7 +555,10 @@ def open_prepared_run(
                 repository.seal_run(run_id, ManifestReference(artifact=identity))
         return prepared
     except BaseException as error:
-        repository.close()
+        if prepared is not None:
+            prepared.close()
+        else:
+            repository.close()
         if isinstance(error, (ValueError, OSError, yaml.YAMLError)):
             raise PreparationError(
                 "prepared source or manifest validation failed"
@@ -602,11 +617,14 @@ def validate_inputs(
     spec_or_path: RunSpec | str | Path,
     *,
     capabilities: CapabilityProfile | None = None,
+    exhaustive_rendering: bool = False,
 ) -> InputValidationReport:
     """Complete offline validation using the same pipeline in a private local store.
 
     Capture follows the requested policy. The private store is removed on exit;
     minimal capture never writes assessment text even during validation.
+    Set exhaustive_rendering=True to additionally render every actual request;
+    default rendering checks bounded static representatives only.
     """
     import tempfile
 
@@ -620,6 +638,7 @@ def validate_inputs(
                 store=temporary,
                 run_id="validation",
                 capabilities=capabilities,
+                exhaustive_rendering=exhaustive_rendering,
             ) as prepared:
                 return InputValidationReport(
                     valid=True,

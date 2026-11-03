@@ -76,6 +76,10 @@ jobs:
           stopifnot(requireNamespace("jsonlite", quietly = TRUE))
           stopifnot(as.character(utils::packageVersion("jsonlite")) == "2.0.0")
 
+      - name: Observe Windows file-signature metadata
+        if: runner.os == 'Windows'
+        run: uv run --offline --no-sync python scripts/source_signature_probe.py
+
       - name: Run offline tests with coverage
         run: uv run --offline --no-sync pytest
 

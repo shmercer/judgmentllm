@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 from collections.abc import Iterator
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -20,7 +21,9 @@ NOW = "2026-11-02T00:00:00+00:00"
 
 @pytest.fixture
 def connection(tmp_path: Path) -> Iterator[sqlite3.Connection]:
-    with sqlite3.connect(tmp_path / "registry.sqlite3", isolation_level=None) as conn:
+    with closing(
+        sqlite3.connect(tmp_path / "registry.sqlite3", isolation_level=None)
+    ) as conn:
         initialize(conn)
         yield conn
 
@@ -199,13 +202,15 @@ def test_schema_rejects_active_transaction(connection: sqlite3.Connection) -> No
 
 def test_schema_verification_does_not_need_a_writer_lock(tmp_path: Path) -> None:
     path = tmp_path / "concurrent.sqlite3"
-    with sqlite3.connect(path, isolation_level=None) as writer:
+    with closing(sqlite3.connect(path, isolation_level=None)) as writer:
         writer.execute("PRAGMA journal_mode=WAL")
         initialize(writer)
         create_run(writer)
         writer.execute("BEGIN IMMEDIATE")
         create_run(writer, "uncommitted")
-        with sqlite3.connect(path, timeout=0.01, isolation_level=None) as reader:
+        with closing(
+            sqlite3.connect(path, timeout=0.01, isolation_level=None)
+        ) as reader:
             initialize(reader)
             assert reader.execute("SELECT count(*) FROM runs").fetchone()[0] == 1
         writer.rollback()
@@ -221,7 +226,9 @@ def test_schema_rejects_unknown_versions(
 
 
 def test_schema_rejects_unversioned_objects(tmp_path: Path) -> None:
-    with sqlite3.connect(tmp_path / "unknown.sqlite3", isolation_level=None) as conn:
+    with closing(
+        sqlite3.connect(tmp_path / "unknown.sqlite3", isolation_level=None)
+    ) as conn:
         conn.execute("CREATE TABLE existing(value TEXT)")
         with pytest.raises(SchemaVersionError, match="unversioned"):
             initialize(conn)
@@ -255,8 +262,8 @@ def test_schema_initialization_rolls_back_all_ddl(
         raise KeyboardInterrupt
 
     monkeypatch.setattr("judgmentllm.persistence.schema._schema_digest", interrupted)
-    with sqlite3.connect(
-        tmp_path / "interrupted.sqlite3", isolation_level=None
+    with closing(
+        sqlite3.connect(tmp_path / "interrupted.sqlite3", isolation_level=None)
     ) as conn:
         with pytest.raises(KeyboardInterrupt):
             initialize(conn)

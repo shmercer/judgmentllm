@@ -85,9 +85,9 @@ class Repository:
             isolation_level=None,
             timeout=busy_timeout_ms / 1000,
         )
-        self.connection.row_factory = sqlite3.Row
         self._depth = 0
         try:
+            self.connection.row_factory = sqlite3.Row
             self.connection.execute("PRAGMA foreign_keys=ON")
             self.connection.execute(f"PRAGMA busy_timeout={busy_timeout_ms}")
             mode = self.connection.execute("PRAGMA journal_mode=WAL").fetchone()
