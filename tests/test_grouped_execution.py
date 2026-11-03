@@ -436,8 +436,16 @@ async def test_grouped_minimal_privacy_live_and_recovery(
     with Repository(store) as repository:
         lock = repository.run_directory("001") / "executor.lock"
     deferred: set[Path] = set()
+    mapped: set[Path] = set()
+    sqlite_shm = store / "registry.sqlite3-shm"
+    normalized_result_files = {
+        store / "registry.sqlite3",
+        store / "registry.sqlite3-wal",
+    }
+    injected = False
 
     def inspect(boundary: str, uid: str) -> None:
+        nonlocal injected
         for path in tmp_path.rglob("*"):
             if not path.is_file() or tmp_path / "inputs" in path.parents:
                 continue
@@ -447,7 +455,8 @@ async def test_grouped_minimal_privacy_live_and_recovery(
                 executor_lock=lock,
                 deferred=deferred,
                 windows_locking=sys.platform == "win32",
-                sqlite_shm=store / "registry.sqlite3-shm",
+                sqlite_shm=sqlite_shm,
+                mapped=mapped,
             )
             if content is not None:
                 assert all(
@@ -455,29 +464,56 @@ async def test_grouped_minimal_privacy_live_and_recovery(
                     for s in (source, prompt, payload, raw, credential)
                 )
                 if explanation.encode() in content:
-                    assert path in {
-                        store / "registry.sqlite3",
-                        store / "registry.sqlite3-wal",
-                    }
-        if boundary == stage:
+                    assert path in normalized_result_files, path.relative_to(tmp_path)
+        if boundary == stage and not injected:
+            injected = True
             raise RuntimeError("synthetic interruption")
+
+    def inspect_released(*, allow_explanation: bool) -> None:
+        # No runtime file is exempt after ownership and SQLite handles close.
+        assert lock.read_bytes() == b"\0"
+        for path in tmp_path.rglob("*"):
+            if not path.is_file() or tmp_path / "inputs" in path.parents:
+                continue
+            content = path.read_bytes()
+            assert all(
+                s.encode() not in content
+                for s in (source, prompt, payload, raw, credential)
+            ), path.relative_to(tmp_path)
+            if explanation.encode() in content:
+                assert allow_explanation and path in normalized_result_files, (
+                    path.relative_to(tmp_path)
+                )
 
     if stage:
         with pytest.raises(ExceptionGroup):
             await execute_run(
                 "001", store=store, adapter=adapter, spec=spec, fault=inspect
             )
-        await recover_run("001", store=store, adapter=adapter, spec=spec)
     else:
         await execute_run("001", store=store, adapter=adapter, spec=spec, fault=inspect)
+    # An inspection failure cannot substitute for the requested interruption.
+    assert injected == (stage is not None)
+    assert deferred == ({lock} if sys.platform == "win32" else set())
+    assert mapped == (
+        {sqlite_shm}
+        if sys.platform == "win32" and stage != "during_member_validation"
+        else set()
+    )
+    inspect_released(allow_explanation=stage is None)
+    if stage:
+        await recover_run("001", store=store, adapter=adapter, spec=spec, fault=inspect)
+    assert deferred == ({lock} if sys.platform == "win32" else set())
+    assert mapped == ({sqlite_shm} if sys.platform == "win32" else set())
     assert adapter.ledger.acceptance_count() == 1
-    assert lock.read_bytes() == b"\0"
-    for path in tmp_path.rglob("*"):
-        if path.is_file() and tmp_path / "inputs" not in path.parents:
-            assert all(
-                s.encode() not in path.read_bytes()
-                for s in (source, prompt, payload, raw, credential)
-            )
+    with Repository(store) as repository:
+        results = tuple(repository.iter_results("001"))
+        assert [result.explanation for result in results] == [
+            explanation,
+            None,
+            explanation,
+        ]
+    inspect_released(allow_explanation=True)
     captured = capsys.readouterr()
     assert not captured.out and not captured.err
 
