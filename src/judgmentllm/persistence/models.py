@@ -320,7 +320,7 @@ TRANSITIONS: dict[str, dict[str, tuple[str, ...]]] = {
         "running": ("completed", "partial", "failed", "cancelled"),
         "completed": ("running",),
         "partial": ("running", "submitted", "failed", "cancelled"),
-        "failed": ("running", "submitted"),
+        "failed": ("running", "submitted", "cancelled"),
         "cancelled": ("running", "submitted"),
     },
     "request": {

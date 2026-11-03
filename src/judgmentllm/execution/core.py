@@ -16,6 +16,7 @@ from typing import ParamSpec, TypeVar
 from pydantic import Field
 
 from judgmentllm.config import RunSpec
+from judgmentllm.execution.retry import DEFAULT_RETRY_POLICY, RetryPolicy
 from judgmentllm.execution.session import ExecutionSession as _Session
 from judgmentllm.execution.session import ExecutionWork as _Work
 from judgmentllm.execution.session import Fault
@@ -30,6 +31,7 @@ from judgmentllm.providers import (
     ProviderResponse,
     RetrievalUnavailable,
     SubmissionUncertain,
+    TransientNotSubmitted,
     TransportNotSubmitted,
 )
 
@@ -55,6 +57,7 @@ async def execute_run(
     spec: RunSpec | None = None,
     use_frozen_snapshot: bool = False,
     fault: Fault | None = None,
+    retry_policy: RetryPolicy = DEFAULT_RETRY_POLICY,
 ) -> ExecutionReport:
     """Execute/resume prepared single-member work without retrying any submission.
 
@@ -78,8 +81,24 @@ async def execute_run(
         if holder:
             holder.pop().close()
 
+    def cancel() -> None:
+        if holder:
+            holder[0].cancel()
+
+    async def drain(function: Callable[[], None]) -> None:
+        # A cancelled caller must not cancel a queued ownership cleanup. Queue
+        # it behind initialization and all durable writes on the same I/O thread.
+        pending_cleanup = loop.run_in_executor(io, function)
+        while not pending_cleanup.done():
+            try:
+                await asyncio.shield(pending_cleanup)
+            except asyncio.CancelledError:
+                continue
+        pending_cleanup.result()
+
     try:
         session = await call(initialize)
+        session.retry_policy = retry_policy
         count = session.concurrency
         pending: asyncio.Queue[_Work | None] = asyncio.Queue(maxsize=2 * count)
         responses: asyncio.Queue[tuple[_Work, ProviderResponse] | None] = asyncio.Queue(
@@ -114,6 +133,12 @@ async def execute_run(
                     else:
                         saved = await call(session.saved_response, work)
                         if saved is not None:
+                            saved_ack = await call(session.saved_acknowledgment, work)
+                            if saved_ack is None:
+                                raise IntegrityError(
+                                    "retained response lacks acknowledgment evidence"
+                                )
+                            await call(session.acknowledge, work, saved_ack)
                             await responses.put((work, saved))
                             result_high = max(result_high, responses.qsize())
                             continue
@@ -153,6 +178,14 @@ async def execute_run(
                         )
                     await responses.put((work, response))
                     result_high = max(result_high, responses.qsize())
+                except TransientNotSubmitted as exc:
+                    await call(
+                        session.not_submitted,
+                        work,
+                        invoked=True,
+                        transient=True,
+                        retry_after=exc.retry_after,
+                    )
                 except TransportNotSubmitted:
                     await call(session.not_submitted, work, invoked=True)
                 except (SubmissionUncertain, RetrievalUnavailable, TimeoutError):
@@ -168,11 +201,17 @@ async def execute_run(
                 else:
                     await call(session.process, *item)
 
-        async with asyncio.TaskGroup() as group:
-            group.create_task(produce())
-            group.create_task(consume())
-            for _ in range(count):
-                group.create_task(worker())
+        while True:
+            async with asyncio.TaskGroup() as group:
+                group.create_task(produce())
+                group.create_task(consume())
+                for _ in range(count):
+                    group.create_task(worker())
+            delay = await call(session.retry_delay)
+            if delay is None:
+                break
+            await asyncio.sleep(delay)
+            await call(session.restart_retry_wave)
         summary = await call(session.finish)
         return ExecutionReport(
             summary=summary,
@@ -181,9 +220,12 @@ async def execute_run(
             request_queue_high_water=request_high,
             result_queue_high_water=result_high,
         )
+    except asyncio.CancelledError:
+        await drain(cancel)
+        raise
     finally:
         # Queued behind any initialization/in-flight write on the same thread.
-        await call(close)
+        await drain(close)
         io.shutdown(wait=True, cancel_futures=True)
 
 
@@ -195,6 +237,7 @@ async def recover_run(
     spec: RunSpec | None = None,
     use_frozen_snapshot: bool = False,
     fault: Fault | None = None,
+    retry_policy: RetryPolicy = DEFAULT_RETRY_POLICY,
 ) -> ExecutionReport:
     """Reconcile original prepared work; never allocate retries or resubmit uncertainty."""
     return await execute_run(
@@ -204,4 +247,5 @@ async def recover_run(
         spec=spec,
         use_frozen_snapshot=use_frozen_snapshot,
         fault=fault,
+        retry_policy=retry_policy,
     )

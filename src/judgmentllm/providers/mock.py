@@ -68,7 +68,9 @@ class MockMemberScenario(ExecutionModel):
 class MockScenario(ExecutionModel):
     """Explicit synthetic outcomes; text-bearing values are never ledger fields."""
 
-    outcome: Literal["valid", "invalid", "refusal", "provider_error"] = "valid"
+    outcome: Literal[
+        "valid", "invalid", "refusal", "provider_error", "confirmed_cancellation"
+    ] = "valid"
     transport: Literal[
         "success",
         "not_submitted",
@@ -134,7 +136,7 @@ class MockPayload(ExecutionModel):
 class MockResponseEnvelope(ExecutionModel):
     synthetic: Literal[True] = True
     observation_key: ID
-    kind: Literal["response", "refusal", "provider_error"]
+    kind: Literal["response", "refusal", "provider_error", "confirmed_cancellation"]
     output: dict[str, JsonValue] | None = None
     rubric_probabilities: tuple[CategoryProbability, ...] | None = None
     provider_expected_index: float | None = None
@@ -383,7 +385,7 @@ class MockAdapter:
             "kind": "response",
             "raw_marker": scenario.raw_marker,
         }
-        if scenario.outcome in ("refusal", "provider_error"):
+        if scenario.outcome in ("refusal", "provider_error", "confirmed_cancellation"):
             fields["kind"] = scenario.outcome
         elif scenario.outcome == "invalid":
             fields["output"] = {"synthetic_invalid": True}

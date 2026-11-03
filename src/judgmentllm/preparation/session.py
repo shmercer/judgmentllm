@@ -295,14 +295,23 @@ class PreparedRun:
         ):
             raise PreparationError("template differs from the immutable manifest")
 
-    def iter_request_dependencies(self) -> Iterator[RequestDependency]:
+    def iter_request_dependencies(
+        self, *, start_ordinal: int = 0
+    ) -> Iterator[RequestDependency]:
         self.verify_compatibility(capabilities=self.capabilities)
-        records = (
-            self.iter_responses()
-            if self.spec.task_kind == "rubric"
-            else self.iter_pairs()
+        if start_ordinal < 0:
+            raise ValueError("request ordinal must be nonnegative")
+        kind = "response" if self.spec.task_kind == "rubric" else "pair"
+        group_count = len(self.manifest.trait_groups) if kind == "response" else 1
+        record_start, group_start = divmod(start_ordinal, group_count)
+        records = self.repository.connection.execute(
+            "SELECT record_id FROM input_records WHERE run_id=? AND record_kind=? "
+            "ORDER BY ordinal LIMIT -1 OFFSET ?",
+            (self.manifest.run_id, kind, record_start),
         )
-        for record in records:
+        first = True
+        for indexed in records:
+            record = self._get(kind, str(indexed["record_id"]))
             # Revalidate mutable caller-visible context before each source record.
             self.verify_compatibility(capabilities=self.capabilities)
             left = (
@@ -315,14 +324,82 @@ class PreparedRun:
                 if isinstance(record, PairTask)
                 else None
             )
-            for request in plan_record(
-                self.spec,
-                record,
-                template_text=self.template,
-                capabilities=self.capabilities,
+            for position, request in enumerate(
+                plan_record(
+                    self.spec,
+                    record,
+                    template_text=self.template,
+                    capabilities=self.capabilities,
+                )
             ):
+                if first and position < group_start:
+                    continue
                 self.verify_compatibility(capabilities=self.capabilities)
                 yield _request_dependency(self.manifest, request, record, left, right)
+            first = False
+
+    def dependency_for_request(self, request_uid: str) -> RequestDependency:
+        """Reopen one immutable parent without enumerating previously scheduled work."""
+        task_id = self.repository.request_task_ids(self.manifest.run_id, request_uid)[0]
+        task = self.repository.get_task(self.manifest.run_id, task_id)
+        record = (
+            self.get_response(task.item_id)
+            if task.item_id is not None
+            else self.get_pair(task.pair_uid or "")
+        )
+        left = (
+            self.get_response(record.left_item_id)
+            if isinstance(record, PairTask)
+            else None
+        )
+        right = (
+            self.get_response(record.right_item_id)
+            if isinstance(record, PairTask)
+            else None
+        )
+        for request in plan_record(
+            self.spec,
+            record,
+            template_text=self.template,
+            capabilities=self.capabilities,
+        ):
+            if request.request_uid == request_uid:
+                dependency = _request_dependency(
+                    self.manifest, request, record, left, right
+                )
+                if (
+                    dependency.dependency_sha256
+                    != self.repository.get_request(
+                        self.manifest.run_id, request_uid
+                    ).dependency_sha256
+                ):
+                    raise PreparationError("parent request dependency changed")
+                return dependency
+        raise PreparationError("parent request is absent from verified plan")
+
+    def render_attempt(self, dependency: RequestDependency) -> RenderedPrompt:
+        """Render an exact ordered subset while retaining its parent identity."""
+        parent = self.dependency_for_request(dependency.request.request_uid)
+        self.render(parent)
+        selected = tuple(t.task_id for t in dependency.request.tasks)
+        expected_tasks = tuple(t for t in parent.request.tasks if t.task_id in selected)
+        expected = parent.model_copy(
+            update={
+                "request": parent.request.model_copy(
+                    update={
+                        "tasks": expected_tasks,
+                        "trait_ids": tuple(t.trait_id for t in expected_tasks),
+                    }
+                )
+            }
+        )
+        if (
+            not selected
+            or len(set(selected)) != len(selected)
+            or canonical_bytes(expected) != canonical_bytes(dependency)
+        ):
+            raise PreparationError("attempt membership differs from its parent")
+        return _render_request(self.spec, self.template, dependency.request, self._get)
 
     def render(self, dependency: RequestDependency) -> RenderedPrompt:
         """Render with the established renderer; never retain text in minimal mode."""

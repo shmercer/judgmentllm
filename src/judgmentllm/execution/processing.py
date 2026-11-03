@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from judgmentllm.config import RunSpec
@@ -51,6 +52,8 @@ def interpret(
     dependency: RequestDependency,
     run_id: str,
     attempt_id: str,
+    *,
+    member_checkpoint: Callable[[], None] | None = None,
 ) -> InterpretedResponse:
     """Match exact trait IDs and salvage independently valid rubric members.
 
@@ -68,6 +71,8 @@ def interpret(
             )
         except ValueError:
             result = None
+        if member_checkpoint is not None:
+            member_checkpoint()
         return InterpretedResponse(
             (
                 result
@@ -109,7 +114,9 @@ def interpret(
         selected = member_dependency(dependency, index)
         result = None
         status, error = "invalid", "invalid_output"
-        if parsed is not None and parsed.kind in {"refusal", "provider_error"}:
+        if parsed is not None and parsed.kind == "confirmed_cancellation":
+            status, error = "cancelled", "confirmed_cancellation"
+        elif parsed is not None and parsed.kind in {"refusal", "provider_error"}:
             status, error = (
                 ("refused", "provider_refusal")
                 if parsed.kind == "refusal"
@@ -151,6 +158,8 @@ def interpret(
         results.append(
             result or unsuccessful(spec, selected, run_id, attempt_id, status, error)
         )
+        if member_checkpoint is not None:
+            member_checkpoint()
     return InterpretedResponse(tuple(results), recognizable, unexpected, unattributable)
 
 
@@ -222,6 +231,10 @@ def normalize(
     if parsed.kind == "provider_error":
         return unsuccessful(
             spec, dependency, run_id, attempt_id, "errored", "provider_error"
+        )
+    if parsed.kind == "confirmed_cancellation":
+        return unsuccessful(
+            spec, dependency, run_id, attempt_id, "cancelled", "confirmed_cancellation"
         )
     task = dependency.request.tasks[0]
     pair = dependency.request.pair

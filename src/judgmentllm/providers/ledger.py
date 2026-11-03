@@ -25,7 +25,9 @@ class ObservationRecipe(ExecutionModel):
     """Non-sensitive accepted recipe; text-bearing fixture values stay outside."""
 
     fixture_sha256: SHA256
-    outcome: Literal["valid", "invalid", "refusal", "provider_error"]
+    outcome: Literal[
+        "valid", "invalid", "refusal", "provider_error", "confirmed_cancellation"
+    ]
     selection_index: int = Field(ge=0)
     winner: Literal["first", "second", "tie"]
     probabilities: bool

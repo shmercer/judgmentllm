@@ -97,14 +97,14 @@ class ProviderResponse(ExecutionModel):
     """Exact received bytes; only full capture may retain them."""
 
     observation_key: ID
-    kind: Literal["response", "refusal", "provider_error"]
+    kind: Literal["response", "refusal", "provider_error", "confirmed_cancellation"]
     raw: bytes
 
 
 class ParsedResponse(ExecutionModel):
     """Parsed transport envelope; existing output validators interpret output."""
 
-    kind: Literal["response", "refusal", "provider_error"]
+    kind: Literal["response", "refusal", "provider_error", "confirmed_cancellation"]
     output: dict[str, JsonValue] | None = None
     rubric_probabilities: tuple[CategoryProbability, ...] | None = None
     provider_expected_index: float | None = None

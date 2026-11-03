@@ -16,6 +16,7 @@ from test_preparation_rendering import specification
 from judgmentllm.config import RunSpec
 from judgmentllm.execution import execute_run, recover_run
 from judgmentllm.execution.processing import interpret
+from judgmentllm.execution.session import ExecutionSession, ExecutionWork
 from judgmentllm.persistence.models import IntegrityError
 from judgmentllm.persistence.repository import Repository
 from judgmentllm.preparation import prepare_run
@@ -344,6 +345,51 @@ async def test_group_redelivery_conflicts_fail_closed(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("capture", ["full", "minimal"])
+async def test_session_repeated_delivery_preserves_original_committed_group(
+    tmp_path: Path, capture: Literal["full", "minimal"]
+) -> None:
+    spec, store, ledger = fixture(tmp_path, capture)
+    adapter = MockAdapter(ledger, scenario=mixed())
+    await execute_run("001", store=store, adapter=adapter, spec=spec)
+    session = ExecutionSession("001", store, adapter, spec, False, None)
+    try:
+        attempt = next(session.repository.iter_attempts("001"))
+        submission = session.repository.get_submission_for_attempt(
+            "001", attempt.attempt_id
+        )
+        assert submission is not None and session.prepared is not None
+        dependency = session.prepared.dependency_for_request(attempt.request_uid)
+        wire = adapter.prepare(spec, dependency, session.prepared.render(dependency))
+        work = ExecutionWork(
+            dependency,
+            wire,
+            attempt.attempt_id,
+            submission.submission_id,
+            submission.correlation_id,
+        )
+        response = await adapter.retrieve(
+            wire,
+            submission_id=submission.submission_id,
+            correlation_id=submission.correlation_id,
+        )
+        before = tuple(session.repository.iter_results("001"))
+        session.process(work, response)
+        assert tuple(session.repository.iter_results("001")) == before
+        assert (
+            session.repository.get_attempt("001", attempt.attempt_id).state
+            == "normalized"
+        )
+        assert adapter.ledger.acceptance_count() == 1
+        with pytest.raises(IntegrityError, match="conflicts"):
+            session.process(
+                work, response.model_copy(update={"raw": response.raw + b" "})
+            )
+    finally:
+        session.close()
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "stage", ["during_member_validation", "during_result_transaction", None]
 )
@@ -434,3 +480,49 @@ async def test_grouped_minimal_privacy_live_and_recovery(
             )
     captured = capsys.readouterr()
     assert not captured.out and not captured.err
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "policy,explicit,expected",
+    [
+        ("independent", False, [("000",), ("001",), ("002",)]),
+        ("grouped", False, [("000", "001", "002")]),
+        ("grouped", True, [("002", "000"), ("001",)]),
+        ("auto", False, [("000", "001"), ("002",)]),
+    ],
+)
+async def test_execution_preserves_established_grouping_membership_and_order(
+    tmp_path: Path, policy: str, explicit: bool, expected: list[tuple[str, ...]]
+) -> None:
+    spec = specification(tmp_path / "inputs", responses=1, traits=3)
+    spec.provider, spec.endpoint = "mock", "synthetic"
+    settings: dict[str, object] = {"grouping": policy, "concurrency": 1}
+    if explicit:
+        settings["groups"] = [["002", "000"], ["001"]]
+    if policy == "auto":
+        settings["max_traits_per_request"] = 2
+    spec = RunSpec.model_validate({**spec.model_dump(), "execution": settings})
+    store, ledger = tmp_path / "store", tmp_path / "ledger"
+    adapter = MockAdapter(ledger, scenario=MockScenario(reverse_members=True))
+    with prepare_run(
+        spec, store=store, run_id="001", capabilities=adapter.capabilities(spec)
+    ) as prepared:
+        dependencies = tuple(prepared.iter_request_dependencies())
+        assert [d.request.trait_ids for d in dependencies] == expected
+        originals = {
+            d.request.request_uid: tuple(t.task_id for t in d.request.tasks)
+            for d in dependencies
+        }
+    report = await execute_run("001", store=store, adapter=adapter, spec=spec)
+    assert (
+        report.summary.logical_completed_tasks == 3
+        and report.summary.state == "completed"
+    )
+    with Repository(store) as repository:
+        for request in repository.iter_requests("001"):
+            assert (
+                repository.request_task_ids("001", request.request_uid)
+                == originals[request.request_uid]
+            )
+    assert adapter.ledger.acceptance_count() == len(expected)
