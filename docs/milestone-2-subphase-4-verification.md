@@ -238,3 +238,39 @@ keep all six current gates mandatory. Do not infer provider continuation after a
 command exits, reconstruct lost minimal responses from recipes, or resubmit
 uncertain work. Real providers, provider-managed batches, rubricLLM/FastAPI and
 full scale qualification remain assigned to their approved later milestones.
+
+## PR #7 Windows CI corrections
+
+The initial [CI run 41654229976](https://github.com/shmercer/judgmentllm/actions/runs/41654229976)
+passed all four Linux/macOS configurations and failed both Windows configurations.
+The follow-up preserves the reviewed Subphase 4 architecture and all schema,
+normalization, export, privacy, concurrency and retry contracts.
+
+- Export staging was reopened as `rb` before `os.fsync()`. Windows rejects
+  synchronization through that read-only descriptor with `EBADF`. The owned,
+  completed staging file now reopens as `r+b`, without truncation, and explicitly
+  flushes before the real fsync. Publication occurs only after synchronization
+  succeeds. Nine new filesystem regressions exercise all three export views,
+  empty/populated results, actual descriptor writes/fsync and exact SHA-256/length;
+  injected sync failure must propagate and leave no published export.
+- Grouped live privacy inspection omitted the required `mapped` tracker. It now
+  uses the established exact SHM mapping and one-byte lock deferral rules, scans
+  all files after release before/after recovery, and checks authorized explanations
+  separately. Explicit injection tracking proves interruption variants reached
+  the requested validation/result-transaction boundary instead of passing on a
+  premature inspection failure.
+- The Windows/Python 3.15 cancellation test terminated a marker PID and immediately
+  reaped/killed its launcher. Its previous cleanup did not wait on the actual
+  owner process object. The repeated native test now captures that live owner's
+  handle, waits for termination to complete, and only then reaps the launcher and
+  attempts takeover. It records both PIDs and native exit/wait diagnostics, and
+  immediately checks SQLite integrity, foreign keys, stale ownership recovery,
+  zero fabricated results and zero accepted submissions. The PID marker itself
+  is atomically published. No production SQLite change, WAL/SHM deletion, ignored
+  integrity error or database reconstruction is introduced.
+
+The six-configuration CI matrix includes a focused native Windows regression step
+before the full quality gates. This runs export durability, all export tests,
+all grouped privacy interruption variants, three repeated exclusive-owner death
+cycles, and independent/grouped subprocess memory fixtures with the unchanged
+warning/error and memory limits. Native CI evidence and final results follow.

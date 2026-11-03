@@ -47,6 +47,10 @@ jobs:
       - name: Install locked development and optional dependencies
         run: uv sync --locked --all-extras --group dev
 
+      - name: Verify Windows export durability and cancellation recovery
+        if: runner.os == 'Windows'
+        run: uv run --offline --no-sync pytest --no-cov -q -rP tests/test_export_durability.py tests/test_execution_exports.py tests/test_grouped_execution.py::test_grouped_minimal_privacy_live_and_recovery tests/test_execution_cancellation_processes.py::test_competing_process_cannot_cancel_exclusive_executor tests/test_execution_resources.py tests/test_grouped_resources.py -Werror::ResourceWarning -Werror::pytest.PytestUnraisableExceptionWarning
+
       - name: Lint
         run: uv run --offline --no-sync ruff check .
 

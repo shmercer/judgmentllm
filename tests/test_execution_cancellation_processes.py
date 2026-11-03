@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import json
-import os
 import signal
+import sqlite3
 import subprocess
 import sys
 import time
@@ -143,7 +143,10 @@ def test_cancelled_process_retains_submission_evidence(
         )
 
 
-def test_competing_process_cannot_cancel_exclusive_executor(tmp_path: Path) -> None:
+@pytest.mark.parametrize("repetition", range(3))
+def test_competing_process_cannot_cancel_exclusive_executor(
+    tmp_path: Path, repetition: int
+) -> None:
     fixture = _fixture(tmp_path, "minimal")
     marker = tmp_path / "executor.pid"
     process = subprocess.Popen(
@@ -152,6 +155,10 @@ def test_competing_process_cannot_cancel_exclusive_executor(tmp_path: Path) -> N
         stderr=subprocess.PIPE,
         text=True,
     )
+    worker_pid: int | None = None
+    worker_handle: int | None = None
+    worker_exit: int | None = None
+    native_wait: int | None = None
     try:
         deadline = time.monotonic() + 15
         while (
@@ -160,20 +167,75 @@ def test_competing_process_cannot_cancel_exclusive_executor(tmp_path: Path) -> N
             and time.monotonic() < deadline
         ):
             time.sleep(0.01)
-        assert marker.exists()
+        assert marker.exists(), "executor did not reach the holding boundary"
+        worker_pid = int(marker.read_text(encoding="ascii"))
+        if sys.platform == "win32":
+            import _winapi
+
+            # The venv launcher and lock-owning interpreter may be different
+            # processes. Capture the real owner's kernel identity while alive;
+            # PID disappearance or reaping only the launcher cannot prove exit.
+            worker_handle = _winapi.OpenProcess(
+                _winapi.SYNCHRONIZE | 0x0001 | 0x1000, False, worker_pid
+            )
+            assert _winapi.WaitForSingleObject(worker_handle, 0) == _winapi.WAIT_TIMEOUT
+        else:
+            assert worker_pid == process.pid
         with pytest.raises(OwnershipError):
             cancel_run("001", store=fixture[0])
     finally:
-        if marker.exists():
-            try:
-                os.kill(int(marker.read_text(encoding="ascii")), signal.SIGTERM)
-            except ProcessLookupError:
-                pass
-        if process.poll() is None:
-            process.kill()
-        process.communicate(timeout=10)
+        try:
+            if sys.platform == "win32" and worker_handle is not None:
+                import _winapi
+
+                # TerminateProcess is asynchronous. Wait on the exact process
+                # object until all its threads/I/O/handles have been released,
+                # then let its launcher exit and reap that separate process.
+                _winapi.TerminateProcess(worker_handle, int(signal.SIGTERM))
+                native_wait = _winapi.WaitForSingleObject(worker_handle, 10_000)
+                assert native_wait == _winapi.WAIT_OBJECT_0
+                worker_exit = _winapi.GetExitCodeProcess(worker_handle)
+                assert worker_exit != _winapi.STILL_ACTIVE
+            elif process.poll() is None:
+                process.terminate()
+            process.communicate(timeout=10)
+            assert process.returncode is not None
+        finally:
+            if sys.platform == "win32" and worker_handle is not None:
+                import _winapi
+
+                _winapi.CloseHandle(worker_handle)
+            if process.poll() is None:
+                process.kill()
+            process.communicate(timeout=10)
+    print(
+        json.dumps(
+            {
+                "repetition": repetition,
+                "platform": sys.platform,
+                "launcher_pid": process.pid,
+                "worker_pid": worker_pid,
+                "worker_native_wait": native_wait,
+                "worker_exit": worker_exit,
+                "launcher_exit": process.returncode,
+                "sqlite_version": sqlite3.sqlite_version,
+                "stage": "owner_terminated_and_launcher_reaped",
+            }
+        )
+    )
     assert cancel_run("001", store=fixture[0]).state == "cancelled"
     assert _accepted(fixture[1]) == 0
+    with Repository(fixture[0]) as repository:
+        integrity = repository.connection.execute("PRAGMA integrity_check").fetchall()
+        assert [tuple(row) for row in integrity] == [("ok",)]
+        assert (
+            repository.connection.execute("PRAGMA foreign_key_check").fetchall() == []
+        )
+        assert repository.get_owner("001") is None
+        assert repository.summary("001").results == 0
+        events = tuple(repository.events("001"))
+        assert any(event.kind == "owner_recovered" for event in events)
+    print(json.dumps({"integrity_check": "ok", "foreign_key_check": "ok"}))
 
 
 @pytest.mark.parametrize("capture", ["full", "minimal"])
