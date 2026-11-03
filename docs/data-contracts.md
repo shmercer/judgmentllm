@@ -1,9 +1,10 @@
 # Data contracts and scoring semantics
 
-**Implemented schema version 1 (Milestone 1).** Assessment models live in
+**Implemented schema version 1, with the initial Milestone 2 generation foundation.** Assessment models live in
 `judgmentllm.models`, run configuration in `judgmentllm.config`, and normalized
 outputs in `judgmentllm.results`. These contracts prepare assessments offline;
-provider submission, persistence, and execution remain later milestones.
+provider submission and execution remain later milestones. The internal
+[persistence foundation](persistence-contracts.md) is implemented separately.
 
 ## Validation and serialization
 
@@ -17,10 +18,11 @@ include `schema_version: 1`. Omission defaults to version 1; an explicitly suppl
 version must be the integer `1`, excluding `true`, `1.0`, and `"1"`. Nested models
 such as traits and levels belong to their containing document's schema version.
 
-Models remain mutable for Python use. Library writers reconstruct a fresh deep snapshot immediately before serializing each record, including nested lists/models and unknown fields injected by `model_copy(update=...)`. Invalid current data or data that validators would repair is rejected; no cached instance validation is trusted. This invariant covers normalized JSONL, lossless CSV, derived R CSV, and the generic `write_jsonl` typed-record writer. Direct Pydantic serializer calls remain low-level operations and do not provide this export safeguard.
+Assessment models remain mutable for Python use; generation settings and capability evidence are frozen. Library writers reconstruct a fresh deep snapshot immediately before serializing each record, including nested lists/models and unknown fields injected by `model_copy(update=...)`. Invalid current data or data that validators would repair is rejected; no cached instance validation is trusted. This invariant covers normalized JSONL, lossless CSV, derived R CSV, and the generic `write_jsonl` typed-record writer. Direct Pydantic serializer calls remain low-level operations and do not provide this export safeguard.
 
 Use `model_dump(mode="json")` for JSON-compatible values and `model_dump_json()`
-for JSON text. Default fields and nulls are included. Lists retain source order.
+for JSON text. Default fields and nulls are included, except that absent generation
+configuration and its unset members are omitted as described below. Lists retain source order.
 `model_validate()` and `model_validate_json()` validate loaded records, including
 score consistency. Original label scalars are preserved in `Level.source_label`;
 `Level.label` is the canonical string used by scores and probability records.
@@ -95,17 +97,95 @@ validation never opens files.
 | `criteria`, `pairs` | Required nonempty criteria and pair input for pairwise tasks; incompatible with rubric tasks. Criteria can be inline or a referenced `{schema_version, criteria}` document. |
 | `exemplars` | Ordered inline list or referenced `{schema_version, exemplars}` document; defaults to empty. |
 | `provider`, `endpoint`, `model` | Required nonempty strings. Model IDs remain open; these values do not imply an implemented or qualified provider adapter. |
+| `generation` | Optional strict `GenerationSpec` with `temperature`, `top_p`, and `max_output_tokens`; omitted/null/empty means no requested controls. Only non-null requested members serialize. No provider defaults are inferred. |
 | `execution` | `mode=live` (`live/bulk_live/batch_native` intent), `grouping=independent` (`independent/grouped/auto`), optional fixed `groups`, optional positive `max_traits_per_request`, `explanations=false`, optional `tier`, `concurrency=4`. `cache_policy` defaults to `auto` for rubric and `off` for pairwise; valid values are `off/auto/explicit`. No execution or cache behavior is performed yet. |
 | `prompt` | Choose `preset` or `file`; `advanced=false`; configurable rendering safeguards under `limits`. Default preset follows task kind and explanation setting. Advanced mode requires a custom file. |
 | `normalization` | `NormalizationOptions`, with `probability_sum_tolerance=1e-8`, configurable in `[0,1)`. |
 | `capture`, `output_path` | `capture=full` (`full/minimal`); output defaults to `run-data` relative to the run configuration. These record future capture/output intent. |
-| `seed`, `strict_capabilities`, `allow_ties` | Optional integer seed; strict capabilities defaults false; ties default false and are pairwise-only. Tie prompts require a custom template. |
+| `seed`, `strict_capabilities`, `allow_ties` | Optional integer pairing/presentation seed, distinct from a future generation seed; strict capabilities defaults false; ties default false and are pairwise-only. Tie prompts require a custom template. |
 
 Pairwise preparation uses independent grouping. Fixed groups must partition all
 rubric traits exactly once without empty groups. Auto grouping requires an
 explicit or supplied capability limit; it never invents context windows or
 splits exemplars. Retry, native-batch controls, and budget configuration remain
 reserved for later milestones and are rejected as unknown fields today.
+
+### Generation configuration and extensibility
+
+`GenerationSpec` accepts these optional controls; every value defaults to unset:
+
+| Field | Neutral schema rule |
+|---|---|
+| `temperature` | Finite nonnegative number; no universal upper limit is invented. |
+| `top_p` | Finite number in `[0, 1]`. |
+| `max_output_tokens` | Strict positive integer; a fractional number, numeric string, or boolean is invalid. |
+
+Numeric controls reject booleans, numeric strings and nonfinite values. Neutral
+sampling values preserve integer versus float representation. Schema validity
+does not establish provider support. Endpoint/model restrictions
+may narrow the accepted range or prohibit combinations such as requesting both
+sampling controls; there is no universal prohibition of that combination.
+
+For example, the following block requests two values and leaves `top_p` unspecified:
+
+```yaml
+generation:
+  temperature: 0
+  max_output_tokens: 512
+```
+
+Omission, `generation: null`, `{}`, and all-null members normalize to no
+generation configuration. With no controls, `RunSpec.model_dump()` and
+`model_dump_json()` omit `generation`, preserving Milestone 1 serialization.
+Nonempty generation serialization omits null members and retains explicit zero
+values. Execution settings and the top-level `seed` do not populate generation.
+
+The extensibility design reserves typed generation fields `top_k`,
+`stop_sequences` (ordered strings), `repetition_penalty`, `frequency_penalty`,
+`presence_penalty`, and `generation.seed`, plus adapter-owned typed reasoning/
+thinking controls. These are not accepted fields in this initial foundation.
+Future additions require documented strict schemas and per-adapter validation;
+provider-specific extensions must be owned by their adapters. There is no
+dictionary for arbitrary provider request JSON. Future stop sequences retain
+their exact text and ordering and must obey the capture policy for text-bearing
+configuration. A generation seed cannot guarantee identical provider outputs.
+
+### Generation capability and reproducibility boundary
+
+`CapabilityProfile.generation` optionally supplies `GenerationCapabilities` for
+an exact `provider`, `endpoint`, and `model`. Each current parameter has a
+`GenerationParameterCapability` with `supported` (`true`, `false`, or null for
+unknown) and optional `minimum`/`maximum` bounds. Typed
+`incompatible_combinations` name controls that cannot be requested together.
+Evidence fields (`source`, `fixture_tested`, `live_qualified`) are separate from
+the requested settings; neither a schema-valid run nor synthetic evidence
+establishes cloud qualification. The foundation embeds no cloud support matrix.
+
+Known unsupported settings, violated bounds, incompatible combinations and
+mis-scoped evidence fail preflight. Required unknown support is reported
+explicitly and becomes an error under `strict_capabilities`. Runs without
+generation controls receive no new generation diagnostics and preserve existing
+strict-capability behavior. Unknown model IDs remain valid configuration values.
+
+All explicitly requested controls contribute to a separate generation commitment
+for immutable manifests and reproducibility. Item, pair and task IDs stay stable.
+Request context incorporates generation only when controls are explicitly
+requested; configurations with no generation controls retain their Milestone 1
+request IDs. Structural IDs are not exact payload identities.
+Capability evidence can change without changing requested settings
+identity. Before submission or resume, revalidate against the latest available
+restrictions; newly known incompatibilities block continuation. A changed
+requested control cannot reuse the frozen configuration or submission identity.
+
+The initial foundation supplies generation-only commitment and compatibility
+fixtures, not complete executable manifests or operational resume. Full source
+freezing and complete preflight remain required. When actual request preparation
+is implemented, the adapter must include each requested setting in the real
+prepared body and its exact byte hash, preserving omission and values. Milestone
+3 implements generative mappings, Milestone 4 rejects inapplicable settings on
+native score/decision endpoints, and Milestone 5 verifies live/batch parity.
+Future CLI configuration and the Milestone 6 `rubricLLM` wrapper use this same
+RunSpec rather than inventing independent defaults or provider payload schemas.
 
 ## Normalized results
 

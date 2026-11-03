@@ -1,12 +1,12 @@
 # Public Python API, schema version 1
 
-Milestone 1 supports offline preparation and normalization of supplied synthetic outputs. All examples below run without credentials. Public assessment models, common normalization functions, planning functions, and preview are also exported from `judgmentllm`.
+Milestone 1 supports offline preparation and normalization of supplied synthetic outputs. The initial Milestone 2 Subphase 2 foundation adds generation configuration and capability validation; it adds no provider requests or execution service. All examples below run without credentials. Public assessment models, common normalization functions, planning functions, and preview are also exported from `judgmentllm`.
 
 ## Models and loading
 
 `judgmentllm.models` exposes `ResponseItem`, `Level`, `ResolvedLevel`, `Trait`, `Rubric`, `Exemplar`, `PairwiseCriterion`, `PairTask`, and `validate_exemplars`. `Trait.numeric_values`, `resolved_levels`, and `coding_kind` expose resolved category coding.
 
-`judgmentllm.config` exposes `InputSpec`, `ExecutionSpec`, `PromptSpec`, `RunSpec`, `ConfigurationError`, `load_run_spec(path)`, `load_rubric(path)`, and `read_document(path)`. Loaders accept strings or `Path` objects. Every referenced path resolves against the configuration containing it. Direct Python construction uses loaded model instances; path shorthand is accepted through model validation for input references.
+`judgmentllm.config` exposes `InputSpec`, `ExecutionSpec`, `GenerationSpec`, `PromptSpec`, `RunSpec`, `ConfigurationError`, `load_run_spec(path)`, `load_rubric(path)`, and `read_document(path)`. Loaders accept strings or `Path` objects. Every referenced path resolves against the configuration containing it. Direct Python construction uses loaded model instances; path shorthand is accepted through model validation for input references.
 
 ```python
 from judgmentllm import load_run_spec
@@ -17,6 +17,25 @@ assert spec.rubric.traits[1].numeric_values == [1.0, 3.0, 8.0]
 ```
 
 Use Pydantic `model_dump(mode="json")`, `model_dump_json()`, `model_validate(...)`, `model_validate_json(...)`, and `model_json_schema()` for serialization/schema access. Path fields serialize to strings. Root documents and records default to schema version 1; unsupported explicit versions fail. No implicit migration exists. Metadata is the only intentionally extensible JSON object. Error diagnostics omit raw input values where practical.
+
+`GenerationSpec(temperature=None, top_p=None, max_output_tokens=None)` is frozen
+and strictly typed. Sampling values accept finite numbers (temperature >= 0,
+top-p in `[0, 1]`); output tokens require a positive integer. Booleans and numeric
+strings are rejected. Unset members do not serialize; explicit numeric zeros do.
+`RunSpec.generation` defaults to `None`; null, empty and all-null objects normalize
+to `None` and omit the field, preserving existing no-generation serialization.
+These controls do not change execution settings or top-level pairing `seed`.
+See [data contracts](data-contracts.md#generation-configuration-and-extensibility)
+for the bounded future extension design; those extension keys are rejected today.
+
+`GenerationCapabilities` and `GenerationParameterCapability` are available from
+`judgmentllm.generation` and the top-level package. A capability record requires
+exact `provider`, `endpoint` and `model` scope, and optionally describes each
+current parameter with `supported: bool | None` and inclusive `minimum`/`maximum`.
+`incompatible_combinations` is a tuple of tuples of distinct parameter names
+that cannot all be requested together. Optional `source` and separate
+`fixture_tested`/`live_qualified` flags describe evidence; both flags default false.
+No provider support or qualification is inferred from configuration validity.
 
 ## Normalization and independent output validation
 
@@ -55,13 +74,28 @@ All identity arguments above are required and remain distinct. Without probabili
 
 ## Structural plans and pair schedules
 
-`validate_run(spec, *, capabilities=None)` returns `ValidationReport.issues`; `.valid` is false when errors occur. `CapabilityProfile` contains optional `explanations`, `grouped`, `ties`, `modes`, `max_levels`, and `max_traits_per_request`. Unknown does not mean supported. Default unknowns warn; `strict_capabilities` turns required unknowns into errors. Known score-only explanation incompatibilities fail regardless of a conflicting supplied profile.
+`validate_run(spec, *, capabilities=None)` returns `ValidationReport.issues`; `.valid` is false when errors occur. `CapabilityProfile` contains optional `explanations`, `grouped`, `ties`, `modes`, `max_levels`, `max_traits_per_request`, and scoped `generation` facts. Unknown does not mean supported. Default unknowns warn; `strict_capabilities` turns required unknowns into errors. Known score-only explanation incompatibilities fail regardless of a conflicting supplied profile.
+
+For explicit generation controls, preflight rejects known unsupported controls,
+out-of-range values, incompatible combinations and mismatched capability scope.
+Unknown generation support produces field-specific diagnostics; no-generation
+runs retain their prior diagnostics and strict-mode behavior. The foundation
+supplies no cloud capability catalog, adapter mapping or successful qualification.
 
 `plan_run(spec, *, capabilities=None)` returns reusable ordered trait groups and selected exemplar IDs, raising `PreflightError` for errors. It does not scan all response records. `iter_tasks(spec, records=None)` and `iter_requests(spec, records=None, *, capabilities=None)` lazily read configured inputs or consume supplied `ResponseItem`/`PairTask` iterables. Task IDs are invariant across grouping. A request contains ordered tasks, trait IDs, exemplar IDs, and its source response or pair reference. Input readers retain seen IDs plus current text; the Cartesian task product is never stored.
 
 `prepare_pairs(pairs, *, repetitions=1, include_reversals=False, seed=None)` yields scheduled `PairTask` occurrences in source/repetition order, placing a reversal immediately after its base occurrence. Repetition indices are zero-based. The helper accepts unscheduled source occurrences only; it rejects existing reversal/repetition metadata instead of overwriting it. Explicit already-scheduled occurrences can be passed directly to task/request iteration. IDs hash schema-versioned canonical JSON encoded as UTF-8, with sorted object keys and compact separators. Seeded orientation uses the parity of the SHA-256 digest's final hexadecimal digit for `[1,"orientation",seed,source_pair_uid,pair_id,repetition_index]`: even preserves original orientation, odd reverses it. Reversal is always the exact opposite. Presentation changes leave logical occurrence/task identity unchanged; request identity includes presentation.
 
 Request IDs identify the structural membership and configured context. Pairwise plans retain references rather than reading response text, so changing a referenced text alone does not change the structural request ID. Exact input/payload hashes and submission idempotence belong to Milestone 2.
+
+Generation controls leave item/pair/task IDs unchanged and participate in
+request context identity only when explicitly requested. No-generation
+configurations preserve their Milestone 1 request IDs. Separate immutable
+generation commitments record reproducibility settings. The internal
+`judgmentllm.persistence.generation` helpers build and compare that manifest
+section and revalidate current capability restrictions. They do not implement
+full manifest construction, source verification or operational resume; see the
+[persistence contracts](persistence-contracts.md#generation-manifest-section).
 
 Plans contain no provider request bodies, token/cost estimates, remote submissions, or persistent execution state. Pairwise response lookup is deferred to rendering. Direct rendering accepts resolved `left`/`right` responses, allowing callers to use their own lookup; file-based preview scans and retains only the selected responses.
 

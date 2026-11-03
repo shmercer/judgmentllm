@@ -2,7 +2,8 @@
 
 __version__ = "0.1.0a2"
 
-from judgmentllm.config import RunSpec, load_rubric, load_run_spec
+from judgmentllm.config import GenerationSpec, RunSpec, load_rubric, load_run_spec
+from judgmentllm.generation import GenerationCapabilities, GenerationParameterCapability
 from judgmentllm.models import (
     Exemplar,
     Level,
@@ -43,6 +44,9 @@ __all__ = [
     "PairTask",
     "PairwiseCriterion",
     "RunSpec",
+    "GenerationSpec",
+    "GenerationCapabilities",
+    "GenerationParameterCapability",
     "RubricResult",
     "PairwiseResult",
     "NormalizationOptions",

@@ -4,9 +4,9 @@
 
 Deliver the approved local, provider-neutral execution foundation using a deterministic mock provider, SQLite persistence, immutable manifests, incremental request preparation, bounded asynchronous execution, and shared Python/CLI services.
 
-This revision incorporates the six requested clarifications. The approved architecture, capture policies, conservative submission recovery, and six implementation subphases remain intact.
+This revision incorporates the six requested clarifications and the generation requirement at the start of Subphase 2. The approved architecture, capture policies, conservative submission recovery, and six implementation subphases remain intact.
 
-The inspected checkout remains clean `main` at `d1cb6e86a336bf0601de05a470185f6472f34b35`. No files were modified, tests executed, commits created, or provider requests made during this revision.
+At the earlier plan-only revision, the inspected checkout was clean `main` at `d1cb6e86a336bf0601de05a470185f6472f34b35`. No files were modified, tests executed, commits created, or provider requests made at that stage; this is historical context rather than current implementation status.
 
 ### Existing implementation remains authoritative
 
@@ -21,6 +21,10 @@ Preserve:
 - Existing template CLI behavior.
 
 Add complete-input validation, execution estimation, persistence, and lifecycle services without duplicating these implementations.
+
+The generation addition preserves existing request IDs when no controls are
+requested. Explicit controls enter the request context fingerprint; item, pair
+and task identities remain stable in either case.
 
 ### Components
 
@@ -285,13 +289,47 @@ If consistent freezing cannot be established, reject before submission. Do not a
 
 ### Manifest and incremental preparation
 
-Before first submission, seal the source/configuration commitments, grouping, coding, exemplars/order, templates, provider/model/mode/tier/cache settings, policies, seed, software versions, capabilities, and capture policy.
+Before first submission, seal the source/configuration commitments, grouping, coding, exemplars/order, templates, provider/model/mode/tier/cache settings, explicitly requested generation controls, policies, pairing/presentation seed, software versions, capabilities, and capture policy.
 
 Minimal capture represents text-bearing configuration through hashes and source references rather than retaining its text.
 
 Prepare requests incrementally. Commit exact dependencies, submitted membership, prompt/payload hashes, artifacts where permitted, and submission intent before every submission.
 
 Previously prepared requests must match their recorded commitments. Unprepared work must use compatible frozen renderer/serializer behavior.
+
+### Generation configuration foundation at the start of Subphase 2
+
+Introduce optional strict `RunSpec.generation` with `temperature`, `top_p` and
+`max_output_tokens`. Keep these separate from execution controls and top-level
+pairing/presentation `seed`. Omitted/null/empty configuration requests no
+generation controls; omit it from serialization and retain explicit zero values
+when supplied. Never invent provider defaults or silently adjust values.
+
+Establish typed capability evidence for the exact provider/model/endpoint,
+including per-control support/bounds and incompatible combinations. Known
+incompatibilities fail local preflight. Unknown support is reported explicitly
+and obeys `strict_capabilities`; it never establishes successful qualification.
+No-generation configurations retain their existing structural IDs,
+serialization and diagnostic behavior, without new generation warnings.
+
+Freeze requested generation identity independently of capability evidence. The
+complete immutable manifest must include that commitment; every actual prepared
+body must include requested controls so its exact-byte identity reflects them.
+Changing a requested value is incompatible with resume. Current capability
+restrictions must still be revalidated before submission/resume; newly known
+incompatibilities block continuation without rewriting frozen evidence.
+
+Implement only configuration, validation and generation-commitment integration
+in this initial foundation. Generation-only retained fixtures are not complete
+executable manifests: source freezing, complete manifest publication and full
+preflight remain required before any submission. Do not add cloud request
+builders or fake provider bodies for this work.
+
+Document future typed fields `top_k`, ordered `stop_sequences`,
+`repetition_penalty`, `frequency_penalty`, `presence_penalty`, `generation.seed`
+and reasoning/thinking controls. Provider-specific extensions
+must have documented adapter-owned schemas and validation; unsupported keys
+remain errors and unrestricted provider JSON remains forbidden.
 
 Full-capture resume blocks changed/missing originals unless `--use-frozen-snapshot` authorizes verified snapshots. Minimal capture requires matching originals. Corrupted required snapshots always block recovery.
 
@@ -450,7 +488,35 @@ Keep caching behavior: `off` disables library controls, mock `auto` reports unca
 
 Retain additive capability interfaces and future budget-policy boundaries without accepting an unenforced budget setting.
 
+Generation capability facts remain scoped to provider/model/endpoint and
+separate from requested configuration identity. Revalidate newly available
+restrictions on submission/resume; a previously unknown setting must not bypass
+a newly known incompatibility. Real parameter mappings remain Milestone 3.
+
 ## G. Acceptance tests and resource qualification
+
+### Generation foundation tests
+
+Before continuing Subphase 2 source preparation, add offline tests for:
+
+- Strict schemas, finite numeric boundaries, positive output limits, unknown
+  keys, and rejection of boolean/string coercions.
+- Sparse YAML/JSON serialization, explicit zeros, absent/null/empty equivalence,
+  and unchanged Milestone 1 serialization, IDs and strict diagnostics when no
+  generation controls are requested.
+- Model/endpoint-scoped supported, unsupported and unknown controls; bounds,
+  incompatible combinations and strict-mode unknown failures.
+- Every requested setting changing the generation commitment, immutable retained
+  commitment round trips, and changed-setting resume rejection.
+- Capability evidence changing independently of requested settings identity;
+  current restrictions still blocking newly known incompatibilities.
+- Python-generated generation provenance consumed by required offline
+  R/jsonlite assertions, preserving the existing export baseline.
+
+Generation-only fixtures prove this foundation only. They do not bypass source
+freezing, full preflight or complete-manifest requirements. Exact cloud payload
+mapping tests belong to Milestone 3, native applicability to Milestone 4, and
+live/batch parity to Milestone 5.
 
 ### Persistence, recovery, and retry tests
 
@@ -538,7 +604,7 @@ Keep the documented 100,000-response and million-task stress commands.
 | Subphase | Deliverable and acceptance |
 |---|---|
 | **1. Durable foundation** | Models, schema/repository, locking, artifacts, hashes. Verify immutable successful/unsuccessful result storage and alternative failure evidence. |
-| **2. Immutable preparation** | Source discovery/freezing/indexes, capture policies, manifest, incremental preparation. Verify concurrent-source-change rejection, multiline locators, privacy, and unchanged structural IDs. |
+| **2. Immutable preparation** | Begin with strict generation configuration, scoped capability validation and manifest-generation commitments; verify sparse serialization, legacy compatibility, hashing and resume checks. Then source discovery/freezing/indexes, capture policies, complete manifest and incremental preparation. Verify concurrent-source-change rejection, multiline locators, privacy, and unchanged legacy IDs when no generation controls are requested. |
 | **3. Submission/recovery core** | Protocol, mock ledger, bounded executor, receipts. Verify submission uncertainty and every minimal response-loss window against independent acceptance counts. |
 | **4. Outcomes and retry lifecycle** | Partial grouped outcomes, safe retries, explicit subset operations, cancellation, export. Verify failures survive restarts and prior outcomes remain immutable. |
 | **5. CLI controls and R lifecycle** | Commands/envelopes, installed-CLI R tests. Verify unsuccessful observations and subset retry histories across independent processes and exports. |
@@ -560,10 +626,10 @@ Preserve the approved additive public interfaces/configuration, normalized schem
 
 Deferrals remain unchanged:
 
-- **Milestone 3:** Real generative adapters and SDK/payload qualification.
-- **Milestone 4:** Native decision/score adapters and endpoint-specific probability handling.
-- **Milestone 5:** Provider-managed batches, live bulk orchestration, and actual caching controls/accounting.
-- **Milestone 6:** Catalog, rubricLLM/processx wrapper, required pairwiseLLM integration, prerelease qualification.
+- **Milestone 3:** Real generative adapters, supported generation controls per provider/model/endpoint, and SDK/payload qualification.
+- **Milestone 4:** Native decision/score adapters, endpoint-specific probability handling, and rejection of inapplicable generative controls.
+- **Milestone 5:** Provider-managed batches, live bulk orchestration, generation parameter parity across live/batch modes, and actual caching controls/accounting.
+- **Milestone 6:** Catalog, rubricLLM/processx wrapper using the same generation run configuration, required pairwiseLLM integration, prerelease qualification.
 - **Milestone 7:** Optional local FastAPI service.
 
 No real provider requests, statistical engine, arbitrary provider request JSON, background web service, or general workflow framework enters Milestone 2.

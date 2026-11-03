@@ -100,6 +100,17 @@ jobs:
           uv run --offline --no-sync python scripts/persistence_r_fixture.py --phase export --output "$RUNNER_TEMP/judgmentllm-persistence-r"
           Rscript --vanilla examples/persistence_interoperability.R "$RUNNER_TEMP/judgmentllm-persistence-r"
 
+      - name: Verify required generation-to-R interoperability
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
+        shell: bash
+        env:
+          JUDGMENTLLM_R_STRICT: '1'
+        run: |
+          set -euo pipefail
+          uv run --offline --no-sync python scripts/generation_r_fixture.py --phase persist --output "$RUNNER_TEMP/judgmentllm-generation-r"
+          uv run --offline --no-sync python scripts/generation_r_fixture.py --phase export --output "$RUNNER_TEMP/judgmentllm-generation-r"
+          Rscript --vanilla examples/generation_interoperability.R "$RUNNER_TEMP/judgmentllm-generation-r"
+
       - name: Build distributions
         run: uv build --offline
 

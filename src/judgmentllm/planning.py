@@ -10,7 +10,8 @@ from typing import Literal
 from pydantic import Field
 
 from judgmentllm.config import RunSpec
-from judgmentllm.io import read_pairs, read_responses
+from judgmentllm.generation import GenerationCapabilities
+from judgmentllm.io import _revalidate_record, read_pairs, read_responses  # pyright: ignore[reportPrivateUsage]
 from judgmentllm.models import PairTask, ResponseItem, StrictModel, VersionedModel
 
 
@@ -35,6 +36,9 @@ class CapabilityProfile(StrictModel):
     modes: tuple[Literal["live", "bulk_live", "batch_native"], ...] | None = None
     max_levels: int | None = Field(default=None, ge=2)
     max_traits_per_request: int | None = Field(default=None, ge=1)
+    generation: GenerationCapabilities | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 class ValidationIssue(StrictModel):
@@ -58,6 +62,96 @@ class ValidationReport(StrictModel):
 
 class PreflightError(ValueError):
     """A requested structural plan cannot satisfy its declared constraints."""
+
+
+def validate_generation(
+    spec: RunSpec, *, capabilities: GenerationCapabilities | None = None
+) -> ValidationReport:
+    """Check explicit controls only; this is not complete submission preflight.
+
+    Call again with current applicable facts before submission or resumption.
+    A previously recorded capability snapshot is audit evidence, not permission
+    to bypass newly known restrictions or source-integrity verification.
+    """
+    if spec.generation is None:
+        return ValidationReport()
+    spec = _revalidate_record(spec)
+    assert spec.generation is not None
+    if capabilities is not None:
+        capabilities = _revalidate_record(capabilities)
+        if (capabilities.provider, capabilities.endpoint, capabilities.model) != (
+            spec.provider,
+            spec.endpoint,
+            spec.model,
+        ):
+            return ValidationReport(
+                issues=(
+                    ValidationIssue(
+                        code="capability_scope_mismatch",
+                        field="generation",
+                        message="Generation capability facts must match the exact provider, endpoint, and model",
+                        severity="error",
+                    ),
+                )
+            )
+    issues: list[ValidationIssue] = []
+    requested = spec.generation.model_dump()
+    for name in ("temperature", "top_p", "max_output_tokens"):
+        value = getattr(spec.generation, name)
+        if value is None:
+            continue
+        rule = getattr(capabilities, name) if capabilities is not None else None
+        support = rule.supported if rule is not None else None
+        if support is not True:
+            unknown = support is None
+            issues.append(
+                ValidationIssue(
+                    code="unknown_capability" if unknown else "unsupported",
+                    field=f"generation.{name}",
+                    message=(
+                        f"generation.{name} support is unknown; no provider qualification was inferred"
+                        if unknown
+                        else f"generation.{name} is unsupported for this provider, endpoint, and model"
+                    ),
+                    severity=(
+                        "warning"
+                        if unknown and not spec.strict_capabilities
+                        else "error"
+                    ),
+                )
+            )
+        if rule is not None and (
+            (rule.minimum is not None and value < rule.minimum)
+            or (rule.maximum is not None and value > rule.maximum)
+        ):
+            bounds = ", ".join(
+                f"{bound}={limit}"
+                for bound, limit in (
+                    ("minimum", rule.minimum),
+                    ("maximum", rule.maximum),
+                )
+                if limit is not None
+            )
+            issues.append(
+                ValidationIssue(
+                    code="generation_out_of_range",
+                    field=f"generation.{name}",
+                    message=f"generation.{name} is outside the known inclusive capability bounds ({bounds}); revise the requested value explicitly",
+                    severity="error",
+                )
+            )
+    if capabilities is not None:
+        for combination in capabilities.incompatible_combinations:
+            if all(name in requested for name in combination):
+                issues.append(
+                    ValidationIssue(
+                        code="incompatible_generation",
+                        field="generation",
+                        message=f"These generation controls cannot be requested together: {', '.join(combination)}",
+                        severity="error",
+                    )
+                )
+    return ValidationReport(issues=tuple(issues))
 
 
 class RunPlan(VersionedModel):
@@ -244,6 +338,7 @@ def validate_run(
                                 severity="warning",
                             )
                         )
+    issues.extend(validate_generation(spec, capabilities=profile.generation).issues)
     return ValidationReport(issues=tuple(issues))
 
 
@@ -326,8 +421,7 @@ def iter_requests(
     template_text = (
         spec.prompt.file.read_text(encoding="utf-8") if spec.prompt.file else None
     )
-    fingerprint = stable_id(
-        "context",
+    context_parts: list[object] = [
         spec.rubric.model_dump(mode="json")
         if spec.rubric
         else [c.model_dump(mode="json") for c in spec.criteria],
@@ -342,7 +436,11 @@ def iter_requests(
         spec.model,
         spec.execution.tier,
         spec.execution.mode,
-    )
+    ]
+    if spec.generation is not None:
+        # Leave every legacy context argument unchanged for unspecified controls.
+        context_parts.append({"generation": spec.generation.model_dump(mode="json")})
+    fingerprint = stable_id("context", *context_parts)
     seen: set[str] = set()
     for record in records:
         record_id = (

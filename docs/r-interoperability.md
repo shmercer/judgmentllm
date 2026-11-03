@@ -36,6 +36,14 @@ are future wrapper requirements; no `rubricLLM` package or execution CLI is
 implemented by this documentation update. Existing Milestone 1 commands remain
 limited to offline template tools.
 
+Generation settings use the same optional `RunSpec.generation` through Python,
+future lifecycle CLI configuration, and the Milestone 6 wrapper. Preserve omitted
+controls and explicit zeros; do not add R-side provider defaults, merge them into
+execution controls, or reinterpret the pairing `seed` as a generation seed.
+Capability support and qualification evidence remain separate from requested
+settings. Changing requested generation settings requires a new frozen run;
+current capability restrictions must still be checked before resume.
+
 Call Python once per run operation, file, or appropriately sized group/batch of
 tasks. Do not spawn a new Python process for every judgment. Request-level
 concurrency and durable submission belong to the Python service, while model
@@ -288,6 +296,23 @@ observed wins/ties versus unsuccessful records; exact category labels and
 mappings; complete probabilities; and categorical versus expected-score kinds.
 Analysis examples must select attempts explicitly and retain the audit source.
 Compatibility work cannot be postponed entirely until the Milestone 6 wrapper.
+
+The initial Subphase 2 generation foundation extends offline provenance checks
+to actual Python-generated generation commitments consumed with `jsonlite` in R.
+Verify exact requested values, unset-member omission and separate evidence/
+requested-settings identity without changing normalized result columns. These
+generation-only fixtures are not complete executable manifests: they do not
+replace source freezing, full preflight or the later installed-CLI lifecycle
+checks. Milestone 6 additionally tests that `rubricLLM` supplies this same run
+configuration without silently changing generation settings.
+
+Run the generation-only provenance check independently of the later lifecycle CLI:
+
+```bash
+uv run --offline --no-sync python scripts/generation_r_fixture.py --phase persist --output /tmp/judgmentllm-generation-r
+uv run --offline --no-sync python scripts/generation_r_fixture.py --phase export --output /tmp/judgmentllm-generation-r
+JUDGMENTLLM_R_STRICT=1 Rscript --vanilla examples/generation_interoperability.R /tmp/judgmentllm-generation-r
+```
 
 Required steps in the existing Ubuntu/Python 3.11 matrix job generate the
 synthetic exports, import them in R, and require `jsonlite` to recover complete
