@@ -214,11 +214,14 @@ the approved public lifecycle APIs/CLI remain assigned to later subphases.
 
 Source parsing, record validation, references, locators, hashes, and source-set
 consistency are always checked in full before sealing. Normal render preflight
-checks static assessment/grouping/template/settings with bounded synthetic
-empty-text representatives: once per configured rubric group or pairwise
-criterion, including empty input sources. It does not perform the complete
-response-by-trait rendering product. Content-dependent rendering failures remain
-request-boundary checks by default.
+compiles the static assessment/grouping/template/settings context through the
+shared renderer's syntax/AST/sandbox checks for every group or criterion, including
+empty sources. Bounded full rendering uses the first verified real response per
+rubric group or the first indexed pair per represented criterion, retaining actual
+IDs and orientation. Empty/unrepresented contexts are compiled without evaluating
+invented content or demanding hypothetical protected-block inclusion. The complete
+response-by-trait rendering product is not performed; content-dependent failures
+in later records remain request-boundary checks by default.
 
 Each selected dependency must pass `PreparedRun.render(dependency)` before future
 submission. This fully validates its verified real content through the existing

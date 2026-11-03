@@ -215,6 +215,20 @@ class PreparedRun:
                 stream, spec, record_locator(indexed), source.parsing
             )
             check_record(record, indexed)
+            if source.snapshot is None:
+                require_signature(path, source.generation, stream)
+                # Filesystem clocks can leave same-length writes within one
+                # tick indistinguishable through metadata. A shared buffered
+                # reader can also retain the old record after an in-place edit.
+                # Independently reparse just this locator and its strict header
+                # context; exact source hashes remain the session-entry check.
+                with path.open("rb") as verification:
+                    require_signature(path, source.generation, verification)
+                    verified = self._read_record(
+                        verification, spec, record_locator(indexed), source.parsing
+                    )
+                    check_record(verified, indexed)
+                    require_signature(path, source.generation, verification)
         except (ValueError, OSError):
             raise PreparationError(
                 "indexed record failed source verification"

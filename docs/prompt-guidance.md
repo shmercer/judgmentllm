@@ -136,10 +136,13 @@ Default safeguards are configurable through `prompt.limits` or `render_prompt(li
 The loop budget sums each loop's list length multiplied by its AST size; it bounds work even when a loop produces no text. These are rendering safeguards, not limits on stored trait or exemplar counts. Exceeding a safeguard raises `PromptError`; nothing is truncated. Increase a documented limit explicitly when appropriate. Syntax, undefined names, incompatible arguments, invalid exemplar assignments, and inclusion failures also raise `PromptError`, a `ValueError` subclass.
 
 Immutable source preparation validates every source and record before sealing,
-and checks the template/assessment/grouping/rendering configuration using one
-synthetic empty-text representative per rubric group or pairwise criterion.
-This bounded preflight also runs with empty inputs. It avoids rendering the full
-response-by-trait product during normal preparation.
+and compiles each template/assessment/grouping/rendering context with the same
+syntax, AST, unknown-variable, sandbox, and compilation checks, even with empty
+inputs. Bounded full render checks use the first verified actual response for
+each rubric group or first actual indexed pair per represented criterion. Actual
+response IDs and original/presented orientation are preserved. Empty/unrepresented
+contexts receive static checks; hypothetical content branches are not evaluated.
+Normal preparation avoids rendering the full response-by-trait product.
 
 Actual selected requests must pass `PreparedRun.render(dependency)` before any
 future provider submission. It checks their full verified texts and protected

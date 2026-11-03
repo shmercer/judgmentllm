@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import pytest
 
@@ -101,20 +101,39 @@ def count_renders(monkeypatch: pytest.MonkeyPatch) -> list[PlannedRequest]:
     return requests
 
 
+def count_static_checks(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, ...]]:
+    original = capture.validate_prompt_template
+    groups: list[tuple[str, ...]] = []
+
+    def check(*, trait_ids: Sequence[str], **options: Any) -> None:
+        groups.append(tuple(trait_ids))
+        original(trait_ids=trait_ids, **options)
+
+    monkeypatch.setattr(capture, "validate_prompt_template", check)
+    return groups
+
+
 @pytest.mark.parametrize("pairwise", [False, True])
 def test_normal_preflight_render_count_is_independent_of_input_count(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pairwise: bool
 ) -> None:
     rendered = count_renders(monkeypatch)
+    compiled = count_static_checks(monkeypatch)
     for count in (3, 30):
         rendered.clear()
+        compiled.clear()
         spec = specification(
             tmp_path / f"inputs-{count}", responses=count, traits=4, pairwise=pairwise
         )
         with prepare_run(
             spec, store=tmp_path / f"runtime-{count}", run_id="001"
         ) as prepared:
-            assert len(rendered) == 4
+            assert len(compiled) == 4
+            assert len(rendered) == (min(count, 4) if pairwise else 4)
+            assert all(
+                request.response is None or request.response.item_id == "000"
+                for request in rendered
+            )
             assert (
                 sum(
                     source.record_count
@@ -151,10 +170,13 @@ def test_fixed_groups_each_receive_one_upfront_representative(
 @pytest.mark.parametrize("pairwise", [False, True])
 @pytest.mark.parametrize("exhaustive", [False, True])
 def test_empty_sources_still_validate_template_contracts(
-    tmp_path: Path, pairwise: bool, exhaustive: bool
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pairwise: bool, exhaustive: bool
 ) -> None:
     spec = specification(tmp_path / "inputs", responses=0, pairwise=pairwise)
+    rendered = count_renders(monkeypatch)
+    compiled = count_static_checks(monkeypatch)
     assert validate_inputs(spec, exhaustive_rendering=exhaustive).valid
+    assert len(compiled) == 2 and not rendered
     template = tmp_path / "invalid.txt"
     template.write_text("{{ unknown_source_variable }}", encoding="utf-8")
     spec.prompt.preset = None
@@ -265,3 +287,110 @@ def test_representative_and_selected_prompts_are_not_retained_under_minimal_capt
                     sentinel.encode() not in path.read_bytes()
                     for sentinel in (student, exemplar, template_marker)
                 )
+
+
+def test_real_response_condition_does_not_evaluate_invented_empty_text(
+    tmp_path: Path,
+) -> None:
+    spec = specification(tmp_path / "inputs", responses=1, traits=2)
+    spec.input.path.write_text(
+        json.dumps({"item_id": "000", "text": "x" * 500}) + "\n", encoding="utf-8"
+    )
+    template = tmp_path / "conditional.txt"
+    template.write_text(
+        "{{ rubric }}\n{{ exemplars }}\n"
+        "{% if response|length > 300 %}{{ response }}{% endif %}\n"
+        "{{ output_instructions }}\n",
+        encoding="utf-8",
+    )
+    spec.prompt.preset = None
+    spec.prompt.file = template
+    spec.prompt.advanced = True
+    with prepare_run(spec, store=tmp_path / "runtime", run_id="001") as prepared:
+        for dependency in prepared.iter_request_dependencies():
+            assert "x" * 500 in prepared.render(dependency).text
+
+
+def test_pair_representative_preserves_actual_ids_and_presented_orientation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spec = specification(tmp_path / "inputs", responses=2, traits=2, pairwise=True)
+    assert spec.pairs is not None
+    rows = [
+        json.loads(line)
+        for line in spec.pairs.path.read_text(encoding="utf-8").splitlines()
+    ]
+    for row in rows:
+        row["presented_order"] = ["001", "000"]
+    spec.pairs.path.write_text(
+        "".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8"
+    )
+    template = tmp_path / "pair-conditional.txt"
+    template.write_text(
+        "{{ criterion }}\n{{ exemplars }}\n"
+        "{% if 'First response 001 (assessment data):' in first_response "
+        "and 'Second response 000 (assessment data):' in second_response %}"
+        "{{ first_response }}\n{{ second_response }}{% endif %}\n"
+        "{{ output_instructions }}\n",
+        encoding="utf-8",
+    )
+    spec.prompt.preset = None
+    spec.prompt.file = template
+    spec.prompt.advanced = True
+    rendered = count_renders(monkeypatch)
+    with prepare_run(spec, store=tmp_path / "runtime", run_id="001") as prepared:
+        assert len(rendered) == 2
+        for request in rendered:
+            assert request.pair is not None
+            assert request.pair.original_order == ["000", "001"]
+            assert request.pair.presented_order == ["001", "000"]
+        for dependency in prepared.iter_request_dependencies():
+            prompt = prepared.render(dependency).text
+            assert prompt.index("First response 001") < prompt.index(
+                "Second response 000"
+            )
+
+
+@pytest.mark.parametrize("pairwise", [False, True])
+def test_empty_sources_compile_conditional_context_without_invented_content(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, pairwise: bool
+) -> None:
+    spec = specification(tmp_path / "inputs", responses=0, pairwise=pairwise)
+    response = "first_response" if pairwise else "response"
+    content = (
+        "{{ first_response }}{{ second_response }}" if pairwise else "{{ response }}"
+    )
+    template = tmp_path / "conditional-empty.txt"
+    template.write_text(
+        "{{ rubric }}{{ exemplars }}"
+        + "{% if "
+        + response
+        + "|length > 300 %}"
+        + content
+        + "{% endif %}"
+        + "{{ output_instructions }}",
+        encoding="utf-8",
+    )
+    spec.prompt.preset = None
+    spec.prompt.file = template
+    spec.prompt.advanced = True
+    rendered = count_renders(monkeypatch)
+    compiled = count_static_checks(monkeypatch)
+    assert validate_inputs(spec).valid
+    assert len(compiled) == 2 and not rendered
+
+
+@pytest.mark.parametrize(
+    "template_text",
+    ["{{ response.__class__ }}", "{{ response | unknown_filter }}", "{% invalid %}"],
+)
+def test_empty_source_static_validation_reuses_sandbox_and_compiler_errors(
+    tmp_path: Path, template_text: str
+) -> None:
+    spec = specification(tmp_path / "inputs", responses=0)
+    template = tmp_path / "invalid-empty.txt"
+    template.write_text(template_text, encoding="utf-8")
+    spec.prompt.preset = None
+    spec.prompt.file = template
+    spec.prompt.advanced = True
+    assert not validate_inputs(spec).valid

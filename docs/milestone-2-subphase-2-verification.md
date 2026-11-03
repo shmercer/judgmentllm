@@ -45,8 +45,9 @@ uses the same pipeline in a disposable local store. No lifecycle CLI or public
 Prepared sessions support indexed response/pair lookup, ordered iteration,
 `iter_request_dependencies()`, current-capability compatibility checking and
 `render()`. Rendering reconstructs verified inputs and checks the dependency
-commitment, then calls the existing renderer. Corrected preparation renders one
-synthetic representative per group/criterion before publishing snapshots; explicit
+commitment, then calls the existing renderer. Corrected preparation checks static
+template configuration per group/criterion and renders verified actual bounded
+representatives where available before publishing snapshots; explicit
 `exhaustive_rendering=True` also checks every actual request. There are no
 provider request bodies, submission records, attempts, or fabricated results.
 
@@ -235,13 +236,15 @@ four required Ubuntu R gates, 90% coverage requirement and 20-minute timeout.
 ### Windows identity and generation metadata
 
 The original comparison incorrectly treated `Path.stat()` and `os.fstat()` as
-interchangeable observations on Windows. CPython 3.11 can fall back to directory
-attributes when path stat cannot open an already-open file, omitting device/inode;
-its descriptor `st_ctime` represents creation time. Newer CPython path stat
-substitutes birth time for `st_ctime`, while descriptor stat can expose true
+interchangeable observations on Windows. Native probes confirm that Windows
+3.15.2 path `st_ctime_ns` equals birth time, while descriptor `st_ctime_ns` exposes
 metadata change time. The original Windows 3.15 failures therefore occurred on
-ordinary unchanged files. Windows 3.11 also missed an in-place same-length edit
-with restored mtime because creation time is not a change detector.
+ordinary unchanged files. Windows 3.11.9 path and descriptor `ctime` both remained
+creation time; it missed an in-place same-length edit with restored mtime because
+creation time is not a change detector. The probe's stable device/inode values
+agreed on both APIs on this runner. CPython 3.11 additionally has a path-stat
+directory-attribute fallback that can omit those identity fields; that separate
+fallback was not observed in the captured native probe.
 
 The corrected Windows implementation opens an independent path handle, obtains
 both handles' stable device/inode and size/mtime through `fstat`, and obtains
@@ -263,6 +266,26 @@ different descriptors with equal bytes/timestamps, same-length/restored-mtime ed
 append/truncate, native query failure, simulated API discrepancies and full/minimal
 reopening. A Windows-only CI step prints metadata from a synthetic temporary file;
 it prints no input paths or assessment content.
+
+The native Windows probes in
+[correction run 41558368919](https://github.com/shmercer/judgmentllm/actions/runs/41558368919)
+recorded these exact observations with unchanged byte length and restored mtime:
+
+| Python | Raw path ctime before/after | Raw descriptor ctime before/after | Native normalized ChangeTime delta |
+|---|---|---|---:|
+| 3.11.9 | unchanged creation time | unchanged creation time | +91,781,900 ns |
+| 3.15.2 | unchanged birth time | metadata change time advanced | +161,283,300 ns |
+
+That intermediate run passed five jobs, including Windows 3.15, and exposed a
+bad assumption in two new Windows 3.11 tests: even true change timestamps can
+collide for tiny writes within one clock tick. Those tests now assert metadata
+rejection when metadata actually changes and **always** assert exact-hash rejection.
+No sleeps, skipped integrity cases or weakened hash checks are used. Minimal
+indexed lookup additionally reopens and reparses the selected logical record/header
+independently, verifies its ID/canonical hash again and checks generations around
+that reread. This remains bounded to selected content and never scans the response
+file for each pair. Deterministic CSV/JSONL tests force metadata to stay equal and
+modify selected text after the first parse; the independent hash check rejects it.
 
 The same five serialized signature fields and schema versions are retained.
 Windows `ctime_ns` now consistently means actual metadata change time. A previously
@@ -305,11 +328,17 @@ Failure-path tests verify closed descriptors/connections and idempotent cleanup.
 
 All source records, pair references, assessment/category/exemplar definitions,
 grouping and generation capabilities are still validated before sealing.
-Normal rendering preflight now checks synthetic representatives once per rubric
-group or pairwise criterion, even with empty inputs. This exercises the existing
-renderer's syntax, sandbox, inclusion, settings and static-context checks without
-rendering the response-by-trait product. It does not claim every actual response
-will satisfy content-dependent template conditions or output limits.
+Normal rendering preflight now checks syntax, sandbox and static settings once per
+rubric group or pairwise criterion, even with empty inputs, using the existing
+renderer's factored AST/compiler boundary. Where records exist, it fully renders
+the first verified response/group or first verified pair/criterion, preserving
+actual IDs and original/presented orientation. Missing contexts get static checks
+only. Invented empty content is never used to decide protected-block inclusion:
+doing so incorrectly rejected otherwise valid length/ID-dependent templates.
+Regression tests exercise real-content conditions, reversed pair presentation and
+empty conditional templates. No response-by-trait product is rendered, and normal
+preflight does not claim every actual response will satisfy content-dependent
+template conditions or output limits.
 
 `PreparedRun.render()` reconstructs verified selected inputs, checks the dependency
 commitment and fully renders/validates each actual request. Subphase 3 must call
@@ -327,17 +356,17 @@ from the original local results above.
 
 | Corrected check | Result |
 |---|---|
-| Targeted reported failures | 140 passed locally; final full suites additionally cover all 28 new signature/rendering/resource cases. |
-| Full local Python 3.12 / coverage | **935 passed**, no skips or warnings, 51.83 seconds; **97.06%** combined coverage. |
-| Full local Python 3.15 / coverage / strict resource warnings | **935 passed**, no skips or warnings, 34.76 seconds; **97.04%** combined coverage. Used `-Werror::ResourceWarning -Werror::pytest.PytestUnraisableExceptionWarning`. Original memory assertion passes unchanged under SysMonitor coverage. |
-| Ruff / strict Pyright / lock / builds / metadata / clean installs | Passed: Ruff lint/format (84 Python files), zero Pyright errors/warnings, unchanged 93-package lock, wheel/sdist, strict Twine metadata and both current clean-install smoke checks. Installation smoke completed with cached locked dependencies and `UV_OFFLINE=1`. |
+| Targeted reported failures | Initial 140 targeted cases passed; final focused prompt/rendering and integrity suites also passed. Full suites cover all 37 new signature/rendering/resource cases. |
+| Full local Python 3.12 / coverage | **944 passed**, no skips or warnings, 53.76 seconds; **97.10%** combined coverage. |
+| Full local Python 3.15 / coverage / strict resource warnings | **944 passed**, no skips or warnings, 36.32 seconds; **97.08%** combined coverage. Used `-Werror::ResourceWarning -Werror::pytest.PytestUnraisableExceptionWarning`. Original memory assertion passes unchanged under SysMonitor coverage. |
+| Ruff / strict Pyright / lock / builds / metadata / clean installs | Passed: Ruff lint/format (84 Python files), zero Pyright errors/warnings, unchanged 93-package lock, wheel/sdist, strict Twine metadata and both current clean-install smoke checks. Sandbox DNS blocked final dependency resolution; an authorized network retry installed locked core dependencies. All installed behavioral checks remained offline. |
 | Four strict R/jsonlite gates | Passed both full local suites and all four standalone offline pipelines: baseline, persistence, generation and source preparation. R 4.6.2/jsonlite 2.0.0; optional local pairwiseLLM checks also passed. |
 | Six GitHub CI configurations | Pending pushed correction run. |
 
 Corrected independent-process Python 3.15 measurements (un-instrumented child,
-tracemalloc enabled) were 2,263,418 → 2,588,375 peak Python bytes for 200 → 2,000
+tracemalloc enabled) were 2,278,013 → 2,596,668 peak Python bytes for 200 → 2,000
 responses (826,000 → 8,260,000 source bytes). Post-GC retained allocations were
-163,220 → 257,140 bytes, and native peaks 52,826,112 → 55,349,248 bytes. The original
+171,348 → 260,090 bytes, and native peaks 51,376,128 → 55,201,792 bytes. The original
 peak +3 MiB growth bound, 32 MiB Python and 256 MiB native ceilings remain in force;
 the resource regression also checks post-GC growth below 1 MiB. The 40-response ×
 20/200-trait subprocess regression still samples only 64 dependencies and asserts

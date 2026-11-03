@@ -11,10 +11,12 @@ from typing import Any, BinaryIO, Literal, cast
 
 import pytest
 
-from judgmentllm.config import RunSpec
+from judgmentllm.config import InputSpec, RunSpec
+from judgmentllm.models import PairTask, ResponseItem
 from judgmentllm.persistence.hashing import bytes_digest
 from judgmentllm.preparation import freezing, open_prepared_run, prepare_run
 from judgmentllm.preparation.freezing import PreparationError
+from judgmentllm.preparation.index import ParsingContext, RecordLocator
 
 
 def _spec(path: Path, capture: Literal["full", "minimal"]) -> RunSpec:
@@ -104,8 +106,11 @@ def test_native_same_length_edit_is_rejected_around_existing_descriptor(
         source.write_bytes(b"modified")
         if restore_mtime:
             os.utime(source, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
-        with pytest.raises(PreparationError):
-            freezing.require_signature(source, expected, stream)
+        # A rapid write can share a filesystem clock tick with the original.
+        # Metadata detects changed generations, never establishes byte equality.
+        if freezing.signature(source, stream) != expected:
+            with pytest.raises(PreparationError):
+                freezing.require_signature(source, expected, stream)
     with pytest.raises(PreparationError):
         freezing.verify_original(source, expected, bytes_digest(b"original"), 8)
 
@@ -293,3 +298,51 @@ def test_legacy_windows_creation_time_signature_is_not_silently_reinterpreted(
     legacy = expected.model_copy(update={"ctime_ns": expected.ctime_ns - 100})
     with pytest.raises(PreparationError, match="generation changed"):
         freezing.require_signature(source, legacy)
+
+
+@pytest.mark.parametrize("format", ["csv", "jsonl"])
+def test_minimal_selected_record_is_reverified_when_metadata_conceals_after_read_edit(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, format: Literal["csv", "jsonl"]
+) -> None:
+    source = tmp_path / f"responses.{format}"
+    original_bytes = (
+        b"item_id,text\n001,original\n"
+        if format == "csv"
+        else b'{"item_id":"001","text":"original"}\n'
+    )
+    source.write_bytes(original_bytes)
+    spec = _spec(source, "minimal")
+    with prepare_run(spec, store=tmp_path / "runtime", run_id="001") as prepared:
+        expected = next(
+            s.generation for s in prepared.manifest.sources if s.role == "response"
+        )
+        original_stat = source.stat()
+        original_reader = prepared._read_record  # pyright: ignore[reportPrivateUsage]
+        calls = 0
+
+        def unchanged(
+            path: Path, stream: BinaryIO | None = None
+        ) -> freezing.FileSignature:
+            return expected
+
+        def changing_read(
+            stream: BinaryIO,
+            input_spec: InputSpec,
+            locator: RecordLocator,
+            context: ParsingContext,
+        ) -> ResponseItem | PairTask:
+            nonlocal calls
+            result = original_reader(stream, input_spec, locator, context)
+            calls += 1
+            if calls == 1:
+                source.write_bytes(original_bytes.replace(b"original", b"modified"))
+                os.utime(
+                    source, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns)
+                )
+            return result
+
+        monkeypatch.setattr(freezing, "signature", unchanged)
+        monkeypatch.setattr(prepared, "_read_record", changing_read)
+        with pytest.raises(PreparationError, match="canonical hash is inconsistent"):
+            prepared.get_response("001")
+        assert calls == 2

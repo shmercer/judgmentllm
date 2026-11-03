@@ -26,8 +26,8 @@ from judgmentllm.persistence.repository import Repository
 from judgmentllm.persistence.sources import InputRecord, PairStructure, SourceRecord
 from judgmentllm.planning import (
     CapabilityProfile,
-    PlannedRequest,
     plan_record,
+    plan_run,
     stable_id,
 )
 from judgmentllm.preparation.freezing import (
@@ -56,6 +56,7 @@ from judgmentllm.preparation.records import (  # pyright: ignore[reportPrivateUs
     record_locator,
 )
 from judgmentllm.preparation.session import _render_request  # pyright: ignore[reportPrivateUsage]
+from judgmentllm.prompts import validate_prompt_template
 
 SourceRole = Literal[
     "configuration", "rubric", "criteria", "exemplars", "template", "response", "pair"
@@ -322,8 +323,8 @@ class SourceBuilder:
 
         Real inputs are completely validated/indexed independently. Rendering
         every real response/group combination is an explicit diagnostic option;
-        the normal path checks each configured group/criterion once, including
-        when its source has no records. Actual selected work must pass the same
+        the normal path compiles each configured group/criterion and renders a
+        bounded verified representative where available. Actual selected work must pass the same
         renderer through PreparedRun.render before a future submission.
         """
         self.input_spec, self.pair_spec = spec.input, spec.pairs
@@ -346,41 +347,44 @@ class SourceBuilder:
         template: str | None,
         capabilities: CapabilityProfile | None,
     ) -> None:
-        # Empty synthetic text checks the common schema/template/assessment
-        # contract without imposing a made-up minimum response length. These
-        # objects never enter source indexes, manifests, or request registries.
-        left = ResponseItem(item_id="0", text="")
-        right = ResponseItem(item_id="1", text="")
-
-        def render(request: PlannedRequest) -> None:
-            def lookup(
-                kind: Literal["response", "pair"], identifier: str
-            ) -> ResponseItem | PairTask:
-                if kind == "pair":
-                    assert request.pair is not None
-                    return request.pair
-                return left if identifier == left.item_id else right
-
-            _render_request(spec, template, request, lookup)
-
+        plan = plan_run(spec, capabilities=capabilities)
+        for group in plan.trait_groups:
+            validate_prompt_template(
+                kind=spec.task_kind,
+                trait_ids=group,
+                exemplar_ids=plan.exemplar_ids,
+                preset=spec.prompt.preset,
+                template=template,
+                advanced=spec.prompt.advanced,
+                explanations=spec.execution.explanations,
+                allow_ties=spec.allow_ties,
+                limits=spec.prompt.limits,
+            )
         if spec.task_kind == "rubric":
+            indexed = next(
+                self.repository.iter_input_records(self.run_id, "response"), None
+            )
+            if indexed is None:
+                return
+            response = self.lookup("response", indexed.record_id)
             for request in plan_record(
-                spec, left, template_text=template, capabilities=capabilities
+                spec, response, template_text=template, capabilities=capabilities
             ):
-                render(request)
+                _render_request(spec, template, request, self.lookup)
         else:
-            for criterion in spec.criteria:
-                pair = PairTask(
-                    pair_id="0",
-                    pair_uid="0",
-                    left_item_id=left.item_id,
-                    right_item_id=right.item_id,
-                    trait_id=criterion.trait_id,
-                )
+            represented: set[str] = set()
+            for indexed in self.repository.iter_input_records(self.run_id, "pair"):
+                structure = PairStructure.model_validate_json(indexed.structural_json)
+                if structure.trait_id in represented:
+                    continue
+                pair = self.lookup("pair", indexed.record_id)
                 for request in plan_record(
                     spec, pair, template_text=template, capabilities=capabilities
                 ):
-                    render(request)
+                    _render_request(spec, template, request, self.lookup)
+                represented.add(structure.trait_id)
+                if len(represented) == len(spec.criteria):
+                    break
 
     def verify_index(
         self, frozen: _Frozen, spec: InputSpec, kind: Literal["response", "pair"]

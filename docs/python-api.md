@@ -114,12 +114,15 @@ manifest. A direct `RunSpec` receives a validated canonical identity without an
 invented originating configuration-file hash.
 
 Source and record validation always covers the complete input set before sealing.
-Normal render preflight checks the full assessment/grouping/template configuration
-with one synthetic empty-text representative per rubric group or pairwise
-criterion. It validates syntax, sandbox rules, rendering settings, and assessment
-inclusion even when input sources are empty. It does not render every real
-response-by-trait combination. Content-specific output limits or conditional
-inclusion failures are checked when each actual request is selected.
+Normal preflight compiles the full assessment/grouping/template configuration
+with the shared syntax, sandbox, unknown-variable, and rendering-setting checks,
+including empty inputs. It then renders the first verified real response for
+each rubric group, or the first real indexed pair for each represented criterion,
+preserving actual IDs and presentation. Empty or unrepresented contexts receive
+static checks without evaluating hypothetical content branches. Preparation does
+not render every real response-by-trait combination. Content-specific output
+limits or conditional inclusion failures in later records are checked when each
+actual request is selected.
 
 Call `run.render(dependency)` on each selected verified dependency before any
 future submission. This uses the existing full renderer and validates the real
