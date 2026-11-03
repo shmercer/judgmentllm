@@ -158,7 +158,12 @@ def export_run(
                     raise IntegrityError(
                         "export row count differs from selected snapshot"
                     )
-                with path.open("rb") as stream:
+                # The serializers have closed their writers. Reopen our owned
+                # staging file without truncation and synchronize its completed
+                # bytes through a writable descriptor; Windows cannot fsync an
+                # rb descriptor. Publication still occurs only after success.
+                with path.open("r+b") as stream:
+                    stream.flush()
                     os.fsync(stream.fileno())
                 checkpoint("after_export_serialization")
                 artifact = artifact_store.put_stream(
