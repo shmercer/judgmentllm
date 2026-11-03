@@ -478,7 +478,6 @@ async def test_logical_order_preserved_when_completions_reorder(tmp_path: Path) 
         ("mode", "batch_native"),
         ("cache_policy", "explicit"),
         ("tier", "priority"),
-        ("grouping", "grouped"),
     ],
 )
 async def test_unsupported_execution_fails_before_submission(

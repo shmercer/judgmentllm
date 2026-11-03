@@ -99,6 +99,36 @@ assert not report.recovery_required and mock.ledger.acceptance_count() == 1
 report = asyncio.run(recover_run("001", store="execution-registry", adapter=mock))
 assert report.summary.results == 1 and mock.ledger.acceptance_count() == 1
 
+# Installed grouped processing, explicit subset history and immutable exports.
+from judgmentllm.execution.retry import authorize_subset_retry
+from judgmentllm.execution.exports import export_run
+from judgmentllm.providers import MockMemberScenario
+from judgmentllm.persistence.repository import Repository
+group_document = dict(mock_document)
+group_rubric = rubric.model_dump(mode="json")
+group_rubric["traits"].append(dict(group_rubric["traits"][0], trait_id="quality2"))
+group_document.update(rubric=group_rubric, execution={"grouping":"grouped", "concurrency":1})
+Path("group-run.json").write_text(json.dumps(group_document), encoding="utf-8")
+group_spec = load_run_spec("group-run.json")
+group_mock = MockAdapter("group-ledger.sqlite3", scenario=MockScenario(
+    members={"quality2":MockMemberScenario(outcome="invalid_category")}))
+with prepare_run("group-run.json", store="group-registry", run_id="001",
+    capabilities=group_mock.capabilities(group_spec)):
+    pass
+report = asyncio.run(execute_run("001", store="group-registry", adapter=group_mock))
+assert report.summary.results == 2 and report.summary.logical_completed_tasks == 1
+with Repository("group-registry") as registry:
+    failed_task = next(result.task_id for result in registry.iter_results("001") if result.status == "invalid")
+retry_mock = MockAdapter("group-ledger.sqlite3")
+authorize_subset_retry("001", store="group-registry", adapter=retry_mock,
+    task_ids=(failed_task,), operation_id="smoke-retry")
+report = asyncio.run(recover_run("001", store="group-registry", adapter=retry_mock))
+assert report.summary.state == "completed" and report.summary.results == 3
+assert retry_mock.ledger.acceptance_count() == 2
+for output_format, output_view in (("jsonl","canonical"),("csv","canonical"),("csv","r")):
+    exported = export_run("001", store="group-registry", format=output_format, view=output_view)
+    assert exported.row_count == 3 and Path(exported.artifact_path).is_file()
+
 # Exercise installed registry, immutable artifacts, and local OS ownership.
 from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.hashing import bytes_digest, semantic_digest

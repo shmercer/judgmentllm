@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
-from collections.abc import Generator, Iterator, Sequence
+from collections.abc import Callable, Generator, Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Literal, TypeVar, cast
@@ -840,11 +840,136 @@ class Repository:
             )
             return cursor.lastrowid
 
-    def get_result_for_attempt(self, run_id: str, attempt_id: str) -> Result | None:
+    def commit_results(
+        self,
+        run_id: str,
+        attempt_id: str,
+        results: Sequence[Result],
+        *,
+        observation_id: str | None = None,
+        failure_submission_id: str | None = None,
+        checkpoint: Callable[[], None] | None = None,
+        unexpected_members: int = 0,
+        unattributable_members: int = 0,
+    ) -> bool:
+        """Commit one complete physical outcome and its states in one transaction.
+
+        An existing group must match every member, record and evidence identity.
+        No partial existing group is repaired by inventing missing records.
+        """
+        if any(
+            type(value) is not int or value < 0
+            for value in (unexpected_members, unattributable_members)
+        ):
+            raise IntegrityError(
+                "member diagnostic counts must be nonnegative integers"
+            )
+        with self.transaction():
+            attempt = self.get_attempt(run_id, attempt_id)
+            expected = self.attempt_task_ids(run_id, attempt_id)
+            if tuple(result.task_id for result in results) != expected or any(
+                result.run_id != run_id
+                or result.attempt_id != attempt_id
+                or result.request_uid != attempt.request_uid
+                for result in results
+            ):
+                raise IntegrityError(
+                    "result group differs from immutable attempt membership"
+                )
+            prior = self.get_results_for_attempt(run_id, attempt_id)
+            if prior:
+                if prior != tuple(results):
+                    raise IntegrityError(
+                        "observation result group conflicts with committed outcomes"
+                    )
+                evidence = self.connection.execute(
+                    "SELECT observation_id,failure_submission_id FROM results WHERE run_id=? AND attempt_id=?",
+                    (run_id, attempt_id),
+                )
+                if any(
+                    (row[0], row[1]) != (observation_id, failure_submission_id)
+                    for row in evidence
+                ):
+                    raise IntegrityError("committed result evidence conflicts")
+                return False
+            for record in results:
+                self.append_result(
+                    record,
+                    observation_id=observation_id,
+                    failure_submission_id=failure_submission_id,
+                )
+                if checkpoint is not None:
+                    checkpoint()
+            submission = self.get_submission_for_attempt(run_id, attempt_id)
+            if submission is None:
+                raise IntegrityError("result attempt lacks submission")
+            if observation_id is not None:
+                self.transition("attempt", run_id, attempt_id, "normalized")
+                self.transition(
+                    "submission", run_id, submission.submission_id, "resolved"
+                )
+            for result in results:
+                task = self.get_task(run_id, result.task_id)
+                if task.state != result.status:
+                    self.transition("task", run_id, result.task_id, result.status)
+            self.repair_request_state(run_id, attempt.request_uid)
+            if observation_id is not None and (
+                unexpected_members or unattributable_members
+            ):
+                self._event(
+                    run_id,
+                    "observation_recorded",
+                    "observation",
+                    observation_id,
+                    target=f"unexpected_members={unexpected_members};unattributable_members={unattributable_members}",
+                )
+            return True
+
+    def repair_request_state(self, run_id: str, request_uid: str) -> None:
+        """Aggregate immutable parent membership, including successful siblings."""
+        row = self.connection.execute(
+            "SELECT COUNT(*),SUM(t.state='complete') FROM request_tasks rt JOIN tasks t ON t.run_id=rt.run_id AND t.task_id=rt.task_id WHERE rt.run_id=? AND rt.request_uid=?",
+            (run_id, request_uid),
+        ).fetchone()
+        assert row is not None
+        total, complete = int(row[0]), int(row[1] or 0)
+        target = (
+            "completed" if complete == total else "partial" if complete else "failed"
+        )
+        request = self.get_request(run_id, request_uid)
+        if request.state != target:
+            self.transition("request", run_id, request_uid, target)
+
+    @staticmethod
+    def _result_record(row: sqlite3.Row) -> Result:
+        raw = _text(row, "record_json")
+        kind = cast(dict[str, object], json.loads(raw)).get("task_kind")
+        result = (
+            RubricResult.model_validate_json(raw)
+            if kind == "rubric"
+            else PairwiseResult.model_validate_json(raw)
+        )
+        if semantic_digest("normalized-result", result) != _text(row, "record_sha256"):
+            raise IntegrityError("normalized result digest does not match")
+        return result
+
+    def get_results_for_attempt(
+        self, run_id: str, attempt_id: str
+    ) -> tuple[Result, ...]:
+        """Read one bounded physical group in immutable attempt member order."""
+        rows = self.connection.execute(
+            "SELECT r.record_json,r.record_sha256 FROM results r JOIN attempt_tasks a ON a.run_id=r.run_id AND a.attempt_id=r.attempt_id AND a.task_id=r.task_id WHERE r.run_id=? AND r.attempt_id=? ORDER BY a.position",
+            (run_id, attempt_id),
+        )
+        return tuple(self._result_record(row) for row in rows)
+
+    def get_result_for_attempt(
+        self, run_id: str, attempt_id: str, *, task_id: str | None = None
+    ) -> Result | None:
         """Read a committed single-member outcome before considering recovery."""
         rows = self.connection.execute(
-            "SELECT record_json,record_sha256 FROM results WHERE run_id=? AND attempt_id=? ORDER BY result_seq LIMIT 2",
-            (run_id, attempt_id),
+            "SELECT record_json,record_sha256 FROM results WHERE run_id=? AND attempt_id=? AND (? IS NULL OR task_id=?) ORDER BY result_seq LIMIT 2",
+            (run_id, attempt_id, task_id, task_id),
         ).fetchall()
         if len(rows) > 1:
             raise IntegrityError(
@@ -852,29 +977,26 @@ class Repository:
             )
         if not rows:
             return None
-        raw = _text(rows[0], "record_json")
-        kind = cast(dict[str, object], json.loads(raw)).get("task_kind")
-        result = (
-            RubricResult.model_validate_json(raw)
-            if kind == "rubric"
-            else PairwiseResult.model_validate_json(raw)
-        )
-        if semantic_digest("normalized-result", result) != _text(
-            rows[0], "record_sha256"
-        ):
-            raise IntegrityError("normalized result digest does not match")
-        return result
+        return self._result_record(rows[0])
 
-    def iter_results(self, run_id: str, *, page_size: int = 128) -> Iterator[Result]:
+    def iter_results(
+        self, run_id: str, *, page_size: int = 128, high_water_mark: int | None = None
+    ) -> Iterator[Result]:
         """Read a bounded immutable high-water snapshot, including failures."""
         if type(page_size) is not int or page_size < 1:
             raise ValueError("page size must be positive")
+        if high_water_mark is not None and (
+            type(high_water_mark) is not int or high_water_mark < 0
+        ):
+            raise ValueError("result high-water mark must be a nonnegative integer")
         self.get_run(run_id)
         maximum = self.connection.execute(
             "SELECT COALESCE(MAX(result_seq),0) FROM results WHERE run_id=?", (run_id,)
         ).fetchone()
         assert maximum is not None
-        high_water = cast(int, maximum[0])
+        high_water = (
+            cast(int, maximum[0]) if high_water_mark is None else high_water_mark
+        )
         after = 0
         while True:
             rows = self.connection.execute(
@@ -913,7 +1035,14 @@ class Repository:
             "SELECT r.state,(SELECT COUNT(*) FROM tasks WHERE run_id=r.run_id) AS tasks,(SELECT COUNT(*) FROM attempts WHERE run_id=r.run_id) AS attempts,(SELECT COUNT(*) FROM results WHERE run_id=r.run_id) AS results,(SELECT COUNT(*) FROM results WHERE run_id=r.run_id AND status='complete') AS successful_results,(SELECT COUNT(*) FROM submissions WHERE run_id=r.run_id AND state IN ('submitting','uncertain','acknowledged')) AS unresolved_submissions FROM runs r WHERE r.run_id=?",
             (run_id,),
         )
-        return ExecutionSummary.model_validate({"run_id": run_id, **dict(row)})
+        counts = self.connection.execute(
+            "SELECT (SELECT COUNT(*) FROM tasks WHERE run_id=? AND state='complete') AS logical_completed_tasks,(SELECT COUNT(*) FROM results WHERE run_id=? AND status<>'complete') AS unsuccessful_results,(SELECT COUNT(*) FROM retry_operations WHERE run_id=?) AS retry_operations",
+            (run_id, run_id, run_id),
+        ).fetchone()
+        assert counts is not None
+        return ExecutionSummary.model_validate(
+            {"run_id": run_id, **dict(row), **dict(counts)}
+        )
 
     def get_owner(self, run_id: str) -> OwnerInfo | None:
         row = self._one(

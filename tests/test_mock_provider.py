@@ -394,8 +394,7 @@ def test_sparse_generation_group_representation_and_rejections(tmp_path: Path) -
     _, _, grouped = request(adapter, grouping=True)
     assert len(MockPayload.model_validate_json(grouped.payload).members) == 2
     adapter.scenario = MockScenario(probabilities=True)
-    with pytest.raises(ProviderError):
-        request(adapter, grouping=True)
+    assert len(request(adapter, grouping=True)[2].task_ids) == 2
     adapter.scenario = MockScenario(winner="tie")
     with pytest.raises(ProviderError):
         request(adapter, pairwise=True)

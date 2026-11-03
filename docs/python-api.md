@@ -254,7 +254,7 @@ with prepare_run(
 report = asyncio.run(
     execute_run("001", store="/local/runtime/store", adapter=adapter, spec=spec)
 )
-# Reopening uses the original submission; it never allocates a retry.
+# Reopening reconciles original submissions and resumes durable retry authorizations.
 report = asyncio.run(
     recover_run("001", store="/local/runtime/store", adapter=adapter, spec=spec)
 )
@@ -268,10 +268,71 @@ count, and request/result queue high-water marks. Minimal Python-origin runs
 require their original `spec`; file-origin runs can reconstruct verified sources.
 Full-capture changed originals need explicit snapshot authorization on each call.
 
-Only single-member requests execute. Grouped requests are rejected without
-changing their logical membership. Unknown acceptance and lost observations stay
-unresolved until authoritative recovery succeeds; matching hashes do not prove an
-observation existed. Full receipts permit local recovery of retained raw bytes;
-minimal receipts contain identity/hash metadata only. Committed results resume
-without submission or observation retrieval. Real adapters, retries, grouped
-salvage, public lifecycle APIs/CLI, and export lifecycle remain deferred.
+Rubric requests execute independently, in fixed groups, or with capability-limited
+auto grouping. Pairwise requests remain independent. The internal interpreter
+matches exact trait IDs and preserves valid siblings. Every expected member gets
+one complete or explicitly unsuccessful outcome per received observation; all
+members and their lifecycle changes commit together. The public whole-group
+validator is unchanged. Unknown acceptance and unavailable observations remain
+unresolved; matching hashes and deterministic recipes never justify new outcomes.
+
+The following Subphase 4 interfaces are internal and provider-free during
+preparation/export; public lifecycle names and CLI remain Subphase 5 work:
+
+```python
+from judgmentllm.execution.retry import authorize_subset_retry, RetryPolicy
+from judgmentllm.execution.cancellation import cancel_run
+from judgmentllm.execution.exports import export_run
+
+# task_ids must be explicitly selected from one original request.
+attempt = authorize_subset_retry(
+    "001",
+    store=store,
+    adapter=adapter,
+    spec=spec,
+    task_ids=(failed_task_id,),
+    operation_id="retry-001",
+    allow_completed=False,
+)
+# Actually submit the authorized subset through the existing bounded executor.
+report = asyncio.run(recover_run("001", store=store, adapter=adapter, spec=spec))
+artifact = export_run("001", store=store, format="csv", view="r")
+```
+
+`authorize_subset_retry()` takes a required stable operation ID, selected task IDs,
+`allow_completed=False`, optional `RetryPolicy`, and the existing source/snapshot
+arguments. Selection, original prior-outcome basis, policy and completed permission
+are frozen under ownership. An identical operation resumes its original attempt;
+a conflicting reuse fails. Parent task/request identities and original membership
+are retained; only physical attempt membership changes. The helper calls adapter
+validation/serialization but never submission, reconciliation or retrieval.
+
+Both executor services accept `retry_policy=RetryPolicy()`: at most three physical
+attempts, exponential 1/2-second delays, 30-second cap, optional full jitter and
+authoritative retry-after. Only typed transient definitive nonacceptance permits
+automatic retry. Eligibility and authorization persist before preparation; caller
+must retain the same policy when recovering. Invalid/refused/received outputs,
+uncertain submissions and unavailable accepted observations never auto-retry.
+These optional internal controls do not change RunSpec or canonical request IDs.
+No timeout or rate setting is accepted without an implemented enforcement boundary.
+
+`cancel_run(run_id, *, store)` acquires idle-run ownership. A live caller cancels
+the `execute_run` coroutine; cleanup drains the dedicated I/O thread and service
+acceptance writes before releasing ownership. Pre-submission work creates no
+result. Remote uncertainty/acceptance and committed observations survive, and
+recovery can collect their original outcomes while the run stays cancelled.
+Only actual confirmed provider cancellation evidence produces cancelled results.
+
+`export_run()` supports canonical JSONL/CSV and R CSV, optional explicit
+`high_water_mark`, bounded `page_size`, and the existing R `na_string`. It returns
+an `ExportReport` identifying the run/export, selected high-water mark, row count,
+exact artifact hash/length/absolute path and current completeness. Repeated equal
+snapshots/options converge; publication is atomic and prior files immutable.
+All recorded attempts survive export, including earlier failures after retries.
+Export does not require an adapter and never generates missing judgments.
+
+`ExecutionSummary` additionally distinguishes `logical_completed_tasks`,
+`unsuccessful_results` and `retry_operations` from physical `attempts`, historical
+`successful_results` and `unresolved_submissions`. A partially valid request has
+state `partial`. Authorized normalized explanations remain exportable under
+minimal capture; prompts, payloads and raw output remain unavailable.

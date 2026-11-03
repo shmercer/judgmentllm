@@ -47,7 +47,7 @@ while the existing Pydantic models validate complete scoring semantics.
 | `retry_operations` | Immutable authorization identity, selection digest and explicit completed-task permission. No retry execution or task selection is implemented. |
 | `events` | Append-only typed event kind, entity identity, state transition, owner reference and timestamp. No arbitrary message or payload dictionary. |
 | `batches`, `batch_members` | Reserved future batch identities/membership; no batch submission methods. |
-| `exports` | Reserved export publication/high-water metadata; published rows immutable. No lifecycle export service yet. |
+| `exports` | Internal all-attempt export publication/high-water metadata; published rows immutable. Publication references retained exact output bytes and never overwrites earlier snapshots. |
 
 Primary/foreign/unique constraints are run-scoped, except correlation IDs, which
 are globally unique within the registry. Secondary indexes support state/order
@@ -102,7 +102,8 @@ reference, and a required definitive-failure reference. A claimed or uncertain
 submission alone is insufficient evidence. Provider errors are not local
 transport failures.
 
-`iter_results()` captures a result high-water mark, then reads bounded pages,
+`iter_results()` captures a result high-water mark (or accepts an explicit
+`high_water_mark`), then reads bounded pages,
 revalidates normalized data, and verifies its semantic digest. Existing JSONL,
 canonical CSV and R writers consume that iterator unchanged and retain failures.
 Manually supplied synthetic groups in tests prove atomic storage, not an
@@ -362,5 +363,53 @@ Acknowledgment sidecars retain strict accepted remote/observation identities bef
 the acknowledgment transaction. Recovery replays verified sidecars before remote
 lookup, keeping known acceptance even when lookup is unavailable. Retrieved
 observation keys must match durable acknowledgments. Completed runs require all
-tasks to have successful results; retained unsuccessful results yield `partial`,
-while unresolved evidence remains independently reported by `recovery_required`.
+current logical tasks to be complete. Earlier unsuccessful attempt rows remain
+in all-attempt histories after a successful explicit retry; they do not prevent
+logical completion. Unresolved evidence remains independently reported by
+`recovery_required`.
+
+## Subphase 4 immutable export service
+
+`judgmentllm.execution.exports.export_run(run_id, *, store, format="jsonl",
+view="canonical", high_water_mark=None, page_size=128, na_string="NA")` is an
+internal provider-free service. Supported combinations are canonical JSONL,
+canonical CSV and R-compatible CSV. It streams the existing serializers over a
+fixed result high-water mark, including every recorded successful and unsuccessful
+attempt. It never reconstructs missing outcomes, selects a preferred attempt or
+calls providers. Empty and incomplete runs can be exported.
+
+Export identity commits run, format/view, selected high-water mark and applicable
+R missing-value marker. Each report returns row count, exact SHA-256 and byte
+length, an absolute immutable content-addressed artifact path and the current run
+state/completeness. Current lifecycle status is independent of the immutable
+selected result snapshot. Explicit high-water marks can reopen earlier snapshots
+without modifying their bytes.
+
+Output is serialized to private staging, flushed and atomically published through
+the existing artifact store before a short transaction registers the artifact and
+commits its `exports` publication. A process death before that transaction leaves
+no published export; an unreferenced artifact is inert. Concurrent identical
+exports converge on one publication identity, conflicting content fails closed,
+and existing published bytes are verified. Result pages and byte-copy buffers
+remain bounded. Under minimal capture, staging and published files contain only
+authorized normalized result data, including authorized explanations.
+
+If identical bytes already identify a source artifact (including an empty source),
+its media type and full/hash-only retention metadata remain immutable. The export
+publication separately authorizes retention of its normalized output and reports
+the verified canonical object path and export media type. It does not change the
+original source's capture or recovery contract. Shared SHA-256 identities must
+have the same exact byte length.
+
+This service introduces no registry migration, result schema or R column changes.
+Public export CLI controls remain assigned to Subphase 5.
+
+Confirmed cancellation is a distinct established provider observation kind. The
+mock can return an authoritative `confirmed_cancellation` outcome bound to its
+accepted submission and immutable ledger observation recipe. The shared
+interpreter creates null-score `cancelled` results for that actual observation,
+including every expected grouped member, and records its observation relationship
+atomically. Receipt replay and authoritative retrieval recover the same evidence.
+This mock outcome is explicit provider evidence; cancelling an asyncio task or
+safe unsubmitted work never generates it. No provider-side cancellation call or
+public cancellation CLI is introduced by this seam.

@@ -25,7 +25,9 @@ class ObservationRecipe(ExecutionModel):
     """Non-sensitive accepted recipe; text-bearing fixture values stay outside."""
 
     fixture_sha256: SHA256
-    outcome: Literal["valid", "invalid", "refusal", "provider_error"]
+    outcome: Literal[
+        "valid", "invalid", "refusal", "provider_error", "confirmed_cancellation"
+    ]
     selection_index: int = Field(ge=0)
     winner: Literal["first", "second", "tie"]
     probabilities: bool
@@ -235,3 +237,13 @@ class MockAcceptanceLedger:
             ).fetchone()
             assert row is not None
             return int(row["total"])
+
+    def nonacceptance_count(self, payload_sha256: str) -> int:
+        """Scalar authoritative fixture progression without retaining wire text."""
+        with closing(self._connect()) as connection:
+            row = connection.execute(
+                "SELECT COUNT(*) FROM acceptances WHERE payload_sha256=? AND accepted=0",
+                (payload_sha256,),
+            ).fetchone()
+            assert row is not None
+            return int(row[0])

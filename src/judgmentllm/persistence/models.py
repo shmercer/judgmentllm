@@ -302,6 +302,9 @@ class ExecutionSummary(ExecutionModel):
     results: int = Field(ge=0)
     successful_results: int = Field(ge=0)
     unresolved_submissions: int = Field(ge=0)
+    logical_completed_tasks: int = Field(default=0, ge=0)
+    unsuccessful_results: int = Field(default=0, ge=0)
+    retry_operations: int = Field(default=0, ge=0)
 
     @model_validator(mode="after")
     def result_counts(self) -> ExecutionSummary:
@@ -317,7 +320,7 @@ TRANSITIONS: dict[str, dict[str, tuple[str, ...]]] = {
         "running": ("completed", "partial", "failed", "cancelled"),
         "completed": ("running",),
         "partial": ("running", "submitted", "failed", "cancelled"),
-        "failed": ("running", "submitted"),
+        "failed": ("running", "submitted", "cancelled"),
         "cancelled": ("running", "submitted"),
     },
     "request": {

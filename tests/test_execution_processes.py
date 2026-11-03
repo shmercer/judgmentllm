@@ -39,7 +39,9 @@ adapter = MockAdapter(ledger, retrieval_available=mode != 'unavailable')
 def fault(current, request_uid):
     if current == stage:
         if mode == 'hold':
-            Path(marker).write_text(str(os.getpid()), encoding='ascii')
+            pending_marker = Path(marker).with_suffix('.pending')
+            pending_marker.write_text(str(os.getpid()), encoding='ascii')
+            pending_marker.replace(marker)
             time.sleep(60)
         else:
             os._exit(73)
