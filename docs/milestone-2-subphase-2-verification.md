@@ -374,9 +374,10 @@ Final implementation CI matrix:
 | Windows / Python 3.11 | Passed | 938 passed, 6 expected skips; 96.82% coverage; 141.15-second test suite; build/metadata/wheel smoke passed. |
 | Windows / Python 3.15 | Passed | 938 passed, 6 expected skips; 96.80% coverage; 116.62-second test suite; build/metadata/wheel smoke passed. |
 
-The six skips outside the required Ubuntu/Python 3.11 R configuration are the
-existing environment-dependent interoperability cases. No signature, memory,
-source-integrity or rendering regression is skipped. The required R gates remain
+The skips outside the required Ubuntu/Python 3.11 R configuration are existing
+environment/platform-dependent cases (optional R checks and, on Windows, Unix-only
+fork inheritance). None of the newly added signature, memory, source-preparation
+or rendering regressions is skipped. The required R gates remain
 strict and complete on Ubuntu/Python 3.11. This documentation-only follow-up
 records the passing implementation run; the PR checks also track its final head.
 
