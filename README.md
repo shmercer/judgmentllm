@@ -2,8 +2,9 @@
 
 **Milestone 1 — assessment contracts and offline prompts. Version 0.1.0a2.**
 
-Milestone 2 Subphase 1 adds an [internal durable foundation](docs/persistence-contracts.md)
-for SQLite state, immutable artifacts, hashing, and local executor ownership.
+Milestone 2 adds an [internal preparation foundation](docs/persistence-contracts.md)
+for SQLite state, immutable source snapshots, indexed input access, complete run
+manifests, generation commitments, and local executor ownership.
 Execution and lifecycle commands remain unimplemented. The
 [approved Milestone 2 plan](docs/milestone-2-execution-plan.md) records the next steps.
 
@@ -67,7 +68,14 @@ Built-in presets cover rubric scores, scores with explanations, and pairwise for
 
 Output-schema validation is separate from rendering. Unknown configuration fields, incompatible presets, invalid categories, duplicate IDs, and known unsupported explanations fail locally. Unknown capabilities remain explicit; arbitrary model identifiers are not blocked by a catalog.
 
-See [prompt guidance](docs/prompt-guidance.md) and [CLI documentation](docs/cli-spec.md). Default capture intent is `full`; `minimal` declares reduced future retention. Milestone 1 does not create manifests, raw-response stores, or persistent runs.
+See [prompt guidance](docs/prompt-guidance.md) and [CLI documentation](docs/cli-spec.md).
+The provider-free internal preparation service freezes assessment sources and
+seals a complete manifest before later execution can begin. Full capture retains
+verified exact snapshots; minimal capture retains hashes, structural indexes,
+and source references while requiring unchanged originals. Use a local runtime
+store outside cloud-synchronized or network-mounted directories. See the
+[Python preparation interface](docs/python-api.md#immutable-source-preparation-internal)
+and [verification record](docs/milestone-2-subphase-2-verification.md).
 
 ## Development and verification
 

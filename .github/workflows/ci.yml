@@ -76,6 +76,10 @@ jobs:
           stopifnot(requireNamespace("jsonlite", quietly = TRUE))
           stopifnot(as.character(utils::packageVersion("jsonlite")) == "2.0.0")
 
+      - name: Observe Windows file-signature metadata
+        if: runner.os == 'Windows'
+        run: uv run --offline --no-sync python scripts/source_signature_probe.py
+
       - name: Run offline tests with coverage
         run: uv run --offline --no-sync pytest
 
@@ -110,6 +114,17 @@ jobs:
           uv run --offline --no-sync python scripts/generation_r_fixture.py --phase persist --output "$RUNNER_TEMP/judgmentllm-generation-r"
           uv run --offline --no-sync python scripts/generation_r_fixture.py --phase export --output "$RUNNER_TEMP/judgmentllm-generation-r"
           Rscript --vanilla examples/generation_interoperability.R "$RUNNER_TEMP/judgmentllm-generation-r"
+
+      - name: Verify required source-preparation-to-R interoperability
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
+        shell: bash
+        env:
+          JUDGMENTLLM_R_STRICT: '1'
+        run: |
+          set -euo pipefail
+          uv run --offline --no-sync python scripts/source_preparation_r_fixture.py --phase persist --output "$RUNNER_TEMP/judgmentllm-source-preparation-r"
+          uv run --offline --no-sync python scripts/source_preparation_r_fixture.py --phase export --output "$RUNNER_TEMP/judgmentllm-source-preparation-r"
+          Rscript --vanilla examples/source_preparation_interoperability.R "$RUNNER_TEMP/judgmentllm-source-preparation-r"
 
       - name: Build distributions
         run: uv build --offline

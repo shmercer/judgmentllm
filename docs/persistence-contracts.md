@@ -1,13 +1,12 @@
-# Internal persistence contracts — Milestone 2 foundation
+# Internal persistence contracts — Milestone 2 preparation
 
 The approved [execution plan](milestone-2-execution-plan.md) is preserved as
 reviewed, with the generation requirement added at the start of Subphase 2.
-This document describes the implemented durable foundation and its generation
-manifest section only.
+This document describes the implemented durable foundation, generation
+commitments, and immutable source-preparation services.
 `judgmentllm.persistence` is an internal Python package. Its records use version
 1 independently of the unchanged assessment and normalized-result schemas.
-There is no executor, source loader, provider protocol, mock provider, complete
-executable manifest, or new lifecycle CLI command in this foundation.
+There is no executor, provider protocol, mock provider, or lifecycle CLI command.
 
 ## Registry and transactions
 
@@ -37,7 +36,7 @@ while the existing Pydantic models validate complete scoring semantics.
 | `schema_migrations` | Append-only version, migration checksum, schema digest, application time. |
 | `runs` | Run identity/configuration immutable; manifest can be sealed once; lifecycle and ownership diagnostics mutable. |
 | `artifacts` | Run-scoped exact digest, byte length, media type, retained relative path or hash-only identity; append-only. |
-| `sources`, `input_records` | Reserved source identities, generations, canonical record hashes, byte locators and structural references. No ingestion APIs. Source records freeze when the run leaves `created`; indexed records are append-only. |
+| `sources`, `input_records` | Exact source identities/generations, canonical record hashes, logical byte locators, and permitted structural references. Typed preparation/index operations populate them; source records freeze when the run leaves `created`; indexed records are append-only. |
 | `tasks` | Immutable trait/item/pair identity and ordinal; checked lifecycle. Task kind matches its run. |
 | `requests`, `request_tasks` | Immutable original request identity and ordered membership. Membership is sealed atomically and cannot be extended or replaced. |
 | `attempts`, `attempt_tasks` | Distinct attempt identity/number, exact prompt/payload commitments, membership digest, optional authorization and reserved nullable usage counts. Sealed ordered membership must be a subset of its original request. |
@@ -139,13 +138,19 @@ where supported; Windows has no standard-library directory-fsync equivalent.
 Filesystems lacking hard-link publication fail safely rather than falling back
 to replacement. A crash may leave an unreferenced object/temporary file.
 
+`put_stream(chunks, media_type, *, expected_sha256=None, expected_length=None)`
+incrementally hashes and publishes byte chunks. `staged_stream(...)` holds verified
+private bytes for parsing/indexing and exposes explicit publication; its context
+cleans its own pending file. Verification uses bounded chunked reads. Interrupted
+process leftovers remain inert and unreferenced; discovery never promotes them.
+
 `put`, `verify`, and `read` preserve byte identity. Missing/corrupted retained
 objects raise safe integrity errors. `hash_only()` describes intentionally absent
 bytes; it never implies recoverability. Registered identity/retention cannot be
 silently changed. `get_artifact()` and `get_manifest()` verify retained bytes.
-Sealing here stores only a retained manifest reference; the rest of phase 2 owns
-its complete content schema, source commitments, and fixed `manifest.json`
-publication. A retained generation-only fixture is not an executable manifest.
+Preparation publishes the fixed `manifest.json` reference atomically without
+replacement and seals its retained content-addressed identity in the repository.
+A retained generation-only fixture is not an executable manifest.
 
 `canonical_bytes()` revalidates model snapshots and emits sorted compact JSON as
 UTF-8, preserving list order, defaults, nulls, Unicode and newline distinctions.
@@ -154,8 +159,8 @@ It rejects nonfinite/invalid data and arbitrary string conversion.
 `bytes_digest(bytes)` hashes exact bytes without an envelope. Neither changes
 Milestone 1 structural IDs.
 
-Minimal capture policy enforcement arrives with source/preparation services;
-the generic byte store is not a privacy policy engine. Metadata has no arbitrary
+The preparation service enforces minimal capture; the generic byte store is not
+a privacy policy engine. Metadata has no arbitrary
 assessment-text field. Normalized outputs, including explanations, remain
 authorized sensitive data even under minimal capture. Hashes are identities,
 not response evidence or anonymization.
@@ -197,16 +202,83 @@ source freezing/full preflight nor authorizes submission. Actual provider payloa
 hashes continue to hash actual prepared bytes when adapters exist; no cloud
 body construction or operational resume is implemented here.
 
-## Subphase 2 handoff
+## Immutable preparation and reopening
 
-The initial generation configuration/validation/manifest-section foundation is
-implemented at the beginning of this subphase. Continue with consistent source
-discovery/freezing, staged/indexed input access,
-full/minimal policies and complete manifest construction next. Reuse the reserved
-source tables and artifact identities; keep provider/execution work for phase 3.
-Build complete byte locators for multiline CSV through shared strict readers.
-Verify source generations and record hashes before using minimal-mode locators.
-Never put source text in minimal-mode tables, WAL, temporary artifacts or events.
+`judgmentllm.preparation.prepare_run(spec_or_path, *, store, run_id,
+capabilities=None, exhaustive_rendering=False)` validates the complete assessment/input set, discovers all
+configuration/rubric/criteria/exemplar/template/response/pair files, builds ordered
+record indexes in the existing source tables, and seals a typed version-1
+`ExecutableRunManifest`. A direct Python `RunSpec` records its canonical identity
+without fabricating an originating source-file hash. The services are internal;
+the approved public lifecycle APIs/CLI remain assigned to later subphases.
+
+Source parsing, record validation, references, locators, hashes, and source-set
+consistency are always checked in full before sealing. Normal render preflight
+compiles the static assessment/grouping/template/settings context through the
+shared renderer's syntax/AST/sandbox checks for every group or criterion, including
+empty sources. Bounded full rendering uses the first verified real response per
+rubric group or the first indexed pair per represented criterion, retaining actual
+IDs and orientation. Empty/unrepresented contexts are compiled without evaluating
+invented content or demanding hypothetical protected-block inclusion. The complete
+response-by-trait rendering product is not performed; content-dependent failures
+in later records remain request-boundary checks by default.
+
+Each selected dependency must pass `PreparedRun.render(dependency)` before future
+submission. This fully validates its verified real content through the existing
+renderer; dependency iteration alone does not prove rendering success. Explicit
+`prepare_run(..., exhaustive_rendering=True)` or
+`validate_inputs(..., exhaustive_rendering=True)` additionally scans and renders
+all actual requests, so those failures occur before sealing. This internal option
+does not enter configuration/manifest identities or change compatibility, request
+IDs, or generation commitments. Rendered prompts are not persisted under minimal
+capture, including in the exhaustive diagnostic path.
+
+Every file receives an initial descriptor/path signature and exact SHA-256/length.
+Full capture copies into private staging, independently rereads the original,
+verifies staging, and parses/indexes staged bytes. Minimal capture hashes/indexes
+without staging source text. Both independently verify original bytes and stable
+identity, validate locators/record hashes, and recheck the complete source set
+before any manifest seal. Any detected change fails the attempt; a newly observed
+generation is never silently adopted. The protocol does not claim a filesystem-wide
+atomic snapshot against undetectable changes between checks.
+
+CSV offsets span complete logical records, including quoted multiline fields.
+Indexes retain verified header/parsing context. JSONL locators span complete
+encoded records. Reconstruction uses shared strict parsers, checks IDs and
+canonical hashes, and preserves leading-zero IDs. Pair response references use
+indexed lookup and both referenced content identities enter request dependencies.
+
+The manifest commits source provenance, normalized configuration/assessment,
+ordered traits/category coding and exemplars, template/rendering settings,
+indexes, grouping/orientation, provider/model/mode/tier/cache, generation and
+original capabilities, capture/recovery policy, and software/schema/serializer
+versions. Text-bearing content is represented by hashes/source references under
+minimal capture. Exact file provenance is distinct from semantic configuration;
+equivalent omitted/null/empty generation settings normalize identically.
+
+`open_prepared_run(run_id, *, store, spec=None, capabilities=None,
+use_frozen_snapshot=False)` independently verifies the complete manifest and
+sources before returning a `PreparedRun` context manager. It reconstructs verified
+assessment context and provides `get_response`, `get_pair`, ordered iterators,
+and incremental `iter_request_dependencies`. Minimal sessions keep verified
+source handles and check their generation around selected record reads. Changed
+settings, content, missing sources, corrupt snapshots, incompatible serializers,
+or newly restrictive current capabilities block further preparation.
+
+Full capture blocks changed/missing originals by default. Explicit
+`use_frozen_snapshot=True` authorizes only the original verified snapshots for
+that session and records an audit trail; it never substitutes changed content.
+Required missing/corrupt snapshots always block. Minimal capture requires unchanged
+originals and cannot reconstruct them from hashes. Never put source text in
+minimal-mode SQLite/WAL, temporary artifacts, events, manifests, or diagnostics.
+
+Place the runtime store on a local filesystem, outside Dropbox/cloud sync or a
+network mount. SQLite WAL and advisory ownership do not establish distributed
+durability. Artifact publication requires atomic no-overwrite hard links;
+unsupported filesystems fail safely. Flush/fsync is used where supported;
+Windows has no stdlib directory-fsync equivalent. No overwrite fallback is used.
+
+## Subphase 3 handoff
 
 Prepare request dependencies incrementally and bind exact prompt/payload bytes
 before submission in later phases. Retain original request membership and use
@@ -220,4 +292,6 @@ no-generation serialization/IDs/diagnostics and normalized result/export schemas
 remain unchanged. The [Subphase 1 verification record](milestone-2-subphase-1-verification.md)
 continues to describe its earlier durable-foundation checks only.
 The [generation verification record](milestone-2-generation-verification.md)
-records this addition and the remaining source-preparation handoff.
+records its earlier foundation only. The
+[source-preparation verification record](milestone-2-subphase-2-verification.md)
+records complete input preparation and the remaining submission-boundary work.

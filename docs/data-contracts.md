@@ -1,6 +1,6 @@
 # Data contracts and scoring semantics
 
-**Implemented schema version 1, with the initial Milestone 2 generation foundation.** Assessment models live in
+**Implemented schema version 1, with Milestone 2 immutable preparation.** Assessment models live in
 `judgmentllm.models`, run configuration in `judgmentllm.config`, and normalized
 outputs in `judgmentllm.results`. These contracts prepare assessments offline;
 provider submission and execution remain later milestones. The internal
@@ -101,7 +101,7 @@ validation never opens files.
 | `execution` | `mode=live` (`live/bulk_live/batch_native` intent), `grouping=independent` (`independent/grouped/auto`), optional fixed `groups`, optional positive `max_traits_per_request`, `explanations=false`, optional `tier`, `concurrency=4`. `cache_policy` defaults to `auto` for rubric and `off` for pairwise; valid values are `off/auto/explicit`. No execution or cache behavior is performed yet. |
 | `prompt` | Choose `preset` or `file`; `advanced=false`; configurable rendering safeguards under `limits`. Default preset follows task kind and explanation setting. Advanced mode requires a custom file. |
 | `normalization` | `NormalizationOptions`, with `probability_sum_tolerance=1e-8`, configurable in `[0,1)`. |
-| `capture`, `output_path` | `capture=full` (`full/minimal`); output defaults to `run-data` relative to the run configuration. These record future capture/output intent. |
+| `capture`, `output_path` | `capture=full` (`full/minimal`); output defaults to `run-data` relative to the run configuration. Internal preparation enforces source retention policy; its runtime store is supplied separately and must be local. |
 | `seed`, `strict_capabilities`, `allow_ties` | Optional integer pairing/presentation seed, distinct from a future generation seed; strict capabilities defaults false; ties default false and are pairwise-only. Tie prompts require a custom template. |
 
 Pairwise preparation uses independent grouping. Fixed groups must partition all
@@ -177,9 +177,12 @@ identity. Before submission or resume, revalidate against the latest available
 restrictions; newly known incompatibilities block continuation. A changed
 requested control cannot reuse the frozen configuration or submission identity.
 
-The initial foundation supplies generation-only commitment and compatibility
-fixtures, not complete executable manifests or operational resume. Full source
-freezing and complete preflight remain required. When actual request preparation
+Generation-only commitment fixtures remain distinct from complete executable
+manifests. Internal preparation now freezes source identities and indexes,
+seals the complete manifest, and combines source and generation verification.
+Source provenance retains exact original hashes separately from normalized
+semantic configuration identity. Minimal capture commits text-bearing assessment
+configuration through hashes and source references. When actual request preparation
 is implemented, the adapter must include each requested setting in the real
 prepared body and its exact byte hash, preserving omission and values. Milestone
 3 implements generative mappings, Milestone 4 rejects inapplicable settings on

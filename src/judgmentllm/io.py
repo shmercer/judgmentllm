@@ -152,16 +152,8 @@ def _csv_records(
             _raise_csv_field_limit()
             reader = csv.reader(stream, strict=True)
             header = next(reader, None)
-            if header is None:
-                raise InputError(f"{source}: CSV header is missing")
-            if len(header) != len(set(header)):
-                raise InputError(f"{source}: duplicate CSV column")
-            unknown = set(header) - allowed
-            missing = required - set(header)
-            if unknown or missing:
-                raise InputError(
-                    f"{source}: unknown CSV columns {sorted(unknown)}; missing required columns {sorted(missing)}"
-                )
+            validate_csv_header(header, source, allowed, required)
+            assert header is not None
             for row in reader:
                 if len(row) != len(header):
                     raise InputError(
@@ -170,6 +162,22 @@ def _csv_records(
                 yield reader.line_num, dict(zip(header, row, strict=True))
     except (OSError, UnicodeError, csv.Error) as exc:
         raise InputError(f"{source}: {exc}") from exc
+
+
+def validate_csv_header(
+    header: list[str] | None, source: Path, allowed: set[str], required: set[str]
+) -> None:
+    """Apply the common strict header contract to streaming/indexed readers."""
+    if header is None:
+        raise InputError(f"{source}: CSV header is missing")
+    if len(header) != len(set(header)):
+        raise InputError(f"{source}: duplicate CSV column")
+    unknown = set(header) - allowed
+    missing = required - set(header)
+    if unknown or missing:
+        raise InputError(
+            f"{source}: unknown CSV columns {sorted(unknown)}; missing required columns {sorted(missing)}"
+        )
 
 
 def _raise_csv_field_limit() -> None:
@@ -201,6 +209,47 @@ def _parse_cell(value: str, source: Path, line: int, field: str) -> object:
         ) from exc
 
 
+def response_from_csv(row: dict[str, str], source: Path, line: int) -> ResponseItem:
+    """Validate one CSV response with the same conversions as ordinary input."""
+    data: dict[str, object] = dict(row)
+    if "metadata" in row:
+        data["metadata"] = (
+            _parse_cell(row["metadata"], source, line, "metadata")
+            if row["metadata"]
+            else {}
+        )
+    if "schema_version" in row:
+        data["schema_version"] = _parse_cell(
+            row["schema_version"], source, line, "schema_version"
+        )
+    return _validate(ResponseItem, data, source, line)
+
+
+def pair_from_csv(row: dict[str, str], source: Path, line: int) -> PairTask:
+    """Validate one CSV pair; absent optional cells retain established defaults."""
+    data: dict[str, object] = dict(row)
+    nested = {"metadata", "original_order", "presented_order"}
+    scalars = {"schema_version", "repetition_index", "is_reversal"}
+    for field in nested | scalars:
+        if field in row:
+            if not row[field]:
+                del data[field]
+            else:
+                data[field] = _parse_cell(row[field], source, line, field)
+    for field in ("reversal_group", "source_pair_uid"):
+        if data.get(field) == "":
+            data[field] = None
+    return _validate(PairTask, data, source, line)
+
+
+def validate_response_text(item: ResponseItem, spec: InputSpec) -> None:
+    """Check the explicit empty-text policy without retaining any ID set."""
+    if not spec.allow_empty_text and item.text == "":
+        raise InputError(
+            f"{spec.path}: response {item.item_id!r} has empty text; set allow_empty_text: true to permit it"
+        )
+
+
 def read_responses(
     source: InputSpec | str | Path, *, allow_empty_text: bool | None = None
 ) -> Generator[ResponseItem, None, None]:
@@ -221,18 +270,7 @@ def read_responses(
             for line, row in _csv_records(
                 spec.path, set(ResponseItem.model_fields), {"item_id", "text"}
             ):
-                data: dict[str, object] = dict(row)
-                if "metadata" in row:
-                    data["metadata"] = (
-                        _parse_cell(row["metadata"], spec.path, line, "metadata")
-                        if row["metadata"]
-                        else {}
-                    )
-                if "schema_version" in row:
-                    data["schema_version"] = _parse_cell(
-                        row["schema_version"], spec.path, line, "schema_version"
-                    )
-                yield _validate(ResponseItem, data, spec.path, line)
+                yield response_from_csv(row, spec.path, line)
 
         items = csv_items()
     seen: set[str] = set()
@@ -241,10 +279,9 @@ def read_responses(
             raise InputError(
                 f"{spec.path}: duplicate response item_id {item.item_id!r}"
             )
-        if not empty_allowed and item.text == "":
-            raise InputError(
-                f"{spec.path}: response {item.item_id!r} has empty text; set allow_empty_text: true to permit it"
-            )
+        validate_response_text(
+            item, spec.model_copy(update={"allow_empty_text": empty_allowed})
+        )
         seen.add(item.item_id)
         yield item
 
@@ -264,24 +301,10 @@ def read_pairs(source: InputSpec | str | Path) -> Generator[PairTask, None, None
                 "right_item_id",
                 "trait_id",
             }
-            nested = {"metadata", "original_order", "presented_order"}
-            scalars = {"schema_version", "repetition_index", "is_reversal"}
             for line, row in _csv_records(
                 spec.path, set(PairTask.model_fields), required
             ):
-                data: dict[str, object] = dict(row)
-                for field in nested | scalars:
-                    if field in row:
-                        if not row[field]:
-                            del data[field]
-                        else:
-                            data[field] = _parse_cell(
-                                row[field], spec.path, line, field
-                            )
-                for field in ("reversal_group", "source_pair_uid"):
-                    if data.get(field) == "":
-                        data[field] = None
-                yield _validate(PairTask, data, spec.path, line)
+                yield pair_from_csv(row, spec.path, line)
 
         items = csv_items()
     seen: set[str] = set()

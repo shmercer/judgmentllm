@@ -16,7 +16,7 @@ from importlib.resources import files
 from pathlib import Path
 from typing import Literal, cast
 
-from jinja2 import StrictUndefined, TemplateError, meta, nodes
+from jinja2 import StrictUndefined, Template, TemplateError, meta, nodes
 from jinja2.sandbox import SandboxedEnvironment
 from pydantic import Field, JsonValue
 
@@ -363,6 +363,139 @@ def _pair_schema(
     return schema
 
 
+def _prompt_source(
+    kind: Literal["rubric", "pairwise"],
+    *,
+    preset: str | None,
+    template: str | None,
+    explanations: bool,
+    allow_ties: bool,
+    limits: RenderLimits,
+) -> str:
+    if preset is not None and template is not None:
+        raise PromptError("Choose a prompt preset or custom template, not both.")
+    if template is None:
+        chosen = preset or (
+            "pairwise_forced_choice"
+            if kind == "pairwise"
+            else "rubric_scores_with_explanations"
+            if explanations
+            else "rubric_scores_only"
+        )
+        if (chosen == "pairwise_forced_choice") != (kind == "pairwise"):
+            raise PromptError("Prompt preset does not match the assessment kind.")
+        if chosen == "pairwise_forced_choice" and allow_ties:
+            raise PromptError(
+                "pairwise_forced_choice does not allow ties; use a custom template."
+            )
+        if (
+            kind == "rubric"
+            and (chosen == "rubric_scores_with_explanations") != explanations
+        ):
+            raise PromptError("Rubric preset must match the explanations setting.")
+        source = get_template(chosen)
+    else:
+        source = template
+    if len(source.encode("utf-8")) > limits.max_source_bytes:
+        raise PromptError("Template exceeds the source size rendering safeguard.")
+    return source
+
+
+def _prompt_context(
+    kind: Literal["rubric", "pairwise"],
+    blocks: Sequence[_Block],
+    *,
+    explanations: bool,
+    allow_ties: bool,
+) -> dict[str, object]:
+    by_kind: dict[str, list[_Block]] = {}
+    for block in blocks:
+        by_kind.setdefault(block.kind, []).append(block)
+    rubric_blocks = [
+        block for block in blocks if block.kind in {"rubric", "trait", "criterion"}
+    ]
+    context: dict[str, object] = {
+        "rubric": "\n\n".join(block.wrapped for block in rubric_blocks),
+        "trait": "\n\n".join(block.wrapped for block in rubric_blocks),
+        "criterion": "\n\n".join(block.wrapped for block in rubric_blocks),
+        "exemplars": "\n\n".join(
+            block.wrapped for block in by_kind.get("exemplar", [])
+        ),
+        "output_instructions": by_kind["output_instructions"][0].wrapped,
+        "explanations": explanations,
+        "allow_ties": allow_ties,
+        "traits": [
+            {"trait_id": block.identifier, "block": block.wrapped}
+            for block in rubric_blocks
+        ],
+        "exemplar_items": [
+            {"exemplar_id": block.identifier, "block": block.wrapped}
+            for block in by_kind.get("exemplar", [])
+        ],
+    }
+    if kind == "rubric":
+        context["response"] = by_kind["response"][0].wrapped
+    else:
+        context["left_response"] = by_kind["first"][0].wrapped
+        context["right_response"] = by_kind["second"][0].wrapped
+        context["first_response"] = by_kind["first"][0].wrapped
+        context["second_response"] = by_kind["second"][0].wrapped
+    return context
+
+
+def _compile_prompt_template(
+    source: str, context: dict[str, object], *, advanced: bool, limits: RenderLimits
+) -> Template:
+    try:
+        environment = _environment()
+        ast = environment.parse(source)
+        _validate_ast(ast, context, advanced=advanced, limits=limits)
+        return environment.from_string(ast)
+    except PromptError:
+        raise
+    except (TemplateError, RecursionError, TypeError, ValueError) as exc:
+        raise PromptError(f"Cannot render prompt template: {exc}") from exc
+
+
+def validate_prompt_template(
+    *,
+    kind: Literal["rubric", "pairwise"],
+    trait_ids: Sequence[str],
+    exemplar_ids: Sequence[str],
+    preset: str | None,
+    template: str | None,
+    advanced: bool,
+    explanations: bool,
+    allow_ties: bool,
+    limits: RenderLimits,
+) -> None:
+    """Internal preflight: compile static contracts without evaluating content."""
+    source = _prompt_source(
+        kind,
+        preset=preset,
+        template=template,
+        explanations=explanations,
+        allow_ties=allow_ties,
+        limits=limits,
+    )
+    # Only context names and actual list sizes enter static AST validation.
+    # Empty slots are never rendered, interpreted as records, or retained.
+    slots = [
+        *(_Block("trait", identifier, "", "") for identifier in trait_ids),
+        *(_Block("exemplar", identifier, "", "") for identifier in exemplar_ids),
+        _Block("output_instructions", "output", "", ""),
+    ]
+    slots.extend(
+        [_Block("response", "", "", "")]
+        if kind == "rubric"
+        else [_Block("first", "", "", ""), _Block("second", "", "", "")]
+    )
+    context = _prompt_context(
+        kind, slots, explanations=explanations, allow_ties=allow_ties
+    )
+    _compile_prompt_template(source, context, advanced=advanced, limits=limits)
+
+
 def render_prompt(
     *,
     rubric: Rubric | None = None,
@@ -470,30 +603,14 @@ def render_prompt(
         )
     except ValueError as exc:
         raise PromptError(str(exc)) from exc
-    if template is None:
-        chosen = preset or (
-            "pairwise_forced_choice"
-            if kind == "pairwise"
-            else "rubric_scores_with_explanations"
-            if explanations
-            else "rubric_scores_only"
-        )
-        if (chosen == "pairwise_forced_choice") != (kind == "pairwise"):
-            raise PromptError("Prompt preset does not match the assessment kind.")
-        if chosen == "pairwise_forced_choice" and allow_ties:
-            raise PromptError(
-                "pairwise_forced_choice does not allow ties; use a custom template."
-            )
-        if (
-            kind == "rubric"
-            and (chosen == "rubric_scores_with_explanations") != explanations
-        ):
-            raise PromptError("Rubric preset must match the explanations setting.")
-        source = get_template(chosen)
-    else:
-        source = template
-    if len(source.encode("utf-8")) > limits.max_source_bytes:
-        raise PromptError("Template exceeds the source size rendering safeguard.")
+    source = _prompt_source(
+        kind,
+        preset=preset,
+        template=template,
+        explanations=explanations,
+        allow_ties=allow_ties,
+        limits=limits,
+    )
     output_instructions = (
         (
             "Return only a JSON object matching this schema. Include every requested "
@@ -516,45 +633,15 @@ def render_prompt(
     )
     namespace = _namespace([content for _, _, content in contents], source)
     blocks = _protect(contents, namespace)
-    by_kind: dict[str, list[_Block]] = {}
-    for block in blocks:
-        by_kind.setdefault(block.kind, []).append(block)
-    rubric_blocks = [
-        block for block in blocks if block.kind in {"rubric", "trait", "criterion"}
-    ]
-    context: dict[str, object] = {
-        "rubric": "\n\n".join(block.wrapped for block in rubric_blocks),
-        "trait": "\n\n".join(block.wrapped for block in rubric_blocks),
-        "criterion": "\n\n".join(block.wrapped for block in rubric_blocks),
-        "exemplars": "\n\n".join(
-            block.wrapped for block in by_kind.get("exemplar", [])
-        ),
-        "output_instructions": by_kind["output_instructions"][0].wrapped,
-        "explanations": explanations,
-        "allow_ties": allow_ties,
-        "traits": [
-            {"trait_id": block.identifier, "block": block.wrapped}
-            for block in rubric_blocks
-        ],
-        "exemplar_items": [
-            {"exemplar_id": block.identifier, "block": block.wrapped}
-            for block in by_kind.get("exemplar", [])
-        ],
-    }
-    if kind == "rubric":
-        context["response"] = by_kind["response"][0].wrapped
-    else:
-        context["left_response"] = by_kind["first"][0].wrapped
-        context["right_response"] = by_kind["second"][0].wrapped
-        context["first_response"] = by_kind["first"][0].wrapped
-        context["second_response"] = by_kind["second"][0].wrapped
+    context = _prompt_context(
+        kind, blocks, explanations=explanations, allow_ties=allow_ties
+    )
     try:
-        environment = _environment()
-        ast = environment.parse(source)
-        _validate_ast(ast, context, advanced=advanced, limits=limits)
         rendered: list[str] = []
         size = 0
-        for chunk in environment.from_string(ast).generate(context):
+        for chunk in _compile_prompt_template(
+            source, context, advanced=advanced, limits=limits
+        ).generate(context):
             size += len(chunk.encode("utf-8"))
             if size > limits.max_output_bytes:
                 raise PromptError("Prompt exceeds the output size rendering safeguard.")

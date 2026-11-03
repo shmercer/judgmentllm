@@ -69,8 +69,18 @@ facts = GenerationCapabilities.model_validate({"provider":"synthetic",
 commitment = build_generation_commitment(spec, capabilities=facts)
 assert validate_generation_compatibility(commitment, spec, capabilities=facts).valid
 
-# Subphase 1 has no executor or lifecycle CLI. Exercise only the installed
-# core's registry, immutable artifacts, and local OS ownership primitives.
+# Preparation remains provider-free and works after its source process exits.
+from judgmentllm.preparation import prepare_run, open_prepared_run
+with prepare_run("run.json", store="prepared-registry", run_id="001") as prepared:
+    assert prepared.manifest.kind == "executable_run_manifest"
+    assert prepared.get_response("synthetic").text == "Synthetic installation response."
+    prepared_hash = prepared.manifest_sha256
+    assert len(list(prepared.iter_request_dependencies())) == 1
+with open_prepared_run("001", store="prepared-registry") as prepared:
+    assert prepared.manifest_sha256 == prepared_hash
+    assert prepared.get_response("synthetic").item_id == "synthetic"
+
+# Exercise installed registry, immutable artifacts, and local OS ownership.
 from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.hashing import bytes_digest, semantic_digest
 from judgmentllm.persistence.models import RunRecord, ManifestReference
