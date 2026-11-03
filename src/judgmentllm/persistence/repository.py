@@ -45,6 +45,7 @@ from judgmentllm.persistence.models import (
     validate_transition,
 )
 from judgmentllm.persistence.schema import initialize
+from judgmentllm.persistence.sources import InputRecord, SourceRecord
 from judgmentllm.results import PairwiseResult, RubricResult
 
 RecordT = TypeVar("RecordT", bound=ExecutionModel)
@@ -256,6 +257,123 @@ class Repository:
         identity = ArtifactIdentity.model_validate(dict(row))
         ArtifactStore(self.run_directory(run_id)).verify(identity)
         return identity
+
+    def iter_artifacts(self, run_id: str) -> Iterator[ArtifactIdentity]:
+        """Traverse registered identities without loading every artifact at once."""
+        self.get_run(run_id)
+        cursor = self.connection.execute(
+            "SELECT sha256,byte_length,media_type,relative_path FROM artifacts WHERE run_id=? ORDER BY sha256",
+            (run_id,),
+        )
+        for row in cursor:
+            yield ArtifactIdentity.model_validate(dict(row))
+
+    def _source_write_owner(self, run_id: str, owner_token: str) -> None:
+        owner = self.get_owner(run_id)
+        if owner is None or owner.token != owner_token:
+            raise OwnershipError("source preparation ownership token does not match")
+        if self.get_run(run_id).state != "created":
+            raise IntegrityError("source preparation is already sealed")
+
+    def add_source(self, record: SourceRecord, *, owner_token: str) -> None:
+        """Insert frozen original-file identity while holding preparation ownership."""
+        record = _checked(record)
+        with self.transaction():
+            self._source_write_owner(record.run_id, owner_token)
+            self._insert("sources", record)
+
+    def get_source(self, run_id: str, source_id: str) -> SourceRecord:
+        row = self._one(
+            "SELECT * FROM sources WHERE run_id=? AND source_id=?", (run_id, source_id)
+        )
+        return SourceRecord.model_validate(dict(row))
+
+    def iter_sources(self, run_id: str) -> Iterator[SourceRecord]:
+        """Traverse sources in stable discovery ordinal and role order."""
+        self.get_run(run_id)
+        cursor = self.connection.execute(
+            "SELECT * FROM sources WHERE run_id=? ORDER BY ordinal,role,source_id",
+            (run_id,),
+        )
+        for row in cursor:
+            yield SourceRecord.model_validate(dict(row))
+
+    def update_source_snapshot(
+        self, run_id: str, source_id: str, sha256: str, *, owner_token: str
+    ) -> None:
+        """Attach already published exact bytes once, before manifest sealing."""
+        artifact = self.get_artifact(run_id, sha256)
+        if artifact.relative_path is None:
+            raise IntegrityError("source snapshot requires retained bytes")
+        with self.transaction():
+            self._source_write_owner(run_id, owner_token)
+            source = self.get_source(run_id, source_id)
+            if (source.raw_sha256, source.byte_length) != (
+                sha256,
+                artifact.byte_length,
+            ):
+                raise IntegrityError("source snapshot differs from original identity")
+            if source.snapshot_sha256 not in (None, sha256):
+                raise IntegrityError("source snapshot identity is already committed")
+            self.connection.execute(
+                "UPDATE sources SET snapshot_sha256=? WHERE run_id=? AND source_id=?",
+                (sha256, run_id, source_id),
+            )
+
+    def add_input_records(
+        self, records: Sequence[InputRecord], *, owner_token: str
+    ) -> None:
+        """Commit one bounded index batch; uniqueness rejects duplicate IDs."""
+        if len(records) > 1024:
+            raise ValueError("input index batches must contain at most 1024 records")
+        checked = tuple(_checked(record) for record in records)
+        with self.transaction():
+            for run_id in {record.run_id for record in checked}:
+                self._source_write_owner(run_id, owner_token)
+            for record in checked:
+                source = self.get_source(record.run_id, record.source_id)
+                if source.role not in (
+                    record.record_kind,
+                    "responses" if record.record_kind == "response" else "pairs",
+                ):
+                    raise IntegrityError("input index kind differs from source role")
+                if record.byte_offset + record.byte_length > source.byte_length:
+                    raise IntegrityError("input record locator exceeds its source")
+                self._insert("input_records", record)
+
+    def get_input_record(
+        self, run_id: str, record_kind: Literal["response", "pair"], record_id: str
+    ) -> InputRecord:
+        row = self._one(
+            "SELECT * FROM input_records WHERE run_id=? AND record_kind=? AND record_id=?",
+            (run_id, record_kind, record_id),
+        )
+        return InputRecord.model_validate(dict(row))
+
+    def iter_input_records(
+        self,
+        run_id: str,
+        record_kind: Literal["response", "pair"] | None = None,
+        *,
+        page_size: int = 128,
+    ) -> Iterator[InputRecord]:
+        """Traverse source/record order using bounded SQLite cursor pages."""
+        if type(page_size) is not int or page_size < 1:
+            raise ValueError("input index page size must be a positive integer")
+        self.get_run(run_id)
+        query = (
+            "SELECT i.* FROM input_records i JOIN sources s "
+            "ON s.run_id=i.run_id AND s.source_id=i.source_id WHERE i.run_id=?"
+        )
+        values: tuple[object, ...] = (run_id,)
+        if record_kind is not None:
+            query += " AND i.record_kind=?"
+            values += (record_kind,)
+        query += " ORDER BY s.ordinal,s.role,s.source_id,i.ordinal"
+        cursor = self.connection.execute(query, values)
+        while rows := cursor.fetchmany(page_size):
+            for row in rows:
+                yield InputRecord.model_validate(dict(row))
 
     def get_manifest(self, run_id: str) -> ManifestReference:
         """Return a verified frozen reference; never silently repair its bytes."""

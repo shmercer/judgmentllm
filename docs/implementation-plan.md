@@ -30,8 +30,10 @@ Implemented in `0.1.0a2`; see [public Python API](python-api.md) and [verificati
 
 The [approved detailed plan](milestone-2-execution-plan.md) preserves the six
 subphases. Subphase 1 provides the [internal persistence contracts](persistence-contracts.md)
-only; source freezing, providers, execution and lifecycle CLI commands remain
-assigned to their subsequent subphases. See the
+only; Subphase 2 now supplies immutable source freezing/indexing, complete
+executable input manifests, capture policies and independently verified reopening.
+Providers, execution and lifecycle CLI commands remain assigned to their subsequent
+subphases. See the [source-preparation verification record](milestone-2-subphase-2-verification.md) and
 [Subphase 1 verification record](milestone-2-subphase-1-verification.md).
 
 Begin Subphase 2 with the generation configuration, capability-validation and

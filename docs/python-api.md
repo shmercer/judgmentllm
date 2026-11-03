@@ -1,6 +1,11 @@
 # Public Python API, schema version 1
 
-Milestone 1 supports offline preparation and normalization of supplied synthetic outputs. The initial Milestone 2 Subphase 2 foundation adds generation configuration and capability validation; it adds no provider requests or execution service. All examples below run without credentials. Public assessment models, common normalization functions, planning functions, and preview are also exported from `judgmentllm`.
+Milestone 1 supports offline preparation and normalization of supplied synthetic outputs.
+Milestone 2 Subphase 2 adds provider-free immutable source preparation, indexed
+input access, complete manifests, and generation compatibility validation.
+All examples below run without credentials. Public assessment models, common
+normalization functions, planning functions, and preview are also exported from
+`judgmentllm`. Execution and lifecycle CLI commands remain later subphases.
 
 ## Models and loading
 
@@ -93,11 +98,66 @@ request context identity only when explicitly requested. No-generation
 configurations preserve their Milestone 1 request IDs. Separate immutable
 generation commitments record reproducibility settings. The internal
 `judgmentllm.persistence.generation` helpers build and compare that manifest
-section and revalidate current capability restrictions. They do not implement
-full manifest construction, source verification or operational resume; see the
+section and revalidate current capability restrictions. Their section-only
+checks are composed with source verification by the preparation service; see the
 [persistence contracts](persistence-contracts.md#generation-manifest-section).
 
 Plans contain no provider request bodies, token/cost estimates, remote submissions, or persistent execution state. Pairwise response lookup is deferred to rendering. Direct rendering accepts resolved `left`/`right` responses, allowing callers to use their own lookup; file-based preview scans and retains only the selected responses.
+
+## Immutable source preparation (internal)
+
+`judgmentllm.preparation` provides provider-free internal services, separate from
+the future public run/CLI lifecycle. `prepare_run(spec_or_path, *, store, run_id,
+capabilities=None)` validates all inputs, consistently freezes every applicable
+source, builds byte-accurate CSV/JSONL indexes, and seals a complete executable
+manifest. A direct `RunSpec` receives a validated canonical identity without an
+invented originating configuration-file hash.
+
+```python
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from judgmentllm.preparation import prepare_run, open_prepared_run
+
+# Runtime state belongs on a local filesystem, outside synchronized folders.
+with TemporaryDirectory(prefix="judgmentllm-runtime-") as directory:
+    store = Path(directory) / "store"
+    with prepare_run("examples/run.yaml", store=store, run_id="offline-001") as run:
+        assert run.get_response("essay_001").item_id == "essay_001"
+        manifest_sha256 = run.manifest_sha256
+    with open_prepared_run("offline-001", store=store) as reopened:
+        assert reopened.manifest_sha256 == manifest_sha256
+```
+
+`PreparedRun` is a context manager; close it when finished. It exposes the typed
+`.manifest`, `.manifest_sha256`, `.repository`, `get_response(item_id)`,
+`get_pair(pair_uid)`, `iter_responses()`, `iter_pairs()`, and
+`iter_request_dependencies()`. Traversal follows original source order. Selected
+records are reparsed through the shared strict reader, and their IDs and canonical
+hashes are verified before use. Pairwise lookups resolve both referenced texts
+through the index; dependencies include both content identities while preserving
+original and presented orientation. Request traversal is incremental and does
+not materialize the response-by-trait product.
+
+`open_prepared_run(run_id, *, store, spec=None, capabilities=None,
+use_frozen_snapshot=False)` works in an independent process. It verifies the
+manifest, sources, semantic configuration, generation settings, and current
+capability restrictions. Changed generation settings or newly known incompatible
+capabilities block further preparation without rewriting original evidence.
+Matching generation settings alone do not authorize continuation.
+
+Full capture retains exact verified snapshots. Changed or missing originals block
+reopening by default; explicit `use_frozen_snapshot=True` authorizes the original
+verified snapshots and records that authorization in the audit trail. Missing or
+corrupt required snapshots still fail. Minimal capture retains no assessment text,
+full input documents, rendered prompts, or raw payloads in runtime storage; all
+original sources must remain available and unchanged. Hashes cannot reconstruct
+them. A direct Python specification must be supplied again when its text was not
+retained.
+
+These services build content dependencies, not adapter request bodies. Subphase 3
+must journal exact rendered prompts and actual adapter-serialized payload hashes
+before submission; a configuration or dependency digest cannot substitute for
+either exact-byte hash.
 
 ## Streaming input/output and preview
 

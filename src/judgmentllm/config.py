@@ -7,7 +7,7 @@ settings describe intent only: Milestone 1 performs no provider operations.
 from __future__ import annotations
 
 import json
-from collections.abc import Hashable
+from collections.abc import Callable, Hashable
 from pathlib import Path
 from typing import Literal, cast
 
@@ -304,15 +304,30 @@ def read_document(path: str | Path) -> object:
     source = Path(path)
     try:
         content = source.read_text(encoding="utf-8")
-        if source.suffix.lower() == ".json":
-            return parse_json(content)
-        if source.suffix.lower() not in (".yaml", ".yml"):
-            raise ConfigurationError(
-                "configuration extension must be .yaml, .yml, or .json"
-            )
-        return cast(object, yaml.load(content, Loader=_UniqueKeyLoader))
+        return parse_document(content, source)
     except (OSError, UnicodeError, yaml.YAMLError, ValueError) as exc:
         raise ConfigurationError(f"{source}: {exc}") from exc
+
+
+def parse_document(content: str, source: str | Path) -> object:
+    """Parse verified document text using its original source extension.
+
+    Snapshot names need not retain the original extension. Source preparation
+    supplies the original location here and never reopens that location.
+    """
+    path = Path(source)
+    if path.suffix.lower() == ".json":
+        return parse_json(content)
+    if path.suffix.lower() not in (".yaml", ".yml"):
+        raise ConfigurationError(
+            "configuration extension must be .yaml, .yml, or .json"
+        )
+    try:
+        return cast(object, yaml.load(content, Loader=_UniqueKeyLoader))
+    except yaml.YAMLError as exc:
+        # Keep the established configuration-error boundary for snapshot users
+        # too, so preparation can suppress source-bearing parser diagnostics.
+        raise ConfigurationError(str(exc)) from exc
 
 
 def _validation_message(error: ValidationError) -> str:
@@ -356,8 +371,20 @@ def load_run_spec(path: str | Path) -> RunSpec:
     and a criteria/exemplars list respectively. Paths inside the root run file
     always resolve against that file, including output paths and templates.
     """
+    return _load_run_spec(path, document_reader=read_document)
+
+
+def _load_run_spec(
+    path: str | Path, *, document_reader: Callable[[Path], object]
+) -> RunSpec:
+    """Resolve a run using a caller-owned, verified document reader.
+
+    The reader receives original resolved paths, allowing source preparation to
+    capture referenced documents before parsing without changing resolution or
+    assessment validation. The public loader retains its existing behavior.
+    """
     source = Path(path).resolve()
-    data = _mapping(read_document(source), source)
+    data = _mapping(document_reader(source), source)
     for field in ("input", "pairs"):
         value = data.get(field)
         if isinstance(value, (str, Path)):
@@ -371,7 +398,11 @@ def load_run_spec(path: str | Path) -> RunSpec:
             data[field] = reference
     rubric = data.get("rubric")
     if isinstance(rubric, (str, Path)):
-        data["rubric"] = load_rubric(_relative_path(rubric, source))
+        target = _relative_path(rubric, source)
+        try:
+            data["rubric"] = Rubric.model_validate(document_reader(target))
+        except ValidationError as exc:
+            raise ConfigurationError(f"{target}: {_validation_message(exc)}") from exc
     try:
         for field, document_type in (
             ("exemplars", _ExemplarDocument),
@@ -381,7 +412,7 @@ def load_run_spec(path: str | Path) -> RunSpec:
             if isinstance(reference, (str, Path)):
                 target = _relative_path(reference, source)
                 try:
-                    document = document_type.model_validate(read_document(target))
+                    document = document_type.model_validate(document_reader(target))
                 except ValidationError as exc:
                     raise ConfigurationError(
                         f"{target}: {_validation_message(exc)}"

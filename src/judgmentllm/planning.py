@@ -421,6 +421,20 @@ def iter_requests(
     template_text = (
         spec.prompt.file.read_text(encoding="utf-8") if spec.prompt.file else None
     )
+    fingerprint = request_context_fingerprint(spec, template_text=template_text)
+    seen: set[str] = set()
+    for record in records:
+        record_id = (
+            record.item_id if isinstance(record, ResponseItem) else record.pair_uid
+        )
+        if record_id in seen:
+            raise ValueError(f"Duplicate input ID {record_id!r}")
+        seen.add(record_id)
+        yield from _requests_for_record(spec, record, plan, fingerprint)
+
+
+def request_context_fingerprint(spec: RunSpec, *, template_text: str | None) -> str:
+    """Commit the established request context without reopening template files."""
     context_parts: list[object] = [
         spec.rubric.model_dump(mode="json")
         if spec.rubric
@@ -440,38 +454,54 @@ def iter_requests(
     if spec.generation is not None:
         # Leave every legacy context argument unchanged for unspecified controls.
         context_parts.append({"generation": spec.generation.model_dump(mode="json")})
-    fingerprint = stable_id("context", *context_parts)
-    seen: set[str] = set()
-    for record in records:
-        record_id = (
-            record.item_id if isinstance(record, ResponseItem) else record.pair_uid
+    return stable_id("context", *context_parts)
+
+
+def plan_record(
+    spec: RunSpec,
+    record: ResponseItem | PairTask,
+    *,
+    template_text: str | None = None,
+    capabilities: CapabilityProfile | None = None,
+) -> Iterator[PlannedRequest]:
+    """Plan one verified input without file I/O or a dataset-sized ID set.
+
+    Source preparation supplies verified template text and input records. This
+    keeps structural IDs identical to iter_requests while leaving response-text
+    dependencies for pairwise requests to the separate dependency commitment.
+    """
+    plan = plan_run(spec, capabilities=capabilities)
+    fingerprint = request_context_fingerprint(spec, template_text=template_text)
+    yield from _requests_for_record(spec, record, plan, fingerprint)
+
+
+def _requests_for_record(
+    spec: RunSpec,
+    record: ResponseItem | PairTask,
+    plan: RunPlan,
+    fingerprint: str,
+) -> Iterator[PlannedRequest]:
+    tasks = tuple(iter_tasks(spec, (record,)))
+    by_trait = {task.trait_id: task for task in tasks}
+    groups = (
+        plan.trait_groups if isinstance(record, ResponseItem) else ((record.trait_id,),)
+    )
+    for group in groups:
+        members = tuple(by_trait[trait] for trait in group)
+        request_uid = stable_id(
+            "request",
+            [task.task_id for task in members],
+            fingerprint,
+            record.model_dump(mode="json"),
         )
-        if record_id in seen:
-            raise ValueError(f"Duplicate input ID {record_id!r}")
-        seen.add(record_id)
-        tasks = tuple(iter_tasks(spec, (record,)))
-        by_trait = {task.trait_id: task for task in tasks}
-        groups = (
-            plan.trait_groups
-            if isinstance(record, ResponseItem)
-            else ((record.trait_id,),)
+        yield PlannedRequest(
+            request_uid=request_uid,
+            tasks=members,
+            trait_ids=group,
+            exemplar_ids=plan.exemplar_ids,
+            response=record if isinstance(record, ResponseItem) else None,
+            pair=record if isinstance(record, PairTask) else None,
         )
-        for group in groups:
-            members = tuple(by_trait[trait] for trait in group)
-            request_uid = stable_id(
-                "request",
-                [task.task_id for task in members],
-                fingerprint,
-                record.model_dump(mode="json"),
-            )
-            yield PlannedRequest(
-                request_uid=request_uid,
-                tasks=members,
-                trait_ids=group,
-                exemplar_ids=plan.exemplar_ids,
-                response=record if isinstance(record, ResponseItem) else None,
-                pair=record if isinstance(record, PairTask) else None,
-            )
 
 
 def prepare_pairs(

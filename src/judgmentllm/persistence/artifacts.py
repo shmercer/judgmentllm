@@ -6,6 +6,8 @@ import errno
 import hashlib
 import os
 import tempfile
+from collections.abc import Generator, Iterable
+from contextlib import contextmanager
 from pathlib import Path
 
 # Shared M1 validation also rejects mutations of frozen model copies.
@@ -31,6 +33,59 @@ def _fsync_directory(path: Path) -> None:
                 raise
     finally:
         os.close(descriptor)
+
+
+def _file_digest(path: Path) -> tuple[str, int]:
+    digest = hashlib.sha256()
+    length = 0
+    with path.open("rb") as stream:
+        while chunk := stream.read(1024 * 1024):
+            digest.update(chunk)
+            length += len(chunk)
+    return digest.hexdigest(), length
+
+
+class StagedArtifact:
+    """Private verified bytes; publication remains explicit until context exit."""
+
+    def __init__(self, store: ArtifactStore, path: Path, identity: ArtifactIdentity):
+        self.store = store
+        self.path = path
+        self.identity = identity
+
+    def verify(self) -> Path:
+        """Reread the exact staging bytes without materializing the file."""
+        try:
+            if _file_digest(self.path) != (
+                self.identity.sha256,
+                self.identity.byte_length,
+            ):
+                raise ArtifactIntegrityError(
+                    "temporary artifact failed content verification"
+                )
+        except OSError:
+            raise ArtifactIntegrityError("temporary artifact is unavailable") from None
+        return self.path
+
+    def publish(self) -> ArtifactIdentity:
+        """Link a verified staging file into its immutable object location."""
+        self.verify()
+        destination = self.store._path(self.identity)  # pyright: ignore[reportPrivateUsage]
+        assert destination is not None
+        try:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            self.store._path(self.identity)  # pyright: ignore[reportPrivateUsage]
+            _fsync_directory(destination.parent.parent)
+            _fsync_directory(self.store.root)
+            try:
+                os.link(self.path, destination)
+            except FileExistsError:
+                self.store.verify(self.identity)
+            _fsync_directory(destination.parent)
+            self.store.verify(self.identity)
+            return self.identity
+        except OSError:
+            raise PersistenceError("artifact could not be durably published") from None
 
 
 class ArtifactStore:
@@ -145,51 +200,58 @@ class ArtifactStore:
             raise ArtifactIntegrityError("retained artifact changed while being read")
         return data
 
-    def put(
-        self, data: bytes, media_type: str = "application/octet-stream"
-    ) -> ArtifactIdentity:
-        """Flush, verify and atomically publish bytes without clobbering a target."""
-        digest = bytes_digest(data)
-        identity = ArtifactIdentity(
-            sha256=digest,
-            byte_length=len(data),
-            media_type=media_type,
-            relative_path=f"objects/{digest[:2]}/{digest}",
-        )
-        destination = self._path(identity)
-        assert destination is not None
+    @contextmanager
+    def staged_stream(
+        self,
+        chunks: Iterable[bytes],
+        media_type: str = "application/octet-stream",
+        *,
+        expected_sha256: str | None = None,
+        expected_length: int | None = None,
+    ) -> Generator[StagedArtifact]:
+        """Hash and stage bounded writes without publishing any content.
+
+        The context removes only its own temporary file. Crash leftovers remain
+        inert, unreferenced private files; they are never promoted by discovery.
+        No source text is staged by privacy-minimal preparation.
+        """
         temporary: Path | None = None
         try:
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            # Validate again after mkdir in case a preexisting directory redirects
-            # the object tree. The selected root itself is resolved on opening.
-            self._path(identity)
-            _fsync_directory(destination.parent.parent)
-            _fsync_directory(self.root)
-            descriptor, name = tempfile.mkstemp(
-                prefix=".pending-", dir=destination.parent
-            )
+            if not self._contains(self.root):
+                raise ArtifactIntegrityError("artifact location is outside its store")
+            descriptor, name = tempfile.mkstemp(prefix=".pending-", dir=self.root)
             temporary = Path(name)
+            digest = hashlib.sha256()
+            length = 0
             with os.fdopen(descriptor, "wb") as stream:
-                stream.write(data)
+                for chunk in chunks:
+                    if type(chunk) is not bytes:
+                        raise TypeError("artifact chunks must be bytes")
+                    digest.update(chunk)
+                    length += len(chunk)
+                    view = memoryview(chunk)
+                    for start in range(0, len(view), 1024 * 1024):
+                        stream.write(view[start : start + 1024 * 1024])
                 stream.flush()
                 os.fsync(stream.fileno())
-            if bytes_digest(temporary.read_bytes()) != digest:
+            sha256 = digest.hexdigest()
+            if (expected_sha256 is not None and sha256 != expected_sha256) or (
+                expected_length is not None and length != expected_length
+            ):
                 raise ArtifactIntegrityError(
-                    "temporary artifact failed content verification"
+                    "streamed artifact differs from expected identity"
                 )
-            try:
-                # Same-filesystem hard-link publication is atomic and fails when
-                # the destination exists, unlike replacement-based renaming.
-                os.link(temporary, destination)
-            except FileExistsError:
-                self.verify(identity)
-            _fsync_directory(destination.parent)
-            return identity
-        except ArtifactIntegrityError:
-            raise
+            identity = ArtifactIdentity(
+                sha256=sha256,
+                byte_length=length,
+                media_type=media_type,
+                relative_path=f"objects/{sha256[:2]}/{sha256}",
+            )
+            staged = StagedArtifact(self, temporary, identity)
+            staged.verify()
+            yield staged
         except OSError:
-            raise PersistenceError("artifact could not be durably published") from None
+            raise PersistenceError("artifact could not be durably staged") from None
         finally:
             if temporary is not None:
                 try:
@@ -198,3 +260,55 @@ class ArtifactStore:
                     raise PersistenceError(
                         "temporary artifact could not be removed"
                     ) from None
+
+    def put_stream(
+        self,
+        chunks: Iterable[bytes],
+        media_type: str = "application/octet-stream",
+        *,
+        expected_sha256: str | None = None,
+        expected_length: int | None = None,
+    ) -> ArtifactIdentity:
+        """Stage, verify and atomically publish a stream of exact bytes."""
+        with self.staged_stream(
+            chunks,
+            media_type,
+            expected_sha256=expected_sha256,
+            expected_length=expected_length,
+        ) as staged:
+            return staged.publish()
+
+    def put(
+        self, data: bytes, media_type: str = "application/octet-stream"
+    ) -> ArtifactIdentity:
+        """Publish existing in-memory bytes using the same streaming protocol."""
+        if type(data) is not bytes:
+            raise TypeError("exact byte storage requires bytes")
+        return self.put_stream((data,), media_type)
+
+    def publish_manifest(self, identity: ArtifactIdentity) -> Path:
+        """Publish the fixed manifest name without replacing an earlier file."""
+        source = self.verify(identity)
+        if source is None:
+            raise ArtifactIntegrityError("manifest bytes must be retained")
+        target = self.root / "manifest.json"
+        try:
+            if target.is_symlink():
+                raise ArtifactIntegrityError("fixed manifest must not be a symlink")
+            try:
+                os.link(source, target)
+            except FileExistsError:
+                if _file_digest(target) != (identity.sha256, identity.byte_length):
+                    raise ArtifactIntegrityError(
+                        "fixed manifest already has different content"
+                    ) from None
+            _fsync_directory(self.root)
+            if _file_digest(target) != (identity.sha256, identity.byte_length):
+                raise ArtifactIntegrityError(
+                    "fixed manifest failed content verification"
+                )
+        except OSError:
+            raise PersistenceError(
+                "fixed manifest could not be durably published"
+            ) from None
+        return target

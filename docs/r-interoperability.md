@@ -314,6 +314,22 @@ uv run --offline --no-sync python scripts/generation_r_fixture.py --phase export
 JUDGMENTLLM_R_STRICT=1 Rscript --vanilla examples/generation_interoperability.R /tmp/judgmentllm-generation-r
 ```
 
+Subphase 2 additionally tests complete source preparation through separate Python
+freeze and reopen/export processes followed by R/jsonlite. The fixture uses actual
+full/minimal rubric and pairwise manifests, exact source commitments, multiline
+CSV and JSONL indexes, character IDs with leading zeros, original and presented
+pair orientation, and permitted missing retention/evidence fields. It creates no
+provider judgments or attempts and does not require lifecycle CLI commands.
+
+```bash
+uv run --offline --no-sync python scripts/source_preparation_r_fixture.py --phase persist --output /tmp/judgmentllm-source-preparation-r
+uv run --offline --no-sync python scripts/source_preparation_r_fixture.py --phase export --output /tmp/judgmentllm-source-preparation-r
+JUDGMENTLLM_R_STRICT=1 Rscript --vanilla examples/source_preparation_interoperability.R /tmp/judgmentllm-source-preparation-r
+```
+
+All three existing export/persistence/generation gates remain mandatory alongside
+this fourth required source-preparation gate.
+
 Required steps in the existing Ubuntu/Python 3.11 matrix job generate the
 synthetic exports, import them in R, and require `jsonlite` to recover complete
 distributions and mappings. CI installs R 4.6.2 and pinned `jsonlite` 2.0.0 and

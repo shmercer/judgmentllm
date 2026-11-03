@@ -219,12 +219,16 @@ def test_temporary_corruption_never_published(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     store = ArtifactStore(tmp_path)
-    original = Path.read_bytes
+    original = artifacts._file_digest  # pyright: ignore[reportPrivateUsage]
 
-    def corrupt(path: Path) -> bytes:
-        return b"corrupt" if path.name.startswith(".pending-") else original(path)
+    def corrupt(path: Path) -> tuple[str, int]:
+        return (
+            (bytes_digest(b"corrupt"), 7)
+            if path.name.startswith(".pending-")
+            else original(path)
+        )
 
-    monkeypatch.setattr(Path, "read_bytes", corrupt)
+    monkeypatch.setattr(artifacts, "_file_digest", corrupt)
     with pytest.raises(ArtifactIntegrityError, match="temporary"):
         store.put(b"original")
     assert list(tmp_path.rglob(bytes_digest(b"original"))) == []
@@ -297,3 +301,142 @@ def test_directory_fsync_unsupported_and_real_failure(
     monkeypatch.setattr(os, "fsync", broken)
     with pytest.raises(OSError):
         artifacts._fsync_directory(tmp_path)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_streaming_stage_defers_publication_and_cleans_private_file(
+    tmp_path: Path,
+) -> None:
+    store = ArtifactStore(tmp_path)
+    data = b"source-sentinel" * 200
+    digest = bytes_digest(data)
+    with store.staged_stream(
+        (data[:100], data[100:]), expected_sha256=digest, expected_length=len(data)
+    ) as stage:
+        assert stage.path.read_bytes() == data
+        assert stage.path.stat().st_mode & 0o077 == 0 if os.name != "nt" else True
+        assert not (store.root / stage.identity.relative_path).exists()  # type: ignore[arg-type]
+        identity = stage.publish()
+        assert store.read(identity) == data
+    assert not stage.path.exists()
+    assert store.put_stream((data,)) == identity
+
+
+def test_streaming_large_file_uses_bounded_memory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import tracemalloc
+
+    store = ArtifactStore(tmp_path)
+    chunk = b"synthetic-source" * 4096
+
+    def forbidden(_: Path) -> bytes:
+        raise AssertionError("streaming publication must not call read_bytes")
+
+    monkeypatch.setattr(Path, "read_bytes", forbidden)
+    tracemalloc.start()
+    try:
+        identity = store.put_stream(chunk for _ in range(512))
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+    assert identity.byte_length == len(chunk) * 512
+    assert peak < 6 * 1024 * 1024
+    assert store.verify(identity) is not None
+
+
+@pytest.mark.parametrize(
+    "expected", [{"expected_sha256": "0" * 64}, {"expected_length": 2}]
+)
+def test_streaming_expected_identity_failure_removes_stage(
+    tmp_path: Path, expected: dict[str, Any]
+) -> None:
+    store = ArtifactStore(tmp_path)
+    with pytest.raises(ArtifactIntegrityError, match="expected"):
+        store.put_stream((b"secret",), **expected)
+    assert list(tmp_path.rglob(".pending-*")) == []
+    assert list(tmp_path.rglob("objects")) == []
+
+
+def test_streaming_exception_and_invalid_chunks_remove_stage(tmp_path: Path) -> None:
+    from collections.abc import Iterator
+
+    store = ArtifactStore(tmp_path)
+
+    def interrupted() -> Iterator[bytes]:
+        yield b"secret"
+        raise KeyboardInterrupt()
+
+    with pytest.raises(KeyboardInterrupt):
+        store.put_stream(interrupted())
+    with pytest.raises(TypeError, match="bytes"):
+        store.put_stream(("secret",))  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="bytes"):
+        store.put("secret")  # type: ignore[arg-type]
+    assert list(tmp_path.rglob(".pending-*")) == []
+
+
+def test_stage_cannot_publish_modified_or_removed_bytes(tmp_path: Path) -> None:
+    store = ArtifactStore(tmp_path)
+    with store.staged_stream((b"original",)) as stage:
+        stage.path.write_bytes(b"modified")
+        with pytest.raises(ArtifactIntegrityError, match="temporary"):
+            stage.publish()
+        stage.path.unlink()
+        with pytest.raises(ArtifactIntegrityError, match="unavailable"):
+            stage.publish()
+    assert list(tmp_path.rglob("objects")) == []
+
+
+def test_fixed_manifest_is_no_overwrite_and_verifies_existing_content(
+    tmp_path: Path,
+) -> None:
+    store = ArtifactStore(tmp_path)
+    identity = store.put(b'{"kind":"executable"}', "application/json")
+    fixed = store.publish_manifest(identity)
+    assert fixed.read_bytes() == store.read(identity)
+    assert store.publish_manifest(identity) == fixed
+    other = store.put(b"different", "application/json")
+    with pytest.raises(ArtifactIntegrityError, match="different"):
+        store.publish_manifest(other)
+    assert fixed.read_bytes() == store.read(identity)
+    with pytest.raises(ArtifactIntegrityError, match="retained"):
+        store.publish_manifest(store.hash_only(bytes_digest(b"missing"), 7))
+
+
+def test_fixed_manifest_rejects_symlink(tmp_path: Path) -> None:
+    store = ArtifactStore(tmp_path / "store")
+    identity = store.put(b"original")
+    outside = tmp_path / "outside"
+    outside.write_bytes(b"original")
+    try:
+        (store.root / "manifest.json").symlink_to(outside)
+    except OSError:
+        pytest.skip("symlink creation is unavailable")
+    with pytest.raises(ArtifactIntegrityError, match="symlink"):
+        store.publish_manifest(identity)
+
+
+def test_orphan_staging_file_is_never_automatically_published(tmp_path: Path) -> None:
+    import subprocess
+    import sys
+
+    script = """
+import os, sys
+from judgmentllm.persistence.artifacts import ArtifactStore
+store = ArtifactStore(sys.argv[1])
+with store.staged_stream((b'private-orphan',)):
+    os._exit(71)
+"""
+    outcome = subprocess.run([sys.executable, "-c", script, str(tmp_path)], check=False)
+    assert outcome.returncode == 71
+    orphans = list(tmp_path.glob(".pending-*"))
+    assert len(orphans) == 1
+    store = ArtifactStore(tmp_path)
+    store.put_stream((b"other",))
+    assert list(tmp_path.glob(".pending-*")) == orphans
+    assert not (
+        tmp_path
+        / "objects"
+        / bytes_digest(b"private-orphan")[:2]
+        / bytes_digest(b"private-orphan")
+    ).exists()
