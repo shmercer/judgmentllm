@@ -239,3 +239,42 @@ matching and salvage, failed-member subset selection, automatic retry/backoff,
 explicit subset retries, generalized cancellation and export lifecycle services.
 Unsupported grouped execution must fail before submission in this subphase.
 No push, merge, release or Subphase 4 implementation is part of this delivery.
+
+## PR #6 portability and SQLite warning corrections
+
+The original [CI run 41568469641](https://github.com/shmercer/judgmentllm/actions/runs/41568469641)
+passed Ubuntu/macOS on Python 3.11/3.15 and failed both Windows configurations
+in live privacy inspection. Its `read_bytes()` traceback did not identify the
+file whose `read()` failed. Investigation distinguishes the permanent one-byte
+executor lock from SQLite database/WAL/SHM files; no runtime directory receives
+a blanket inspection exception.
+
+The privacy test now identifies the exact lock through `Repository.run_directory`.
+A live permission failure is deferred only on Windows for that exact non-symlink,
+one-byte file, then the complete store is inspected after release and the lock
+must contain exactly one NUL byte. Unexpected permission failures report only
+the relative runtime path and remain failures. Native lock regressions verify
+platform behavior directly, and injected loss-window tests must prove they reached
+the intended fault boundary rather than accidentally accepting an earlier error.
+Windows runs perform these targeted privacy checks before the complete suite.
+Production OS ownership and all submission/recovery contracts are unchanged.
+
+The sole SQLite leak was test-only: `_accepted()` in
+`tests/test_execution_processes.py` used the connection transaction context without
+closing the connection. The original process fixture invoked it exactly 86 times,
+matching the Python 3.15 warnings. It now uses `contextlib.closing`; regressions
+verify explicit closure after both a successful query and a query error. The audit
+found explicit cleanup in the production repository/preparation/execution services,
+all mock-ledger connection paths, and other Subphase 3 fixtures. Intentional
+`os._exit` process-death tests remain essential recovery coverage.
+
+Targeted local verification passed **48 tests** with both
+`-Werror::ResourceWarning` and
+`-Werror::pytest.PytestUnraisableExceptionWarning`. The complete CI matrix now
+uses those same error filters; no warning suppression was introduced. Local full
+verification passed **1,135 tests**, no skips or warnings, in 195.54 seconds with
+**96.43%** combined coverage and both warning categories treated as errors. All
+five strict R/jsonlite tests, Ruff lint/format (104 files), strict Pyright, offline
+lockfile validation, wheel/sdist builds, strict metadata checks and clean installed
+wheel/sdist smoke passed. Actual Windows/path and final matrix evidence remain
+pending remote verification; Linux results alone do not establish them.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 from pathlib import Path
 from typing import Literal
 
@@ -290,6 +291,29 @@ async def test_tie_and_explanation(tmp_path: Path) -> None:
         assert isinstance(result, PairwiseResult) and result.tie and result.p_tie == 0.5
 
 
+def read_live_runtime_file(
+    path: Path,
+    *,
+    root: Path,
+    executor_lock: Path,
+    deferred: set[Path],
+    windows_locking: bool,
+) -> bytes | None:
+    """Defer only the exact owned Windows lock; every other read must succeed."""
+    try:
+        return path.read_bytes()
+    except PermissionError:
+        relative = path.relative_to(root).as_posix()
+        assert windows_locking and path == executor_lock, (
+            f"unexpected unreadable live runtime file: {relative}"
+        )
+        assert not path.is_symlink() and path.stat().st_size == 1, (
+            f"unexpected executor lock identity/length: {relative}"
+        )
+        deferred.add(path)
+        return None
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize("stage", [None, "after_receipt", "during_result_transaction"])
 async def test_minimal_privacy_success_and_loss_windows(
@@ -327,20 +351,36 @@ async def test_minimal_privacy_success_and_loss_windows(
             payload_marker=payload, raw_marker=raw, explanation=explanation
         ),
     )
+    with Repository(store) as repository:
+        executor_lock = repository.run_directory("001") / "executor.lock"
+    deferred: set[Path] = set()
+    injected = False
 
     def inspect_live(boundary: str, _: str) -> None:
+        nonlocal injected
         # Inspect WAL/staging while the executor connection is still open.
         for path in tmp_path.rglob("*"):
             if not path.is_file() or (tmp_path / "inputs") in path.parents:
                 continue
-            content = path.read_bytes()
+            content = read_live_runtime_file(
+                path,
+                root=tmp_path,
+                executor_lock=executor_lock,
+                deferred=deferred,
+                windows_locking=sys.platform == "win32",
+            )
+            if content is None:
+                continue
             assert all(
                 marker.encode() not in content
                 for marker in (source, prompt, payload, raw, credential)
-            ), path
+            ), path.relative_to(tmp_path)
             if explanation.encode() in content:
-                assert path.name.startswith("registry.sqlite3"), path
+                assert path.name.startswith("registry.sqlite3"), path.relative_to(
+                    tmp_path
+                )
         if boundary == stage:
+            injected = True
             raise RuntimeError("synthetic interruption")
 
     if stage:
@@ -352,6 +392,10 @@ async def test_minimal_privacy_success_and_loss_windows(
         await execute_run(
             "001", store=store, adapter=adapter, spec=spec, fault=inspect_live
         )
+    assert injected == (stage is not None)
+    assert deferred == ({executor_lock} if sys.platform == "win32" else set())
+    # Ownership has ended: no file is exempt, including the mandatory lock byte.
+    assert executor_lock.read_bytes() == b"\0"
     captured = capsys.readouterr()
     assert not captured.out and not captured.err
     for path in tmp_path.rglob("*"):

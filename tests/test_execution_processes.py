@@ -9,6 +9,7 @@ import sqlite3
 import subprocess
 import sys
 import time
+from contextlib import closing
 from pathlib import Path
 from typing import Any, Literal
 
@@ -106,12 +107,38 @@ def _run(
 def _accepted(ledger: Path) -> int:
     # Read the independent service database directly, without the adapter or
     # executor repository asserting what it thinks was accepted.
-    with sqlite3.connect(ledger) as connection:
+    with closing(sqlite3.connect(ledger)) as connection:
         return int(
             connection.execute(
                 "SELECT COALESCE(SUM(acceptance_count),0) FROM acceptances"
             ).fetchone()[0]
         )
+
+
+@pytest.mark.parametrize("missing_table", [False, True])
+def test_acceptance_probe_closes_connection_after_success_or_query_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, missing_table: bool
+) -> None:
+    ledger = tmp_path / "probe.sqlite3"
+    # Keep a handle only to verify explicit closure; closing the outer context
+    # also prevents this regression test itself from leaking if an assertion fails.
+    with closing(sqlite3.connect(ledger)) as connection:
+        if not missing_table:
+            connection.execute("CREATE TABLE acceptances(acceptance_count INTEGER)")
+            connection.execute("INSERT INTO acceptances VALUES (1)")
+            connection.commit()
+
+        def connect(_: Path) -> sqlite3.Connection:
+            return connection
+
+        monkeypatch.setattr(sqlite3, "connect", connect)
+        if missing_table:
+            with pytest.raises(sqlite3.OperationalError, match="no such table"):
+                _accepted(ledger)
+        else:
+            assert _accepted(ledger) == 1
+        with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+            connection.execute("SELECT 1")
 
 
 @pytest.mark.parametrize("capture", ["full", "minimal"])

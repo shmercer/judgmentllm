@@ -80,8 +80,12 @@ jobs:
         if: runner.os == 'Windows'
         run: uv run --offline --no-sync python scripts/source_signature_probe.py
 
+      - name: Verify Windows live privacy and lock behavior
+        if: runner.os == 'Windows'
+        run: uv run --offline --no-sync pytest --no-cov -q tests/test_execution_privacy.py tests/test_execution.py::test_minimal_privacy_success_and_loss_windows -Werror::ResourceWarning -Werror::pytest.PytestUnraisableExceptionWarning
+
       - name: Run offline tests with coverage
-        run: uv run --offline --no-sync pytest
+        run: uv run --offline --no-sync pytest -Werror::ResourceWarning -Werror::pytest.PytestUnraisableExceptionWarning
 
       - name: Verify required Python-to-R interoperability
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
