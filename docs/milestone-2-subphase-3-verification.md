@@ -245,36 +245,55 @@ No push, merge, release or Subphase 4 implementation is part of this delivery.
 The original [CI run 41568469641](https://github.com/shmercer/judgmentllm/actions/runs/41568469641)
 passed Ubuntu/macOS on Python 3.11/3.15 and failed both Windows configurations
 in live privacy inspection. Its `read_bytes()` traceback did not identify the
-file whose `read()` failed. Investigation distinguishes the permanent one-byte
-executor lock from SQLite database/WAL/SHM files; no runtime directory receives
-a blanket inspection exception.
+file whose `read()` failed. The content-free diagnostic in
+[run 41572642464](https://github.com/shmercer/judgmentllm/actions/runs/41572642464)
+on `202bd705a8c755db66dae3eb4ef33198d0d9e8da` identified the exact additional
+file: **`store/registry.sqlite3-shm`** during the active result transaction.
+SQLite's exclusive Windows WAL-index byte-range lock prevents ordinary reads
+through a second handle. Native regressions separately confirmed that the
+one-byte `runs/<run-id-hash>/executor.lock` is also unreadable while held by
+`msvcrt.locking()`. These are Windows locking rules, not a production lifecycle
+or submission-safety defect; production ownership code is unchanged.
 
-The privacy test now identifies the exact lock through `Repository.run_directory`.
-A live permission failure is deferred only on Windows for that exact non-symlink,
-one-byte file, then the complete store is inspected after release and the lock
-must contain exactly one NUL byte. Unexpected permission failures report only
-the relative runtime path and remain failures. Native lock regressions verify
-platform behavior directly, and injected loss-window tests must prove they reached
-the intended fault boundary rather than accidentally accepting an earlier error.
-Windows runs perform these targeted privacy checks before the complete suite.
-Production OS ownership and all submission/recovery contracts are unchanged.
+The corrected live scanner first attempts an ordinary read of every runtime file.
+On Windows, only the exact expected registry SHM path may use a read-only mapped
+view after `PermissionError`; **all mapped bytes still undergo the same sentinel
+checks**. Symlinks, missing/empty files and mapping failures remain errors. This
+is live inspection, not a SHM exemption. Only the exact non-symlink one-byte owned
+executor lock may defer its read, then the complete store is inspected after
+release and the lock must contain exactly one NUL byte. Every other permission
+failure identifies its relative runtime path and fails. Authorized explanations
+are allowed only in the exact registry database/WAL result representations,
+not SHM, similarly named files, artifacts, receipts, ledgers, or temporary files.
+
+Native tests exercise ordinary Windows lock reads, read-only mapping under an
+actual SQLite write transaction, and restored ordinary SHM reads after commit.
+Synthetic mapping tests prove that sensitive sentinels remain visible and mapping
+failures cannot be ignored. Injected loss-window tests must reach their intended
+fault boundary instead of accepting an earlier inspection failure. Windows CI
+runs these privacy regressions before the full suite; the six-job matrix and all
+five R/jsonlite gates remain intact.
 
 The sole SQLite leak was test-only: `_accepted()` in
 `tests/test_execution_processes.py` used the connection transaction context without
 closing the connection. The original process fixture invoked it exactly 86 times,
 matching the Python 3.15 warnings. It now uses `contextlib.closing`; regressions
 verify explicit closure after both a successful query and a query error. The audit
-found explicit cleanup in the production repository/preparation/execution services,
-all mock-ledger connection paths, and other Subphase 3 fixtures. Intentional
+found explicit cleanup in production repository/preparation/execution services,
+all mock-ledger connection paths, and the other Subphase 3 fixtures. Intentional
 `os._exit` process-death tests remain essential recovery coverage.
 
-Targeted local verification passed **48 tests** with both
+Targeted verification initially passed **48 tests** with both
 `-Werror::ResourceWarning` and
-`-Werror::pytest.PytestUnraisableExceptionWarning`. The complete CI matrix now
-uses those same error filters; no warning suppression was introduced. Local full
-verification passed **1,135 tests**, no skips or warnings, in 195.54 seconds with
-**96.43%** combined coverage and both warning categories treated as errors. All
-five strict R/jsonlite tests, Ruff lint/format (104 files), strict Pyright, offline
-lockfile validation, wheel/sdist builds, strict metadata checks and clean installed
-wheel/sdist smoke passed. Actual Windows/path and final matrix evidence remain
-pending remote verification; Linux results alone do not establish them.
+`-Werror::pytest.PytestUnraisableExceptionWarning`; the SQLite-only suite passed
+34 tests and the additional mock/persistence/safety/R audit passed 78. The initial
+local full suite passed **1,135 tests**, no skips or warnings, in 195.54 seconds
+with **96.43%** combined coverage. The SHM-specific additions passed 17 focused
+privacy tests, including the tightened explanation-location assertion. The final
+local full suite passed **1,138 tests**, no skips or warnings, in 196.52 seconds
+with **96.43%** coverage and both warning categories as errors. Ruff lint/format,
+strict Pyright, unchanged offline lockfile, current wheel/sdist builds, strict
+metadata and clean installed smoke checks all passed. All five strict R/jsonlite
+checks passed in the full suite. Final remote matrix qualification remains pending
+the new head. No warning suppression or production/schema/ID/result/export change
+is introduced; all six CI jobs use both warning-error filters.

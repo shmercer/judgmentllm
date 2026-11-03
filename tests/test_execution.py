@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import mmap
 import sys
 from pathlib import Path
 from typing import Literal
@@ -298,12 +299,29 @@ def read_live_runtime_file(
     executor_lock: Path,
     deferred: set[Path],
     windows_locking: bool,
+    sqlite_shm: Path | None = None,
+    mapped: set[Path] | None = None,
 ) -> bytes | None:
-    """Defer only the exact owned Windows lock; every other read must succeed."""
+    """Scan the exact SQLite WAL index through Windows locks; defer only ownership."""
     try:
         return path.read_bytes()
     except PermissionError:
         relative = path.relative_to(root).as_posix()
+        if windows_locking and path == sqlite_shm:
+            assert mapped is not None
+            assert not path.is_symlink() and path.is_file() and path.stat().st_size > 0
+            # SQLite locks bytes in its WAL index during writes. Windows mapped
+            # views remain readable through byte-range locks; inspect all bytes.
+            try:
+                with path.open("rb") as stream:
+                    with mmap.mmap(stream.fileno(), 0, access=mmap.ACCESS_READ) as view:
+                        content = view[:]
+            except (OSError, ValueError):
+                raise AssertionError(
+                    f"unreadable live SQLite WAL index: {relative}"
+                ) from None
+            mapped.add(path)
+            return content
         assert windows_locking and path == executor_lock, (
             f"unexpected unreadable live runtime file: {relative}"
         )
@@ -354,6 +372,12 @@ async def test_minimal_privacy_success_and_loss_windows(
     with Repository(store) as repository:
         executor_lock = repository.run_directory("001") / "executor.lock"
     deferred: set[Path] = set()
+    mapped: set[Path] = set()
+    sqlite_shm = store / "registry.sqlite3-shm"
+    normalized_result_files = {
+        store / "registry.sqlite3",
+        store / "registry.sqlite3-wal",
+    }
     injected = False
 
     def inspect_live(boundary: str, _: str) -> None:
@@ -368,6 +392,8 @@ async def test_minimal_privacy_success_and_loss_windows(
                 executor_lock=executor_lock,
                 deferred=deferred,
                 windows_locking=sys.platform == "win32",
+                sqlite_shm=sqlite_shm,
+                mapped=mapped,
             )
             if content is None:
                 continue
@@ -376,9 +402,7 @@ async def test_minimal_privacy_success_and_loss_windows(
                 for marker in (source, prompt, payload, raw, credential)
             ), path.relative_to(tmp_path)
             if explanation.encode() in content:
-                assert path.name.startswith("registry.sqlite3"), path.relative_to(
-                    tmp_path
-                )
+                assert path in normalized_result_files, path.relative_to(tmp_path)
         if boundary == stage:
             injected = True
             raise RuntimeError("synthetic interruption")
@@ -394,6 +418,9 @@ async def test_minimal_privacy_success_and_loss_windows(
         )
     assert injected == (stage is not None)
     assert deferred == ({executor_lock} if sys.platform == "win32" else set())
+    assert mapped == (
+        {sqlite_shm} if sys.platform == "win32" and stage != "after_receipt" else set()
+    )
     # Ownership has ended: no file is exempt, including the mandatory lock byte.
     assert executor_lock.read_bytes() == b"\0"
     captured = capsys.readouterr()
@@ -407,7 +434,9 @@ async def test_minimal_privacy_success_and_loss_windows(
             for marker in (source, prompt, payload, raw, credential)
         ), path
         if explanation.encode() in content:
-            assert stage is None and path.name.startswith("registry.sqlite3"), path
+            assert stage is None and path in normalized_result_files, path.relative_to(
+                tmp_path
+            )
     if stage:
         await recover_run("001", store=store, adapter=adapter, spec=spec)
         assert adapter.ledger.acceptance_count() == 1
