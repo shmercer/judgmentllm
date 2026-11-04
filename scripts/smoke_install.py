@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 import glob
+import json
 import os
 import shutil
 import subprocess
@@ -260,6 +261,51 @@ def smoke_install(
     )
     if "Synthetic installation response." not in preview:
         raise RuntimeError("Installed offline preview failed")
+    # Exercise the installed public lifecycle from independent console processes.
+    validated = json.loads(
+        run(
+            [str(console), "validate", "--config", "mock-run.json", "--json"],
+            cwd=directory,
+        )
+    )
+    assert validated["schema_version"] == 1 and validated["data"]["valid"]
+    started = json.loads(
+        run(
+            [
+                str(console),
+                "run",
+                "--config",
+                "mock-run.json",
+                "--store",
+                "cli-registry",
+                "--json",
+            ],
+            cwd=directory,
+        )
+    )
+    identity = ["--run", started["run_id"], "--store", "cli-registry"]
+    resumed = json.loads(
+        run([str(console), "resume", *identity, "--json"], cwd=directory)
+    )
+    assert resumed["run_status"] == "completed" and resumed["data"]["results"] == 1
+    exported = json.loads(
+        run(
+            [
+                str(console),
+                "results",
+                "export",
+                *identity,
+                "--format",
+                "csv",
+                "--view",
+                "r",
+                "--json",
+            ],
+            cwd=directory,
+        )
+    )
+    assert Path(exported["artifacts"]["export"]).is_absolute()
+    assert Path(exported["artifacts"]["export"]).is_file()
     print(f"Smoke installation passed: {artifact.name} (version {version})")
 
 

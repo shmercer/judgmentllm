@@ -145,11 +145,14 @@ def test_complete_offline_plan_preserves_failures(
     assert summary["lockfile_sha256"] == gates.digest(staged / "uv.lock")
     assert (
         sum(
-            "--vanilla" in command
-            and not any(Path(arg).name == "r-probe.R" for arg in command)
+            (
+                "--vanilla" in command
+                and not any(Path(arg).name == "r-probe.R" for arg in command)
+            )
+            or "scripts/cli_lifecycle_r_gate.py" in command
             for command in calls
         )
-        == 6
+        == 7
     )
     assert any("--offline" in command and "build" in command for command in calls)
     smokes = [
@@ -252,7 +255,7 @@ def test_windows_plan_uses_distinct_short_data_paths_and_preserves_them(
     for key in ("TEMP", "TMP", "TMPDIR"):
         assert runner.environment[key] == str(runner.data_root / "t")
     fixture_calls = [command for command in calls if "--output" in command]
-    assert len(fixture_calls) == 11
+    assert len(fixture_calls) == 12
     assert all(
         Path(command[command.index("--output") + 1]).is_relative_to(
             runner.data_root / "r"
@@ -345,6 +348,18 @@ def test_smoke_installer_preserves_default_and_explicit_offline(
     def execute(command: list[str], **kwargs: Any) -> str:
         if "install" in command:
             installations.append(kwargs["offline"])
+        if "--json" in command:
+            exported = tmp_path / "smoke.csv"
+            exported.write_text("synthetic", encoding="utf-8")
+            return json.dumps(
+                {
+                    "schema_version": 1,
+                    "run_id": "smoke",
+                    "run_status": "completed",
+                    "data": {"valid": True, "results": 1},
+                    "artifacts": {"export": str(exported)},
+                }
+            )
         if "--help" in command:
             return "--help --version"
         if "--version" in command:

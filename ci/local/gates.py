@@ -609,6 +609,15 @@ class Runner:
             self.step(
                 f"r-{name}-assertions", [rscript, "--vanilla", assertions, str(target)]
             )
+        self.step(
+            "r-cli-lifecycle-assertions",
+            [
+                str(self.python),
+                "scripts/cli_lifecycle_r_gate.py",
+                "--output",
+                str(self.data_root / "r" / "cli-lifecycle"),
+            ],
+        )
         self.build_and_smoke()
 
 

@@ -170,6 +170,12 @@ jobs:
           uv run --offline --no-sync python scripts/grouped_lifecycle_r_fixture.py --phase export --output "$RUNNER_TEMP/judgmentllm-grouped-lifecycle-r"
           Rscript --vanilla examples/grouped_lifecycle_interoperability.R "$RUNNER_TEMP/judgmentllm-grouped-lifecycle-r"
 
+      - name: Verify required installed CLI lifecycle interoperability
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
+        env:
+          JUDGMENTLLM_R_STRICT: '1'
+        run: uv run --offline --no-sync python scripts/cli_lifecycle_r_gate.py --output "${{ runner.temp }}/judgmentllm-cli-lifecycle-r"
+
       - name: Build distributions
         run: uv build --offline
 
