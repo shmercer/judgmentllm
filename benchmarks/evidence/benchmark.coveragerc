@@ -1,0 +1,12 @@
+[run]
+source = judgmentllm
+branch = True
+relative_files = True
+disable_warnings = module-not-measured
+
+[report]
+show_missing = True
+fail_under = 90
+
+[xml]
+output = coverage.xml
