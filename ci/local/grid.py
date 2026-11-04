@@ -39,8 +39,8 @@ UV_ASSETS = {
 JSONLITE_SHA = "e947f4ce2c3a8194ae42c4015cdc557cec1c1cea06f85cd20da037aa93dfa5e4"
 STATES = {
     "linux": Path("/mnt/VM_Fast/judgmentllm-ci/linux"),
-    "windows": Path("/mnt/VM_Fast/pairwiseLLM-checks/judgmentllm-ci"),
     "macos": Path("/mnt/VM_Fast/judgmentllm-ci/macos"),
+    "windows": Path("/mnt/VM_Fast/pairwiseLLM-checks/judgmentllm-ci"),
 }
 RESULTS = {
     "linux": "runs/*/python-*/results/summary.json",

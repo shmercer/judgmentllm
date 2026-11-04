@@ -98,8 +98,8 @@ python3 ci/local/grid.py --ref "$REF" --mode prepare
 python3 ci/local/grid.py --ref "$REF" --mode check
 ```
 
-The grid runs operating systems sequentially and both Python versions within
-each environment. A platform can be inspected/prepared/checked independently:
+The grid runs Linux, macOS and Windows sequentially, and both Python versions
+within each environment. A platform can be inspected/prepared/checked independently:
 
 ```bash
 python3 ci/local/grid.py --ref "$REF" --platform windows --mode check
@@ -248,10 +248,47 @@ Rust through the dependency backend into `~/Library/Caches/puccinialin` before
 this isolation was added. That initial cache is left untouched; subsequent runs
 neither use nor modify it.
 
-## Qualification status
+## Qualification record and publication gate
 
-Initial VM/environment inspection and launcher syntax/doctor checks have passed.
-The six native Python qualifications and the Windows reliability comparison
-remain pending until the runner commit is staged and the isolated prerequisite
-setup completes. Their exact source SHAs and machine-readable evidence will be
-reported before publication. No merge, release, or Subphase 5 work is authorized.
+All six prerequisite preparations passed: Linux at `2b59f4601b28`, and both
+Windows and Intel macOS at `a75b7fc9e16b`. Preparation includes locked dependency
+installation, R/jsonlite, builds, metadata and clean-install smokes; it is not a
+substitute for full qualification. The Windows multiline R probe failure and
+Intel macOS native-build prerequisite failure were retained and corrected as
+described above, without changing production code or the dependency lock.
+
+The first complete Windows/Python 3.11 qualification passed on exact commit
+`a75b7fc9e16bf3566da581f78d198d84e7e6f675`: **1,405 tests passed, one existing
+Unix-only fork-inheritance test skipped, 95.97% coverage**. Its 33 steps passed,
+including strict Pyright, Windows prechecks, all six strict R/jsonlite gates,
+build/Twine and both clean-install smokes. Full gate time was 660.52 seconds;
+the pytest step took 593.38 seconds. Source bytes matched before/after. This
+joins the separate repeated large-resource checks above as evidence supporting
+routine hosted Windows 3.11 removal; neither a partial suite nor preparation
+alone was used for that decision.
+
+```text
+Source archive SHA-256:
+5501c0d479b95fa82c24fbae5e1dd0d190f589428a304a19700d0e923c0d0164
+Dependency lock SHA-256:
+fb46854f753890cd9cc8006631e06345ad6e6417e150ed5d6843d16d905b77a3
+First Windows full-gate evidence:
+/mnt/VM_Fast/pairwiseLLM-checks/judgmentllm-ci/results/
+  windows-20261104T160646Z-408309-15804/python-3.11/summary.json
+```
+
+The proposed routine workflow retains Ubuntu/macOS 3.11/3.15 and Windows 3.12.
+Manual dispatch with boolean `windows_311_only=true` runs only Windows 3.11
+through the same complete job; the default dispatch runs the routine five.
+Steps, action pins, required R conditions, coverage gates and timeouts are shared
+and unchanged. Actionlint and matrix-selection regressions validate the proposal.
+
+Before publication, run `grid.py --mode check --ref FULL_HEAD_SHA` for all three
+OS adapters and require `qualification: true` in the fresh grid summary. The
+reported commit must still equal `git rev-parse HEAD`; later source, test,
+workflow or harness changes require a new exact-head qualification. Final results
+are generated outside Git under the per-commit grid ledger, avoiding a results
+commit that changes the revision being qualified. The execution report for
+review links that exact ledger, all six native results and any failures. The
+infrastructure branch remains unpublished until that review. No merge, release,
+or Subphase 5 work is authorized.
