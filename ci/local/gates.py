@@ -418,8 +418,12 @@ class Runner:
                 raise ValueError(
                     "Required Rscript is unavailable; provision R/jsonlite before running gates"
                 )
+            # Windows Rscript can crash on multiline code supplied through -e.
+            # Keep the exact probe as a retained UTF-8 script on every platform.
+            r_probe = self.output / "r-probe.R"
+            r_probe.write_text(R_PROBE, encoding="utf-8", newline="\n")
             self.required(
-                "r-jsonlite-versions", [rscript, "--vanilla", "-e", R_PROBE], timeout=30
+                "r-jsonlite-versions", [rscript, "--vanilla", str(r_probe)], timeout=30
             )
             self.summary["r"] = json.loads(
                 (self.output / self.summary["steps"][-1]["log"]).read_text(

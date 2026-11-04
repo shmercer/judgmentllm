@@ -123,6 +123,8 @@ for version in "${versions[@]}"; do
     --entrypoint bash "$image" -c '
       set -euo pipefail
       bundle=$1; lane=$2; mode=$3; minor=$4; patch=$5; commit=$6; archive_hash=$7
+      actual=$(sha256sum "$bundle/source.tar")
+      [[ ${actual%% *} == "$archive_hash" ]] || { echo "Source archive changed before extraction" >&2; exit 2; }
       mkdir "$lane/source"
       tar -xf "$bundle/source.tar" -C "$lane/source"
       cp "$bundle/manifest.json" "$lane/source/.judgmentllm-source.json"

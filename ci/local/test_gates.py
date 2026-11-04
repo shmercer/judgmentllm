@@ -102,7 +102,7 @@ def fake_commands(
         assert "PYTHONPATH" not in environment
         if "import importlib.metadata as m,json" in " ".join(command):
             stream.write('{"pyright":"1.1.414"}')
-        elif gates.R_PROBE in command:
+        elif any(Path(argument).name == "r-probe.R" for argument in command):
             stream.write('{"R":"4.6.1","jsonlite":"2.0.0"}')
         elif "build" in command:
             directory = Path(command[command.index("--out-dir") + 1])
@@ -143,7 +143,14 @@ def test_complete_offline_plan_preserves_failures(
     assert summary["status"] == ("failed" if fail_lint else "passed")
     assert summary["source_verified_before"] and summary["source_verified_after"]
     assert summary["lockfile_sha256"] == gates.digest(staged / "uv.lock")
-    assert sum("--vanilla" in command and "-e" not in command for command in calls) == 6
+    assert (
+        sum(
+            "--vanilla" in command
+            and not any(Path(arg).name == "r-probe.R" for arg in command)
+            for command in calls
+        )
+        == 6
+    )
     assert any("--offline" in command and "build" in command for command in calls)
     smokes = [
         command
@@ -160,6 +167,19 @@ def test_complete_offline_plan_preserves_failures(
         failure = next(step for step in summary["steps"] if step["status"] == "failed")
         assert failure["failure_kind"] == "check_failure"
         assert "lint failure retained" in (runner.output / failure["log"]).read_text()
+
+
+def test_r_version_probe_uses_retained_script_file(
+    staged: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = fake_commands(monkeypatch)
+    runner = gates.Runner(options(staged, tmp_path / "result"))
+    assert runner.run() == 0
+    script = runner.output / "r-probe.R"
+    assert script.read_bytes() == gates.R_PROBE.encode("utf-8")
+    commands = [command for command in calls if str(script) in command]
+    assert commands == [["Rscript", "--vanilla", str(script)]]
+    assert all("\n" not in argument and argument != "-e" for argument in commands[0])
 
 
 def test_final_source_mutation_never_reports_success(
