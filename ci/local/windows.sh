@@ -9,8 +9,9 @@ Usage: windows.sh --ref COMMIT [--repo PATH] [--mode prepare|check|doctor]
                   [--uv-archive PATH --uv-sha256 SHA256] [--stop-started]
 
 The existing pairwise-windows-ci container is reused, never recreated. A VM
-started by this launcher is stopped gracefully on exit; an already-running VM
-is left running. The existing Windows CI lock is held for the whole operation.
+started by this launcher receives an ACPI shutdown on exit; an already-running VM
+is left running. An unresponsive guest is left running, never forcibly stopped.
+The existing Windows CI lock is held for the whole operation.
 Selecting all runs both Python lanes concurrently in separate guest processes,
 with separate source, environment, scratch, output and logs. A failed lane does
 not prevent its peer from finishing.
@@ -36,6 +37,7 @@ uv_archive=''
 uv_sha256=''
 ssh_key=${JUDGMENTLLM_WINDOWS_SSH_KEY:-$HOME/.ssh/pairwise_windows_ci}
 boot_timeout=${JUDGMENTLLM_WINDOWS_BOOT_TIMEOUT:-420}
+shutdown_timeout=${JUDGMENTLLM_WINDOWS_SHUTDOWN_TIMEOUT:-300}
 container=pairwise-windows-ci
 share_root=/mnt/VM_Fast/pairwiseLLM-checks
 vm_started=0
@@ -70,6 +72,7 @@ done
 [[ $mode =~ ^(prepare|check|doctor)$ ]] || fatal 'Invalid --mode'
 [[ $python_version =~ ^(3\.11|3\.12|all)$ ]] || fatal 'Invalid --python-version'
 [[ $boot_timeout =~ ^[0-9]+$ ]] && (( boot_timeout >= 10 )) || fatal 'Boot timeout must be >= 10 seconds'
+[[ $shutdown_timeout =~ ^[0-9]+$ ]] && (( shutdown_timeout >= 10 )) || fatal 'Shutdown timeout must be >= 10 seconds'
 [[ $mode == doctor || $ref =~ ^[0-9a-f]{40}$ ]] || fatal '--ref requires a full lowercase commit SHA'
 [[ -z $ref || $ref =~ ^[0-9a-f]{40}$ ]] || fatal 'Invalid --ref'
 for command_name in docker ssh python3 mountpoint flock realpath sha256sum tail timeout; do
@@ -141,12 +144,39 @@ PY
     # SSH has been joined; --pid makes this logger exit without a PID-based kill.
     wait "$active_tail" 2>/dev/null || true
   fi
-  if (( vm_started )); then
+  if (( vm_started )) && [[ $(docker inspect --format '{{.State.Status}}' "$container") == exited ]]; then
+    log 'The Windows VM started by this run has already exited'
+  elif (( vm_started )); then
     log 'Requesting graceful shutdown of the Windows VM started by this run'
-    # A negative timeout disables Docker's forced-kill fallback.
-    if ! docker stop --timeout=-1 "$container" >>"$run_root/lifecycle.log" 2>&1; then
-      log 'Graceful shutdown failed; inspect the container before another run'
+    # Dockurr's PID 1 has its own forced-kill fallback even when Docker's
+    # timeout is disabled. Request ACPI directly and only observe completion.
+    if ! python3 - "$container" >>"$run_root/lifecycle.log" 2>&1 <<'PY'
+import subprocess
+import sys
+
+try:
+    subprocess.run(
+        ["docker", "exec", "-i", sys.argv[1], "nc", "-U", "-q", "1", "/run/shm/monitor.sock"],
+        input=b"system_powerdown\n",
+        check=True,
+        timeout=15,
+    )
+except (subprocess.SubprocessError, OSError) as error:
+    print(f"ACPI request failed: {error}", file=sys.stderr)
+    raise SystemExit(1) from error
+PY
+    then
+      log 'Could not request ACPI shutdown; VM left running for inspection'
       (( status != 0 )) || status=4
+    else
+      shutdown_deadline=$(( SECONDS + shutdown_timeout ))
+      while [[ $(docker inspect --format '{{.State.Status}}' "$container") == running ]] && (( SECONDS < shutdown_deadline )); do
+        sleep 2
+      done
+      if [[ $(docker inspect --format '{{.State.Status}}' "$container") != exited ]]; then
+        log "ACPI shutdown did not complete within $shutdown_timeout seconds; VM left running for inspection"
+        (( status != 0 )) || status=4
+      fi
     fi
   fi
   exit "$status"
@@ -155,8 +185,9 @@ trap cleanup EXIT
 trap 'request_cancel 130' INT
 trap 'request_cancel 143' TERM
 if [[ $initial_state != running ]]; then
-  docker start "$container" >>"$run_root/lifecycle.log" 2>&1
+  # Record ownership before starting: TERM may arrive while Docker returns.
   vm_started=1
+  docker start "$container" >>"$run_root/lifecycle.log" 2>&1
 fi
 
 ssh_opts=(-p 2222 -i "$ssh_key" -o IdentitiesOnly=yes -o BatchMode=yes

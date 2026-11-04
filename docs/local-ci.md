@@ -140,11 +140,24 @@ with mismatching bytes fail rather than being overwritten.
 
 Only one adapter may operate on a guest at a time. The launchers normally handle
 shutdown. For a VM deliberately started outside the launcher, acquire its shared
-lock before requesting shutdown; do not interrupt another project's run. The
-Windows graceful request is `docker stop --timeout=-1 pairwise-windows-ci`.
-macOS uses SSH `sudo -n /sbin/shutdown -h now`; the only monitor fallback is ACPI
-`system_powerdown`. If graceful shutdown fails, preserve the guest and report the
-environment limitation rather than force-killing it.
+lock before requesting shutdown; do not interrupt another project's run.
+Windows uses a direct ACPI `system_powerdown` request through its existing
+`/run/shm/monitor.sock` and observes guest exit. Do not substitute `docker stop`:
+the installed Windows image has its own approximately 105-second shutdown
+escalation, independent of Docker's stop timeout. Earlier qualification recorded
+container exit after `docker stop --timeout=-1`; that alone did not establish
+graceful guest shutdown. macOS uses SSH `sudo -n /sbin/shutdown -h now`; the only
+monitor fallback is ACPI `system_powerdown`. If graceful shutdown fails,
+preserve the guest and report the environment limitation rather than
+force-killing it.
+
+Windows diagnosis can use its existing console at `http://127.0.0.1:8007`.
+During native failure probes, SSH accepted TCP connections without sending a
+banner although the desktop and OpenSSH service were running. A console
+`Restart-Service sshd` under the shared lock restored access immediately; no
+service startup settings or VM configuration changed. Treat readiness timeouts
+as environment failures, inspect the console, and never force a reboot to
+recover SSH. The runner does not silently restart services or waive readiness.
 
 ## Gates and evidence
 
