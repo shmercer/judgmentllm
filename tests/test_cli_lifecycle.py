@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import subprocess
 import warnings
 from pathlib import Path
 from typing import Any, cast
@@ -366,3 +369,56 @@ def test_warning_translation_preserves_warning_as_error(
         envelope, stderr = control(["plan", "--config", "unused"], 1)
     assert envelope["error"]["category"] == "internal"
     assert "RAW-SECRET" not in json.dumps(envelope) + stderr
+
+
+def test_installed_json_controls_survive_ascii_redirected_streams(
+    tmp_path: Path,
+) -> None:
+    executable = shutil.which("judgmentllm")
+    assert executable is not None
+    directory = tmp_path / "résumé-模型"
+    config = configuration(directory)
+    model = "synthetic-résumé-模型"
+    document = json.loads(config.read_text(encoding="utf-8"))
+    document["model"] = model
+    config.write_text(json.dumps(document, ensure_ascii=False), encoding="utf-8")
+    environment = {**os.environ, "PYTHONIOENCODING": "ascii"}
+
+    def invoke(arguments: list[str]) -> dict[str, Any]:
+        result = subprocess.run(
+            [executable, *arguments, "--json"],
+            cwd=tmp_path,
+            env=environment,
+            capture_output=True,
+            timeout=30,
+        )
+        assert result.returncode == 0, (result.stdout, result.stderr)
+        assert result.stdout.isascii()
+        assert result.stderr.isascii()
+        stdout = result.stdout.decode("ascii")
+        data, end = json.JSONDecoder().raw_decode(stdout)
+        assert stdout[end:] == "\n" or stdout[end:] == "\r\n"
+        envelope = cast(dict[str, Any], data)
+        ControlEnvelope.model_validate(envelope)
+        for line in result.stderr.decode("ascii").splitlines():
+            diagnostic = json.loads(line)
+            assert diagnostic["schema_version"] == 1
+            assert diagnostic["event"] in {"progress", "diagnostic"}
+        return envelope
+
+    started = invoke(["run", "--config", str(config)])
+    assert started["data"]["model"] == model
+    assert started["artifacts"]["store"] == str(directory / "store")
+    inspected = invoke(
+        [
+            "runs",
+            "status",
+            "--run",
+            started["run_id"],
+            "--store",
+            str(directory / "store"),
+        ]
+    )
+    assert inspected["data"]["model"] == model
+    assert inspected["run_id"] == started["run_id"]
+    assert inspected["artifacts"]["store"] == str(directory / "store")

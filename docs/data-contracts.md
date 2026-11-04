@@ -1,9 +1,9 @@
 # Data contracts and scoring semantics
 
-**Implemented schema version 1, with Milestone 2 immutable preparation.** Assessment models live in
+**Implemented schema version 1, with Milestone 2 mock execution and lifecycle.** Assessment models live in
 `judgmentllm.models`, run configuration in `judgmentllm.config`, and normalized
-outputs in `judgmentllm.results`. These contracts prepare assessments offline;
-provider submission and execution remain later milestones. The internal
+outputs in `judgmentllm.results`. Public lifecycle services execute synthetic
+assessments through the mock provider. Real provider integrations remain later milestones. The internal
 [persistence foundation](persistence-contracts.md) is implemented separately.
 
 ## Validation and serialization
@@ -98,7 +98,7 @@ validation never opens files.
 | `exemplars` | Ordered inline list or referenced `{schema_version, exemplars}` document; defaults to empty. |
 | `provider`, `endpoint`, `model` | Required nonempty strings. Model IDs remain open; these values do not imply an implemented or qualified provider adapter. |
 | `generation` | Optional strict `GenerationSpec` with `temperature`, `top_p`, and `max_output_tokens`; omitted/null/empty means no requested controls. Only non-null requested members serialize. No provider defaults are inferred. |
-| `execution` | `mode=live` (`live/bulk_live/batch_native` intent), `grouping=independent` (`independent/grouped/auto`), optional fixed `groups`, optional positive `max_traits_per_request`, `explanations=false`, optional `tier`, `concurrency=4`. `cache_policy` defaults to `auto` for rubric and `off` for pairwise; valid values are `off/auto/explicit`. No execution or cache behavior is performed yet. |
+| `execution` | `mode=live` (`live/bulk_live/batch_native` intent), `grouping=independent` (`independent/grouped/auto`), optional fixed `groups`, optional positive `max_traits_per_request`, `explanations=false`, optional `tier`, `concurrency=4`. `cache_policy` defaults to `auto` for rubric and `off` for pairwise; valid values are `off/auto/explicit`. Mock live execution supports `off` and uncached `auto`; `explicit`, non-null tier and other execution modes fail before submission. |
 | `prompt` | Choose `preset` or `file`; `advanced=false`; configurable rendering safeguards under `limits`. Default preset follows task kind and explanation setting. Advanced mode requires a custom file. |
 | `normalization` | `NormalizationOptions`, with `probability_sum_tolerance=1e-8`, configurable in `[0,1)`. |
 | `capture`, `output_path` | `capture=full` (`full/minimal`); output defaults to `run-data` relative to the run configuration. Internal preparation enforces source retention policy; its runtime store is supplied separately and must be local. |
@@ -107,8 +107,9 @@ validation never opens files.
 Pairwise preparation uses independent grouping. Fixed groups must partition all
 rubric traits exactly once without empty groups. Auto grouping requires an
 explicit or supplied capability limit; it never invents context windows or
-splits exemplars. Retry, native-batch controls, and budget configuration remain
-reserved for later milestones and are rejected as unknown fields today.
+splits exemplars. Retry policy is an execution-service control; it is not a RunSpec field. Explicit
+retry selection uses the public resume interface. Native-batch, rate/timeout and
+budget configuration remain reserved and are rejected as unknown fields today.
 
 ### Generation configuration and extensibility
 
@@ -182,20 +183,20 @@ manifests. Internal preparation now freezes source identities and indexes,
 seals the complete manifest, and combines source and generation verification.
 Source provenance retains exact original hashes separately from normalized
 semantic configuration identity. Minimal capture commits text-bearing assessment
-configuration through hashes and source references. When actual request preparation
-is implemented, the adapter must include each requested setting in the real
-prepared body and its exact byte hash, preserving omission and values. Milestone
+configuration through hashes and source references. Mock request preparation
+includes each requested setting in the actual prepared body and its exact byte
+hash, preserving omission and values. Real adapter mappings remain deferred. Milestone
 3 implements generative mappings, Milestone 4 rejects inapplicable settings on
 native score/decision endpoints, and Milestone 5 verifies live/batch parity.
-Future CLI configuration and the Milestone 6 `rubricLLM` wrapper use this same
+Public CLI configuration and the Milestone 6 `rubricLLM` wrapper use this same
 RunSpec rather than inventing independent defaults or provider payload schemas.
 
 ## Normalized results
 
 Both `RubricResult` and `PairwiseResult` require separate `run_id`, `task_id`,
 `request_uid`, and `attempt_id`. Logical task IDs remain independent of grouping;
-request IDs identify ordered groups and assessment context. No attempt IDs are
-allocated or results produced by an execution engine in this milestone.
+request IDs identify ordered groups and assessment context. The mock executor
+allocates distinct durable attempt IDs and stores observed outcomes without changing this normalized result schema.
 
 Common fields include `status` (`complete/invalid/refused/errored/cancelled`),
 `error_kind`, `error_message`, `provider`, `endpoint`, `model`, `tier`, `mode`,
@@ -204,8 +205,9 @@ Common fields include `status` (`complete/invalid/refused/errored/cancelled`),
 (`raw_response_path`, `prompt_path`, `manifest_sha256`). Unavailable values stay
 null. Confidence is bounded to `[0,1]`; usage counts are nonnegative integers.
 The effective `probability_sum_tolerance` is recorded when probabilities exist.
-Provider request/batch IDs, SDK diagnostics, persistent manifests, and sidecars
-will be supplied by later execution/provider milestones.
+Mock submission/observation identities, immutable manifests and sidecars are
+linked through repository evidence. Real provider request/batch IDs and SDK
+diagnostics remain assigned to their adapter milestones.
 
 ### Rubric results
 
@@ -290,7 +292,7 @@ models. The result kind's unused union columns must be null.
 
 Writers overwrite their destination and require its parent directory to exist.
 Failure can leave a partial file. These utilities are not a persistence journal.
-Capture modes describe future execution behavior; offline preview returns full
+Capture modes govern runtime persistence; offline preview returns full
 requested text. Never put credentials in configuration, metadata, or examples.
 
 ## Derived R-compatible audit views

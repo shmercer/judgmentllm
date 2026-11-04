@@ -103,12 +103,16 @@ def _write_diagnostic(
 ) -> None:
     if invocation.machine:
         typer.echo(
-            Diagnostic(
-                event="progress" if progress else "diagnostic",
-                category=category,
-                message=message,
-                run_id=invocation.run_id,
-            ).model_dump_json(),
+            json.dumps(
+                Diagnostic(
+                    event="progress" if progress else "diagnostic",
+                    category=category,
+                    message=message,
+                    run_id=invocation.run_id,
+                ).model_dump(mode="json"),
+                ensure_ascii=True,
+                separators=(",", ":"),
+            ),
             err=True,
         )
     else:
@@ -130,7 +134,13 @@ def progress(event: ProgressEvent) -> None:
 def _emit(envelope: ControlEnvelope, code: int) -> None:
     invocation = _current()
     if invocation.machine:
-        typer.echo(envelope.model_dump_json(exclude_none=False))
+        typer.echo(
+            json.dumps(
+                envelope.model_dump(mode="json", exclude_none=False),
+                ensure_ascii=True,
+                separators=(",", ":"),
+            )
+        )
     else:
         typer.echo(f"{envelope.command}: {envelope.status}")
         if envelope.run_id is not None:

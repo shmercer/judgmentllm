@@ -1,5 +1,13 @@
 # Execution performance verification
 
+Current context (Subphase 5): this is a dated verification record. PR #8 and
+PR #9 are merged into main `01fa7e47b86f36370f8df017873cf41668b2f363`;
+its five hosted jobs passed in run `41909583052`. Current hosted CI is
+Ubuntu/macOS Python 3.11/3.15 plus Windows 3.12, with optional full Windows
+3.11 dispatch. Keep the historical six-job results and failures below as evidence.
+The [Subphase 5 report](milestone-2-subphase-5-verification.md) records the new
+public lifecycle and seventh R gate; it does not replace these measurements.
+
 This is a separate engineering task after Milestone 2 Subphase 4. The baseline
 is squash merge `2cd12c5914698ccc0498b3004cb4de03cee397bf`. No Subphase 5
 lifecycle, public schema, version, hashing or generation-default change is part

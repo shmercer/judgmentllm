@@ -1,6 +1,6 @@
 # JudgmentLLM: functional design specification
 
-**Design:** 0.5 (2026-11-02). **Implementation status:** Milestone 1 provides schema-version-1 contracts, synthetic normalization, structural planning, input/output, and offline prompt tools. Milestone 2 has durable persistence, generation configuration, and complete provider-free immutable source preparation with indexed access and independent-process reopening. Execution and provider support remain unimplemented. The sections below describe the full approved direction; [data contracts](data-contracts.md) and [Python API](python-api.md) describe the implemented subset.
+**Design:** 0.5 (2026-11-02). **Implementation status:** Milestone 1 provides schema-version-1 contracts, synthetic normalization, structural planning, input/output, and offline prompt tools. Milestone 2 has durable persistence, generation configuration, and complete provider-free immutable source preparation with indexed access and independent-process reopening. Subphase 4 adds grouped outcomes, retry/cancellation and immutable exports; Subphase 5 exposes the shared public Python lifecycle and versioned CLI. Execution is limited to the deterministic mock provider; real adapters remain later milestones. The sections below describe the full approved direction; [data contracts](data-contracts.md) and [Python API](python-api.md) describe the implemented subset.
 
 ## 1. Goals
 
@@ -218,15 +218,18 @@ No provider-specific details should leak into normalized assessment interpretati
 
 All documented capabilities are subject to provider and account change. Date and qualify concrete model combinations rather than assuming live API availability from documentation alone.
 
-## Milestone 2 Subphase 3 implementation boundary
+## Milestone 2 Subphase 5 implementation boundary
 
 Internal mock execution now integrates immutable preparation, exact adapter-owned
 payloads, bounded async workers, owner-token-checked durable writes, independent
 mock acceptance evidence, response receipts, and conservative recovery. It
-supports single-member rubric and pairwise assessments through the established
+supports independent/grouped rubric and pairwise assessments through the established
 validators/normalizers; every result remains explicitly synthetic and schema 1.
 Full/minimal privacy and source/capability compatibility apply at scheduling and
 submission. The service never retries a possibly submitted request because a
-process disappeared. Grouped salvage, retries, cancellation/export lifecycle and
-public lifecycle controls remain in their approved later subphases. See the
-[verification record](milestone-2-subphase-3-verification.md).
+process disappeared. Grouped salvage, explicit subset retries, conservative automatic
+retry, cancellation, immutable export, shared public Python services and the
+versioned lifecycle CLI are implemented. The installed-CLI R lifecycle gate adds
+to the six established strict interoperability gates. Real providers and large
+scale qualification remain outside this subphase. See the
+[Subphase 5 verification record](milestone-2-subphase-5-verification.md).

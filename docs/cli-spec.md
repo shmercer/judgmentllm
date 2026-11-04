@@ -210,3 +210,5 @@ The functional CLI-first `rubricLLM` wrapper arrives in Milestone 6; ordinary R
 workflows need no resident Python process or HTTP server. Optional local-loopback
 FastAPI and `serve` arrive in Milestone 7. No future command is implemented as
 an alias for mock execution.
+
+JSON control and diagnostic records escape non-ASCII characters, preserving exact decoded IDs and paths even through locale-limited redirected Windows streams.

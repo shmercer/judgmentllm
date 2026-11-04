@@ -90,3 +90,31 @@ R interoperability is an acceptance condition throughout subsequent milestones, 
 - Commit requested generation identity separately from capability evidence. Include it in the eventual full manifest and prepared-payload commitments; changing a requested value is incompatible with resume under the same frozen specification. Preserve global canonical hashing behavior and existing Milestone 1 request IDs for no-generation configurations; explicit controls enter request context identity while item/pair/task IDs stay stable.
 - Retained generation-only fixtures exercise immutability and compatibility foundations; they are not complete executable run manifests. Source freezing/indexing, complete manifest publication and operational resume remain subsequent Subphase 2/lifecycle work.
 - Milestone 3 implements and tests provider/model/endpoint parameter mappings; Milestone 4 rejects generative settings inapplicable to native score/decision endpoints; Milestone 5 proves live/batch parameter parity; Milestone 6 passes the same configuration through `rubricLLM`. Required offline R provenance checks continue from the current foundation.
+
+
+## Milestone 2 Subphase 5 public lifecycle decisions (2026-11-04)
+
+- Retain package `0.1.0a2`, all existing schema versions and normalized/R columns.
+  Expose lifecycle services through thin public wrappers; structural `validate_run`
+  and `plan_run` keep their existing meanings. Complete validation and exact input
+  counts use the immutable preparation pipeline.
+- Execute only exact `mock` / `synthetic` configurations. Other provider names
+  remain valid for existing offline use but cannot silently execute through a
+  substitute adapter. Native batches, managed bulk-live, cloud adapters and
+  actual caching controls remain deferred.
+- Put explicit subset retry controls on `resume`: repeated `--retry-task`, required
+  `--retry-id`, and explicit `--allow-completed`. One operation selects from one
+  original request and retains the existing prior-outcome and attempt-limit rules.
+- Keep mock fixtures outside RunSpec and runtime persistence. Default service
+  ledger is `<store>/mock-service.sqlite3`; custom fixture/ledger inputs must be
+  supplied again. Missing or changed evidence cannot authorize resubmission.
+- `run` and `resume` block in their CLI process. JSON mode separates one stdout
+  control envelope from stderr diagnostics and process exit status. Hard death
+  cannot promise a final envelope or provider cancellation.
+- Add installed-CLI lifecycle acceptance as the seventh strict R/jsonlite gate;
+  retain all six existing gates. Base R uses separate stdout/stderr files and
+  independent CLI processes. Heavy fault matrices and scale qualification stay
+  outside this small R fixture.
+- Require six local OS/Python 3.11/3.12 lanes on the final commit. Hosted CI retains
+  Ubuntu/macOS 3.11/3.15 plus Windows 3.12 and optional full Windows 3.11 dispatch.
+  Local results do not establish hosted 3.15 qualification.
