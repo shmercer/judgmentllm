@@ -544,9 +544,10 @@ execution; no speedup claim is based on the tracer timings.
 
 The 200-trait prefix has a higher peak/live allocation footprint, by roughly
 1.48–1.68 MiB, while retained-after-GC allocations remain near 0.3 MiB. This
-records the bounded static-metadata tradeoff; session-lifetime and privacy tests
-verify release and absence from minimal persistent artifacts. It does not isolate
-the allocator/layout causes of native RSS differences. The new cached
+records the bounded static-metadata tradeoff; lifetime tests verify reference
+release as qualified below, and privacy tests verify absence from minimal
+persistent artifacts. It does not isolate the allocator/layout causes of native
+RSS differences. The new cached
 configuration snapshots in both capture modes stay in memory and contain no
 source-record, rendered-prompt, payload or response cache. Existing memory
 scaling/threshold, native RSS and 180-second
@@ -668,7 +669,7 @@ cross-process exclusion, grouped atomicity, cancellation and privacy tests ran.
 Workloads, worker/task/queue bounds, memory thresholds and 180-second resource
 subprocess timeouts are unchanged.
 
-The [73 added cases](../tests/test_execution_performance_integrity.py) cover
+The original [73 added cases](../tests/test_execution_performance_integrity.py) cover
 equivalent copied models; accepted raw numeric
 representations; changed configuration, capabilities, template and exemplars;
 scalar type distinctions and signed zero; unknown fields and cycles; source
@@ -743,15 +744,20 @@ test initially assumed identical prompt text for accepted `0.0` versus `0`
 values. Its expectation was corrected to match existing presentation semantics;
 the revised focused probe passed 35 cases. These are retained tool-output
 results, without a separate baseline test log. All corresponding existing tests
-and all 73 regressions passed in the corrected-source complete suite.
+and all original 73 regressions passed in the corrected-source complete suite.
 The unchanged full/minimal privacy sentinels cover live database/WAL/SHM,
 ledgers, artifacts, receipts, exports, temporary files and diagnostics. Cached
 configuration may contain rubric/exemplar/template text but stays in memory;
 the private context/token objects are never written. Existing prompt/payload
 capture continues through its established privacy-controlled paths. Closing
-clears its reference; a weak-reference regression verifies release and prevents
-verification from recreating it after closure. No source-record, rendered-prompt,
-provider-payload or response cache was added.
+clears the prepared session's own context reference and prevents verification
+from recreating it after closure. An independently retained, suspended request
+iterator can still hold the detached context, including rubric/exemplar/template
+text, after the session closes. Weak-reference regressions verify both immediate
+release when no iterator retains it and collection after the remaining iterator
+references are released. This is private in-memory retention; closure does not
+promise immediate garbage collection of independently referenced objects. No
+source-record, rendered-prompt, provider-payload or response cache was added.
 
 One first full-suite invocation used the virtualenv's pytest executable without
 putting its console scripts on `PATH`: 1,364 tests passed and two installed-CLI
@@ -769,10 +775,18 @@ template context per verified session, together with its structural plan and
 request-context fingerprint. Every existing compatibility boundary still checks
 current caller-visible values with a type-aware structural token, including
 undeclared fields, presentation order and exact floating-point representation.
-Changed tokens run the original validation/canonical identity checks; unknown
-types stay uncached. Recursion tracking distinguishes cycles from shared,
-acyclic model references. Cached rendering also checks for changes during source
-reads, preserving fail-closed behavior when a callback mutates public objects.
+Changed tokens rerun configuration validation and canonical identity checks;
+unknown types stay uncached. Valid inputs retain their established behavior,
+including acceptance of equivalent replacement configurations. Capability
+validation is deliberately stricter: the complete supplied profile is now
+revalidated, including fields unused by the run. For example, a separate profile
+with an injected `explanations=1` was accepted by baseline compatibility checking
+for a run without explanations, but is now rejected because that field requires
+a boolean or null. This malformed-profile rejection is validation hardening,
+not a behavior change for valid profiles. Recursion tracking distinguishes
+cycles from shared, acyclic model references. Cached rendering also checks for
+changes during source reads, preserving fail-closed behavior when a callback
+mutates public objects.
 
 Selected requests reconstruct only their verified trait group through the same
 version-one identity formulas. Configuration/capability changes cannot alter
@@ -834,14 +848,48 @@ The production implementation is commit `607249d`, after profiling/evidence
 commit `5e60aa7`. Its source fingerprint is
 `5aafde3e55cbde9a73dd409cc21250ccfd366abf851b9e834bc5ff8c8177328c`.
 The complete corrected-source timing matrix uses an immutable archive and the
-literal baseline input paths/pristine database snapshots. The final
-regression/verification commit will add tests and this completed report without
-changing that measured production tree.
+literal baseline input paths/pristine database snapshots. Regression/verification
+commit `f312a31` added tests and this report without changing that measured
+production tree. The independent-review corrections likewise change only tests
+and this report; production, benchmark tools and retained measurements remain
+unchanged, so the expensive performance matrix is not repeated.
 
 Both revisions completed all 70 ordinary samples and 56 diagnostic
 configurations. The final source is `607249d`; superseded candidate data remains
 separately retained and excluded. No Subphase 5, native Windows/macOS CI, or
 full-scale qualification is claimed.
+
+## Independent-review corrections and local qualification (2026-11-04)
+
+The fourth commit contains only test and report corrections. The integrity suite
+now has **79 cases**, including full/minimal capture with and without a retained
+suspended iterator; collection after remaining iterator references are released;
+a separately supplied malformed capability clone and valid-clone acceptance;
+and 260-record rubric/pairwise ordering and resume checks across the 128- and
+256-record boundaries, including offsets within rubric trait groups. These are
+correctness regressions, not additional resource benchmarks. No production code,
+iterator lifecycle, resource thresholds or benchmark evidence was changed.
+
+The focused integrity/preparation/rendering suite passed **113 tests** in 12.11
+seconds. The complete offline suite passed **1,376 tests, 96.16% coverage**, in
+333.46 seconds, with strict R requirements and `ResourceWarning` and
+`PytestUnraisableExceptionWarning` treated as errors. There were no skipped tests
+or unexpected warnings. The complete suite retained all existing resource,
+privacy, recovery, ownership and export assertions. The invocation used the
+locked environment through `uv run --offline --no-sync`,
+`COVERAGE_RCFILE=pyproject.toml`, and temporary coverage/test output under `/tmp`.
+
+Ruff lint and formatting (128 Python files), strict Pyright (zero errors or
+warnings), and offline lock validation (93 packages) passed. All six strict
+Python-to-R/jsonlite gates were also rerun directly through their existing
+persist/export scripts and R assertions: baseline exports, persistence,
+generation, source preparation, execution, and grouped retry/export. R 4.6.2 and
+jsonlite 2.0.0 were required and available. Offline isolated wheel/sdist builds,
+strict Twine metadata, clean core installation and offline CLI/execution smokes,
+and archive exclusion checks passed. Local checks use Linux/Python 3.12.3;
+final-head acceptance on the six unchanged CI configurations is recorded in the
+PR. The source and benchmark fingerprints above remain unchanged, so no new
+performance matrix was needed or run.
 
 ## Remaining risks and later qualification
 
@@ -874,6 +922,8 @@ For later large-scale qualification, separately test the assigned 5,000x20 and
 histories, WAL/disk behavior and provider latency. Reprofile remaining validation
 and token-comparison costs before adding another cache or weakening a boundary.
 Retain original IDs, complete probability/coding data and all-attempt exports.
-Future publication still requires all six unchanged CI configurations to pass
-on the exact final PR head. Nothing has been pushed, published, merged or
-released by this task.
+PR acceptance still requires all six unchanged CI configurations to pass on the
+exact final PR head. At completion of the original measurement task, nothing had
+been pushed, published, merged or released. Publication and final-head CI results
+for the subsequent independent-review corrections are recorded in the PR; merge,
+release and Subphase 5 remain outside this task.

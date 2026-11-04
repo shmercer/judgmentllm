@@ -27,6 +27,7 @@ from judgmentllm.persistence.repository import Repository
 from judgmentllm.planning import (
     CapabilityProfile,
     _request_for_group,  # pyright: ignore[reportPrivateUsage]
+    iter_requests,
     request_context_fingerprint,
 )
 from judgmentllm.preparation import PreparedRun, open_prepared_run, prepare_run, session
@@ -200,6 +201,34 @@ def test_changed_caller_visible_context_cannot_reuse_verified_state(
     assert adapter.ledger.acceptance_count() == 0
 
 
+def test_separate_current_capability_clone_is_revalidated(tmp_path: Path) -> None:
+    spec = guarded_spec(tmp_path / "inputs")
+    adapter = MockAdapter(tmp_path / "ledger.sqlite3")
+    with prepare_run(
+        spec,
+        store=tmp_path / "store",
+        run_id="001",
+        capabilities=adapter.capabilities(spec),
+    ) as prepared:
+        dependency = next(prepared.iter_request_dependencies())
+        expected = prepared.render(dependency)
+        assert prepared.capabilities is not None
+        valid = prepared.capabilities.model_copy(deep=True)
+        prepared.verify_compatibility(capabilities=valid)
+        assert prepared.render(dependency) == expected
+
+        invalid = valid.model_copy(update={"explanations": 1})
+        # This clone does not alias the frozen manifest: rejecting it requires
+        # checking the current capability data, not just the manifest digest.
+        assert invalid is not prepared.manifest.capabilities
+        with pytest.raises(IntegrityError):
+            prepared.verify_compatibility(capabilities=invalid)
+
+        prepared.verify_compatibility(capabilities=valid.model_copy(deep=True))
+        assert prepared.render(dependency) == expected
+    assert adapter.ledger.acceptance_count() == 0
+
+
 @pytest.mark.parametrize("change", ["configuration", "capabilities"])
 def test_cache_refresh_cannot_borrow_validation_from_transient_public_values(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change: str
@@ -343,22 +372,39 @@ def test_equivalent_mapping_order_preserves_current_exact_prompt(
         assert list(spec.exemplars[0].metadata) == ["number", "flag"]
 
 
-def test_sensitive_cached_context_is_released_when_session_closes(
-    tmp_path: Path,
+@pytest.mark.parametrize("retain_iterator", [False, True])
+@pytest.mark.parametrize("capture", ["full", "minimal"])
+def test_close_releases_owned_context_with_normal_iterator_lifetime(
+    tmp_path: Path, retain_iterator: bool, capture: Literal["full", "minimal"]
 ) -> None:
     spec = guarded_spec(tmp_path / "inputs")
+    spec.capture = capture
     with prepare_run(spec, store=tmp_path / "store", run_id="001") as prepared:
-        dependency = next(prepared.iter_request_dependencies())
+        dependencies = prepared.iter_request_dependencies() if retain_iterator else None
+        dependency = (
+            next(dependencies)
+            if dependencies is not None
+            else next(prepared.iter_request_dependencies())
+        )
         prepared.render(dependency)
         assert prepared._context is not None  # pyright: ignore[reportPrivateUsage]
         reference = weakref.ref(prepared._context)  # pyright: ignore[reportPrivateUsage]
         prepared.close()
         assert prepared._context is None  # pyright: ignore[reportPrivateUsage]
+        assert prepared.spec == spec
         gc.collect()
-        assert reference() is None
+        if retain_iterator:
+            # A suspended iterator owns ordinary frame references. Closing the
+            # session releases its cache ownership, not those caller-held frames.
+            assert reference() is not None
+        else:
+            assert reference() is None
         with pytest.raises(IntegrityError, match="closed"):
             prepared.verify_compatibility(capabilities=prepared.capabilities)
         assert prepared._context is None  # pyright: ignore[reportPrivateUsage]
+        dependencies = None
+        gc.collect()
+        assert reference() is None
 
 
 def test_pairwise_session_rejects_fabricated_rubric_dependency(tmp_path: Path) -> None:
@@ -463,6 +509,43 @@ def test_suspended_request_iterator_does_not_pin_sqlite_wal(tmp_path: Path) -> N
         complete = [first, *dependencies]
         assert len(complete) == 6
         assert list(prepared.iter_request_dependencies(start_ordinal=3)) == complete[3:]
+
+
+@pytest.mark.parametrize("pairwise", [False, True], ids=["rubric", "pairwise"])
+def test_paged_request_order_and_resume_across_index_boundaries(
+    tmp_path: Path, pairwise: bool
+) -> None:
+    spec = specification(
+        tmp_path / "inputs", responses=260, traits=3, pairwise=pairwise
+    )
+    with prepare_run(spec, store=tmp_path / "store", run_id="001") as prepared:
+        complete = list(prepared.iter_request_dependencies())
+        group_count = 1 if pairwise else 3
+        assert len(complete) == 260 * group_count
+        assert [dependency.request for dependency in complete] == list(
+            iter_requests(spec)
+        )
+        for ordinal, dependency in enumerate(complete):
+            record = (
+                dependency.request.pair if pairwise else dependency.request.response
+            )
+            assert record is not None
+            identifier = (
+                record.pair_uid if isinstance(record, PairTask) else record.item_id
+            )
+            assert identifier == f"{ordinal // group_count:03d}"
+
+        starts = {0, len(complete), len(complete) + 1}
+        starts.update(
+            record * group_count + group
+            for record in (127, 128, 129, 255, 256)
+            for group in range(group_count)
+        )
+        for start in sorted(starts):
+            assert (
+                list(prepared.iter_request_dependencies(start_ordinal=start))
+                == complete[start:]
+            )
 
 
 @pytest.mark.parametrize("capture", ["full", "minimal"])
