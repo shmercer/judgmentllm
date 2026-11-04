@@ -53,18 +53,87 @@ repo=$(cd -- "$repo" && pwd -P)
 state_root=$(realpath -m -- "$state_root")
 [[ $state_root == /mnt/VM_Fast/judgmentllm-ci/* ]] || fatal 'State must be beneath /mnt/VM_Fast/judgmentllm-ci/'
 base_id=$(docker image inspect --format '{{.Id}}' "$base_image") || fatal 'Existing Linux R CI image is unavailable'
-if [[ $mode == doctor ]]; then
-  printf 'Base image: %s\n' "$base_id"
-  docker run --rm --network none --entrypoint bash "$base_id" -lc \
-    'cat /etc/os-release; python3 --version; Rscript --version; command -v cc; command -v git'
-  exit 0
-fi
 mkdir -p -- "$state_root/runs" "$state_root/cache" "$state_root/locks"
 exec 9>"$state_root/locks/grid.lock"
 flock -n 9 || fatal 'Another JudgmentLLM Linux run is active'
 run_id="linux-$(date -u +%Y%m%dT%H%M%SZ)-$$-$RANDOM"
 run_root="$state_root/runs/$run_id"
 mkdir -- "$run_root"
+active_cidfile=''
+active_client=''
+run_label=org.judgmentllm.local-ci.run
+
+stop_owned_container() {
+  local candidate actual label running inspection candidates=''
+  if [[ -n $active_cidfile && -s $active_cidfile ]]; then
+    read -r candidate <"$active_cidfile" || true
+    if [[ $candidate =~ ^[0-9a-f]{64}$ ]]; then
+      candidates=$candidate
+    else
+      printf 'Incomplete container ID file; checking the exact owned run label.\n' >&2
+    fi
+  fi
+  # The exact run label also covers cancellation during container creation,
+  # before the Docker client has finished writing its ID file.
+  candidates+=$'\n'$(docker ps --all --quiet --no-trunc --filter "label=$run_label=$run_id") || return 1
+  for candidate in $candidates; do
+    [[ $candidate =~ ^[0-9a-f]{64}$ ]] || return 1
+    inspection=$(docker inspect --format '{{.Id}} {{index .Config.Labels "org.judgmentllm.local-ci.run"}} {{.State.Running}}' "$candidate" 2>/dev/null) || continue
+    read -r actual label running <<<"$inspection"
+    [[ $actual == "$candidate" && $label == "$run_id" ]] || {
+      printf 'Refusing cleanup of an unowned container: %s\n' "$candidate" >&2
+      return 1
+    }
+    if [[ $running == true ]]; then
+      printf '[judgmentllm-linux] Gracefully stopping owned container %s\n' "$candidate"
+      # Negative timeout disables Docker's forced-kill fallback entirely.
+      docker stop --timeout=-1 "$candidate" >>"$run_root/lifecycle.log" 2>&1 || return 1
+    fi
+  done
+}
+
+cleanup() {
+  local status=$?
+  trap - EXIT INT TERM
+  set +e
+  # Stop the daemon-side container, even if Ctrl-C already ended its client.
+  stop_owned_container || { ((status != 0)) || status=1; }
+  if [[ -n $active_client ]]; then
+    kill -TERM "$active_client" 2>/dev/null || true
+    wait "$active_client" 2>/dev/null || true
+    stop_owned_container || { ((status != 0)) || status=1; }
+  fi
+  exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+
+run_container() {
+  local console=$1 status=0
+  active_cidfile=$2
+  shift 2
+  # Wait on an asynchronous client so Bash handles INT/TERM immediately.
+  # Tini forwards normal signals to the whole child group and reaps children.
+  docker run --rm --init --stop-signal SIGTERM --cidfile "$active_cidfile" \
+    --label "$run_label=$run_id" --env TINI_KILL_PROCESS_GROUP=1 "$@" \
+    > >(tee "$console") 2>&1 &
+  active_client=$!
+  wait "$active_client" || status=$?
+  active_client=''
+  stop_owned_container || status=1
+  active_cidfile=''
+  return "$status"
+}
+
+if [[ $mode == doctor ]]; then
+  printf 'Base image: %s\n' "$base_id"
+  mkdir "$run_root/doctor"
+  run_container "$run_root/doctor/console.log" "$run_root/doctor/container.cid" \
+    --network none --entrypoint bash "$base_id" -lc \
+    'cat /etc/os-release; python3 --version; Rscript --version; command -v cc; command -v git'
+  exit 0
+fi
 python3 "$script_dir/source.py" --repo "$repo" --ref "$ref" --output "$run_root/bundle"
 archive_hash=$(sha256sum -- "$run_root/bundle/source.tar")
 archive_hash=${archive_hash%% *}
@@ -114,7 +183,8 @@ for version in "${versions[@]}"; do
   network=none; [[ $mode == check ]] || network=bridge
   printf '[judgmentllm-linux] %s Python %s: %s\n' "$mode" "$patch" "$lane"
   status=0
-  docker run --rm --network "$network" --cpus 6 --memory 16g \
+  run_container "$lane/console.log" "$lane/container.cid" \
+    --network "$network" --cpus 6 --memory 16g \
     --user "$(id -u):$(id -g)" \
     --mount "type=bind,src=$state_root,dst=/state" \
     --env UV_CACHE_DIR=/state/cache --env XDG_CACHE_HOME=/state/cache \
@@ -128,14 +198,14 @@ for version in "${versions[@]}"; do
       mkdir "$lane/source"
       tar -xf "$bundle/source.tar" -C "$lane/source"
       cp "$bundle/manifest.json" "$lane/source/.judgmentllm-source.json"
-      /opt/judgmentllm/tools/uv run --no-project --python "$patch" --offline python \
+      exec /opt/judgmentllm/tools/uv run --no-project --python "$patch" --offline python \
         "$lane/source/ci/local/gates.py" --source "$lane/source" --output "$lane/results" \
         --commit "$commit" --archive-sha256 "$archive_hash" --python-version "$minor" \
         --mode "$mode" --uv /opt/judgmentllm/tools/uv
     ' judgmentllm \
     "/state/runs/$run_id/bundle" "/state/runs/$run_id/python-$version" \
     "$mode" "$version" "$patch" "$ref" "$archive_hash" \
-    2>&1 | tee "$lane/console.log" || status=$?
+    || status=$?
   printf '%s\n' "$status" >"$lane/exit-code"
   (( status == 0 )) || overall=1
 done

@@ -33,6 +33,9 @@ Never run an adapter while another project holds the corresponding lock. A
 preexisting running VM is left running. A VM started by the adapter is shut down
 gracefully; no process kill, disk deletion, Docker removal, or force-stop is
 used. Keep an unattended invocation alive until collection/shutdown completes.
+Linux containers have a dedicated init process and per-run CID/ownership labels.
+Interruption cleanup sends normal signals only to that run's disposable
+containers, including when the Docker client exits before its container.
 The first interactive inventory's macOS process disappeared when its tool
 session ended; tool descendant cleanup is a possible cause. The adapter keeps
 boot, work and shutdown in one process rather than relying on an interactive
@@ -266,6 +269,23 @@ the pytest step took 593.38 seconds. Source bytes matched before/after. This
 joins the separate repeated large-resource checks above as evidence supporting
 routine hosted Windows 3.11 removal; neither a partial suite nor preparation
 alone was used for that decision.
+
+The companion Windows 3.12 run exposed an existing mock-provider test that used a
+30 ms sleep to assume completion order despite worker-thread and journal timing.
+The test now uses an event handshake, still requiring the configured `0.03`
+delay path, real submissions, unchanged membership and two acceptances. All 26
+mock-provider tests passed on Linux and native Windows 3.11/3.12 after that
+correction. No production behavior or timeout was changed. The attempted
+`b15d1e7da0d0` grid was explicitly interrupted to incorporate the known fix; its
+partial results do not qualify any configuration.
+
+That interruption also exposed a Linux launcher cleanup gap: a Bash container
+init could outlive its interrupted client. The launcher now uses Docker init,
+process-group signal forwarding, `exec`, and guarded CID/ownership-label cleanup.
+Six tiny lifecycle probes passed (normal exit, adapter INT/TERM, client INT,
+whole-group INT and partial CID creation), with no owned container remaining.
+The existing Windows VM and other projects' containers were never cleanup
+targets. The corrected source requires a new full exact-head qualification.
 
 ```text
 Source archive SHA-256:
