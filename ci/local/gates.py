@@ -14,13 +14,14 @@ import json
 import os
 import platform
 import re
+import secrets
 import shutil
 import subprocess
 import sys
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, cast
 
 MANIFEST = ".judgmentllm-source.json"
@@ -84,6 +85,50 @@ def atomic_json(path: Path, value: Any) -> None:
         stream.flush()
         os.fsync(stream.fileno())
     temporary.replace(path)
+
+
+def windows_scratch_root(value: str) -> PureWindowsPath:
+    """Keep Windows generated data in a short, local, project-owned namespace."""
+    path = PureWindowsPath(value)
+    prefix = PureWindowsPath(r"C:\JudgmentLLM-ci\tmp")
+    if (
+        not path.is_absolute()
+        or tuple(part.casefold() for part in path.parts[: len(prefix.parts)])
+        != tuple(part.casefold() for part in prefix.parts)
+        or ".." in path.parts
+        or any(part.endswith((" ", ".")) or ":" in part for part in path.parts[1:])
+        or len(str(path)) > 32
+    ):
+        raise ValueError(
+            "Windows scratch root must be C:\\JudgmentLLM-ci\\tmp or a short subdirectory (maximum 32 characters)"
+        )
+    return path
+
+
+def create_scratch(root: Path) -> Path:
+    """Allocate exclusively; collisions and existing evidence are never removed."""
+    root.mkdir(parents=True, exist_ok=True)
+    for _ in range(16):
+        path = root / ("r" + secrets.token_hex(4))
+        try:
+            path.mkdir()
+        except FileExistsError:
+            continue
+        return path
+    raise FileExistsError("Could not allocate a fresh project scratch directory")
+
+
+def allocate_windows_scratch(environment: dict[str, str]) -> Path:
+    root = Path(
+        str(
+            windows_scratch_root(
+                environment.get("JUDGMENTLLM_CI_SCRATCH_ROOT", r"C:\JudgmentLLM-ci\tmp")
+            )
+        )
+    )
+    # Resolve junctions/symlinks before admitting an override or creating data.
+    windows_scratch_root(str(root.resolve()))
+    return create_scratch(root)
 
 
 def verify_source(source: Path, commit: str, archive_sha256: str) -> dict[str, str]:
@@ -151,6 +196,8 @@ class Runner:
         self.output.mkdir(parents=True, exist_ok=False)
         (self.output / "logs").mkdir()
         self.options = options
+        self.windows = os.name == "nt"
+        self.data_root = self.output
         self.uv = shutil.which(options.uv) or options.uv
         self.environment = {
             **os.environ,
@@ -316,6 +363,35 @@ class Runner:
     def module(self, name: str, *arguments: str) -> list[str]:
         return [str(self.python), "-m", name, *arguments]
 
+    def configure_data_paths(self) -> None:
+        if not self.windows:
+            return
+        self.data_root = allocate_windows_scratch(self.environment)
+        temporary = self.data_root / "t"
+        temporary.mkdir()
+        self.environment.update(
+            TEMP=str(temporary), TMP=str(temporary), TMPDIR=str(temporary)
+        )
+        self.summary["scratch"] = {
+            "policy": "windows-short-project-scratch-v1",
+            "path": str(self.data_root),
+            "temporary_directory": str(temporary),
+            "r_fixture_root": str(self.data_root / "r"),
+            "pytest_basetemps": {
+                "durability": str(self.data_root / "d"),
+                "privacy": str(self.data_root / "l"),
+                "full": str(self.data_root / "p"),
+            },
+            "retention": "preserved; runner never removes scratch evidence",
+        }
+        self.save()
+
+    def pytest_command(self, *arguments: str, scratch_name: str) -> list[str]:
+        command = self.module("pytest", *arguments)
+        if self.windows:
+            command.extend(("--basetemp", str(self.data_root / scratch_name)))
+        return command
+
     def build_and_smoke(self) -> None:
         artifacts = self.output / "artifacts"
         command = [
@@ -365,6 +441,7 @@ class Runner:
                 lockfile_sha256=digest(self.source / "uv.lock"),
             )
             phase = "environment-setup"
+            self.configure_data_paths()
             if (
                 f"{sys.version_info.major}.{sys.version_info.minor}"
                 != self.options.python_version
@@ -480,11 +557,10 @@ class Runner:
             "-Werror::ResourceWarning",
             "-Werror::pytest.PytestUnraisableExceptionWarning",
         ]
-        if os.name == "nt":
+        if self.windows:
             self.step(
                 "windows-durability-cancellation",
-                self.module(
-                    "pytest",
+                self.pytest_command(
                     "--no-cov",
                     "-q",
                     "-rP",
@@ -493,6 +569,7 @@ class Runner:
                     "tests/test_grouped_execution.py::test_grouped_minimal_privacy_live_and_recovery",
                     "tests/test_execution_cancellation_processes.py::test_competing_process_cannot_cancel_exclusive_executor",
                     *warnings,
+                    scratch_name="d",
                 ),
             )
             self.step(
@@ -501,28 +578,28 @@ class Runner:
             )
             self.step(
                 "windows-privacy-locks",
-                self.module(
-                    "pytest",
+                self.pytest_command(
                     "--no-cov",
                     "-q",
                     "tests/test_execution_privacy.py",
                     "tests/test_execution.py::test_minimal_privacy_success_and_loss_windows",
                     *warnings,
+                    scratch_name="l",
                 ),
             )
         self.step(
             "pytest-coverage",
-            self.module(
-                "pytest",
+            self.pytest_command(
                 "-ra",
                 "tests",
                 "ci/local/test_gates.py",
                 f"--cov-report=xml:{self.output / 'coverage.xml'}",
                 *warnings,
+                scratch_name="p",
             ),
         )
         for name, fixture, assertions in R_GATES:
-            target = self.output / "r" / name
+            target = self.data_root / "r" / name
             phases = (None,) if name == "exports" else ("persist", "export")
             for phase in phases:
                 command = [str(self.python), fixture, "--output", str(target)]

@@ -182,6 +182,88 @@ def test_r_version_probe_uses_retained_script_file(
     assert all("\n" not in argument and argument != "-e" for argument in commands[0])
 
 
+@pytest.mark.parametrize(
+    "root",
+    [
+        r"D:\JudgmentLLM-ci\tmp",
+        r"\\host\share\tmp",
+        r"C:JudgmentLLM-ci\tmp",
+        r"C:\JudgmentLLM-ci\tmp\..\other",
+        r"C:\JudgmentLLM-ci\tmp-other",
+        r"C:\JudgmentLLM-ci\tmp\01234567890123456789",
+        r"C:\JudgmentLLM-ci\tmp\bad:stream",
+        r"C:\JudgmentLLM-ci\tmp\bad.",
+    ],
+)
+def test_windows_scratch_root_rejects_unsafe_or_long_overrides(root: str) -> None:
+    with pytest.raises(ValueError, match="Windows scratch root"):
+        gates.windows_scratch_root(root)
+
+
+def test_windows_scratch_root_accepts_its_short_project_namespace() -> None:
+    assert (
+        str(gates.windows_scratch_root("c:/JudgmentLLM-ci/tmp"))
+        == r"c:\JudgmentLLM-ci\tmp"
+    )
+    assert (
+        str(gates.windows_scratch_root(r"C:\JudgmentLLM-ci\tmp\ci"))
+        == r"C:\JudgmentLLM-ci\tmp\ci"
+    )
+
+
+def test_scratch_allocation_preserves_existing_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "scratch"
+    existing = root / "raaaaaaaa"
+    existing.mkdir(parents=True)
+    (existing / "evidence.txt").write_text("preserve existing run")
+    names = iter(("aaaaaaaa", "bbbbbbbb"))
+
+    def token(nbytes: int) -> str:
+        assert nbytes == 4
+        return next(names)
+
+    monkeypatch.setattr(gates.secrets, "token_hex", token)
+    assert gates.create_scratch(root) == root / "rbbbbbbbb"
+    assert (existing / "evidence.txt").read_text() == "preserve existing run"
+
+
+@pytest.mark.parametrize("fail_lint", [False, True])
+def test_windows_plan_uses_distinct_short_data_paths_and_preserves_them(
+    staged: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fail_lint: bool
+) -> None:
+    calls = fake_commands(monkeypatch, fail_lint=fail_lint)
+
+    def allocate(environment: dict[str, str]) -> Path:
+        scratch = gates.create_scratch(tmp_path / "scratch")
+        (scratch / "evidence.txt").write_text("retained fixture data")
+        return scratch
+
+    monkeypatch.setattr(gates, "allocate_windows_scratch", allocate)
+    runner = gates.Runner(options(staged, tmp_path / "long-retained-results"))
+    runner.windows = True  # Exercise the Windows plan without touching a real C: drive.
+    assert runner.run() == int(fail_lint)
+    pytest_calls = [command for command in calls if "pytest" in command]
+    bases = {Path(command[command.index("--basetemp") + 1]) for command in pytest_calls}
+    assert bases == {runner.data_root / name for name in ("d", "l", "p")}
+    assert not any(path.exists() for path in bases)
+    assert runner.data_root != runner.output
+    for key in ("TEMP", "TMP", "TMPDIR"):
+        assert runner.environment[key] == str(runner.data_root / "t")
+    fixture_calls = [command for command in calls if "--output" in command]
+    assert len(fixture_calls) == 11
+    assert all(
+        Path(command[command.index("--output") + 1]).is_relative_to(
+            runner.data_root / "r"
+        )
+        for command in fixture_calls
+    )
+    assert runner.summary["scratch"]["path"] == str(runner.data_root)
+    assert (runner.data_root / "evidence.txt").read_text() == "retained fixture data"
+    assert (runner.output / "summary.json").is_file()
+
+
 def test_final_source_mutation_never_reports_success(
     staged: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

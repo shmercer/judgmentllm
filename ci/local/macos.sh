@@ -355,6 +355,9 @@ if actual != expected:
     raise SystemExit("Isolated jsonlite no longer matches prepared provenance")
 PY
 /usr/local/bin/Rscript --vanilla -e 'stopifnot(requireNamespace("jsonlite", quietly=TRUE)); stopifnot(as.character(packageVersion("jsonlite")) == "2.0.0")'
+# cryptography 50.0.2 has no locked Intel macOS wheel. Keep its native
+# prerequisites private, pinned, verified, and available before any uv sync.
+source "$SOURCE/ci/local/macos-toolchain.sh" "$MODE" "$ROOT" "$RUN/results/native-toolchain"
 if [[ "$PYTHON_VERSION" == all ]]; then versions='3.11 3.12'; else versions=$PYTHON_VERSION; fi
 status=0
 for minor in $versions; do

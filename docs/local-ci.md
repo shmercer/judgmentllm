@@ -155,6 +155,43 @@ commit. A six-configuration qualification requires all three OS adapters.
 Grid evidence is under `/mnt/VM_Fast/judgmentllm-ci/grid/<run-id>/`; native details
 remain in the per-platform roots above. Do not publish raw logs automatically.
 
+## Resource tests and Windows scratch paths
+
+The execution scaling tests now share one immutable numeric measurement of their
+common `200×20` baseline. Each distinct workload still runs in a fresh child
+process with its own inputs/database/executor. Only the returned numeric evidence
+is shared; no child, prepared session, source cache or database is reused. The
+two large independent workloads and all three grouped workloads remain. This
+removes one redundant baseline subprocess (six distinct cases instead of seven),
+without reducing the 64 completions, continuous allocation tracing, concurrency,
+scales, native/Python memory bounds, or 180-second deadline for any child.
+It reduces total work; it does not guarantee that a slow hosted machine will
+finish the large child before its deadline.
+
+Before that redesign, the original `072c1f69d85dca893bbac56ec91fe1753570d67f`
+resource tests were run unchanged on local Windows/Python 3.11.18. The standalone
+`200×200` case passed in 63.36 seconds wall. The actual resource files passed all
+three tests/all seven original subprocess cases in 200.32 seconds. Fixture
+elapsed times ranged from 12.84 to 62.88 seconds; all 64-completion, memory,
+queue, task and scaling assertions passed. All 169 tracked file hashes matched
+before and after. Evidence is retained under:
+
+```text
+/mnt/VM_Fast/pairwiseLLM-checks/judgmentllm-ci/diagnostics/
+  resource-shorttmp-ready-3.11-20261104T155404Z/evidence/
+```
+
+An earlier diagnostic used a deeply nested test scratch directory and failed
+artifact publication immediately at approximately 272-character object paths.
+It was not a memory-fixture timeout. A fresh short scratch directory resolved
+that setup failure. The runner uses separate short Windows scratch directories
+for pytest, R fixture data and child temporary files, retaining their locations
+in metadata while logs, coverage and distribution artifacts stay in the ordinary
+results tree. It never changes the VM's global long-path registry configuration
+or deletes another run's scratch directory. The probe attempts and failures are
+kept alongside their successful retry; these diagnostic results do not replace
+the required exact-head full six-configuration qualification.
+
 ## Parity differences and proposed hosted workflow
 
 The existing hosted matrix is Ubuntu/Windows/macOS with Python 3.11/3.15.
@@ -167,8 +204,10 @@ antivirus, CPU allocation and operating-system images differ from hosted runners
 These differences must appear alongside qualification results.
 
 After repeatable local Windows/Python 3.11 qualification demonstrates the same
-required assertions, the proposed routine hosted matrix is Ubuntu and macOS
-3.11/3.12 plus Windows 3.12 (five configurations). Windows 3.11 should remain
+required assertions, the proposed routine hosted matrix retains Ubuntu and macOS
+3.11/3.15 plus Windows 3.12 (five configurations). Hosted Python 3.15 qualification
+remains required; the local 3.11/3.12 grid supplements that broader compatibility
+coverage rather than replacing it. Windows 3.11 should remain
 available through manual workflow dispatch. The GitHub matrix is not reduced
 merely because the existing hosted job timed out, and no infrastructure branch
 will be published before the local results and matrix proposal are reviewed.
@@ -180,6 +219,34 @@ known 180-second `200×200` execution memory fixture; 1,367 tests passed and eig
 optional R tests skipped. All 79 new integrity cases passed. That is evidence of
 a timing-sensitive hosted test, not six-job acceptance or proof that infrastructure
 alone caused the failures. No thresholds were changed to obtain a pass.
+
+## Intel macOS native build prerequisites
+
+The approved lock records only arm64 macOS wheels for `cryptography==50.0.2`,
+which is required by the Google SDK extra. The existing Intel guest therefore
+builds this exact dependency from source; no SDK extra or locked version is
+removed. Its [official installation guide](https://cryptography.io/en/50.0.2/installation/#building-cryptography-on-macos)
+requires a C compiler, Rust and OpenSSL, and supports static linkage. The
+[openssl-sys manual configuration](https://docs.rs/openssl/0.10.81/openssl/#manual)
+allows explicit library/header paths, avoiding a global pkg-config installation.
+
+`macos-toolchain.sh` uses OpenSSL 3.5.9, the current
+[3.5 LTS release](https://openssl-library.org/source/), and Rust 1.99.1
+[standalone components](https://forge.rust-lang.org/infra/other-installation-methods.html#standalone-installers).
+Exact official archive URLs and SHA-256 pins are in the helper. Every reuse
+checks those fixed archive hashes, compares installed Rust payloads directly
+with the pinned archives, and checks locally built OpenSSL files against their
+recorded build/source/compiler provenance. OpenSSL is built with two compiler
+jobs into the private prefix; the Apple command-line compiler is reused.
+
+Native tools, downloads, temporary builds, Cargo registry/target caches and
+Rustup state remain under `~/judgmentllm-ci/`. No Homebrew or system installation
+is used. `MATURIN_NO_INSTALL_RUST=1` disables backend toolchain downloads; the
+pinned Rust executables must exist before dependency synchronization. Check mode
+also sets `CARGO_NET_OFFLINE=true`. The first failed prepare attempt downloaded
+Rust through the dependency backend into `~/Library/Caches/puccinialin` before
+this isolation was added. That initial cache is left untouched; subsequent runs
+neither use nor modify it.
 
 ## Qualification status
 
