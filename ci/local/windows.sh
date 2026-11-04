@@ -107,7 +107,24 @@ cleanup() {
   if (( guest_started )); then
     # Leave SSH connected until the guest closes and joins its owned lane job
     # and copies results. Grid sends TERM only to this adapter's PID.
-    printf 'cancel\n' >"$run_root/cancel.request"
+    python3 - "$run_root" <<'PY'
+import json
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1])
+request = json.loads((root / "request.json").read_text())
+identity = {key: request[key] for key in ("run_id", "commit", "source_archive_sha256", "adapter_sha256")}
+temporary = root / "cancel.pending"
+temporary.write_text(json.dumps(identity) + "\n")
+temporary.replace(root / "cancel.request")
+PY
+    if [[ $mode != doctor ]]; then
+      cancel_command=$(cat "$run_root/cancel-command.txt")
+      ssh "${ssh_opts[@]}" pairwiseci@127.0.0.1 \
+        "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $cancel_command" \
+        >>"$run_root/cancellation.log" 2>&1 || { (( status != 0 )) || status=1; }
+    fi
     if [[ -n $active_ssh ]]; then
       wait "$active_ssh" || true
       active_ssh=''
@@ -207,6 +224,7 @@ request = {
 quote = lambda value: "'" + value.replace("'", "''") + "'"
 command = "& " + quote(unc + "\\windows.ps1") + " -Request " + quote(unc + "\\request.json")
 (root / "collect-command.txt").write_text(base64.b64encode((command + " -Collect").encode("utf-16-le")).decode("ascii") + "\n")
+(root / "cancel-command.txt").write_text(base64.b64encode((command + " -Cancel").encode("utf-16-le")).decode("ascii") + "\n")
 print(base64.b64encode(command.encode("utf-16-le")).decode("ascii"))
 PY
 )
@@ -231,7 +249,11 @@ active_ssh=''
 wait "$active_tail"
 active_tail=''
 set -e
-if [[ $remote_status == 0 ]]; then guest_started=0; fi
+if [[ $remote_status == 0 || $mode == doctor || -s $state_root/results/$run_id/adapter.json ]]; then
+  # A completed failed lane is already joined and collected; preserve its
+  # failure evidence without relabelling ordinary completion as cancellation.
+  guest_started=0
+fi
 if [[ $mode != doctor ]]; then
   [[ -s $state_root/results/$run_id/adapter.json ]] || fatal "Guest result metadata is missing; inspect $run_root/windows.log"
   log "Guest results: $state_root/results/$run_id"

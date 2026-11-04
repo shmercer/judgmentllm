@@ -114,6 +114,11 @@ could terminate Quickemu. Resource thresholds are unchanged, and parallel gate
 times are qualification timings rather than isolated performance benchmarks.
 Windows cancellation joins a private Job Object containing only the newly
 launched lane process trees; the VM and SSH service are outside that object.
+A separate SSH control call writes a source- and run-bound cancellation request
+to the guest's private local directory; a shared-file request is only a fallback.
+The native adapter-only TERM probe failed to stop workers with the shared-file
+request alone. Cancellation now also uses guest-local control, avoiding reliance
+on a newly created SMB file becoming visible.
 Linux cleanup can remove a stopped disposable CI container after verifying its
 full ID and exact run label, without force; mounted source/results are retained.
 The two Linux containers retain six CPUs/16 GiB each; both Python lanes in a VM

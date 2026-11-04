@@ -4,7 +4,8 @@ param(
     [ValidateSet('', '3.11', '3.12')][string]$Lane = '',
     [int]$OwnerProcessId = 0,
     [long]$OwnerStartedTicks = 0,
-    [switch]$Collect
+    [switch]$Collect,
+    [switch]$Cancel
 )
 
 Set-StrictMode -Version Latest
@@ -63,7 +64,9 @@ if ($settings.commit -notmatch '^[0-9a-f]{40}$' -or $settings.source_archive_sha
 }
 $runRoot = Join-Path (Join-Path $workRoot 'runs') $settings.run_id
 $resultRoot = Join-Path $runRoot 'results'
-$cancelPath = Join-Path $settings.transfer_root 'cancel.request'
+$cancelDirectory = Join-Path $workRoot 'cancel-requests'
+$cancelPath = Join-Path $cancelDirectory ($settings.run_id + '.json')
+$sharedCancelPath = Join-Path $settings.transfer_root 'cancel.request'
 $joinedPath = Join-Path $runRoot 'workers-joined.json'
 $transcript = Join-Path $resultRoot 'adapter.log'
 $status = 1
@@ -93,6 +96,43 @@ function Test-Owner {
         return $owner.StartTime.ToUniversalTime().Ticks -eq $StartedTicks
     }
     catch { return $false }
+}
+
+function Test-CancelRequest {
+    foreach ($path in @($cancelPath, $sharedCancelPath)) {
+        if (-not (Test-Path -LiteralPath $path)) { continue }
+        $requestIdentity = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
+        if ($requestIdentity.run_id -ne $settings.run_id -or
+            $requestIdentity.commit -ne $settings.commit -or
+            $requestIdentity.source_archive_sha256 -ne $settings.source_archive_sha256 -or
+            $requestIdentity.adapter_sha256 -ne $settings.adapter_sha256) {
+            throw 'Cancellation identity differs from this run and source'
+        }
+        return $true
+    }
+    return $false
+}
+
+if ($Cancel) {
+    # A separate SSH control invocation publishes locally: SMB negative path
+    # caching must not delay adapter-PID cancellation. This does not create the
+    # exclusive run directory, so cancellation can safely precede startup.
+    New-Item -ItemType Directory -Path $cancelDirectory -Force | Out-Null
+    if (-not (Test-Path -LiteralPath $cancelPath)) {
+        $temporary = Join-Path $cancelDirectory ('.pending-' + [guid]::NewGuid().ToString('N'))
+        try {
+            [ordered]@{
+                run_id = $settings.run_id
+                commit = $settings.commit
+                source_archive_sha256 = $settings.source_archive_sha256
+                adapter_sha256 = $settings.adapter_sha256
+            } | ConvertTo-Json | Set-Content -LiteralPath $temporary -Encoding UTF8
+            [IO.File]::Move($temporary, $cancelPath)
+        }
+        finally { if (Test-Path -LiteralPath $temporary) { Remove-Item -LiteralPath $temporary } }
+    }
+    if (-not (Test-CancelRequest)) { throw 'Cancellation request was not published' }
+    exit 0
 }
 
 function Copy-Results {
@@ -130,11 +170,11 @@ if ($Lane) {
     $startGate = Join-Path $runRoot "lane-$Lane.start"
     $timer = [Diagnostics.Stopwatch]::StartNew()
     while (-not (Test-Path -LiteralPath $startGate)) {
-        if ((Test-Path -LiteralPath $cancelPath) -or -not (Test-Owner $OwnerProcessId $OwnerStartedTicks)) { exit 125 }
+        if ((Test-CancelRequest) -or -not (Test-Owner $OwnerProcessId $OwnerStartedTicks)) { exit 125 }
         if ($timer.Elapsed.TotalSeconds -ge 60) { throw 'Lane was not assigned to its owned job' }
         Start-Sleep -Milliseconds 100
     }
-    if ((Test-Path -LiteralPath $cancelPath) -or -not (Test-Owner $OwnerProcessId $OwnerStartedTicks)) { exit 125 }
+    if ((Test-CancelRequest) -or -not (Test-Owner $OwnerProcessId $OwnerStartedTicks)) { exit 125 }
     $patch = if ($Lane -eq '3.11') { '3.11.18' } else { '3.12.16' }
     $laneLog = Join-Path $resultRoot "python-$Lane.log"
     $env:TEMP = Join-Path $runRoot "temp-$Lane"
@@ -184,6 +224,7 @@ $ownerStartedTicks = (Get-Process -Id $PID).StartTime.ToUniversalTime().Ticks
 try {
     Start-Transcript -LiteralPath $transcript | Out-Null
     $transcriptStarted = $true
+    if (Test-CancelRequest) { throw 'Host cancelled before guest work started' }
     $archive = Join-Path $runRoot 'source.tar'
     $manifest = Join-Path $runRoot 'manifest.json'
     Copy-Item -LiteralPath (Join-Path $settings.transfer_root 'bundle\source.tar') -Destination $archive
@@ -298,7 +339,7 @@ public sealed class JudgmentLlmLaneJob : IDisposable {
     Copy-Item -LiteralPath $Request -Destination $localRequest
     $versions = if ($settings.python_version -eq 'all') { @('3.11', '3.12') } else { @($settings.python_version) }
     foreach ($minor in $versions) {
-        if (Test-Path -LiteralPath $cancelPath) { throw 'Host cancelled before lane startup' }
+        if (Test-CancelRequest) { throw 'Host cancelled before lane startup' }
         $arguments = @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $localScript,
             '-Request', $localRequest, '-Lane', $minor, '-OwnerProcessId', $PID, '-OwnerStartedTicks', $ownerStartedTicks)
         $process = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList $arguments -PassThru `
@@ -314,7 +355,7 @@ public sealed class JudgmentLlmLaneJob : IDisposable {
         Write-Host "Python $minor lane started (PID $($process.Id))"
     }
     while (@($workers | Where-Object { $_.status -eq 'running' }).Count) {
-        if (Test-Path -LiteralPath $cancelPath) {
+        if (Test-CancelRequest) {
             $failure = 'Host cancelled this run'
             $ownedJob.StopAndJoin()
             $ownedJob.Dispose()
