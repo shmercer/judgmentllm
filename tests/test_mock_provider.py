@@ -495,7 +495,7 @@ async def test_minimal_ledger_contains_no_assessment_or_wire_material(
 
 @pytest.mark.asyncio
 async def test_delays_reorder_completion_without_changing_membership(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     adapter = MockAdapter(tmp_path / "service.sqlite3")
     _, _, first = request(adapter)
@@ -522,13 +522,40 @@ async def test_delays_reorder_completion_without_changing_membership(
     )
     adapter.scenarios[first.request_uid] = MockScenario(delay_seconds=0.03)
     completed: list[str] = []
+    requested_delays: list[float] = []
+    delay_started, second_completed = asyncio.Event(), asyncio.Event()
+    original_sleep = asyncio.sleep
+    first_task: asyncio.Task[None] | None = None
+    memberships = (first.task_ids, second.task_ids)
+
+    async def controlled_sleep(delay: float, result: object = None) -> object:
+        if delay != 0.03 or asyncio.current_task() is not first_task:
+            return await original_sleep(delay, result)
+        requested_delays.append(delay)
+        delay_started.set()
+        # The configured delay must hold the first real submission until the
+        # second finishes, regardless of payload-thread or ledger timing.
+        await second_completed.wait()
+        return result
+
+    monkeypatch.setattr(mock.asyncio, "sleep", controlled_sleep)
 
     async def send(prepared: PreparedRequest, identity: str) -> None:
+        if identity == "second":
+            await delay_started.wait()
+            assert first_task is not None and not first_task.done()
         await adapter.submit(prepared, submission_id=identity, correlation_id=identity)
         completed.append(identity)
+        if identity == "second":
+            second_completed.set()
 
-    await asyncio.gather(send(first, "first"), send(second, "second"))
+    first_task = asyncio.create_task(send(first, "first"))
+    await asyncio.wait_for(
+        asyncio.gather(first_task, send(second, "second")), timeout=5
+    )
+    assert requested_delays == [0.03]
     assert completed == ["second", "first"]
+    assert (first.task_ids, second.task_ids) == memberships
     assert adapter.ledger.acceptance_count() == 2
 
 

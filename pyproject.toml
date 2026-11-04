@@ -98,7 +98,7 @@ target-version = "py311"
 select = ["E4", "E7", "E9", "F", "I", "B", "UP"]
 
 [tool.pyright]
-include = ["src", "tests", "scripts", "benchmarks"]
+include = ["src", "tests", "scripts", "benchmarks", "ci/local"]
 venvPath = "."
 venv = ".venv"
 pythonVersion = "3.11"

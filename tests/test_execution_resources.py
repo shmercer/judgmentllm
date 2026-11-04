@@ -5,8 +5,12 @@ from __future__ import annotations
 import json
 import subprocess
 import sys
+from collections.abc import Mapping
 from pathlib import Path
+from types import MappingProxyType
 from typing import cast
+
+import pytest
 
 FIXTURE = (
     Path(__file__).resolve().parents[1] / "scripts" / "execution_memory_fixture.py"
@@ -50,8 +54,24 @@ def measurement(directory: Path, responses: int, traits: int) -> dict[str, int |
     return result
 
 
-def test_execution_memory_does_not_grow_with_response_count(tmp_path: Path) -> None:
-    small = measurement(tmp_path / "small", 200, 20)
+@pytest.fixture(scope="module")
+def execution_baseline(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> Mapping[str, int | float]:
+    """Share numeric evidence, while every workload still runs in a fresh child.
+
+    Both comparisons use the same 200-response/20-trait baseline. Its frozen
+    measurements cannot be changed by one comparison before the other uses them;
+    no interpreter, executor, prepared session or database is reused.
+    """
+    directory = tmp_path_factory.mktemp("execution-memory-baseline") / "sample"
+    return MappingProxyType(measurement(directory, 200, 20))
+
+
+def test_execution_memory_does_not_grow_with_response_count(
+    tmp_path: Path, execution_baseline: Mapping[str, int | float]
+) -> None:
+    small = execution_baseline
     large = measurement(tmp_path / "large", 2000, 20)
     assert large["source_byte_length"] > 9 * small["source_byte_length"]
     assert large["logical_task_count"] == 10 * small["logical_task_count"]
@@ -70,9 +90,9 @@ def test_execution_memory_does_not_grow_with_response_count(tmp_path: Path) -> N
 
 
 def test_execution_memory_does_not_materialize_response_trait_product(
-    tmp_path: Path,
+    tmp_path: Path, execution_baseline: Mapping[str, int | float]
 ) -> None:
-    small = measurement(tmp_path / "few-traits", 200, 20)
+    small = execution_baseline
     large = measurement(tmp_path / "many-traits", 200, 200)
     assert large["logical_task_count"] == 10 * small["logical_task_count"]
     assert large["python_peak_bytes"] < small["python_peak_bytes"] + 3 * MIB, (

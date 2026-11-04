@@ -3,6 +3,7 @@
 Run after syncing development dependencies and building distributions. Installation
 may download packages at the core dependency versions exported from uv.lock.
 Constraint export and installed-package checks remain offline.
+Use --offline after preparation to require cached installation dependencies too.
 """
 
 from __future__ import annotations
@@ -193,7 +194,14 @@ def run(command: list[str], *, cwd: Path, offline: bool = True) -> str:
     return result.stdout
 
 
-def smoke_install(uv: str, artifact: Path, constraints: Path, directory: Path) -> None:
+def smoke_install(
+    uv: str,
+    artifact: Path,
+    constraints: Path,
+    directory: Path,
+    *,
+    offline: bool = False,
+) -> None:
     """Verify one non-editable artifact installation outside the checkout."""
     environment = directory / "venv"
     run([uv, "venv", "--python", sys.executable, str(environment)], cwd=directory)
@@ -212,7 +220,7 @@ def smoke_install(uv: str, artifact: Path, constraints: Path, directory: Path) -
             str(artifact),
         ],
         cwd=directory,
-        offline=False,
+        offline=offline,
     )
     version = run([str(python), "-I", "-c", VERIFY_INSTALLED], cwd=directory).strip()
     help_text = unstyle(run([str(console), "--help"], cwd=directory))
@@ -259,7 +267,11 @@ def main() -> None:
     """Resolve artifact globs on every platform and smoke-test each artifact."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("artifacts", nargs="+", help="Wheel or sdist paths/globs")
-    patterns: list[str] = parser.parse_args().artifacts
+    parser.add_argument(
+        "--offline", action="store_true", help="Install only from the existing uv cache"
+    )
+    options = parser.parse_args()
+    patterns: list[str] = options.artifacts
     artifacts: set[Path] = set()
     for pattern in patterns:
         matches = glob.glob(pattern)
@@ -294,7 +306,7 @@ def main() -> None:
         for index, artifact in enumerate(sorted(artifacts)):
             directory = temporary_path / str(index)
             directory.mkdir()
-            smoke_install(uv, artifact, constraints, directory)
+            smoke_install(uv, artifact, constraints, directory, offline=options.offline)
 
 
 if __name__ == "__main__":
