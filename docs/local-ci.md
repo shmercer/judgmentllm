@@ -1,0 +1,190 @@
+# Local cross-platform verification
+
+This development harness runs the committed JudgmentLLM checkout on six local
+configurations before publication: Ubuntu, Windows and macOS, each with CPython
+3.11.18 and 3.12.16. It is separate from the installed library/CLI and does not
+implement Milestone 2 Subphase 5. The infrastructure branch is based on proposed
+performance commit `5a333b077b8a8a27ba2a80d85474b6eb802e206d`.
+
+## Existing infrastructure and isolation
+
+| Platform | Reused environment | JudgmentLLM state |
+|---|---|---|
+| Linux | Ubuntu 24.04.4 `pairwisellm-linux-ci:release` base image, R 4.6.1 | `/mnt/VM_Fast/judgmentllm-ci/linux` |
+| Windows | Existing Docker-hosted `pairwise-windows-ci`, Server 2025, six CPUs, 12 GiB RAM | Host `/mnt/VM_Fast/pairwiseLLM-checks/judgmentllm-ci`; guest `C:\JudgmentLLM-ci` |
+| macOS | Existing Quickemu `macos-sequoia`, macOS 15.8.1 x86_64, six CPUs, 16 GiB RAM | Host `/mnt/VM_Fast/judgmentllm-ci/macos`; guest `~/judgmentllm-ci` |
+
+The Linux adapter creates a namespaced derivative image, preserving the existing
+R project's image and tags. Containers have six CPUs and 16 GiB RAM. The Windows
+adapter uses `docker start` on the existing container; it never invokes a VM
+installer, recreates the container, changes Compose, or changes its disk/share
+configuration. The macOS adapter invokes the existing Quickemu configuration
+with `--display none --viewer none`. No replacement VM is created.
+
+Windows and macOS adapters hold the existing pairwise runner's lock for their
+entire operation, including result collection and graceful shutdown:
+
+```text
+/mnt/VM_Fast/pairwiseLLM-checks/windows-ci/.local-ci-windows.lock
+/mnt/VM_Fast/pairwiseLLM-checks/macos-ci/.ci.lock
+```
+
+Never run an adapter while another project holds the corresponding lock. A
+preexisting running VM is left running. A VM started by the adapter is shut down
+gracefully; no process kill, disk deletion, Docker removal, or force-stop is
+used. Keep an unattended invocation alive until collection/shutdown completes.
+The first interactive inventory's macOS process disappeared when its tool
+session ended; tool descendant cleanup is a possible cause. The adapter keeps
+boot, work and shutdown in one process rather than relying on an interactive
+session's daemon lifetime.
+
+SSH uses the existing identities without copying or logging key contents:
+
+```text
+Windows: pairwiseci@127.0.0.1:2222, ~/.ssh/pairwise_windows_ci
+macOS:   pairwiseci@127.0.0.1:22230, ~/.ssh/pairwise_macos_ci
+```
+
+Host-key checking and noninteractive authentication are required. `/mnt/VM_Fast`
+must be mounted. The host needs Python >=3.11, Git, Docker, Bash, SSH, `flock`,
+and the existing Quickemu installation. Effective `/dev/kvm` access is required
+for macOS. The host's `ignore_msrs` setting is not changed; inventory successfully
+booted this guest with its current value `N`.
+
+## Prerequisites and offline boundary
+
+Initial inventory found no uv/Python 3.11/3.12 in either guest. Windows had R
+4.6.1 and jsonlite 2.0.0 in its system library. macOS had Python 3.9.6 and R
+4.6.1, with jsonlite 2.0.0 in the existing pairwise library. Linux's existing
+image had Python 3.12.3 and R 4.6.1 but no uv or jsonlite.
+
+Preparation installs only project-specific tools and caches:
+
+- uv 0.13.6 archives and executable bytes are pinned/verified. Official archive
+  checksums are in `ci/local/grid.py`; macOS/Windows adapters also verify their
+  cached executable bytes.
+- Managed CPython 3.11.18/3.12.16 installs use their own directory, `--no-bin`
+  and `--no-registry`; system Python, PATH startup files, and registry defaults
+  are not replaced.
+- `uv sync --locked --all-extras --group dev` populates a JudgmentLLM cache.
+  Each check gets a fresh source directory and `.venv`; editable installs never
+  refer to a previous run's checkout.
+- Linux installs the same commit-pinned jsonlite 2.0.0 source used by GitHub CI
+  into its derivative image. Windows reads the existing system library. macOS
+  copies only jsonlite into its own library and verifies the original/copy
+  bytes; it does not write to the pairwise library.
+- Preparation warms isolated build and clean-install caches. Checks use
+  `UV_OFFLINE=1`, `UV_PYTHON_DOWNLOADS=never`, locked offline sync, and the
+  smoke installer's explicit `--offline` mode. Pyright uses its locked bundled
+  implementation and Node wheel, with update/version downloads disabled.
+
+Linux check containers additionally use `--network none`. SSH guests retain
+their existing networking for transport; offline subprocess settings and the
+credential-free synthetic tests govern execution. No provider credentials are
+forwarded from the host. Preparation is the only dependency-download phase.
+See [uv cache behavior](https://docs.astral.sh/uv/concepts/cache/) and
+[managed Python configuration](https://docs.astral.sh/uv/concepts/python-versions/).
+
+## Commands
+
+Commit the proposed runner/test/documentation changes before qualifying them.
+Use a full commit SHA. Uncommitted and untracked files are excluded from source
+archives; the grid rejects an edited host harness that differs from that SHA.
+
+```bash
+REF=$(git rev-parse HEAD)
+python3 ci/local/grid.py --ref "$REF" --mode doctor
+python3 ci/local/grid.py --ref "$REF" --mode prepare
+python3 ci/local/grid.py --ref "$REF" --mode check
+```
+
+The grid runs operating systems sequentially and both Python versions within
+each environment. A platform can be inspected/prepared/checked independently:
+
+```bash
+python3 ci/local/grid.py --ref "$REF" --platform windows --mode check
+bash ci/local/windows.sh --mode doctor
+bash ci/local/macos.sh --mode doctor
+bash ci/local/linux.sh --mode doctor
+```
+
+Standalone preparation adapters accept `--uv-archive PATH --uv-sha256 HASH`.
+Linux additionally requires `--jsonlite-archive PATH --jsonlite-sha256 HASH`.
+The grid downloads and verifies these assets in its own namespace. Cached assets
+with mismatching bytes fail rather than being overwritten.
+
+Only one adapter may operate on a guest at a time. The launchers normally handle
+shutdown. For a VM deliberately started outside the launcher, acquire its shared
+lock before requesting shutdown; do not interrupt another project's run. The
+Windows graceful request is `docker stop --timeout=-1 pairwise-windows-ci`.
+macOS uses SSH `sudo -n /sbin/shutdown -h now`; the only monitor fallback is ACPI
+`system_powerdown`. If graceful shutdown fails, preserve the guest and report the
+environment limitation rather than force-killing it.
+
+## Gates and evidence
+
+Every check runs Ruff lint/format, strict Pyright, locked offline synchronization,
+the full Python suite with branch coverage and the existing 90% gate, all six
+strict R/jsonlite gates, wheel/sdist builds, strict Twine metadata and clean core
+installation/CLI/execution smokes. Windows also runs its existing durability,
+cancellation, privacy, lock and signature prechecks. ResourceWarning and
+PytestUnraisableExceptionWarning remain errors. The 180-second execution resource
+fixture timeout, 64-completion samples, memory limits, worker/task/queue bounds,
+source scales, and all integrity/durability assertions are preserved.
+
+The guest runner also runs its portable selftests. Source-admission/grid tests
+are Linux-host tests, run with:
+
+```bash
+uv run --offline --no-sync pytest --no-cov ci/local
+```
+
+`source.py` creates `git archive` plus a manifest containing the exact commit,
+archive SHA-256, lockfile SHA-256 and every tracked file's hash. Guests verify
+archive bytes before extraction and tracked source bytes before/after gates.
+Every output directory is fresh; existing runs are never replaced.
+
+Machine-readable `summary.json` records Python/R/jsonlite/uv/OS versions,
+dependency versions, source/lock identities, commands, exit codes, test/coverage
+summaries, elapsed times, and retained log/artifact paths. Failures remain visible;
+environment setup errors and timeouts are distinguished from check failures.
+Partial suites, missing results, or successful preparation never qualify a lane.
+The grid requires two fresh successful Python results per OS at the requested
+commit. A six-configuration qualification requires all three OS adapters.
+
+Grid evidence is under `/mnt/VM_Fast/judgmentllm-ci/grid/<run-id>/`; native details
+remain in the per-platform roots above. Do not publish raw logs automatically.
+
+## Parity differences and proposed hosted workflow
+
+The existing hosted matrix is Ubuntu/Windows/macOS with Python 3.11/3.15.
+The requested local matrix deliberately uses 3.11/3.12. Existing local guests
+have R 4.6.1, while hosted Ubuntu/Python 3.11 installs R 4.6.2. All local lanes
+require jsonlite 2.0.0 and all six actual R round trips, which is stricter than
+the hosted lanes where R is optional except Ubuntu/Python 3.11. macOS is an
+x86_64 Sequoia guest on an AMD host; it is not native Apple hardware. Local disks,
+antivirus, CPU allocation and operating-system images differ from hosted runners.
+These differences must appear alongside qualification results.
+
+After repeatable local Windows/Python 3.11 qualification demonstrates the same
+required assertions, the proposed routine hosted matrix is Ubuntu and macOS
+3.11/3.12 plus Windows 3.12 (five configurations). Windows 3.11 should remain
+available through manual workflow dispatch. The GitHub matrix is not reduced
+merely because the existing hosted job timed out, and no infrastructure branch
+will be published before the local results and matrix proposal are reviewed.
+
+The previous performance PR's hosted run `41848730145` passed five configurations.
+Windows 3.11's first attempt reached its 20-minute job budget after a Python
+fixture timeout and standalone R probe timeout. Its second attempt failed the
+known 180-second `200×200` execution memory fixture; 1,367 tests passed and eight
+optional R tests skipped. All 79 new integrity cases passed. That is evidence of
+a timing-sensitive hosted test, not six-job acceptance or proof that infrastructure
+alone caused the failures. No thresholds were changed to obtain a pass.
+
+## Qualification status
+
+Initial VM/environment inspection and launcher syntax/doctor checks have passed.
+The six native Python qualifications and the Windows reliability comparison
+remain pending until the runner commit is staged and the isolated prerequisite
+setup completes. Their exact source SHAs and machine-readable evidence will be
+reported before publication. No merge, release, or Subphase 5 work is authorized.
