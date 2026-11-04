@@ -20,113 +20,193 @@ These operations require no credentials and make no provider requests.
 
 Successful operations exit 0. Invalid arguments, configuration, files, selections, templates, or known capabilities exit 2. Preview prints prompt text to stdout and capability warnings to stderr; it does not require credentials or make requests. All commands reuse the documented Python functions. See [prompt guidance](prompt-guidance.md) for syntax and safeguards.
 
-The remaining commands below are future design contracts. Template rows are already implemented; execution, results/run management, catalogs, and HTTP are not.
+## Implemented Milestone 2 lifecycle commands
 
-## Proposed main commands
+The installed `judgmentllm` executable calls the same public services as Python.
+Execution currently supports only `provider: mock`, `endpoint: synthetic`, and
+`execution.mode: live`; it never substitutes the mock for another provider.
+Validation and planning remain offline and can describe other configurations
+with capability unknowns retained. Real adapters arrive in later milestones.
 
-| Command | Function |
+| Command | Options and behavior |
 |---|---|
-| `judgmentllm validate --config run.yaml` | Validate rubrics, data, placeholders, model controls, supported modes; no provider calls |
-| `judgmentllm plan --config run.yaml` | Show task/request/batch counts, grouping, context estimates and cost estimate with unknowns labeled |
-| `judgmentllm run --config run.yaml` | Submit live or managed bulk-live run according to config and return run ID |
-| `judgmentllm batch submit --config run.yaml` | Create provider-managed batches, persist registry and return without polling to completion |
-| `judgmentllm batch status --run RUN_ID` | Show persisted and refreshed job state (provider calls only if explicitly requested or documented) |
-| `judgmentllm batch collect --run RUN_ID` | Retrieve completed results, normalize, preserve errors |
-| `judgmentllm batch cancel --run RUN_ID` | Request cancellation with confirmation and audit record |
-| `judgmentllm resume --run RUN_ID` | Continue safe live jobs or reconcile pending batches |
-| `judgmentllm results export --run RUN_ID --format csv` | Export normalized long-form rubric/pairwise results |
-| `judgmentllm runs list` | List local run IDs, states and timestamps |
-| `judgmentllm runs status --run RUN_ID` | Read durable run state and artifact paths in a new process (Milestone 2) |
-| `judgmentllm models list --provider openai` | List catalog models with discovery/implementation/test status |
-| `judgmentllm models inspect --provider ... --model ...` | Show model/endpoint capabilities and qualification timestamps |
-| `judgmentllm models refresh` | Refresh local provider model metadata (requires keys for some providers) |
-| `judgmentllm templates list` | Show built-in presets |
-| `judgmentllm templates init --preset rubric_scores_only --output prompt.txt` | Copy a simple editable template |
-| `judgmentllm templates preview --config run.yaml --item-id essay_001 --trait organization` | Render a single example locally |
-| `judgmentllm serve --host 127.0.0.1 --port 8765` | Start the optional local FastAPI service (Milestone 7, requires `[api]` extra; refuse non-loopback host) |
+| `validate --config FILE` | Complete input/source validation; optional `--exhaustive-rendering` renders every actual request. |
+| `plan --config FILE` | Exact logical task/request counts and grouping; token and price unknowns stay null. |
+| `run --config FILE` | Blocking execution in this process; optional `--store`. |
+| `resume --run RUN` | Blocking conservative recovery; optional `--store`, `--config`, `--use-frozen-snapshot`, and explicit retry controls below. |
+| `runs list` | Bounded local listing; optional `--store`, `--limit` (default 100, range 1–1000), and opaque `--cursor`. |
+| `runs status --run RUN` | Durable inspection without provider calls or original assessment sources; optional `--store`. |
+| `results export --run RUN` | Immutable all-attempt export; optional `--store`, `--format jsonl\|csv`, `--view canonical\|r`, `--na-string` (default `NA`), and `--high-water-mark`. |
 
-All commands must provide structured `--help`, validation errors, and useful exit codes. No command silently changes model, service tier, exemplar selection, rubric categories, or prompt text. `--dry-run` alias may be supported for `plan` but should not send requests.
+Each lifecycle command accepts `--json`. Ordinary help, version, and template
+commands retain their text behavior. Lifecycle `--help --json` returns help text
+inside a control response without executing the operation. All operations are
+noninteractive; no authentication browser or confirmation prompt is started.
 
-## Example run configuration
+### Store discovery and durable identity
 
-See `examples/run.yaml` and `examples/rubric.yaml`. These examples include synthetic responses, exemplars, pair occurrences, and criteria and support offline loading and preview now. No API key goes in YAML; use environment variables or cloud-default credentials.
+Store precedence is explicit `--store`, then `JUDGMENTLLM_RUN_HOME`, then the
+available configuration's resolved `output_path`, then `./run-data`.
+Run references accept the original run ID or an absolute run-directory path.
+A conflicting explicit store and directory reference fails. Returned artifact
+paths are absolute; run directories use the established hashed ID mapping and
+must not be constructed by joining an original ID to `runs/`.
 
-## CLI-first cross-language execution contract (Milestone 2 onward)
+Keep runtime stores on a local filesystem outside cloud-synchronized directories.
+A later process can inspect, resume, retry, or export using the same durable run.
+Neither `run` nor `resume` claims that execution continues after its process exits.
 
-The CLI is the primary execution bridge for R and other external applications. The planned thin `rubricLLM` R interface uses `processx` to invoke the standalone executable for complete runs, task groups, or batches. It does not embed Python or start one Python process per judgment. `reticulate` is an optional secondary method. Canonical normalized JSONL and documented R-compatible CSV are the primary data interchange contracts; ordinary local R use requires no HTTP server.
+`resume --config` supplies the original compatible specification when needed;
+it cannot replace the frozen configuration. Minimal Python-origin runs require
+the original specification. Minimal capture always requires unchanged sources.
+Full capture also requires unchanged originals by default;
+`--use-frozen-snapshot` explicitly authorizes verified original snapshots for
+that operation. Corrupt required snapshots still fail.
 
-Each command calls the same Python validation, planning, execution, and persistence services as the library. `run`, `runs status`, `resume`, collection, and result export must operate across independent CLI processes using durable run IDs and artifact paths. A later action must not require the earlier Python process or R session to remain running. Milestone 2 tests this with the mock provider; native batch operations arrive in Milestone 5. Large results go to durable files rather than a complete dataset on stdout.
+### Explicit subset retries
 
-No execution command or JSON control response is implemented in this documentation follow-up. Existing Milestone 1 template commands keep their documented text behavior. The requirements below apply to lifecycle commands as they reach their assigned milestones.
+Retry controls belong on `resume`:
 
-### Versioned JSON control responses
-
-Applicable validation, planning, run/submission, status/listing, resumption, collection, and result-export commands must provide a documented `--json` option. Future batch equivalents use the same envelope. In JSON mode:
-
-- Stdout contains exactly one JSON control object followed by a newline, including handled errors; no banners, progress messages, or assessment result streams.
-- Diagnostics and progress go to stderr. In JSON mode they use documented JSON Lines records with `schema_version`, `event` (`diagnostic` or `progress`), `category`, safe `message`, and nullable `run_id`; progress records add documented counts when available. Command errors also appear in the final stdout control envelope. Human mode may render readable stderr text.
-- Operation is noninteractive: no prompts or browser authentication. Missing configuration/credentials fail predictably. Destructive operations require an explicit documented flag rather than an interactive question when automated.
-- The envelope carries a supported integer `schema_version`, command identity/outcome, durable run state when applicable, artifact paths, small command-specific metadata, and a structured error. Incompatible control-envelope changes require a version change and migration documentation.
-- Artifact paths returned to external callers are absolute filesystem paths. A path may be null until an artifact exists; a returned usable path must refer to durable data, not a temporary stdout stream. Secrets do not belong in diagnostics or control data.
-
-Intended version-1 envelope for Milestone 2 implementation (illustrative values, not executable output today):
-
-```json
-{
-  "schema_version": 1,
-  "command": "runs status",
-  "status": "ok",
-  "run_id": "run_example",
-  "run_status": "running",
-  "artifacts": {
-    "manifest": "/absolute/run_example/manifest.json",
-    "results_jsonl": null,
-    "results_csv": null
-  },
-  "data": {
-    "completed_tasks": 10,
-    "failed_tasks": 0,
-    "pending_tasks": 90
-  },
-  "error": null
-}
+```bash
+judgmentllm resume --run RUN_ID --store /local/store \
+  --retry-task TASK_ID --retry-id retry-001 --json
 ```
 
-| Field | Planned meaning |
+Repeat `--retry-task` to select multiple tasks from **one original request**.
+`--retry-id` is required with a selection. `--retry-id` and `--allow-completed`
+are invalid without a selection. Selected previously completed tasks additionally
+require `--allow-completed`. Obtain failed task IDs from an explicit result export.
+
+The operation commits its exact membership and permission. Identical operation-ID
+reuse resumes that original attempt; conflicting reuse fails. Successful siblings
+are not included implicitly. Default bounded retry policy remains three physical
+attempts per original request, including the initial attempt; persistent automatic
+backoff applies only to eligible transient definitive nonacceptance. Earlier
+unsuccessful attempts remain in audit exports after logical completion.
+
+Unknown acceptance, unavailable accepted observations, invalid/refused completions,
+and interruption alone never authorize automatic resubmission. Authoritative
+nonacceptance discovered during recovery does not manufacture a prior normalized
+outcome for explicit subset retry.
+
+### Mock execution inputs
+
+`run` and `resume` accept these synthetic-service options:
+
+- `--mock-ledger FILE`: original independent acceptance ledger; default
+  `<store>/mock-service.sqlite3`.
+- `--mock-fixture FILE`: strict version-1 JSON with `scenario` and optional
+  `scenarios` keyed by original request UID, using documented `MockScenario` fields.
+- `--mock-no-retrieval`: make authoritative observation retrieval unavailable.
+- `--mock-no-reconciliation`: make authoritative submission reconciliation unavailable.
+
+These controls are not `RunSpec` fields or arbitrary provider request JSON.
+Custom ledger and fixture inputs must be supplied again after process restart.
+Fixture text is not copied into runtime storage. Resume requires the original
+ledger; replacement service identity and changed unfinished payload commitments
+fail closed. A new authorized retry may use a changed synthetic outcome after
+prior observations commit. A missing minimal-capture response is recovered only
+from an established accepted observation with authoritative retrieval, never from
+a deterministic recipe or matching hashes alone.
+
+## Version-1 JSON control responses
+
+JSON mode writes exactly one object followed by a newline to stdout, including
+handled parsing and execution errors. Assessment rows go to explicit exports,
+never to control stdout.
+
+| Field | Contract |
 |---|---|
-| `schema_version` | Integer control-envelope version, initially `1`; separate from assessment/file schema versions. |
-| `command` | Canonical command name, such as `validate`, `plan`, `run`, `runs status`, `resume`, or `results export`. |
-| `status` | Command outcome: `ok`, `partial`, or `error`. This is distinct from the state of an assessed run. |
-| `run_id` | Durable original run identifier, or null for operations that do not address/create a run. |
-| `run_status` | Documented durable lifecycle state, or null when inapplicable. The initial vocabulary covers `created`, `submitted`, `running`, `completed`, `partial`, `failed`, and `cancelled`; services and CLI must share the same state contract. |
-| `artifacts` | Object of documented artifact-name to absolute path/null entries. Empty for operations without artifacts. Includes canonical results and requested derived exports when available. |
-| `data` | Small versioned command-specific object: validation issues, plan summary, counts, or bounded run listings. Document each implemented command's fields; never pass through arbitrary provider bodies. |
-| `error` | Null on success; otherwise an object containing stable `category`, safe `message`, and boolean `retryable`. Partial completion includes `category: partial_completion` and retained artifact paths/counts. |
+| `schema_version` | Integer `1`, separate from assessment and persistence versions. |
+| `command` | Canonical command, e.g. `run`, `runs status`, or `results export`; unresolved invalid commands use `unknown`. |
+| `status` | Command outcome `ok`, `partial`, or `error`. |
+| `run_id` | Original durable run ID, or null. |
+| `run_status` | Durable `created/submitted/running/completed/partial/failed/cancelled`, or null. |
+| `artifacts` | Absolute durable paths or explicit nulls; `{}` for commands without artifacts. |
+| `data` | Small typed command-specific metadata, described below. |
+| `error` | Null, or `{category, message, retryable}` with safe provider-neutral information. |
 
-Errors use provider-neutral categories: `usage`, `validation`, `unsupported_capability`, `not_found`, `execution`, `partial_completion`, `interrupted`, and `internal`. Provider/account details may refine a safe diagnostic when adapters exist, without changing the envelope or depending on an R package. Preserve explicit unknowns; never invent estimates or capabilities to fill control fields.
+Artifact-bearing responses use `store`, `run_directory`, `registry`, `manifest`,
+`results_jsonl`, `results_csv`, `results_r_csv`, and `export`. Result paths stay
+null until an export has been published. `run` and `resume` do not implicitly
+serialize the complete result history. No temporary staging path is returned.
 
-### Exit codes, state, and process independence
+Command `data` is the corresponding public model serialized with the top-level
+run ID/state/artifacts removed:
 
-| Exit code | Meaning |
+- Validation: `valid`, input/source counts, bounded `issues`, `total_issues`,
+  and `truncated`. Failed validation retains null unknown counts.
+- Planning: `task_kind`, response/pair/source counts, exact `logical_tasks` and
+  `requests`, `trait_groups`, scoped `capabilities`, cache policy/report,
+  nullable token/cost estimates, and pricing applicability.
+- Execution/resumption/status: configuration scope, capture, timestamps,
+  planned/materialized/current logical task counts, request/attempt/result and
+  unsuccessful historical counts, retry count, submission certainty,
+  executor/recovery state, and nullable usage.
+- Listing: bounded `runs` and `next_cursor`; each run is a typed status summary.
+- Export: `export_id`, format/view, row count, `result_high_water_mark`,
+  `incomplete_source`, and `files` containing absolute path, SHA-256, and byte length.
+
+Successful validation example:
+
+```json
+{"schema_version":1,"command":"validate","status":"ok","run_id":null,"run_status":null,"artifacts":{},"data":{"valid":true,"response_count":2,"pair_count":0,"source_count":2,"issues":[],"total_issues":0,"truncated":false},"error":null}
+```
+
+Unknown-run example (exit 2):
+
+```json
+{"schema_version":1,"command":"runs status","status":"error","run_id":null,"run_status":null,"artifacts":{},"data":{},"error":{"category":"not_found","message":"durable run or resource was not found","retryable":false}}
+```
+
+Partial processing returns `status: partial`, `error.category: partial_completion`,
+and retained durable state/counts. Missing evidence remains unresolved; it does
+not become an invalid judgment or an invented result row. A successful retry can
+return `ok` while historical unsuccessful-result counts remain positive.
+
+### Stderr JSONL and privacy
+
+In JSON mode every diagnostic/progress line on stderr is a separate JSON object
+with integer `schema_version: 1`, `event` (`diagnostic` or `progress`), `category`,
+safe `message`, and nullable `run_id`. Coarse progress categories are `started`,
+`prepared`, and `finished`. Emitted library warnings are translated to bounded safe
+`validation_warning` or `runtime_warning` diagnostics; warning-as-error filters
+remain enforced. Command failures appear both as a safe diagnostic and
+in the final stdout envelope. Empty stderr is valid for quiet successful queries.
+
+No prompt, explanation, fixture text, raw response, provider body, credential,
+traceback, or arbitrary exception/input representation is printed. Human mode
+shows the same safe outcome, counts, and paths as readable text.
+
+### Exit codes and durable state
+
+| Code | Meaning |
 |---|---|
-| `0` | The command succeeded, including a successful submission or status query. Inspect `run_status` to determine whether asynchronous work completed. A successful query of a failed run still returns `0` with `run_status: failed`. |
-| `1` | Execution, authentication/transport/provider, or internal failure; use structured error category/message for detail. |
-| `2` | Usage, validation, unsupported capability, or unknown run/resource error; invalid submissions do not send a provider request. |
-| `3` | A processing/collection operation completed partially, retaining successful outputs and reporting invalid/refused/failed judgments. |
-| `130` | Interrupted operation; report the durable run ID, state, and recoverable artifact paths when available. |
+| `0` | Command succeeded; inspect `run_status` and counts separately. |
+| `1` | Execution, integrity/storage, or internal failure. |
+| `2` | Usage, validation, unsupported capability/implementation, unknown resource, or invalid retry authorization. |
+| `3` | Processing retained current unsuccessful outcomes or unresolved/incomplete work. |
+| `130` | Handled interruption after cleanup, with available durable identity and artifacts. |
 
-Status, resumption, and collection reload durable state across process restarts. Resumption must not depend on an open terminal or an embedded Python interpreter. Before submission, persist immutable original-input, exact rendered-prompt, and provider-request-payload hashes; structural IDs alone cannot establish content identity. Detect changed referenced text and never blindly reuse an old submission identity for changed content. Preserve task, pair, request, run, and attempt IDs throughout.
+Error categories are `usage`, `validation`, `unsupported_capability`, `not_found`,
+`execution`, `partial_completion`, `interrupted`, and `internal`. Retryability
+means an automatic retry is appropriate; manual selection remains explicit.
 
-Required offline R-driven mock-provider tests in Milestone 2 exercise JSON parsing, exit codes, stdout/stderr separation, submission, independent-process status/export, interruption, and resumption without duplicate completed judgments. Later milestones extend these tests to the operations they introduce. See the [cross-language acceptance gate](implementation-plan.md#cross-language-interoperability-acceptance-gate).
+A successful query of a failed run is exit 0 with `status: ok` and
+`run_status: failed`. Exporting an incomplete run can likewise succeed and reports
+`incomplete_source: true`. Cancelled runs can recover earlier accepted observations
+while remaining cancelled; resume does not restart their scheduling. Local task
+cancellation is not evidence of confirmed provider cancellation.
 
-## Python interface alignment
+Hard process termination cannot guarantee a control envelope or exit 130. Later
+processes use durable state and authoritative recovery. Installed-CLI acceptance
+captures stdout, stderr, and exit status independently, including on Windows.
 
-- Implemented: `validate_run(spec, *, capabilities=None) -> ValidationReport` (structural validation)
-- Implemented: `plan_run(spec, *, capabilities=None) -> RunPlan` (structural grouping only)
-- `run_live(spec) -> RunSummary`
-- `submit_batch(spec) -> BatchSummary`
-- `resume_run(run_id) -> RunSummary`
-- `collect_results(run_id) -> ResultManifest`
-- Async variants of the live execution API may be exposed as `arun_live` or through a documented client; the intended future names are synchronous `run_live` and asynchronous `arun_live`; neither is implemented in Milestone 1.
+## Future commands and integrations
 
-R integration is CLI-first through `processx`, with the functional `rubricLLM` wrapper delivered in Milestone 6 and `reticulate` remaining optional/secondary. Interchange files allow `pairwiseLLM` to consume comparison results without embedded Python. Do not require an HTTP server for local R use. `judgmentllm serve` is introduced only in the committed late-stage Milestone 7; it exposes the same library operations and persistent runs without introducing a parallel scoring implementation. See [`http-api-spec.md`](http-api-spec.md).
+Provider integrations, managed bulk-live, native `batch submit/status/collect/cancel`,
+actual caching controls, and model catalogs remain assigned to later milestones.
+The functional CLI-first `rubricLLM` wrapper arrives in Milestone 6; ordinary R
+workflows need no resident Python process or HTTP server. Optional local-loopback
+FastAPI and `serve` arrive in Milestone 7. No future command is implemented as
+an alias for mock execution.
