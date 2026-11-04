@@ -1,5 +1,11 @@
 # JudgmentLLM-only guest adapter; invoked over SSH by windows.sh.
-param([Parameter(Mandatory = $true)][string]$Request)
+param(
+    [Parameter(Mandatory = $true)][string]$Request,
+    [ValidateSet('', '3.11', '3.12')][string]$Lane = '',
+    [int]$OwnerProcessId = 0,
+    [long]$OwnerStartedTicks = 0,
+    [switch]$Collect
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -56,14 +62,16 @@ if ($settings.commit -notmatch '^[0-9a-f]{40}$' -or $settings.source_archive_sha
     throw 'Invalid source commitment'
 }
 $runRoot = Join-Path (Join-Path $workRoot 'runs') $settings.run_id
-if (Test-Path -LiteralPath $runRoot) { throw "Refusing to overwrite guest run: $runRoot" }
 $resultRoot = Join-Path $runRoot 'results'
-New-Item -ItemType Directory -Path $resultRoot -Force | Out-Null
+$cancelPath = Join-Path $settings.transfer_root 'cancel.request'
+$joinedPath = Join-Path $runRoot 'workers-joined.json'
 $transcript = Join-Path $resultRoot 'adapter.log'
 $status = 1
 $failure = $null
 $lanes = @()
 $transcriptStarted = $false
+$ownedJob = $null
+$workers = @()
 
 function Invoke-Logged {
     param([string]$Executable, [string[]]$Arguments, [string]$Log)
@@ -77,6 +85,101 @@ function Invoke-Logged {
     finally { $ErrorActionPreference = $previous }
     if ($code -ne 0) { throw "Command failed with exit code ${code}: $Executable; log: $Log" }
 }
+
+function Test-Owner {
+    param([int]$ProcessId, [long]$StartedTicks)
+    try {
+        $owner = Get-Process -Id $ProcessId -ErrorAction Stop
+        return $owner.StartTime.ToUniversalTime().Ticks -eq $StartedTicks
+    }
+    catch { return $false }
+}
+
+function Copy-Results {
+    param([switch]$Partial)
+    $destination = if ($Partial) {
+        Join-Path $settings.transfer_root 'cancelled-results'
+    } else {
+        Join-Path $settings.results_root $settings.run_id
+    }
+    if (Test-Path -LiteralPath $destination) { throw "Refusing to overwrite shared results: $destination" }
+    New-Item -ItemType Directory -Path $destination -Force | Out-Null
+    if (Test-Path -LiteralPath $resultRoot) {
+        Copy-Item -Path (Join-Path $resultRoot '*') -Destination $destination -Recurse
+    }
+}
+
+if ($Collect) {
+    # A second SSH connection can retain partial logs after the original client
+    # disappeared. Never collect while this run still owns active lane work.
+    $identityPath = Join-Path $runRoot 'supervisor.json'
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    while ((Test-Path -LiteralPath $identityPath) -and -not (Test-Path -LiteralPath $joinedPath)) {
+        $identity = Get-Content -LiteralPath $identityPath -Raw | ConvertFrom-Json
+        if (-not (Test-Owner $identity.pid $identity.started_ticks)) { break }
+        if ($timer.Elapsed.TotalSeconds -ge 60) { throw 'Guest supervisor has not confirmed cancellation' }
+        Start-Sleep -Milliseconds 200
+    }
+    if (Test-Path -LiteralPath $resultRoot) { Copy-Results -Partial }
+    exit 0
+}
+
+if ($Lane) {
+    if ($settings.python_version -ne 'all' -and $settings.python_version -ne $Lane) { throw 'Unexpected lane' }
+    if ($OwnerProcessId -le 0 -or $OwnerStartedTicks -le 0) { throw 'Missing supervisor identity' }
+    $startGate = Join-Path $runRoot "lane-$Lane.start"
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    while (-not (Test-Path -LiteralPath $startGate)) {
+        if ((Test-Path -LiteralPath $cancelPath) -or -not (Test-Owner $OwnerProcessId $OwnerStartedTicks)) { exit 125 }
+        if ($timer.Elapsed.TotalSeconds -ge 60) { throw 'Lane was not assigned to its owned job' }
+        Start-Sleep -Milliseconds 100
+    }
+    if ((Test-Path -LiteralPath $cancelPath) -or -not (Test-Owner $OwnerProcessId $OwnerStartedTicks)) { exit 125 }
+    $patch = if ($Lane -eq '3.11') { '3.11.18' } else { '3.12.16' }
+    $laneLog = Join-Path $resultRoot "python-$Lane.log"
+    $env:TEMP = Join-Path $runRoot "temp-$Lane"
+    $env:TMP = $env:TEMP
+    New-Item -ItemType Directory -Path $env:TEMP | Out-Null
+    try {
+        if ($settings.mode -eq 'prepare') {
+            $env:UV_PYTHON_DOWNLOADS = 'automatic'
+            $env:UV_OFFLINE = '0'
+            Invoke-Logged $uvExe @('python', 'install', $patch, '--no-bin', '--no-registry', '--install-dir', $env:UV_PYTHON_INSTALL_DIR) $laneLog
+        }
+        $env:UV_PYTHON_DOWNLOADS = 'never'
+        $env:UV_OFFLINE = '1'
+        $archive = Join-Path $runRoot 'source.tar'
+        if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $settings.source_archive_sha256) {
+            throw 'Lane source archive SHA-256 mismatch'
+        }
+        $source = Join-Path $runRoot "source-$Lane"
+        New-Item -ItemType Directory -Path $source | Out-Null
+        Invoke-Logged 'tar.exe' @('-xf', $archive, '-C', $source) $laneLog
+        Copy-Item -LiteralPath (Join-Path $runRoot 'manifest.json') -Destination (Join-Path $source '.judgmentllm-source.json')
+        $gates = Join-Path $source 'ci\local\gates.py'
+        if (-not (Test-Path -LiteralPath $gates -PathType Leaf)) { throw 'The requested commit does not contain ci/local/gates.py' }
+        $output = Join-Path $resultRoot "python-$Lane"
+        $arguments = @('run', '--no-project', '--python', $patch, '--offline', 'python', $gates,
+            '--source', $source, '--output', $output, '--commit', $settings.commit,
+            '--archive-sha256', $settings.source_archive_sha256, '--python-version', $Lane,
+            '--mode', $settings.mode, '--uv', $uvExe)
+        if ($settings.mode -eq 'prepare') { $env:UV_OFFLINE = '0' }
+        Invoke-Logged $uvExe $arguments $laneLog
+        $status = 0
+    }
+    catch { $failure = $_.Exception.Message; Write-Host $failure }
+    finally {
+        [ordered]@{ python_version = $Lane; exit_code = $status; failure = $failure } |
+            ConvertTo-Json | Set-Content -LiteralPath (Join-Path $resultRoot "python-$Lane.worker.json") -Encoding UTF8
+    }
+    exit $status
+}
+
+if (Test-Path -LiteralPath $runRoot) { throw "Refusing to overwrite guest run: $runRoot" }
+New-Item -ItemType Directory -Path $resultRoot -Force | Out-Null
+$ownerStartedTicks = (Get-Process -Id $PID).StartTime.ToUniversalTime().Ticks
+[ordered]@{ pid = $PID; started_ticks = $ownerStartedTicks } | ConvertTo-Json |
+    Set-Content -LiteralPath (Join-Path $runRoot 'supervisor.json') -Encoding UTF8
 
 try {
     Start-Transcript -LiteralPath $transcript | Out-Null
@@ -116,41 +219,148 @@ try {
     $uvVersion = (& $uvExe --version)
     if ($LASTEXITCODE -ne 0 -or $uvVersion -notmatch '^uv 0\.13\.6(?:\s|$)') { throw 'Expected isolated uv 0.13.6' }
 
+    # A job handle is not inherited. Its final close (including supervisor death)
+    # kills only these freshly launched lane trees; no VM/SSH process is assigned.
+    # https://learn.microsoft.com/windows/win32/procthread/job-objects
+    $env:TEMP = Join-Path $runRoot 'job-temp'
+    $env:TMP = $env:TEMP
+    New-Item -ItemType Directory -Path $env:TEMP | Out-Null
+    Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using Microsoft.Win32.SafeHandles;
+public sealed class JudgmentLlmLaneJob : IDisposable {
+    [StructLayout(LayoutKind.Sequential)] struct BasicLimits {
+        public long ProcessTime, JobTime;
+        public uint Flags;
+        public UIntPtr MinimumWorkingSet, MaximumWorkingSet;
+        public uint ActiveProcesses;
+        public UIntPtr Affinity;
+        public uint Priority, Scheduling;
+    }
+    [StructLayout(LayoutKind.Sequential)] struct IoCounters {
+        public ulong ReadOperations, WriteOperations, OtherOperations;
+        public ulong ReadBytes, WriteBytes, OtherBytes;
+    }
+    [StructLayout(LayoutKind.Sequential)] struct ExtendedLimits {
+        public BasicLimits Basic;
+        public IoCounters Io;
+        public UIntPtr ProcessMemory, JobMemory, PeakProcessMemory, PeakJobMemory;
+    }
+    [StructLayout(LayoutKind.Sequential)] struct Accounting {
+        public long UserTime, KernelTime, PeriodUserTime, PeriodKernelTime;
+        public uint PageFaults, TotalProcesses, ActiveProcesses, TerminatedProcesses;
+    }
+    [DllImport("kernel32.dll", CharSet=CharSet.Unicode, SetLastError=true)]
+    static extern SafeFileHandle CreateJobObjectW(IntPtr attributes, string name);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    static extern bool SetInformationJobObject(SafeFileHandle job, int kind, ref ExtendedLimits value, uint size);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    static extern bool AssignProcessToJobObject(SafeFileHandle job, IntPtr process);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    static extern bool TerminateJobObject(SafeFileHandle job, uint exitCode);
+    [DllImport("kernel32.dll", SetLastError=true)]
+    static extern bool QueryInformationJobObject(SafeFileHandle job, int kind, out Accounting value, uint size, IntPtr returned);
+    readonly SafeFileHandle handle;
+    public JudgmentLlmLaneJob() {
+        handle = CreateJobObjectW(IntPtr.Zero, null);
+        if (handle.IsInvalid) throw new Win32Exception(Marshal.GetLastWin32Error());
+        var limits = new ExtendedLimits();
+        limits.Basic.Flags = 0x2000; // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, no resource limits.
+        if (!SetInformationJobObject(handle, 9, ref limits, (uint)Marshal.SizeOf(limits))) {
+            int error = Marshal.GetLastWin32Error();
+            handle.Dispose();
+            throw new Win32Exception(error);
+        }
+    }
+    public void Assign(Process process) {
+        if (!AssignProcessToJobObject(handle, process.Handle))
+            throw new Win32Exception(Marshal.GetLastWin32Error());
+    }
+    public void StopAndJoin() {
+        if (!TerminateJobObject(handle, 125)) throw new Win32Exception(Marshal.GetLastWin32Error());
+        Accounting value;
+        do {
+            if (!QueryInformationJobObject(handle, 1, out value, (uint)Marshal.SizeOf(typeof(Accounting)), IntPtr.Zero))
+                throw new Win32Exception(Marshal.GetLastWin32Error());
+            if (value.ActiveProcesses != 0) System.Threading.Thread.Sleep(20);
+        } while (value.ActiveProcesses != 0);
+    }
+    public void Dispose() { handle.Dispose(); }
+}
+'@
+    $ownedJob = New-Object JudgmentLlmLaneJob
+    $localScript = Join-Path $runRoot 'adapter.ps1'
+    $localRequest = Join-Path $runRoot 'request.json'
+    Copy-Item -LiteralPath $MyInvocation.MyCommand.Path -Destination $localScript
+    Copy-Item -LiteralPath $Request -Destination $localRequest
     $versions = if ($settings.python_version -eq 'all') { @('3.11', '3.12') } else { @($settings.python_version) }
     foreach ($minor in $versions) {
-        $patch = if ($minor -eq '3.11') { '3.11.18' } else { '3.12.16' }
-        $laneLog = Join-Path $resultRoot "python-$minor.log"
-        if ($settings.mode -eq 'prepare') {
-            $env:UV_PYTHON_DOWNLOADS = 'automatic'
-            $env:UV_OFFLINE = '0'
-            Invoke-Logged $uvExe @('python', 'install', $patch, '--no-bin', '--no-registry', '--install-dir', $env:UV_PYTHON_INSTALL_DIR) $laneLog
-        }
-        $env:UV_PYTHON_DOWNLOADS = 'never'
-        $env:UV_OFFLINE = '1'
-        $source = Join-Path $runRoot "source-$minor"
-        New-Item -ItemType Directory -Path $source | Out-Null
-        Invoke-Logged 'tar.exe' @('-xf', $archive, '-C', $source) $laneLog
-        Copy-Item -LiteralPath $manifest -Destination (Join-Path $source '.judgmentllm-source.json')
-        $gates = Join-Path $source 'ci\local\gates.py'
-        if (-not (Test-Path -LiteralPath $gates -PathType Leaf)) { throw 'The requested commit does not contain ci/local/gates.py' }
-        $output = Join-Path $resultRoot "python-$minor"
-        $arguments = @('run', '--no-project', '--python', $patch, '--offline', 'python', $gates,
-            '--source', $source, '--output', $output, '--commit', $settings.commit,
-            '--archive-sha256', $settings.source_archive_sha256, '--python-version', $minor,
-            '--mode', $settings.mode, '--uv', $uvExe)
-        # Bootstrap uses only the installed interpreter. The gate decides when
-        # prepare may access the network; check's children remain offline.
-        if ($settings.mode -eq 'prepare') { $env:UV_OFFLINE = '0' }
-        Invoke-Logged $uvExe $arguments $laneLog
-        $lanes += [ordered]@{ python_version = $minor; python_patch = $patch; status = 'passed'; output = $output }
+        if (Test-Path -LiteralPath $cancelPath) { throw 'Host cancelled before lane startup' }
+        $arguments = @('-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-File', $localScript,
+            '-Request', $localRequest, '-Lane', $minor, '-OwnerProcessId', $PID, '-OwnerStartedTicks', $ownerStartedTicks)
+        $process = Start-Process -FilePath (Join-Path $PSHOME 'powershell.exe') -ArgumentList $arguments -PassThru `
+            -RedirectStandardOutput (Join-Path $resultRoot "python-$minor.stdout.log") `
+            -RedirectStandardError (Join-Path $resultRoot "python-$minor.stderr.log")
+        $null = $process.Handle
+        $worker = @{ process = $process; assigned = $false; python_version = $minor; status = 'running' }
+        $workers += $worker
+        $ownedJob.Assign($process)
+        $worker.assigned = $true
+        # Children cannot start uv/Python before job ownership is established.
+        New-Item -ItemType File -Path (Join-Path $runRoot "lane-$minor.start") | Out-Null
+        Write-Host "Python $minor lane started (PID $($process.Id))"
     }
-    $status = 0
+    while (@($workers | Where-Object { $_.status -eq 'running' }).Count) {
+        if (Test-Path -LiteralPath $cancelPath) {
+            $failure = 'Host cancelled this run'
+            $ownedJob.StopAndJoin()
+            $ownedJob.Dispose()
+            $ownedJob = $null
+            foreach ($worker in $workers) {
+                if ($worker.status -eq 'running') { $worker.status = 'cancelled' }
+            }
+            break
+        }
+        foreach ($worker in $workers) {
+            if ($worker.status -ne 'running') { continue }
+            $worker.process.Refresh()
+            if ($worker.process.HasExited) {
+                $worker.process.WaitForExit()
+                $worker.exit_code = $worker.process.ExitCode
+                $worker.status = if ($worker.exit_code -eq 0) { 'passed' } else { 'failed' }
+                Write-Host "Python $($worker.python_version) lane $($worker.status)"
+            }
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    if (@($workers | Where-Object { $_.status -ne 'passed' }).Count -eq 0) { $status = 0 }
 }
 catch {
     $failure = $_.Exception.Message
     Write-Host "JudgmentLLM Windows adapter failed: $failure"
 }
 finally {
+    if ($ownedJob) { $ownedJob.StopAndJoin(); $ownedJob.Dispose() }
+    foreach ($worker in $workers) {
+        if (-not $worker.assigned -and -not $worker.process.HasExited) {
+            # An unassigned child is still behind its startup gate and has never
+            # launched native work. Only this freshly owned process is stopped.
+            try { $worker.process.Kill() }
+            catch { if (-not $worker.process.HasExited) { throw } }
+        }
+        $worker.process.WaitForExit()
+        if ($worker.status -eq 'running') { $worker.status = 'cancelled' }
+        $lanes += [ordered]@{
+            python_version = $worker.python_version
+            status = $worker.status
+            exit_code = $worker.process.ExitCode
+            output = (Join-Path $resultRoot "python-$($worker.python_version)")
+        }
+        $worker.process.Dispose()
+    }
     if ($transcriptStarted) { Stop-Transcript | Out-Null }
     [ordered]@{
         run_id = $settings.run_id
@@ -166,9 +376,8 @@ finally {
         failure = $failure
         guest_run_root = $runRoot
     } | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $resultRoot 'adapter.json') -Encoding UTF8
-    $destination = Join-Path $settings.results_root $settings.run_id
-    if (Test-Path -LiteralPath $destination) { throw "Refusing to overwrite shared results: $destination" }
-    New-Item -ItemType Directory -Path $destination -Force | Out-Null
-    Copy-Item -Path (Join-Path $resultRoot '*') -Destination $destination -Recurse
+    [ordered]@{ joined = $true; lanes = $lanes } | ConvertTo-Json -Depth 6 |
+        Set-Content -LiteralPath $joinedPath -Encoding UTF8
+    Copy-Results
 }
 exit $status

@@ -11,6 +11,9 @@ Usage: windows.sh --ref COMMIT [--repo PATH] [--mode prepare|check|doctor]
 The existing pairwise-windows-ci container is reused, never recreated. A VM
 started by this launcher is stopped gracefully on exit; an already-running VM
 is left running. The existing Windows CI lock is held for the whole operation.
+Selecting all runs both Python lanes concurrently in separate guest processes,
+with separate source, environment, scratch, output and logs. A failed lane does
+not prevent its peer from finishing.
 
 prepare may download Python/dependencies into JudgmentLLM-only directories;
 it requires a separately downloaded, SHA-256-verified uv 0.13.6 Windows ZIP.
@@ -36,9 +39,19 @@ boot_timeout=${JUDGMENTLLM_WINDOWS_BOOT_TIMEOUT:-420}
 container=pairwise-windows-ci
 share_root=/mnt/VM_Fast/pairwiseLLM-checks
 vm_started=0
+active_ssh=''
+active_tail=''
+guest_started=0
+registering_child=0
+cancel_status=0
 
 fatal() { printf '[judgmentllm-windows] ERROR: %s\n' "$*" >&2; exit 1; }
 log() { printf '[judgmentllm-windows] %s\n' "$*" >&2; }
+request_cancel() {
+  cancel_status=$1
+  # Finish registering a newly spawned child before cleanup can inspect it.
+  if (( ! registering_child )); then exit "$cancel_status"; fi
+}
 while (( $# )); do
   case "$1" in
     --repo|--ref|--mode|--python-version|--state-root|--uv-archive|--uv-sha256)
@@ -59,7 +72,7 @@ done
 [[ $boot_timeout =~ ^[0-9]+$ ]] && (( boot_timeout >= 10 )) || fatal 'Boot timeout must be >= 10 seconds'
 [[ $mode == doctor || $ref =~ ^[0-9a-f]{40}$ ]] || fatal '--ref requires a full lowercase commit SHA'
 [[ -z $ref || $ref =~ ^[0-9a-f]{40}$ ]] || fatal 'Invalid --ref'
-for command_name in docker ssh python3 mountpoint flock realpath sha256sum tee timeout; do
+for command_name in docker ssh python3 mountpoint flock realpath sha256sum tail timeout; do
   command -v "$command_name" >/dev/null || fatal "Missing command: $command_name"
 done
 mountpoint -q /mnt/VM_Fast || fatal '/mnt/VM_Fast must be mounted before using this VM'
@@ -89,7 +102,28 @@ run_root="$state_root/runs/$run_id"
 mkdir -- "$run_root"
 cleanup() {
   local status=$?
-  trap - EXIT
+  trap - EXIT INT TERM
+  set +e
+  if (( guest_started )); then
+    # Leave SSH connected until the guest closes and joins its owned lane job
+    # and copies results. Grid sends TERM only to this adapter's PID.
+    printf 'cancel\n' >"$run_root/cancel.request"
+    if [[ -n $active_ssh ]]; then
+      wait "$active_ssh" || true
+      active_ssh=''
+    fi
+    if [[ $mode != doctor && ! -s $state_root/results/$run_id/adapter.json ]]; then
+      log 'Collecting partial guest evidence after cancellation or SSH failure'
+      collector=$(cat "$run_root/collect-command.txt")
+      ssh "${ssh_opts[@]}" pairwiseci@127.0.0.1 \
+        "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $collector" \
+        >>"$run_root/cancellation.log" 2>&1 || { (( status != 0 )) || status=1; }
+    fi
+  fi
+  if [[ -n $active_tail ]]; then
+    # SSH has been joined; --pid makes this logger exit without a PID-based kill.
+    wait "$active_tail" 2>/dev/null || true
+  fi
   if (( vm_started )); then
     log 'Requesting graceful shutdown of the Windows VM started by this run'
     # A negative timeout disables Docker's forced-kill fallback.
@@ -101,6 +135,8 @@ cleanup() {
   exit "$status"
 }
 trap cleanup EXIT
+trap 'request_cancel 130' INT
+trap 'request_cancel 143' TERM
 if [[ $initial_state != running ]]; then
   docker start "$container" >>"$run_root/lifecycle.log" 2>&1
   vm_started=1
@@ -170,16 +206,32 @@ request = {
 (root / "host.json").write_text(json.dumps({**request, "initial_vm_state": sys.argv[7]}, indent=2) + "\n", encoding="utf-8")
 quote = lambda value: "'" + value.replace("'", "''") + "'"
 command = "& " + quote(unc + "\\windows.ps1") + " -Request " + quote(unc + "\\request.json")
+(root / "collect-command.txt").write_text(base64.b64encode((command + " -Collect").encode("utf-16-le")).decode("ascii") + "\n")
 print(base64.b64encode(command.encode("utf-16-le")).decode("ascii"))
 PY
 )
 log "Running $mode ($python_version); host logs: $run_root"
 set +e
+registering_child=1
+guest_started=1
 ssh "${ssh_opts[@]}" pairwiseci@127.0.0.1 \
   "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $encoded_command" \
-  2>&1 | tee "$run_root/windows.log"
-remote_status=${PIPESTATUS[0]}
+  >"$run_root/windows.log" 2>&1 &
+active_ssh=$!
+registering_child=0
+if (( cancel_status )); then exit "$cancel_status"; fi
+registering_child=1
+tail --pid="$active_ssh" -n +1 -f "$run_root/windows.log" &
+active_tail=$!
+registering_child=0
+if (( cancel_status )); then exit "$cancel_status"; fi
+wait "$active_ssh"
+remote_status=$?
+active_ssh=''
+wait "$active_tail"
+active_tail=''
 set -e
+if [[ $remote_status == 0 ]]; then guest_started=0; fi
 if [[ $mode != doctor ]]; then
   [[ -s $state_root/results/$run_id/adapter.json ]] || fatal "Guest result metadata is missing; inspect $run_root/windows.log"
   log "Guest results: $state_root/results/$run_id"

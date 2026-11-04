@@ -31,8 +31,9 @@ entire operation, including result collection and graceful shutdown:
 
 Never run an adapter while another project holds the corresponding lock. A
 preexisting running VM is left running. A VM started by the adapter is shut down
-gracefully; no process kill, disk deletion, Docker removal, or force-stop is
-used. Keep an unattended invocation alive until collection/shutdown completes.
+gracefully; no VM process kill, disk deletion, removal/recreation of the existing
+VM container, or forced VM stop is used. Keep an unattended invocation alive
+until collection/shutdown completes.
 Linux containers have a dedicated init process and per-run CID/ownership labels.
 Interruption cleanup sends normal signals only to that run's disposable
 containers, including when the Docker client exits before its container.
@@ -101,8 +102,24 @@ python3 ci/local/grid.py --ref "$REF" --mode prepare
 python3 ci/local/grid.py --ref "$REF" --mode check
 ```
 
-The grid runs Linux, macOS and Windows sequentially, and both Python versions
-within each environment. A platform can be inspected/prepared/checked independently:
+The grid starts Linux, macOS and Windows concurrently, and each adapter runs
+both Python versions concurrently: six independent configurations in parallel.
+Shared tool bootstrap and archive verification precede a platform's Python lanes.
+Each lane has its own checkout, virtual environment, scratch and results; cached
+dependencies are shared only through the tool's locking. Existing VM locks remain
+held for both lanes through collection and graceful shutdown. An individual lane
+failure does not cancel its peer or the other platforms. Interrupting the grid
+requests adapter cleanup and waits; it never sends a process-group signal that
+could terminate Quickemu. Resource thresholds are unchanged, and parallel gate
+times are qualification timings rather than isolated performance benchmarks.
+Windows cancellation joins a private Job Object containing only the newly
+launched lane process trees; the VM and SSH service are outside that object.
+Linux cleanup can remove a stopped disposable CI container after verifying its
+full ID and exact run label, without force; mounted source/results are retained.
+The two Linux containers retain six CPUs/16 GiB each; both Python lanes in a VM
+share that VM's existing six CPUs and memory allocation. No test threshold is
+adjusted for concurrent execution.
+A platform can be inspected/prepared/checked independently:
 
 ```bash
 python3 ci/local/grid.py --ref "$REF" --platform windows --mode check

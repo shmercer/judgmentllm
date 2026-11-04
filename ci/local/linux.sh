@@ -59,20 +59,27 @@ flock -n 9 || fatal 'Another JudgmentLLM Linux run is active'
 run_id="linux-$(date -u +%Y%m%dT%H%M%SZ)-$$-$RANDOM"
 run_root="$state_root/runs/$run_id"
 mkdir -- "$run_root"
-active_cidfile=''
-active_client=''
+container_cidfiles=()
+container_clients=()
 run_label=org.judgmentllm.local-ci.run
+spawning_client=0
+pending_signal=0
+handle_signal() {
+  if ((spawning_client)); then pending_signal=$1; else exit "$1"; fi
+}
 
 stop_owned_container() {
-  local candidate actual label running inspection candidates=''
-  if [[ -n $active_cidfile && -s $active_cidfile ]]; then
-    read -r candidate <"$active_cidfile" || true
-    if [[ $candidate =~ ^[0-9a-f]{64}$ ]]; then
-      candidates=$candidate
-    else
-      printf 'Incomplete container ID file; checking the exact owned run label.\n' >&2
+  local candidate cidfile actual label running inspection candidates=''
+  for cidfile in "${container_cidfiles[@]}"; do
+    if [[ -s $cidfile ]]; then
+      read -r candidate <"$cidfile" || true
+      if [[ $candidate =~ ^[0-9a-f]{64}$ ]]; then
+        candidates+=$'\n'$candidate
+      else
+        printf 'Incomplete container ID file; checking the exact owned run label.\n' >&2
+      fi
     fi
-  fi
+  done
   # The exact run label also covers cancellation during container creation,
   # before the Docker client has finished writing its ID file.
   candidates+=$'\n'$(docker ps --all --quiet --no-trunc --filter "label=$run_label=$run_id") || return 1
@@ -88,51 +95,93 @@ stop_owned_container() {
       printf '[judgmentllm-linux] Gracefully stopping owned container %s\n' "$candidate"
       # Negative timeout disables Docker's forced-kill fallback entirely.
       docker stop --timeout=-1 "$candidate" >>"$run_root/lifecycle.log" 2>&1 || return 1
+    else
+      # A cancelled create may never reach start, so --rm has not activated.
+      # Remove only this label-verified, non-running disposable object, without
+      # --force; an already auto-removed container needs no further cleanup.
+      if ! docker rm "$candidate" >>"$run_root/lifecycle.log" 2>&1; then
+        if docker inspect "$candidate" >/dev/null 2>&1; then return 1; fi
+      fi
     fi
   done
 }
 
 cleanup() {
-  local status=$?
+  local status=$? client
   trap - EXIT INT TERM
   set +e
   # Stop the daemon-side container, even if Ctrl-C already ended its client.
   stop_owned_container || { ((status != 0)) || status=1; }
-  if [[ -n $active_client ]]; then
-    kill -TERM "$active_client" 2>/dev/null || true
-    wait "$active_client" 2>/dev/null || true
-    stop_owned_container || { ((status != 0)) || status=1; }
-  fi
+  # A completed peer may already be reaped. Do not signal a reused host PID;
+  # only the live Docker command carrying this exact ownership label is ours.
+  python3 - "$run_id" "${container_clients[@]}" <<'PY'
+import os
+from pathlib import Path
+import signal
+import sys
+marker = ("org.judgmentllm.local-ci.run=" + sys.argv[1]).encode()
+for value in sys.argv[2:]:
+    if not value:
+        continue
+    pid = int(value)
+    process = Path("/proc") / value
+    try:
+        arguments = (process / "cmdline").read_bytes().split(b"\0")
+        if process.stat().st_uid == os.getuid() and marker in arguments:
+            os.kill(pid, signal.SIGTERM)
+    except (FileNotFoundError, ProcessLookupError):
+        pass
+PY
+  for client in "${container_clients[@]}"; do
+    [[ -n $client ]] || continue
+    wait "$client" 2>/dev/null || true
+  done
+  stop_owned_container || { ((status != 0)) || status=1; }
   exit "$status"
 }
 trap cleanup EXIT
-trap 'exit 130' INT
-trap 'exit 143' TERM
+trap 'handle_signal 130' INT
+trap 'handle_signal 143' TERM
 
-run_container() {
-  local console=$1 status=0
-  active_cidfile=$2
+start_container() {
+  local console=$1 cidfile=$2 client published_cid job running
+  container_cidfiles+=("$cidfile")
   shift 2
   # Wait on an asynchronous client so Bash handles INT/TERM immediately.
   # Tini forwards normal signals to the whole child group and reaps children.
-  docker run --rm --init --stop-signal SIGTERM --cidfile "$active_cidfile" \
+  spawning_client=1
+  docker run --rm --init --stop-signal SIGTERM --cidfile "$cidfile" \
     --label "$run_label=$run_id" --env TINI_KILL_PROCESS_GROUP=1 "$@" \
     > >(tee "$console") 2>&1 &
-  active_client=$!
-  wait "$active_client" || status=$?
-  active_client=''
-  stop_owned_container || status=1
-  active_cidfile=''
-  return "$status"
+  container_clients+=("$!")
+  client=${container_clients[${#container_clients[@]}-1]}
+  # Do not cancel an ambiguous daemon-side create: wait for its CID acknowledgement
+  # before honoring a pending signal. This also covers a partially written file.
+  while true; do
+    published_cid=''
+    if [[ -s $cidfile ]]; then read -r published_cid <"$cidfile" || true; fi
+    [[ $published_cid =~ ^[0-9a-f]{64}$ ]] && break
+    running=0
+    for job in $(jobs -pr); do
+      if [[ $job == "$client" ]]; then running=1; break; fi
+    done
+    ((running)) || break
+    sleep 0.02
+  done
+  spawning_client=0
+  if ((pending_signal)); then exit "$pending_signal"; fi
 }
 
 if [[ $mode == doctor ]]; then
   printf 'Base image: %s\n' "$base_id"
   mkdir "$run_root/doctor"
-  run_container "$run_root/doctor/console.log" "$run_root/doctor/container.cid" \
+  start_container "$run_root/doctor/console.log" "$run_root/doctor/container.cid" \
     --network none --entrypoint bash "$base_id" -lc \
     'cat /etc/os-release; python3 --version; Rscript --version; command -v cc; command -v git'
-  exit 0
+  status=0
+  wait "${container_clients[0]}" || status=$?
+  container_clients[0]=''
+  exit "$status"
 fi
 python3 "$script_dir/source.py" --repo "$repo" --ref "$ref" --output "$run_root/bundle"
 archive_hash=$(sha256sum -- "$run_root/bundle/source.tar")
@@ -175,19 +224,21 @@ fi
 docker image inspect "$image" >"$run_root/image.json" || fatal 'Image absent; run prepare first'
 versions=(3.11 3.12)
 [[ $python_version == all ]] || versions=("$python_version")
-overall=0
+lanes=()
 for version in "${versions[@]}"; do
   patch=3.11.18; [[ $version == 3.11 ]] || patch=3.12.16
   lane="$run_root/python-$version"
   mkdir -- "$lane"
+  mkdir -- "$lane/scratch"
+  lanes+=("$lane")
   network=none; [[ $mode == check ]] || network=bridge
   printf '[judgmentllm-linux] %s Python %s: %s\n' "$mode" "$patch" "$lane"
-  status=0
-  run_container "$lane/console.log" "$lane/container.cid" \
+  start_container "$lane/console.log" "$lane/container.cid" \
     --network "$network" --cpus 6 --memory 16g \
     --user "$(id -u):$(id -g)" \
     --mount "type=bind,src=$state_root,dst=/state" \
     --env UV_CACHE_DIR=/state/cache --env XDG_CACHE_HOME=/state/cache \
+    --env "TMPDIR=/state/runs/$run_id/python-$version/scratch" \
     --env UV_PYTHON_INSTALL_DIR=/opt/judgmentllm/python \
     --env R_LIBS_USER=/opt/judgmentllm/r-library \
     --entrypoint bash "$image" -c '
@@ -204,9 +255,16 @@ for version in "${versions[@]}"; do
         --mode "$mode" --uv /opt/judgmentllm/tools/uv
     ' judgmentllm \
     "/state/runs/$run_id/bundle" "/state/runs/$run_id/python-$version" \
-    "$mode" "$version" "$patch" "$ref" "$archive_hash" \
-    || status=$?
-  printf '%s\n' "$status" >"$lane/exit-code"
+    "$mode" "$version" "$patch" "$ref" "$archive_hash"
+done
+# Start both fresh interpreters before waiting. A failed lane never cancels its
+# sibling; only explicit interruption/adapter exit invokes whole-run cleanup.
+overall=0
+for index in "${!versions[@]}"; do
+  status=0
+  wait "${container_clients[index]}" || status=$?
+  container_clients[index]=''
+  printf '%s\n' "$status" >"${lanes[index]}/exit-code"
   (( status == 0 )) || overall=1
 done
 printf '[judgmentllm-linux] Results: %s\n' "$run_root"

@@ -11,13 +11,16 @@ import hashlib
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import time
 import urllib.request
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from contextlib import ExitStack
 from datetime import UTC, datetime
 from pathlib import Path
+from types import FrameType
 from typing import Any, cast
 
 from source import stage
@@ -148,6 +151,104 @@ def collect_fresh(
     return paths, [json.loads(path.read_text(encoding="utf-8-sig")) for path in paths]
 
 
+def run_parallel(
+    lanes: Sequence[dict[str, Any]],
+    output: Path,
+    on_finish: Callable[[dict[str, Any]], None],
+    on_started: Callable[[], None] | None = None,
+) -> None:
+    """Run isolated adapters together; reap owned adapters on interruption."""
+    active: dict[int, tuple[dict[str, Any], subprocess.Popen[bytes], float]] = {}
+    interrupted: int | None = None
+
+    def receive(signum: int, frame: FrameType | None) -> None:
+        nonlocal interrupted
+        # Do not raise between spawning a process and registering its ownership.
+        interrupted = signum
+
+    previous = {
+        signum: signal.signal(signum, receive)
+        for signum in (signal.SIGINT, signal.SIGTERM)
+    }
+
+    def stop() -> None:
+        for lane, process, _ in active.values():
+            if process.poll() is None:
+                lane["interrupted"] = True
+                try:
+                    # The adapter owns guest cleanup; its process group may
+                    # include Quickemu and must never receive a group signal.
+                    process.send_signal(signal.SIGTERM)
+                except ProcessLookupError:
+                    pass
+
+    try:
+        with ExitStack() as logs:
+            try:
+                for lane in lanes:
+                    if interrupted is not None:
+                        lane["status"] = "cancelled"
+                        continue
+                    lane["status"] = "running"
+                    lane["started_at"] = datetime.now(UTC).isoformat()
+                    started = time.monotonic()
+                    log = logs.enter_context(
+                        (output / f"{lane['platform']}.log").open("wb")
+                    )
+                    try:
+                        process = subprocess.Popen(
+                            lane["command"],
+                            stdout=log,
+                            stderr=subprocess.STDOUT,
+                            start_new_session=True,
+                        )
+                    except OSError as error:
+                        lane.update(
+                            exit_code=None,
+                            error={"type": type(error).__name__, "message": str(error)},
+                            duration_seconds=time.monotonic() - started,
+                        )
+                        on_finish(lane)
+                    else:
+                        active[process.pid] = (lane, process, started)
+                if on_started is not None:
+                    on_started()
+                stopping = False
+                while active:
+                    if interrupted is not None and not stopping:
+                        stop()
+                        stopping = True
+                    for pid, (lane, process, started) in list(active.items()):
+                        code = process.poll()
+                        if code is None:
+                            continue
+                        del active[pid]
+                        lane.update(
+                            exit_code=code,
+                            duration_seconds=time.monotonic() - started,
+                            finished_at=datetime.now(UTC).isoformat(),
+                        )
+                        on_finish(lane)
+                    if active:
+                        time.sleep(0.1)
+            finally:
+                # No forced-kill fallback: adapters retain their locks while
+                # collecting evidence and gracefully stopping guests they own.
+                stop()
+                for lane, process, started in active.values():
+                    lane.update(
+                        exit_code=process.wait(),
+                        duration_seconds=time.monotonic() - started,
+                        status="cancelled",
+                        finished_at=datetime.now(UTC).isoformat(),
+                    )
+    finally:
+        for signum, handler in previous.items():
+            signal.signal(signum, handler)
+    if interrupted is not None:
+        raise InterruptedError(f"Received signal {interrupted}; owned adapters reaped")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -195,6 +296,7 @@ def main() -> int:
         "commit": args.ref,
         "mode": args.mode,
         "platforms": platforms,
+        "scheduling": "parallel platforms and Python versions",
         "status": "running",
         "started_at": datetime.now(UTC).isoformat(),
         "lanes": [],
@@ -213,8 +315,11 @@ def main() -> int:
             "manifest": str(output / "source/manifest.json"),
         }
         save(output / "summary.json", report)
+        before_by_platform = {
+            platform: set(STATES[platform].glob(RESULTS[platform]))
+            for platform in platforms
+        }
         for platform in platforms:
-            before = set(STATES[platform].glob(RESULTS[platform]))
             command = [
                 "bash",
                 str(harness / f"{platform}.sh"),
@@ -252,26 +357,22 @@ def main() -> int:
             lane: dict[str, Any] = {
                 "platform": platform,
                 "command": command,
-                "status": "running",
+                "status": "pending",
             }
             report["lanes"].append(lane)
-            save(output / "summary.json", report)
-            print(f"{platform} {args.mode}: running", flush=True)
-            lane_start = time.monotonic()
-            with (output / f"{platform}.log").open("w", encoding="utf-8") as log:
-                result = subprocess.run(
-                    command, stdout=log, stderr=subprocess.STDOUT, check=False
+        save(output / "summary.json", report)
+
+        def finish(lane: dict[str, Any]) -> None:
+            platform = str(lane["platform"])
+            try:
+                fresh, summaries = collect_fresh(
+                    STATES[platform], RESULTS[platform], before_by_platform[platform]
                 )
-            fresh, summaries = collect_fresh(
-                STATES[platform], RESULTS[platform], before
-            )
-            lane.update(
-                exit_code=result.returncode,
-                duration_seconds=time.monotonic() - lane_start,
-                evidence=[str(path) for path in fresh],
-                summaries=summaries,
-            )
-            valid = result.returncode == 0
+            except (OSError, ValueError) as error:
+                fresh, summaries = [], []
+                lane["error"] = {"type": type(error).__name__, "message": str(error)}
+            lane.update(evidence=[str(path) for path in fresh], summaries=summaries)
+            valid = lane["exit_code"] == 0 and "error" not in lane
             if args.mode != "doctor":
                 errors = admission_errors(
                     summaries,
@@ -283,9 +384,20 @@ def main() -> int:
                 )
                 lane["admission_errors"] = errors
                 valid = valid and not errors
-            lane["status"] = "passed" if valid else "failed"
+            if lane.get("interrupted"):
+                lane["status"] = "cancelled"
+            else:
+                lane["status"] = "passed" if valid else "failed"
             print(f"{platform} {args.mode}: {lane['status']}", flush=True)
             save(output / "summary.json", report)
+
+        print(f"Starting {len(platforms)} platform adapters in parallel", flush=True)
+        run_parallel(
+            report["lanes"],
+            output,
+            finish,
+            on_started=lambda: save(output / "summary.json", report),
+        )
     except (
         OSError,
         ValueError,

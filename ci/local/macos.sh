@@ -25,6 +25,12 @@ RESULTS_COPIED=0
 ARCHIVE_SHA256=
 HOST_RUN=
 RUN_ID=
+GUEST_CLIENT=
+GUEST_SPAWNING=0
+PENDING_SIGNAL=0
+handle_signal() {
+  if ((GUEST_SPAWNING)); then PENDING_SIGNAL=$1; else exit "$1"; fi
+}
 
 usage() {
   cat <<'HELP'
@@ -118,10 +124,55 @@ collect_results() {
   fi
 }
 
+cancel_guest_run() {
+  ((GUEST_STAGED)) || return 0
+  ssh_guest /usr/bin/python3 - "$RUN_ID" <<'PY'
+import os
+from pathlib import Path
+import signal
+import subprocess
+import sys
+run_id = sys.argv[1]
+run = Path.home() / "judgmentllm-ci/runs" / run_id
+if not run.is_dir():
+    raise SystemExit(0)
+(run / "cancel.request").touch()
+def owned(pid, marker):
+    try:
+        owner = subprocess.check_output(["/bin/ps", "-p", str(pid), "-o", "uid="], text=True).strip()
+        command = subprocess.check_output(["/bin/ps", "-ww", "-p", str(pid), "-o", "command="], text=True)
+        return owner == str(os.getuid()) and marker in command
+    except (ProcessLookupError, subprocess.CalledProcessError):
+        return False
+controller = run / "controller.pid"
+if controller.is_file():
+    try:
+        pid = int(controller.read_text())
+        if pid > 1 and owned(pid, run_id):
+            os.kill(pid, signal.SIGTERM)
+    except (FileNotFoundError, ProcessLookupError, ValueError):
+        pass
+for file in run.glob("python-*/group.pid"):
+    try:
+        pid = int(file.read_text())
+        if pid > 1 and owned(pid, str(run)) and os.getpgid(pid) == pid:
+            os.killpg(pid, signal.SIGTERM)
+    except (FileNotFoundError, ProcessLookupError, ValueError):
+        pass
+PY
+}
+
 finish() {
   local status=$? shutdown=not_started attempt
   trap - EXIT INT TERM
   set +e
+  if [[ -n "$GUEST_CLIENT" || "$status" != 0 ]]; then
+    if ! cancel_guest_run; then ((status != 0)) || status=2; fi
+  fi
+  if [[ -n "$GUEST_CLIENT" ]]; then
+    wait "$GUEST_CLIENT" 2>/dev/null || true
+    GUEST_CLIENT=
+  fi
   if ! collect_results; then ((status != 0)) || status=2; fi
   if ((STARTED && STOP_STARTED)) && vm_running; then
     shutdown=requested
@@ -171,8 +222,8 @@ PY
   exit "$status"
 }
 trap finish EXIT
-trap 'exit 130' INT
-trap 'exit 143' TERM
+trap 'handle_signal 130' INT
+trap 'handle_signal 143' TERM
 
 if [[ "$MODE" != doctor ]]; then
   python3 "$SCRIPT_DIR/source.py" --repo "$REPO" --ref "$REF" --output "$HOST_RUN/archive"
@@ -256,13 +307,64 @@ if [[ "$MODE" == prepare ]]; then
     ssh_guest "mkdir \"\$HOME/judgmentllm-ci/runs/$RUN_ID/bootstrap\" && tar -xf - -C \"\$HOME/judgmentllm-ci/runs/$RUN_ID/bootstrap\""
 fi
 
-ssh_guest /bin/bash -s -- "$RUN_ID" "$MODE" "$PYTHON_VERSION" "$REF" "$ARCHIVE_SHA256" "$UV_BINARY_SHA256" "${UV_SHA256:-none}" <<'GUEST'
+GUEST_SPAWNING=1
+ssh_guest /bin/bash -s -- "$RUN_ID" "$MODE" "$PYTHON_VERSION" "$REF" "$ARCHIVE_SHA256" "$UV_BINARY_SHA256" "${UV_SHA256:-none}" <<'GUEST' &
 set -euo pipefail
 RUN_ID=$1 MODE=$2 PYTHON_VERSION=$3 REF=$4 ARCHIVE_SHA256=$5 UV_BINARY_SHA256=$6 UV_ARCHIVE_SHA256=$7
 ROOT="$HOME/judgmentllm-ci"
 RUN="$ROOT/runs/$RUN_ID"
 SOURCE="$RUN/source"
 UV="$ROOT/tools/uv-0.13.6/uv"
+lane_pids=('')
+lane_minors=('')
+spawning_lane=0
+pending_signal=0
+handle_guest_signal() {
+  if ((spawning_lane)); then pending_signal=$1; else exit "$1"; fi
+}
+cleanup_lanes() {
+  local status=$? index pid lane_status
+  trap - EXIT HUP INT TERM
+  set +e
+  # A completed background job may have been reaped while its peer runs.
+  # Recheck ownership before signaling; recorded numeric IDs alone are stale.
+  /usr/bin/python3 - "$RUN_ID" "${lane_pids[@]}" <<'PY'
+import os
+import signal
+import subprocess
+import sys
+for text in sys.argv[2:]:
+    if not text:
+        continue
+    pid = int(text)
+    try:
+        owner = subprocess.check_output(["/bin/ps", "-p", str(pid), "-o", "uid="], text=True).strip()
+        command = subprocess.check_output(["/bin/ps", "-ww", "-p", str(pid), "-o", "command="], text=True)
+        if pid > 1 and owner == str(os.getuid()) and sys.argv[1] in command:
+            if os.getpgid(pid) == pid:
+                os.killpg(pid, signal.SIGTERM)
+            else:
+                os.kill(pid, signal.SIGTERM)
+    except (ProcessLookupError, subprocess.CalledProcessError):
+        pass
+PY
+  for index in "${!lane_pids[@]}"; do
+    pid=${lane_pids[index]}
+    [[ -n "$pid" ]] || continue
+    lane_status=0
+    wait "$pid" 2>/dev/null || lane_status=$?
+    printf '%s\n' "$lane_status" >"$RUN/results/python-${lane_minors[index]}-exit-code"
+    rm -f "$RUN/python-${lane_minors[index]}/group.pid"
+  done
+  rm -f "$RUN/controller.pid"
+  exit "$status"
+}
+trap cleanup_lanes EXIT
+trap 'handle_guest_signal 129' HUP
+trap 'handle_guest_signal 130' INT
+trap 'handle_guest_signal 143' TERM
+printf '%s\n' "$$" >"$RUN/controller.pid"
+[[ ! -f "$RUN/cancel.request" ]] || exit 143
 export PATH="$ROOT/tools/uv-0.13.6:/usr/local/bin:$PATH"
 export UV_CACHE_DIR="$ROOT/cache/uv"
 export UV_PYTHON_INSTALL_DIR="$ROOT/python"
@@ -359,15 +461,54 @@ PY
 # prerequisites private, pinned, verified, and available before any uv sync.
 source "$SOURCE/ci/local/macos-toolchain.sh" "$MODE" "$ROOT" "$RUN/results/native-toolchain"
 if [[ "$PYTHON_VERSION" == all ]]; then versions='3.11 3.12'; else versions=$PYTHON_VERSION; fi
-status=0
+# Complete shared bootstrap before creating independent source/venv/scratch
+# directories. No two interpreters may synchronize the same editable install.
 for minor in $versions; do
   if [[ "$minor" == 3.11 ]]; then patch=3.11.18; else patch=3.12.16; fi
   if [[ "$MODE" == prepare ]]; then "$UV" python install --no-bin --no-registry "$patch"; fi
-  export UV_PROJECT_ENVIRONMENT="$SOURCE/.venv"
-  if [[ "$MODE" == check ]]; then export UV_OFFLINE=1; fi
-  if "$UV" run --no-project --python "$patch" --offline python "$SOURCE/ci/local/gates.py" \
-    --source "$SOURCE" --output "$RUN/results/python-$minor" --commit "$REF" \
-    --archive-sha256 "$ARCHIVE_SHA256" --python-version "$minor" --mode "$MODE" --uv "$UV"; then
+  mkdir "$RUN/python-$minor" "$RUN/python-$minor/source" "$RUN/python-$minor/scratch"
+  actual=$(/usr/bin/shasum -a 256 "$RUN/source.tar" | /usr/bin/cut -d ' ' -f 1)
+  [[ "$actual" == "$ARCHIVE_SHA256" ]] || { echo 'Source archive changed before lane extraction' >&2; exit 2; }
+  tar -xf "$RUN/source.tar" -C "$RUN/python-$minor/source"
+  cp "$RUN/manifest.json" "$RUN/python-$minor/source/.judgmentllm-source.json"
+done
+for minor in $versions; do
+  if [[ "$minor" == 3.11 ]]; then patch=3.11.18; else patch=3.12.16; fi
+  spawning_lane=1
+  (
+    SOURCE="$RUN/python-$minor/source"
+    export UV_PROJECT_ENVIRONMENT="$SOURCE/.venv"
+    export TMPDIR="$RUN/python-$minor/scratch/"
+    export CARGO_TARGET_DIR="$ROOT/cache/cargo-target/cryptography-50.0.2-rust-1.99.1-openssl-3.5.9/python-$minor"
+    if [[ "$MODE" == check ]]; then export UV_OFFLINE=1; fi
+    exec /usr/bin/python3 - "$RUN/python-$minor/group.pid" "$UV" run --no-project --python "$patch" --offline python \
+      "$SOURCE/ci/local/gates.py" --source "$SOURCE" --output "$RUN/results/python-$minor" \
+      --commit "$REF" --archive-sha256 "$ARCHIVE_SHA256" --python-version "$minor" --mode "$MODE" --uv "$UV" <<'PY'
+import os
+from pathlib import Path
+import sys
+os.setsid()
+Path(sys.argv[1]).write_text(str(os.getpid()) + "\n")
+os.execv(sys.argv[2], sys.argv[2:])
+PY
+  ) >"$RUN/results/python-$minor-console.log" 2>&1 &
+  lane_pids+=("$!")
+  lane_minors+=("$minor")
+  spawning_lane=0
+  if ((pending_signal)); then exit "$pending_signal"; fi
+  printf 'macOS Python %s %s: running (parallel lane)\n' "$minor" "$MODE"
+done
+status=0
+for index in "${!lane_pids[@]}"; do
+  pid=${lane_pids[index]}
+  [[ -n "$pid" ]] || continue
+  minor=${lane_minors[index]}
+  lane_status=0
+  wait "$pid" || lane_status=$?
+  lane_pids[index]=''
+  rm -f "$RUN/python-$minor/group.pid"
+  printf '%s\n' "$lane_status" >"$RUN/results/python-$minor-exit-code"
+  if [[ "$lane_status" == 0 ]]; then
     printf 'macOS Python %s %s: PASS\n' "$minor" "$MODE"
   else
     status=1
@@ -376,3 +517,10 @@ for minor in $versions; do
 done
 exit "$status"
 GUEST
+GUEST_CLIENT=$!
+GUEST_SPAWNING=0
+if ((PENDING_SIGNAL)); then exit "$PENDING_SIGNAL"; fi
+status=0
+wait "$GUEST_CLIENT" || status=$?
+GUEST_CLIENT=
+exit "$status"
