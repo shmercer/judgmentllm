@@ -257,19 +257,13 @@ stopifnot(recovered$data$results == 2L, recovered$run_status == "completed")
 stopifnot(length(fixture("inspect", directory)$acceptances) == 2L)
 # Real death while submitting cannot invent a result or retry authority.
 directory <- file.path(root, "interrupted-minimal")
-out <- file.path(directory, "killed-stdout.json")
-err <- file.path(directory, "killed-stderr.jsonl")
-arguments <- c("run", "--config", file.path(directory, "config.json"), "--store", file.path(directory, "store"), settings(directory), "--json")
-system2(console, vapply(arguments, shQuote, character(1L)), stdout = out, stderr = err, wait = FALSE)
-killed <- fixture("interrupt", directory)
+# A test-only supervisor retains OS ownership of the installed console it launches.
+# It returns only after the actual executor and Windows launcher have exited.
+killed <- invoke(python, c(helper, "--phase", "interrupt", "--output", directory, "--executable", console))
 run <- list(run_id = killed$run_id, store = file.path(directory, "store"))
-stopifnot(killed$accepted == 1L)
-# Reopening waits for the old process lock to disappear, never steals ownership.
-for (attempt in seq_len(100L)) {
-  status <- cli(c("runs", "status", run_arguments(run)))
-  if (!isTRUE(status$data$executor_active)) break
-  Sys.sleep(0.02)
-}
+stopifnot(killed$accepted == 1L, isTRUE(killed$exit_confirmed))
+status <- cli(c("runs", "status", run_arguments(run)))
+stopifnot(!isTRUE(status$data$executor_active))
 blocked <- cli(c("resume", run_arguments(run), settings(directory, "valid.json")), 3L)
 stopifnot(blocked$data$results == 1L)
 interrupted_evidence <- fixture("inspect", directory)

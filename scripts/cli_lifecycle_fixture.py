@@ -9,10 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import signal
 import sqlite3
-import time
 from contextlib import closing
 from pathlib import Path
 from typing import Any
@@ -185,55 +182,23 @@ def read_store(directory: Path) -> dict[str, Any]:
     return tables
 
 
-def interrupt(directory: Path) -> None:
-    deadline = time.monotonic() + 30
-    while time.monotonic() < deadline:
-        try:
-            evidence = read_store(directory)
-            if (
-                evidence["runs"]
-                and evidence["results"]
-                and any(row["state"] == "submitting" for row in evidence["submissions"])
-            ):
-                owner = evidence["runs"][0]
-                pid = owner["owner_pid"]
-                if not isinstance(pid, int) or pid <= 0 or not owner["owner_token"]:
-                    raise RuntimeError("Fixture executor has no durable owner")
-                os.kill(pid, signal.SIGTERM)
-                print(
-                    json.dumps(
-                        {
-                            "pid": pid,
-                            "run_id": owner["run_id"],
-                            "result_sha256": [
-                                row["record_sha256"] for row in evidence["results"]
-                            ],
-                            "accepted": sum(
-                                row["acceptance_count"]
-                                for row in evidence["acceptances"]
-                            ),
-                        }
-                    )
-                )
-                return
-        except (OSError, sqlite3.Error):
-            pass
-        time.sleep(0.02)
-    raise RuntimeError("Fixture did not reach its durable submitting boundary")
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--phase", choices=("create", "inspect", "interrupt"), required=True
     )
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--executable", type=Path)
     options = parser.parse_args()
     root = options.output.resolve()
     if options.phase == "create":
         create(root)
     elif options.phase == "interrupt":
-        interrupt(root)
+        from cli_process_supervisor import interrupt_run
+
+        if options.executable is None or not options.executable.is_absolute():
+            parser.error("interrupt requires an absolute installed --executable path")
+        print(json.dumps(interrupt_run(root, options.executable, read_store)))
     else:
         print(json.dumps(read_store(root)))
 

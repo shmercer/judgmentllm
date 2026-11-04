@@ -200,39 +200,33 @@ def test_installed_process_death_does_not_authorize_another_submission(
     executable = str(installed) if installed.is_file() else shutil.which("judgmentllm")
     assert executable is not None
     store = str(directory / "store")
-    process = subprocess.Popen(
+    interrupted = subprocess.run(
         [
+            sys.executable,
+            str(HELPER),
+            "--phase",
+            "interrupt",
+            "--output",
+            str(directory),
+            "--executable",
             executable,
-            "run",
-            "--config",
-            str(directory / "config.json"),
-            "--store",
-            store,
-            *mock(directory),
-            "--json",
         ],
-        cwd=tmp_path,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
+        capture_output=True,
         text=True,
+        timeout=45,
     )
-    try:
-        killed = fixture(directory, "interrupt")
-        process.communicate(timeout=10)
-        assert process.returncode != 0 and killed["accepted"] == 1
-        identity = ["--run", killed["run_id"], "--store", store]
-        status = cli(tmp_path, "runs", "status", *identity)
-        assert status["status"] == "ok"
-        recovered = cli(
-            tmp_path, "resume", *identity, *mock(directory, "valid.json"), exit_code=3
-        )
-        assert recovered["data"]["results"] == 1
-        evidence = fixture(directory, "inspect")
-        assert sum(row["acceptance_count"] for row in evidence["acceptances"]) == 1
-    finally:
-        if process.poll() is None:
-            process.kill()
-            process.communicate(timeout=10)
+    assert interrupted.returncode == 0, interrupted.stderr
+    killed = json.loads(interrupted.stdout)
+    assert killed["exit_confirmed"] and killed["accepted"] == 1
+    identity = ["--run", killed["run_id"], "--store", store]
+    status = cli(tmp_path, "runs", "status", *identity)
+    assert status["status"] == "ok" and not status["data"]["executor_active"]
+    recovered = cli(
+        tmp_path, "resume", *identity, *mock(directory, "valid.json"), exit_code=3
+    )
+    assert recovered["data"]["results"] == 1
+    evidence = fixture(directory, "inspect")
+    assert sum(row["acceptance_count"] for row in evidence["acceptances"]) == 1
 
 
 def test_required_r_gate_reports_missing_runtime(tmp_path: Path) -> None:
