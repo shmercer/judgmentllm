@@ -38,6 +38,7 @@ from judgmentllm.persistence.models import (
     PersistenceError,
     RequestRecord,
     RetryAuthorization,
+    RetryAuthorizationError,
     RunRecord,
     SubmissionRecord,
     TaskRecord,
@@ -656,7 +657,7 @@ class Repository:
                 data = dict(row)
                 data["allow_completed"] = bool(data["allow_completed"])
                 if RetryAuthorization.model_validate(data) != authorization:
-                    raise IntegrityError(
+                    raise RetryAuthorizationError(
                         "retry identity is already authorized differently"
                     )
                 return

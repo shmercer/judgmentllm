@@ -68,3 +68,51 @@ __all__ = [
     "export_pairwise_r_csv",
     "export_rubric_r_csv",
 ]
+
+from judgmentllm.lifecycle import (
+    aresume_run,
+    arun_live,
+    estimate_run,
+    export_run_results,
+    get_run,
+    list_runs,
+    resume_run,
+    run_live,
+    validate_inputs,
+)
+from judgmentllm.lifecycle_models import (
+    ArtifactPaths,
+    ExecutionPlan,
+    InputValidationReport,
+    LifecycleError,
+    MockExecutionOptions,
+    ProgressEvent,
+    ResultManifest,
+    RetrySelection,
+    RunPage,
+    RunStatus,
+    RunSummary,
+)
+
+__all__ += [
+    "validate_inputs",
+    "estimate_run",
+    "run_live",
+    "arun_live",
+    "resume_run",
+    "aresume_run",
+    "list_runs",
+    "get_run",
+    "export_run_results",
+    "ArtifactPaths",
+    "ExecutionPlan",
+    "InputValidationReport",
+    "LifecycleError",
+    "MockExecutionOptions",
+    "ProgressEvent",
+    "ResultManifest",
+    "RetrySelection",
+    "RunPage",
+    "RunStatus",
+    "RunSummary",
+]

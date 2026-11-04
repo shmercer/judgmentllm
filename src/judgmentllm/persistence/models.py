@@ -108,6 +108,10 @@ class OwnershipError(PersistenceError):
     """A run is owned, or its ownership token no longer matches."""
 
 
+class RetryAuthorizationError(IntegrityError):
+    """Explicit retry selection, permission, identity or budget is incompatible."""
+
+
 class NotFoundError(PersistenceError):
     """An identified durable record does not exist."""
 
