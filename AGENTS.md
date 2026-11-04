@@ -23,6 +23,12 @@ Read `docs/design-spec.md`, `docs/decisions.md`, `docs/data-contracts.md`, and t
 15. Use SemVer once public packages are published. Version schemas and record backward-incompatible changes.
 16. R interoperability is a development acceptance condition. Every milestone changing schemas, normalized results, exports, execution services, or CLI interfaces must verify actual Python-generated outputs in R using deterministic offline synthetic tests in required CI. Preserve IDs, original/presented ordering, outcomes, attempts, scores, complete probabilities/mappings, provenance, missing values, and character IDs with leading zeros. The established export baseline is mandatory: missing Rscript/jsonlite or failed assertions must fail the Ubuntu/Python 3.11 check; do not silently skip it. A milestone cannot be accepted with failing applicable interoperability tests. Add new capabilities only at their assigned milestone.
 
+## Validation workflow
+
+- Before publication, commit the proposed head and run `python3 ci/local/grid.py --ref FULL_HEAD_SHA --mode check`. Require all six local configurations (Linux/Windows/macOS, Python 3.11/3.12) to pass in parallel, including quality, coverage, package/offline smokes and all six strict R/jsonlite gates per configuration.
+- Then require GitHub CI on the exact final PR head: Ubuntu/macOS Python 3.11/3.15 and Windows Python 3.12. Keep the complete Windows 3.11 job available through manual dispatch; local 3.11/3.12 checks do not replace hosted 3.15 qualification.
+- Follow `docs/local-ci.md` for preparation, VM locks, isolation and graceful shutdown. Preserve resource thresholds (including the 180-second fixture deadline); retain exact-commit evidence and distinguish environment limitations from test failures.
+
 ## Proposed tools
 
 - Build: `pyproject.toml` + Hatchling; development: `uv`.

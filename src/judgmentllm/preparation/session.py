@@ -4,9 +4,12 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from contextlib import ExitStack
+from copy import deepcopy
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, BinaryIO, Literal
 
+from judgmentllm._verification import ExactToken, exact_token
 from judgmentllm.config import (
     RunSpec,
 )
@@ -29,8 +32,12 @@ from judgmentllm.persistence.repository import Repository
 from judgmentllm.planning import (
     CapabilityProfile,
     PlannedRequest,
+    RunPlan,
+    _request_for_group,  # pyright: ignore[reportPrivateUsage]
+    _requests_for_record,  # pyright: ignore[reportPrivateUsage]
     plan_record,
     plan_run,
+    request_context_fingerprint,
 )
 from judgmentllm.preparation.freezing import (
     PreparationError,
@@ -60,6 +67,19 @@ class RequestDependency(ExecutionModel):
     response_sha256: SHA256 | None = None
     left_sha256: SHA256 | None = None
     right_sha256: SHA256 | None = None
+
+
+@dataclass(frozen=True)
+class _VerifiedContext:
+    """One detached assessment context; no student records or rendered text."""
+
+    spec: RunSpec
+    manifest: ExecutableRunManifest
+    template: str | None
+    plan: RunPlan
+    fingerprint: str
+    groups_by_trait: dict[str, tuple[str, ...]]
+    tokens: tuple[ExactToken, ...]
 
 
 def _request_dependency(
@@ -156,13 +176,18 @@ class PreparedRun:
         self.capabilities = capabilities
         self.store = ArtifactStore(repository.run_directory(manifest.run_id))
         self.manifest_sha256 = bytes_digest(canonical_bytes(manifest))
+        self._sealed_manifest_sha256 = self.manifest_sha256
+        self._context: _VerifiedContext | None = None
         self._handles: dict[str, BinaryIO] = {}
         self._by_id = {s.source_id: s for s in manifest.sources}
         self._closed = False
         self._authorized_sources = authorized_sources
 
     def _source_guard(self) -> None:
-        for source in self.manifest.sources:
+        manifest = (
+            self._context.manifest if self._context is not None else self.manifest
+        )
+        for source in manifest.sources:
             if source.source_id not in self._authorized_sources:
                 require_signature(Path(source.original_location), source.generation)
 
@@ -171,6 +196,7 @@ class PreparedRun:
             return
         handles = tuple(self._handles.values())
         self._handles.clear()
+        self._context = None
         self._closed = True
         # ExitStack runs every closer even when an earlier descriptor close
         # fails. The repository must outlive, then close after, all source files.
@@ -262,7 +288,7 @@ class PreparedRun:
     ) -> None:
         try:
             self._verify_compatibility(capabilities=capabilities)
-        except (ValueError, OSError):
+        except (ValueError, OSError, RecursionError):
             raise PreparationError(
                 "prepared configuration or current capabilities are incompatible"
             ) from None
@@ -270,30 +296,146 @@ class PreparedRun:
     def _verify_compatibility(
         self, *, capabilities: CapabilityProfile | None = None
     ) -> None:
+        if self._closed:
+            raise PreparationError("prepared run session is closed")
+        template = self.template
         self._source_guard()
-        if bytes_digest(canonical_bytes(self.manifest)) != self.manifest_sha256:
+        if self.template != template:
+            raise PreparationError("configuration changed during verification")
+        if self.manifest_sha256 != self._sealed_manifest_sha256:
             raise PreparationError("manifest context was mutated after verification")
-        current = _revalidate_record(self.spec)
-        if configuration_digest(current) != self.manifest.configuration_sha256:
-            raise PreparationError("configuration differs from the immutable manifest")
-        report = validate_generation_compatibility(
-            self.manifest.generation,
-            current,
-            capabilities=capabilities.generation if capabilities else None,
+        tokens = tuple(
+            exact_token(value)
+            for value in (self.spec, self.manifest, template, capabilities)
         )
         if (
-            not report.valid
-            or plan_run(current, capabilities=capabilities).trait_groups
-            != self.manifest.trait_groups
+            self._context is not None
+            and all(token is not None for token in tokens)
+            and tokens == self._context.tokens
         ):
+            return
+        # A changed token is not evidence of incompatibility: validation can
+        # accept value-equivalent replacements. Preserve the original identity
+        # checks, including normalization, before refreshing private metadata.
+        self._context = None
+        cacheable = all(token is not None for token in tokens)
+        spec, manifest, current_capabilities = self.spec, self.manifest, capabilities
+        if cacheable:
+            # Validate and derive metadata from the same detached raw values.
+            # A caller changing and restoring public values during refresh
+            # cannot associate unvalidated values with an accepted token.
+            spec = deepcopy(spec)
+            manifest = deepcopy(manifest)
+            current_capabilities = deepcopy(current_capabilities)
+            if (
+                tuple(
+                    exact_token(value)
+                    for value in (spec, manifest, template, current_capabilities)
+                )
+                != tokens
+            ):
+                raise PreparationError("configuration changed during verification")
+        if bytes_digest(canonical_bytes(manifest)) != self._sealed_manifest_sha256:
+            raise PreparationError("manifest context was mutated after verification")
+        current = _revalidate_record(spec)
+        if configuration_digest(current) != manifest.configuration_sha256:
+            raise PreparationError("configuration differs from the immutable manifest")
+        profile = (
+            _revalidate_record(current_capabilities)
+            if current_capabilities is not None
+            else None
+        )
+        report = validate_generation_compatibility(
+            manifest.generation,
+            current,
+            capabilities=profile.generation if profile else None,
+        )
+        plan = plan_run(current, capabilities=profile)
+        if not report.valid or plan.trait_groups != manifest.trait_groups:
             raise PreparationError(
                 "current capabilities or generation settings are incompatible"
             )
-        if (
-            semantic_digest("prompt-template", self.template)
-            != self.manifest.template.sha256
-        ):
+        if semantic_digest("prompt-template", template) != manifest.template.sha256:
             raise PreparationError("template differs from the immutable manifest")
+        if not cacheable:
+            # Opaque/custom values retain the exact legacy validation and
+            # rendering path. None must never act as an equal cached token.
+            return
+        # Keep accepted raw presentation (e.g. int versus float codes and
+        # exemplar metadata key order), rather than rendering normalized data.
+        self._context = _VerifiedContext(
+            spec=spec,
+            manifest=manifest,
+            template=template,
+            plan=plan,
+            fingerprint=request_context_fingerprint(spec, template_text=template),
+            groups_by_trait={
+                trait_id: group for group in plan.trait_groups for trait_id in group
+            },
+            tokens=tuple(token for token in tokens if token is not None),
+        )
+
+    def _plan_requests(
+        self, record: ResponseItem | PairTask, *, group: tuple[str, ...] | None = None
+    ) -> Iterator[PlannedRequest]:
+        context = self._context
+        if context is None:
+            yield from plan_record(
+                self.spec,
+                record,
+                template_text=self.template,
+                capabilities=self.capabilities,
+            )
+        elif isinstance(record, ResponseItem) != (context.spec.task_kind == "rubric"):
+            raise ValueError("input record kind differs from the verified assessment")
+        elif group is None:
+            yield from _requests_for_record(
+                context.spec, record, context.plan, context.fingerprint
+            )
+        elif group in context.plan.trait_groups:
+            yield _request_for_group(
+                record, group, context.plan.exemplar_ids, context.fingerprint
+            )
+
+    def _render_verified_request(self, request: PlannedRequest) -> RenderedPrompt:
+        context = self._context
+        rendered = _render_request(
+            context.spec if context is not None else self.spec,
+            context.template if context is not None else self.template,
+            request,
+            self._get,
+        )
+        if context is not None:
+            self.verify_compatibility(capabilities=self.capabilities)
+            if self._context is not context:
+                raise PreparationError("configuration changed while rendering")
+        return rendered
+
+    def _input_ids(
+        self, kind: Literal["response", "pair"], start: int
+    ) -> Iterator[str]:
+        """Finish each bounded index read before execution writes to the WAL."""
+        manifest = (
+            self._context.manifest if self._context is not None else self.manifest
+        )
+        source_id = next(
+            source.source_id for source in manifest.sources if source.role == kind
+        )
+        after = start
+        while True:
+            # A sealed manifest has exactly one source of each input kind, with
+            # contiguous ingestion ordinals. Use the existing source-order index.
+            rows = self.repository.connection.execute(
+                "SELECT record_id,ordinal FROM input_records WHERE run_id=? "
+                "AND source_id=? AND record_kind=? AND ordinal>=? "
+                "ORDER BY ordinal LIMIT 128",
+                (manifest.run_id, source_id, kind, after),
+            ).fetchall()
+            if not rows:
+                return
+            for row in rows:
+                yield str(row["record_id"])
+            after = int(rows[-1]["ordinal"]) + 1
 
     def iter_request_dependencies(
         self, *, start_ordinal: int = 0
@@ -304,14 +446,9 @@ class PreparedRun:
         kind = "response" if self.spec.task_kind == "rubric" else "pair"
         group_count = len(self.manifest.trait_groups) if kind == "response" else 1
         record_start, group_start = divmod(start_ordinal, group_count)
-        records = self.repository.connection.execute(
-            "SELECT record_id FROM input_records WHERE run_id=? AND record_kind=? "
-            "ORDER BY ordinal LIMIT -1 OFFSET ?",
-            (self.manifest.run_id, kind, record_start),
-        )
         first = True
-        for indexed in records:
-            record = self._get(kind, str(indexed["record_id"]))
+        for identifier in self._input_ids(kind, record_start):
+            record = self._get(kind, identifier)
             # Revalidate mutable caller-visible context before each source record.
             self.verify_compatibility(capabilities=self.capabilities)
             left = (
@@ -324,14 +461,7 @@ class PreparedRun:
                 if isinstance(record, PairTask)
                 else None
             )
-            for position, request in enumerate(
-                plan_record(
-                    self.spec,
-                    record,
-                    template_text=self.template,
-                    capabilities=self.capabilities,
-                )
-            ):
+            for position, request in enumerate(self._plan_requests(record)):
                 if first and position < group_start:
                     continue
                 self.verify_compatibility(capabilities=self.capabilities)
@@ -340,6 +470,8 @@ class PreparedRun:
 
     def dependency_for_request(self, request_uid: str) -> RequestDependency:
         """Reopen one immutable parent without enumerating previously scheduled work."""
+        if self._context is not None:
+            self.verify_compatibility(capabilities=self.capabilities)
         task_id = self.repository.request_task_ids(self.manifest.run_id, request_uid)[0]
         task = self.repository.get_task(self.manifest.run_id, task_id)
         record = (
@@ -357,12 +489,14 @@ class PreparedRun:
             if isinstance(record, PairTask)
             else None
         )
-        for request in plan_record(
-            self.spec,
-            record,
-            template_text=self.template,
-            capabilities=self.capabilities,
-        ):
+        if self._context is not None:
+            self.verify_compatibility(capabilities=self.capabilities)
+        group = (
+            self._context.groups_by_trait.get(task.trait_id)
+            if self._context is not None
+            else None
+        )
+        for request in self._plan_requests(record, group=group):
             if request.request_uid == request_uid:
                 dependency = _request_dependency(
                     self.manifest, request, record, left, right
@@ -413,7 +547,7 @@ class PreparedRun:
             or canonical_bytes(expected) != canonical_bytes(dependency)
         ):
             raise PreparationError("attempt membership differs from its parent")
-        return _render_request(self.spec, self.template, dependency.request, self._get)
+        return self._render_verified_request(dependency.request)
 
     def render(self, dependency: RequestDependency) -> RenderedPrompt:
         """Render with the established renderer; never retain text in minimal mode."""
@@ -431,15 +565,12 @@ class PreparedRun:
                 assert supplied.response is not None
                 record = self.get_response(supplied.response.item_id)
                 left = right = None
+            if self._context is not None:
+                self.verify_compatibility(capabilities=self.capabilities)
             expected = next(
                 (
                     request
-                    for request in plan_record(
-                        self.spec,
-                        record,
-                        template_text=self.template,
-                        capabilities=self.capabilities,
-                    )
+                    for request in self._plan_requests(record, group=supplied.trait_ids)
                     if request.request_uid == supplied.request_uid
                 ),
                 None,
@@ -450,6 +581,6 @@ class PreparedRun:
                 raise PreparationError(
                     "request dependencies differ from verified inputs"
                 )
-            return _render_request(self.spec, self.template, expected, self._get)
+            return self._render_verified_request(expected)
         except (ValueError, OSError):
             raise PreparationError("verified request could not be rendered") from None

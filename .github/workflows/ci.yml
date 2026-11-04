@@ -5,6 +5,12 @@ on:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      windows_311_only:
+        description: Run only Windows / Python 3.11 troubleshooting
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -21,8 +27,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        python: ["3.11", "3.15"]
+        include: >-
+          ${{ fromJSON(
+          github.event_name == 'workflow_dispatch' && inputs.windows_311_only &&
+          '[{"os":"windows-latest","python":"3.11"}]' ||
+          '[{"os":"ubuntu-latest","python":"3.11"},{"os":"ubuntu-latest","python":"3.15"},{"os":"macos-latest","python":"3.11"},{"os":"macos-latest","python":"3.15"},{"os":"windows-latest","python":"3.12"}]'
+          ) }}
     env:
       UV_PYTHON: ${{ matrix.python }}
       NO_COLOR: "1"
@@ -59,6 +69,10 @@ jobs:
 
       - name: Check types
         run: uv run --offline --no-sync pyright
+
+      - name: Verify local CI infrastructure
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
+        run: uv run --offline --no-sync pytest --no-cov -q ci/local
 
       - name: Set up R for required interoperability checks
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
