@@ -1,6 +1,6 @@
 # JudgmentLLM
 
-**Milestone 2, Subphase 6 — scale tooling implemented; exact-head qualification pending. Development version 0.1.0a3.**
+**Milestone 2, Subphase 6 — mock execution and scale qualification tooling. Development version 0.1.0a3.**
 
 Milestone 2 adds an [internal preparation foundation](docs/persistence-contracts.md)
 for SQLite state, immutable source snapshots, indexed input access, complete run
@@ -9,9 +9,11 @@ Public Python services and the versioned CLI provide complete validation, planni
 mock live execution, durable status, conservative recovery, explicit subset retries,
 and immutable all-attempt exports. Real provider adapters remain later milestones.
 The [approved Milestone 2 plan](docs/milestone-2-execution-plan.md) records the boundaries.
-Subphase 6 adds reproducible complete-run benchmarks, storage diagnostics and
-practical examples. Final scale, compatibility and cross-platform acceptance
-remain pending in the [qualification record](docs/milestone-2-subphase-6-verification.md).
+Subphase 6 adds reproducible complete-run benchmarks, focused resource checks and
+practical examples. The [qualification protocol](docs/milestone-2-subphase-6-verification.md)
+identifies the external exact-source ledger that records acceptance, measured
+workloads, exclusions and remaining conditions. Tooling availability alone does
+not establish milestone acceptance.
 
 JudgmentLLM provides typed, provider-independent contracts for ordinal rubric scoring and pairwise judgments. It loads synthetic assessments, validates category coding, prepares deterministic task groups, renders prompts, and normalizes supplied categorical or probability results. Synthetic mock execution is available; real provider execution arrives in later milestones.
 

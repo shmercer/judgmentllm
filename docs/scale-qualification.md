@@ -11,6 +11,13 @@ Commands below are reproduction instructions, not evidence that a workload
 completed. A missing, pending or failed applicable ledger entry does not satisfy
 acceptance.
 
+The revised completion scope reuses retained complete executions and adds only
+focused checks needed to close acceptance gaps. No further full-size timing
+repetitions, complete 100,000-judgment tracemalloc runs or full-run cProfile are
+required. Optional status/history/rich-content/stress sweeps are not part of the
+completion checklist. Commands below remain reproducible tools, not instructions
+to restart those experiments.
+
 ## Workloads and acceptance
 
 | Workload | Logical judgments | Planned physical requests | Purpose |
@@ -18,8 +25,9 @@ acceptance.
 | Required prefixes: 200×20, 2,000×20, 200×200 | 4,000; 40,000; 40,000 | Independent: 4,000; 40,000; 40,000. Grouped by five: 800; 8,000; 8,000 | Existing six fresh-process memory regressions, **64 completed physical requests each** |
 | Primary: 5,000×20, grouped by five | 100,000 | 20,000 | Complete preparation, execution, inspection, persistence, export and independent-process verification |
 | Full capture: same 5,000×20 | 100,000 | 20,000 | Separate capture/storage cost assessment |
-| Stress: 100,000×20 | 2,000,000 | 400,000 | Preparation or explicitly bounded prefix by default; complete execution is separately requested |
-| Million-task stress: 50,000×20 | 1,000,000 | 200,000 | Same distinction between preparation, prefix and complete execution |
+| Focused allocation: 200×20 versus 5,000×20, grouped by five | 4,000 versus 100,000 planned | 800 versus 20,000 planned; **64 completed in each sample** | Compare execution allocations after initialization; not full-run timing |
+| Stress: 100,000×20 | 2,000,000 | 400,000 | Documented preparation/prefix/complete commands; execution is not required for acceptance |
+| Million-task stress: 50,000×20 | 1,000,000 | 200,000 | Same documented extent distinctions; no completed stress qualification is claimed |
 
 The primary fixture uses concurrency four, five traits per physical request,
 minimal capture, seed 42, leading-zero character IDs, 4 KiB synthetic response
@@ -67,8 +75,9 @@ cp "$BENCH_ROOT/bundle/manifest.json" "$BENCH_ROOT/source/.judgmentllm-source.js
 
 Run from the matching source checkout using its prepared locked Python
 environment. The harness loads the selected source through `--source-root`.
-The primary ordinary run includes one fresh-process warm-up and three measured
-fresh-process repetitions, executed serially:
+The retained complete runs are the practical qualification evidence. A fresh
+single complete run can be reproduced with the command below when separately
+needed; the revised completion task does not repeat it:
 
 ```bash
 python benchmarks/execution_benchmark.py \
@@ -76,50 +85,84 @@ python benchmarks/execution_benchmark.py \
   --work-root "$BENCH_ROOT/primary-work" \
   --workloads scale-rubric --responses 5000 --traits 20 --group-size 5 \
   --concurrency 4 --captures minimal --extent complete --modes plain \
-  --warmups 1 --repetitions 3 --timeout 3600 \
+  --warmups 0 --repetitions 1 --timeout 7200 \
   --disk-budget-gib 32 --min-free-gib 10
 ```
 
-First run a tiny pilot (`--responses 20 --warmups 0 --repetitions 1`), then one
-full-size pilot. Review correctness, memory and disk results before repeating.
-Stop after a failed pilot; identify a narrow remedy before spending time on more
-samples. Full capture is a separate ordinary run using `--captures full` and a
-fresh output directory, also with one warm-up and three measured samples. Extend
-either capture variant to five when the observed elapsed range exceeds 10% of
-its median or a CI-placement decision approaches the allowed budget.
+Full capture uses `--captures full` and a fresh output directory. Retain actual
+sample counts. The completed minimal ordinary samples support their recorded
+median/range/MAD; the limited full-capture pilot/warm-up observations do not
+establish a repeated-sample throughput distribution. Exclude the interrupted
+full-capture measured sample. Do not collect more full-size samples merely to
+complete the earlier three-or-five-sample plan.
 
-Allocation runs are separate from ordinary timing. Start with one complete
-primary sample per capture using `--modes tracemalloc --measurement-scope whole`,
-plus matching 200-response controls with the same traits, grouping, concurrency,
-response bytes, rubric, exemplars and capture. Use
-`--warmups 0 --instrumented-repetitions 1 --timeout 10800` and fresh output
-directories. Whole-scope tracing covers configuration/preparation through export;
-native peak always covers process lifetime.
-Whole-scope tracing additionally records each phase's absolute traced peak,
-baseline live bytes, live/retained values and post-GC growth. Its execution
-absolute peak below 32 MiB or export absolute peak below 8 MiB is conservative
-evidence for the corresponding allocation envelope because it includes retained
-traced preparation state. Baseline-subtracted peak or net growth alone is not
-that proof: earlier objects may be freed while new objects are allocated.
-Require the report's `phase_envelope_proof`: execution absolute peak below 32 MiB
-and every export absolute peak below 8 MiB. A successful absolute proof bounds
-the original incremental allocation caps without another full execution trace.
-If that proof fails or is unavailable for a capture, run a separate complete
-`--measurement-scope execution` diagnostic for that capture. It starts tracing
-after source/configuration/index/session initialization and traces export
-separately; use a matching 200-response execution-scope control when claiming
-incremental growth. A failed whole-scope proof does not automatically establish
-an incremental-limit failure, and baseline subtraction never converts it into a
-pass.
+The earlier 3,600-second full-benchmark watchdog expired; the later operational
+limit was 7,200 seconds. This is a benchmark resource limit, not a public runtime
+guarantee or a change to the mandatory 180-second fixture deadline or 20-minute
+hosted job limit. Preserve both the timeout and the later completed evidence.
 
-Record the matching whole-scope controls' absolute phase peak/live/retained
-growth with the measurement scope stated. Preserve the required direct prefix
-tests and their existing growth assertions independently of these complete-run
-diagnostics. Resetting phase peaks must retain the maximum across all phases as
-the whole-run Python peak; it never resets the lifetime native RSS limit.
-Use `--modes profile` only if ordinary measurements identify a bottleneck needing
-attribution. Traced, profiled or coverage-instrumented wall times are diagnostic
-and must never be presented as ordinary throughput.
+### Focused allocation and export evidence
+
+Run grouped prefixes in fresh processes for both minimal and full capture at
+200 and 5,000 responses, twenty traits, concurrency four and five traits per
+request. Keep rubric, exemplars, response bytes and seed identical. The focused
+tool is `benchmarks/focused_execution.py`; its reports separate initialization
+from execution and retain each fresh-process identity:
+
+```bash
+python benchmarks/focused_execution.py \
+  --source-root "$BENCH_ROOT/source" --output "$BENCH_ROOT/focused-execution" \
+  --small-responses 200 --large-responses 5000
+```
+
+The default matrix includes both captures and both source scales, with a fresh
+process/store for every case and a 180-second deadline per focused child.
+Exactly 64 physical requests complete in each execution sample;
+prepared/accepted in-flight work is
+recorded separately. Trace execution after source/configuration/index/session
+initialization. Require execution peak below 32 MiB, peak growth below 3 MiB,
+retained growth below 1 MiB and native growth below 48 MiB, with bounded
+workers/tasks/queues. Record baseline, live and post-GC retained allocations.
+Measure initialization separately from actual configuration loading through
+source preparation/indexing and execution-session construction/closure. It must
+create zero tasks and accept zero submissions. The focused tool measures this
+path directly; preparation-only general-harness measurements may supplement it
+without executing the response-by-trait product.
+
+Measure actual serialization/publication of all 100,000 rows from retained
+completed stores, with no new judgments. `benchmarks/export_allocation.py`
+provides component measurements and an end-to-end service measurement using a
+fresh R missing-value identity in a scratch copy. Use fresh external destinations
+or disposable copies and preserve the originals. Require the 8 MiB export allocation
+limit and exact row counts. Component outputs retain hashes matching the
+published canonical JSONL/CSV and R CSV snapshots. The scratch service's explicit
+new missing-value marker intentionally creates a different export identity/hash;
+record that option and keep the original published snapshots unchanged. For example:
+
+```bash
+python benchmarks/export_allocation.py \
+  --sample /absolute/path/to/passed-complete-sample.json \
+  --output "$BENCH_ROOT/export-service" --kind service --format csv --view r \
+  --expected-rows 100000 --na-string ALLOCATION_NA
+python benchmarks/export_allocation.py \
+  --sample /absolute/path/to/passed-complete-sample.json \
+  --output "$BENCH_ROOT/export-jsonl" --kind component --format jsonl --view canonical \
+  --metadata-report "$BENCH_ROOT/export-service/allocation.json"
+```
+
+Use a fresh output directory for each canonical CSV/R CSV component and each
+capture. A fast return of an already published export is not evidence
+of serialization cost. Record the measurement method and whether artifact
+publication is included. An export-envelope pass must cover validation,
+serialization and streamed publication; a serializer-only measurement is partial
+evidence, not the complete export-memory claim. The mandatory grouped prefix
+export regression remains unchanged.
+
+Complete ordinary native RSS still includes the entire process and must remain
+below 256 MiB; initialization is not subtracted. Focused Python prefixes do not
+become complete-run allocation measurements. Any retained whole-scope absolute
+phase evidence may supplement the record; baseline subtraction alone never
+establishes a pass. Instrumented wall time is not ordinary throughput.
 
 The controller writes `raw/*.json`, summaries and invocation/source identities.
 Records retain each sample's exact counts, timing/CPU
@@ -133,14 +176,18 @@ each raw JSON report and its hashes/counts. Before another mode reuses that path
 copy the last completed representative store for each capture to an external
 evidence directory after worker/verifier processes have exited. Retain failed
 stores and raw failure records before retrying with a fresh output/work root.
-The original pilot's `qualified-work` tree remains untouched. Final repetitions
-use a separate `primary-work` directory, supplied with `--work-root` when shared
+The original pilot's `qualified-work` tree remains untouched. Existing ordinary
+runs use a separate `primary-work` directory, supplied with `--work-root` when shared
 fixed paths are needed. Store snapshots supplement per-sample reports; do not
 claim that every prior physical database was retained.
 Once the final candidate is frozen, index resulting reports, logs and hashes in
 `$BENCH_ROOT/ledger.json` without editing tracked source. Keep earlier e892/a2
-pilot and 5bb7/a3 compatibility reports under their original identities; they
-support the engineering history and do not substitute for final-source evidence.
+pilot and 5bb7/a3 compatibility reports under their original identities. Evidence
+from a later measurement commit also retains its exact identity; reuse for a
+benchmark/documentation-only final commit requires an explicit reviewed
+equivalence map covering production/fixture bytes and relevant benchmark
+behavior. Explain tool-only additions and retain original harness/input hashes;
+do not relabel the measurements.
 
 Run actual R integrity checks on each retained complete sample report:
 
@@ -156,6 +203,10 @@ and submission identities and no-op recovery in another process. Existing small
 pairwise R gates retain original/presented-order and categorical-score coverage.
 
 ### Stress extents
+
+These commands satisfy the documented stress-command deliverable. They have not
+been executed as part of the revised completion scope and are not acceptance
+gates. Run them only for a separately justified need.
 
 Preparation/indexing only:
 
@@ -194,7 +245,9 @@ completed large-scale qualification.
 
 ## Persistence diagnostics and disk interpretation
 
-Run targeted experiments separately, after ordinary timing samples finish:
+The existing optional tools can investigate a specific unresolved acceptance
+gap. They are not a sweep required for completion; do not run them merely because
+they are available:
 
 ```bash
 python benchmarks/scale_diagnostics.py --case status --output "$BENCH_ROOT/status-control"

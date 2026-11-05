@@ -34,8 +34,9 @@ only; Subphase 2 now supplies immutable source freezing/indexing, complete
 executable input manifests, capture policies and independently verified reopening.
 Subphases 3–4 implement mock execution, grouped outcomes, retries, cancellation
 and immutable exports; Subphase 5 exposes public Python/CLI lifecycle controls
-and installed-CLI R acceptance. Subphase 6 scale tooling is implemented, with
-exact-head qualification pending. Real providers remain later milestones.
+and installed-CLI R acceptance. Subphase 6 scale tooling is implemented;
+exact-source qualification is recorded in the external ledger defined below.
+Real providers remain later milestones.
 See the [scale qualification record](milestone-2-subphase-6-verification.md),
 [source-preparation verification record](milestone-2-subphase-2-verification.md) and
 [Subphase 1 verification record](milestone-2-subphase-1-verification.md).
@@ -79,9 +80,15 @@ operations. Required hosted CI has five configurations; the exact-head local
 grid requires all six OS/Python 3.11/3.12 configurations.
 
 Subphase 6 benchmark tooling, persistence diagnostics and executable examples are
-implemented. Complete scale, genuine package compatibility and final cross-platform
-qualification remain pending. The current unreleased candidate is `0.1.0a3`, not
-evidence that acceptance has completed. The current
+implemented. The revised completion protocol combines retained complete
+100,000-judgment minimal/full execution evidence, bounded 64-request execution
+allocation comparisons at 200 versus 5,000 responses, separate initialization
+and complete-export measurements, genuine package compatibility and the final
+six-configuration local grid. Further full-size timing repetitions, full-run
+cProfile/tracemalloc and optional diagnostic/stress sweeps are not required.
+Limited full-capture sample counts must remain explicit; no qualified throughput
+distribution is inferred from them. The unreleased `0.1.0a3` version is not
+evidence that acceptance has completed. The
 [qualification record](milestone-2-subphase-6-verification.md) distinguishes
 executed workloads, outstanding checks and later publication requirements.
 

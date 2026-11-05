@@ -20,13 +20,17 @@ external ledger at:
 ```
 
 Use the complete final candidate SHA in that path. Its ledger is the entry point
-for the candidate's measured scale results, compatibility report and local grid;
-the successful earlier runs below do not qualify a later source revision.
-Completion requires successful full minimal/full 5,000-response by 20-trait runs,
-genuine a2-to-a3 qualification and the complete six-configuration local grid on
-the frozen final candidate. No partial, projected, timed-out or preparation-only
-workload establishes full qualification. Missing, pending or failed applicable
-ledger entries leave milestone acceptance unestablished.
+for the candidate's measured scale results, compatibility report, explicit source
+equivalence mapping where applicable, and exact-final-commit local grid.
+Completion requires retained complete minimal/full 5,000-response by 20-trait
+execution, focused allocation/initialization/export evidence, genuine a2-to-a3
+compatibility and the complete six-configuration local grid. The revised scope
+permits carrying retained results forward only through the reviewed equivalence
+rules below; their original source/tool identities are never changed. No partial,
+projected, timed-out or preparation-only workload substitutes for complete
+practical execution. Missing or failed applicable requirements leave acceptance
+unestablished; optional work removed by the scope revision is recorded as
+unexecuted rather than treated as an outstanding acceptance gate.
 
 Raw inputs, databases, exports, profiler outputs, environments, and final
 machine-readable evidence live under `/mnt/VM_Fast/judgmentllm-subphase6/`.
@@ -35,6 +39,52 @@ with tests. Exact-final-commit evidence is written outside Git after freezing th
 candidate, so recording results does not change the commit being qualified.
 The unreleased `0.1.0a3` candidate is a development-version transition, not a
 package publication or a claim that every acceptance gate has completed.
+
+## Revised completion scope and retained complete executions
+
+The completion scope was reduced after sufficient complete execution evidence
+was available. No further full-size timing repetitions, full-run cProfile or
+complete 100,000-judgment tracemalloc runs are required. Optional status-reader,
+pinned-reader, rich/static-content, history and stress sweeps are not completion
+requirements unless a specific unresolved acceptance gap justifies one.
+
+Actual retained ordinary evidence from
+`937352a9693fda1471a137ee06e5017347789745` consists of three measured minimal
+samples plus one minimal warm-up, one full-capture pilot and one full-capture
+warm-up. Each of those six completed executions produced 100,000 results and
+20,000 physical completions, complete canonical/R exports and independent
+verification. The minimal measured lifecycle wall samples were 3,682.639,
+3,686.329 and 3,716.769 seconds. The full pilot took 4,724.718 seconds; its
+75,399,168-byte native peak was below 256 MiB. The full warm-up completed in
+4,762.246 seconds. Raw reports, exact native measurements, phase timings and
+output hashes remain authoritative.
+
+The later full-capture measured sample was deliberately interrupted with SIGINT
+when the user revised scope. Its retained inspection recorded 14,995 results,
+2,999 completed requests, 3,004 prepared requests and 3,003 acceptances, each
+accepted once. Its driver exited 130 and retains the original failed/interrupted
+stage journal. It is
+excluded from complete-run counts and throughput summaries. The limited
+full-capture observations do not establish a repeated-sample timing distribution;
+do not infer a speedup or stable runner variability from them. The earlier
+3,600-second timeout and later 7,200-second watchdog are operational benchmark
+limits, not public runtime guarantees; neither changes the 180-second required
+memory-fixture deadline or hosted 20-minute job limit. The earlier 5bb7 full
+attempt timed out with 80,310 results, 16,062 completed requests and 16,065
+acceptances, each accepted once; it did not complete qualification. Its retained
+forensics and the separate e252 profiling incident remain historical/excluded
+evidence, alongside their original source/tool hashes. Read-only SQLite
+inspection's volatile SHM read marks are distinguished from unchanged recorded
+database/WAL/manifest hashes.
+
+Remaining resource evidence uses fresh minimal/full-capture 64-request prefixes
+at 200 versus 5,000 responses with twenty traits and groups of five, tracing only
+after source/configuration/index/session initialization. Initialization is
+measured separately; actual complete export serialization/publication is measured
+from retained 100,000-row stores without executing new judgments. These focused
+measurements retain the 32 MiB execution, 8 MiB export and existing growth
+thresholds. The complete ordinary runs retain the overall native 256 MiB
+requirement. A prefix is not relabeled as complete-run traced allocation evidence.
 
 ## Initial complete minimal-capture pilot
 
@@ -156,8 +206,16 @@ The baseline source archive SHA-256 is
 the candidate archive SHA-256 is
 `3d0144655cb394a34ce078cb7ef34b91a8d3a760158f4ee586adc183dc7c5758`.
 The supervisor/tool/fixture fingerprints are retained in the report. This is
-completed compatibility evidence for `5bb7a39`, not a waiver of the fresh
-exact-final-source qualification required by the final ledger. The complete
+completed compatibility evidence for `5bb7a39`. A fresh installed matrix also
+passed all sixteen cases and nine negative checks for actual candidate
+`937352a9693fda1471a137ee06e5017347789745`, with candidate archive SHA-256
+`017b270589caee1b3c46ff62c16d8fa5e97468f9f1584292f7079618604fd581`.
+Its production/consumption phases took 20.881/45.084 seconds in the same
+CPython 3.12.3/SQLite 3.45.1/Pydantic 2.14.2 environment. The report is retained
+at `qualification/937352a9693fda1471a137ee06e5017347789745/version-compatibility/report.json`
+under the external evidence root. Use of that evidence for the final candidate
+requires the explicit equivalence mapping below, not a relabeled qualification
+commit. The complete
 sixteen-case protocol remains in
 [the compatibility guide](version-compatibility-qualification.md).
 
@@ -183,8 +241,9 @@ offline qualification.** The required workflow and its 20-minute job timeout
 remain unchanged. The observed Windows 18m38s job leaves only 82 seconds, and
 no measured complete hosted job including the new workload establishes adequate
 margin. The initial traced pilot cannot be used as ordinary timing or projected
-hosted-runner performance. Local ordinary measurements will document practical
-runtime and variability; they do not establish hosted Windows headroom.
+hosted-runner performance. Retained minimal ordinary measurements document their
+observed range; limited full-capture observations do not qualify variability.
+Neither establishes hosted Windows headroom.
 
 Future promotion requires a separately reviewed change supported by measured
 complete-job timings with at least three minutes of remaining margin in every
@@ -201,12 +260,22 @@ task and queue assertions unchanged.
 
 ## Final candidate freeze and external ledger
 
-Complete code, tests and this protocol before freezing the candidate. Commit the
-proposed head, create an immutable source/archive manifest and run qualification
-from that exact source. Record later numeric results in its external ledger;
-do not create a results-only commit that changes the revision being qualified.
-Any later tracked change requires a new candidate and fresh applicable
-exact-commit qualification.
+Complete the focused measurement tools, tests and this protocol before freezing
+the final candidate. Record final results in its external ledger; do not create
+a results-only commit that changes the revision being qualified. The complete
+six-configuration grid must always run on that exact final commit.
+
+Under the revised approved scope, retained complete execution and compatibility
+evidence may carry forward from `937352a9693fda1471a137ee06e5017347789745` to a
+benchmark/documentation-only final commit through an explicit equivalence audit.
+That audit must compare all production package resources, assets, pyproject/lock
+identity, workload/configuration/input definitions and relevant benchmark
+behavior. It must identify any tool-only changes and explain their effect on the
+measurement being reused. Raw commits, archive hashes, original harness/fixture
+hashes, commands and environments remain unchanged in the record. Matching
+production bytes alone is not permission to relabel a measured harness or claim
+that new tools ran. Material behavioral differences leave an acceptance gap;
+they are not waived by the mapping.
 
 The ledger must identify the full commit, source/archive/lock hashes, package
 version, benchmark/tool/fixture/input fingerprints, seed, commands, exits, timing
@@ -219,23 +288,26 @@ The final record must cover:
 - Minimal and full capture: 100,000 logical results, 20,000 physical
   requests/attempts/submissions/observations, three complete immutable exports,
   stable provenance and no duplicate accepted submissions after independent
-  recovery. Ordinary warm-up/repetitions and separate allocation diagnostics
-  follow [the scale guide](scale-qualification.md); retain failures and outliers.
+  recovery. State the actual limited sample counts and exclusions; no additional
+  full-size timing repetitions are required by the revised scope.
 - Overall native peak below 256 MiB; execution allocation below 32 MiB; export
   allocation below 8 MiB; fixed workers/tasks/queues; and the existing growth
   assertions. Record phase baselines and post-GC retained values without excluding
-  preparation/index costs from overall RSS. Whole-scope absolute phase peaks may
-  establish the stricter allocation proof described in the scale guide; direct
-  execution-scope full diagnostics are required only where that proof is absent
-  or fails. Baseline-subtracted peaks alone never establish a pass.
+  preparation/index costs from overall RSS. Use focused direct execution
+  allocation prefixes at 200 versus 5,000 responses, separate initialization and
+  complete-export measurements as described in the scale guide. Retained
+  whole-scope evidence is supplemental; no complete traced execution is required.
+  Baseline-subtracted peaks alone never establish a pass.
 - Registry/ledger DB, WAL/SHM observations, artifact/export/staging sizes, row
   counts, hashes, temporary cleanup and reader/checkpoint behavior. Distinguish
   observed peaks, pathname totals and conservative export-overlap estimates from
   unique physical volume use.
-- Status-reader, pinned-reader and history diagnostics; actual tested stress
-  extents and counts; executable user examples; all sixteen genuine compatibility
-  cases and every negative check. Document unexecuted complete stress workloads
-  explicitly, without substituting a prefix or projection.
+- Executable user examples and all sixteen genuine compatibility cases plus
+  every negative check, with the approved equivalence mapping where applicable.
+  Record the interrupted earlier driver stage and the scope revision explicitly.
+  Optional diagnostic sweeps and stress executions are unexecuted unless an
+  identified acceptance gap justified them; retain runnable stress commands,
+  without claiming a prefix, projection or documented command was executed.
 - Ruff lint/format, strict Pyright, complete pytest with branch-aware coverage
   at least 90%, durability/privacy/recovery/ownership/resource regressions, seven
   strict R/jsonlite gates, lock verification, offline wheel/sdist builds, strict

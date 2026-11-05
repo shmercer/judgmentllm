@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import subprocess
@@ -382,3 +383,132 @@ def test_verification_watchdog_marks_raw_sample_failed(
         failure["reason"] == "watchdog_timeout"
         and failure["partial_report"]["status"] == "failed"
     )
+
+
+@pytest.mark.parametrize("capture", ["minimal", "full"])
+def test_focused_export_allocations_preserve_original_store(
+    tmp_path: Path, capture: str
+) -> None:
+    producer = tmp_path / "producer"
+    process = subprocess.run(
+        [
+            sys.executable,
+            str(BENCHMARKS / "execution_benchmark.py"),
+            "--source-root",
+            str(ROOT),
+            "--output",
+            str(producer),
+            "--workloads",
+            "scale-rubric",
+            "--responses",
+            "2",
+            "--traits",
+            "3",
+            "--captures",
+            capture,
+            "--modes",
+            "plain",
+            "--warmups",
+            "0",
+            "--repetitions",
+            "1",
+            "--min-free-gib",
+            "0",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=90,
+    )
+    assert process.returncode == 0, (process.stdout, process.stderr)
+    sample = next((producer / "raw").glob("*.json"))
+    original = json.loads(sample.read_text())
+    database = Path(original["working_directory"]) / "store" / "registry.sqlite3"
+    before = hashlib.sha256(database.read_bytes()).hexdigest()
+
+    def measure(
+        label: str, kind: str, format: str, view: str, metadata: Path | None = None
+    ) -> dict[str, Any]:
+        output = tmp_path / label
+        command = [
+            sys.executable,
+            str(BENCHMARKS / "export_allocation.py"),
+            "--sample",
+            str(sample),
+            "--output",
+            str(output),
+            "--kind",
+            kind,
+            "--format",
+            format,
+            "--view",
+            view,
+            "--expected-rows",
+            "6",
+        ]
+        if metadata is not None:
+            command.extend(["--metadata-report", str(metadata)])
+        observed = subprocess.run(command, capture_output=True, text=True, timeout=90)
+        assert observed.returncode == 0, (observed.stdout, observed.stderr)
+        result = json.loads((output / "allocation.json").read_text())
+        assert result["status"] == "passed" and result["rows"] == 6
+        assert result["native_peak_bytes"] < 256 * 1024**2
+        assert result["original_registry_before"] == result["original_registry_after"]
+        return result
+
+    metadata = measure("service", "service", "csv", "r")
+    assert metadata["old_exports_unchanged"] and metadata["old_export_count"] == 3
+    assert (
+        metadata["first_export_page_live_bytes"] == metadata["fixed_context_live_bytes"]
+    )
+    assert (
+        metadata["metadata_new_peak_bytes"] > 0
+        and metadata["service_below_8_mib_proof"]
+    )
+    assert metadata["metadata_trace_start_stage"] == "after_export_artifact"
+    for format, view in (("jsonl", "canonical"), ("csv", "canonical"), ("csv", "r")):
+        result = measure(
+            format + "-" + view,
+            "component",
+            format,
+            view,
+            tmp_path / "service" / "allocation.json",
+        )
+        expected = next(
+            item
+            for item in original["export_files"]
+            if item["format"] == format and item["view"] == view
+        )
+        assert (
+            result["recorded_original_hash_match"]
+            and result["sha256"] == expected["sha256"]
+        )
+        assert result["bytes"] == expected["bytes"] and result["component_below_8_mib"]
+        assert result["component_repository_open_at_boundary"] is True
+        assert result["component_live_before_metadata_bytes"] > 0
+        assert (
+            result["component_boundary"]
+            == "after_artifact_publication_and_temp_cleanup_before_final_verification_repository_close_or_gc"
+        )
+        envelope = result["conservative_complete_export_envelope"]
+        assert (
+            envelope["simple_conservative_sum_bytes"]
+            == result["python_peak_bytes"]
+            + metadata["fixed_context_live_bytes"]
+            + metadata["metadata_new_peak_bytes"]
+        )
+        assert (
+            envelope["serialization_publication_bound_bytes"]
+            == result["python_peak_bytes"] + metadata["fixed_context_live_bytes"]
+        )
+        assert (
+            envelope["metadata_phase_bound_bytes"]
+            == result["component_live_before_metadata_bytes"]
+            + metadata["fixed_context_live_bytes"]
+            + metadata["metadata_new_peak_bytes"]
+        )
+        assert envelope["phase_union_bound_bytes"] == max(
+            envelope["serialization_publication_bound_bytes"],
+            envelope["metadata_phase_bound_bytes"],
+        )
+        assert envelope["below_8_mib_proof"]
+    assert hashlib.sha256(database.read_bytes()).hexdigest() == before
