@@ -47,7 +47,9 @@ class PrefixComplete(Exception):
 
 def native_peak_bytes() -> int:
     # Share the existing portable OS measurement without shipping it in the core.
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    root = str(Path(__file__).resolve().parents[1])
+    if root not in sys.path:
+        sys.path.insert(0, root)
     from scripts.preparation_memory_fixture import native_peak_bytes as measure
 
     return measure()

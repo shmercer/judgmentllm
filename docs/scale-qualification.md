@@ -3,9 +3,13 @@
 Milestone 2 executes only the deterministic mock adapter. These tools measure
 the existing indexed preparation, bounded executor, durable persistence and
 immutable exports without credentials or provider calls. The
-[Subphase 6 verification record](milestone-2-subphase-6-verification.md) records
-what actually ran and which acceptance gates remain pending. Commands below are
-reproduction instructions, not evidence that a workload completed.
+[Subphase 6 protocol and engineering record](milestone-2-subphase-6-verification.md)
+defines acceptance and retains source-specific earlier evidence. The final
+candidate's results are indexed outside Git at
+`/mnt/VM_Fast/judgmentllm-subphase6/qualification/FULL_HEAD_SHA/ledger.json`.
+Commands below are reproduction instructions, not evidence that a workload
+completed. A missing, pending or failed applicable ledger entry does not satisfy
+acceptance.
 
 ## Workloads and acceptance
 
@@ -54,7 +58,7 @@ full Git SHA, archive hash and environment before collecting evidence.
 
 ```bash
 REF=$(git rev-parse HEAD)
-BENCH_ROOT=/mnt/VM_Fast/judgmentllm-scale/$REF
+BENCH_ROOT=/mnt/VM_Fast/judgmentllm-subphase6/qualification/$REF
 python3 ci/local/source.py --repo . --ref "$REF" --output "$BENCH_ROOT/bundle"
 mkdir "$BENCH_ROOT/source"
 tar -xf "$BENCH_ROOT/bundle/source.tar" -C "$BENCH_ROOT/source"
@@ -69,6 +73,7 @@ fresh-process repetitions, executed serially:
 ```bash
 python benchmarks/execution_benchmark.py \
   --source-root "$BENCH_ROOT/source" --output "$BENCH_ROOT/primary-ordinary" \
+  --work-root "$BENCH_ROOT/primary-work" \
   --workloads scale-rubric --responses 5000 --traits 20 --group-size 5 \
   --concurrency 4 --captures minimal --extent complete --modes plain \
   --warmups 1 --repetitions 3 --timeout 3600 \
@@ -83,34 +88,59 @@ fresh output directory, also with one warm-up and three measured samples. Extend
 either capture variant to five when the observed elapsed range exceeds 10% of
 its median or a CI-placement decision approaches the allowed budget.
 
-Allocation runs are separate from ordinary timing. Run one complete primary
-sample with `--modes tracemalloc --measurement-scope whole`, then one with
-`--measurement-scope execution`, both with
-`--warmups 0 --instrumented-repetitions 1 --timeout 10800` and fresh
-output directories. The first captures preparation through exports; the second
-starts execution tracing after source/configuration/index/session initialization
-and traces export separately. Native peak always covers process lifetime.
+Allocation runs are separate from ordinary timing. Start with one complete
+primary sample per capture using `--modes tracemalloc --measurement-scope whole`,
+plus matching 200-response controls with the same traits, grouping, concurrency,
+response bytes, rubric, exemplars and capture. Use
+`--warmups 0 --instrumented-repetitions 1 --timeout 10800` and fresh output
+directories. Whole-scope tracing covers configuration/preparation through export;
+native peak always covers process lifetime.
 Whole-scope tracing additionally records each phase's absolute traced peak,
 baseline live bytes, live/retained values and post-GC growth. Its execution
 absolute peak below 32 MiB or export absolute peak below 8 MiB is conservative
 evidence for the corresponding allocation envelope because it includes retained
 traced preparation state. Baseline-subtracted peak or net growth alone is not
 that proof: earlier objects may be freed while new objects are allocated.
-The separate execution-scope run remains the direct post-initialization measure
-used for the execution-only 32 MiB and export-only 8 MiB targets. Preserve the
-required prefix tests and their growth assertions independently of either full
-trace. Resetting phase peaks must retain the maximum across all phases as the
-whole-run Python peak; it never resets the lifetime native RSS limit.
+Require the report's `phase_envelope_proof`: execution absolute peak below 32 MiB
+and every export absolute peak below 8 MiB. A successful absolute proof bounds
+the original incremental allocation caps without another full execution trace.
+If that proof fails or is unavailable for a capture, run a separate complete
+`--measurement-scope execution` diagnostic for that capture. It starts tracing
+after source/configuration/index/session initialization and traces export
+separately; use a matching 200-response execution-scope control when claiming
+incremental growth. A failed whole-scope proof does not automatically establish
+an incremental-limit failure, and baseline subtraction never converts it into a
+pass.
+
+Record the matching whole-scope controls' absolute phase peak/live/retained
+growth with the measurement scope stated. Preserve the required direct prefix
+tests and their existing growth assertions independently of these complete-run
+diagnostics. Resetting phase peaks must retain the maximum across all phases as
+the whole-run Python peak; it never resets the lifetime native RSS limit.
 Use `--modes profile` only if ordinary measurements identify a bottleneck needing
 attribution. Traced, profiled or coverage-instrumented wall times are diagnostic
 and must never be presented as ordinary throughput.
 
-The controller writes `raw/*.json`, summaries and invocation/source identities;
-raw stores remain in its work tree. Records include exact counts, timing/CPU
+The controller writes `raw/*.json`, summaries and invocation/source identities.
+Records retain each sample's exact counts, timing/CPU
 phases, native/Python memory, concurrency, storage observations, export hashes,
 byte lengths and result high-water marks. Retain failures and interrupted samples
 with their exit status. Resume collection only with matching source, tool,
 fixture and runtime identities. Never reuse completed databases as fresh samples.
+Repeated samples in one fixed work root recreate the registry and service ledger;
+they replace the previous physical database and artifact tree, while retaining
+each raw JSON report and its hashes/counts. Before another mode reuses that path,
+copy the last completed representative store for each capture to an external
+evidence directory after worker/verifier processes have exited. Retain failed
+stores and raw failure records before retrying with a fresh output/work root.
+The original pilot's `qualified-work` tree remains untouched. Final repetitions
+use a separate `primary-work` directory, supplied with `--work-root` when shared
+fixed paths are needed. Store snapshots supplement per-sample reports; do not
+claim that every prior physical database was retained.
+Once the final candidate is frozen, index resulting reports, logs and hashes in
+`$BENCH_ROOT/ledger.json` without editing tracked source. Keep earlier e892/a2
+pilot and 5bb7/a3 compatibility reports under their original identities; they
+support the engineering history and do not substitute for final-source evidence.
 
 Run actual R integrity checks on each retained complete sample report:
 
@@ -221,7 +251,8 @@ must target only owned disposable paths after evidence and hashes are saved.
 ## CI and qualification boundaries
 
 Keep the existing small deterministic memory regressions in required CI. The
-full fixture defaults to separate offline qualification. Promotion requires
+decision for Subphase 6 is to retain the full fixture as separate offline
+qualification; no routine scale job or expensive R gate is added. Later promotion requires
 measured complete-job timings on every affected hosted configuration, including
 setup, coverage, seven applicable R gates, build and artifacts, with at least
 three minutes remaining below the unchanged 20-minute timeout after accounting

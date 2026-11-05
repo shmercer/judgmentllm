@@ -68,6 +68,19 @@ def test_historical_workloads_keep_original_definition(tmp_path: Path) -> None:
     ]
 
 
+def test_repeated_native_measurements_do_not_grow_import_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    worker = benchmark_module("execution_worker")
+    monkeypatch.setattr(sys, "path", [entry for entry in sys.path if entry != str(ROOT)])
+    first = worker.native_peak_bytes()
+    assert first > 0 and sys.path.count(str(ROOT)) == 1
+    initialized = tuple(sys.path)
+    for _ in range(5):
+        assert worker.native_peak_bytes() >= first
+    assert tuple(sys.path) == initialized
+
+
 def test_tiny_scale_complete_and_prefix_reports(tmp_path: Path) -> None:
     for extent in ("complete", "prefix", "prepare"):
         output = tmp_path / extent
