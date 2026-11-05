@@ -312,6 +312,25 @@ every workload parameter, completed count, capture condition, assertion and
 deadline, and changes no production or benchmark algorithm. Verify the three
 cases natively on both Windows versions before the new complete exact-head grid.
 
+The published `d235ce06adc3041f2f68316bedd16e3c9da14039` candidate passed its
+six local Python 3.11/3.12 configurations, but both hosted Python 3.15 jobs
+failed strict warning checks. The same unclosed-SQLite warning occurred on the
+literal-head dispatch and the PR test commit. It surfaced during a packaging
+test after the new lookup test; SQLite's transaction context manager does not
+close its connection, and Python 3.13+ reports unclosed connections at deletion.
+The lookup fixture and read-only lookup tool both lacked explicit closure.
+
+The follow-up closes both connections while retaining their transaction
+contexts. Small regressions keep an actual connection alive and prove it is
+closed after successful measurements and an injected counter failure, without
+depending on garbage-collection timing. The fix changes no production package,
+query, request, schema, benchmark workload or resource/warning threshold.
+Historical scale/query measurements retain their actual tool fingerprints;
+the diagnostic connection closes only after its timed queries and counters.
+The earlier candidate and its failed hosted records remain intact. Qualification
+of the follow-up requires the complete exact-head local grid and hosted matrix;
+neither a retry of the failed candidate nor the older local grid substitutes.
+
 The ledger must identify the full commit, source/archive/lock hashes, package
 version, benchmark/tool/fixture/input fingerprints, seed, commands, exits, timing
 windows and Python/SQLite/Pydantic/dependency/OS/CPU/RAM/R inventory. Index each raw

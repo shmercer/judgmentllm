@@ -12,6 +12,7 @@ import json
 import sqlite3
 import statistics
 import time
+from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -70,9 +71,12 @@ def run(
         for path in (database, database.with_name(database.name + "-wal"))
         if path.exists()
     }
-    with sqlite3.connect(
-        database.resolve().as_uri() + "?mode=ro", uri=True
-    ) as connection:
+    with (
+        closing(
+            sqlite3.connect(database.resolve().as_uri() + "?mode=ro", uri=True)
+        ) as connection,
+        connection,
+    ):
         connection.execute("PRAGMA query_only=ON")
         count = connection.execute(
             "SELECT COUNT(*) FROM observations WHERE run_id=?", (run_id,)
