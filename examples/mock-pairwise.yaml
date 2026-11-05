@@ -12,7 +12,7 @@ prompt:
 execution:
   mode: live
   grouping: independent
-  cache_policy: off
+  cache_policy: "off"
   concurrency: 2
 capture: full
 seed: 41
