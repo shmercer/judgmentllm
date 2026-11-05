@@ -87,7 +87,6 @@ def test_full_job_quality_r_and_resource_gates_are_preserved() -> None:
         "Lint": "uv run --offline --no-sync ruff check .",
         "Check formatting": "uv run --offline --no-sync ruff format --check .",
         "Check types": "uv run --offline --no-sync pyright",
-        "Run offline tests with coverage": "uv run --offline --no-sync pytest -ra -Werror::ResourceWarning -Werror::pytest.PytestUnraisableExceptionWarning",
         "Build distributions": "uv build --offline",
         "Validate distribution metadata": "uv run --offline --no-sync twine check --strict dist/*",
         "Verify clean core wheel installation": "uv run --offline --no-sync python scripts/smoke_install.py dist/*.whl",
@@ -135,3 +134,62 @@ def test_full_job_quality_r_and_resource_gates_are_preserved() -> None:
         assert limits and all(
             isinstance(limit, ast.Constant) and limit.value == 180 for limit in limits
         )
+
+
+@pytest.mark.parametrize(
+    "os_name,python", sorted(ROUTINE | {("windows-latest", "3.11")})
+)
+def test_exactly_one_full_suite_with_correct_coverage(
+    os_name: str, python: str
+) -> None:
+    steps = workflow()["jobs"]["baseline"]["steps"]
+    primary = os_name == "ubuntu-latest" and python == "3.11"
+    full_tests = [
+        step for step in steps if step["name"].startswith("Run offline tests ")
+    ]
+    assert len(full_tests) == 2
+    coverage, plain = full_tests
+    assert coverage["name"] == "Run offline tests with coverage"
+    assert coverage["if"] == "matrix.os == 'ubuntu-latest' && matrix.python == '3.11'"
+    assert plain["name"] == "Run offline tests without coverage"
+    assert plain["if"] == "matrix.os != 'ubuntu-latest' || matrix.python != '3.11'"
+    # The two complementary conditions select exactly one complete suite in
+    # routine and optional manual configurations; no targets/filters are added.
+    chosen = coverage if primary else plain
+    expected = "uv run --offline --no-sync pytest " + ("" if primary else "--no-cov ")
+    expected += (
+        "-ra -Werror::ResourceWarning -Werror::pytest.PytestUnraisableExceptionWarning"
+    )
+    assert chosen["run"] == expected
+    assert all(step.get("continue-on-error", "false") == "false" for step in full_tests)
+
+
+def test_coverage_configuration_and_failed_primary_evidence() -> None:
+    steps = {step["name"]: step for step in workflow()["jobs"]["baseline"]["steps"]}
+    artifact = steps["Preserve coverage report"]
+    assert (
+        artifact["if"]
+        == "always() && matrix.os == 'ubuntu-latest' && matrix.python == '3.11'"
+    )
+    assert artifact["with"]["path"] == "coverage.xml"
+    codecov = steps["Upload coverage to Codecov when connected"]
+    assert (
+        codecov["if"]
+        == "runner.os == 'Linux' && matrix.python == '3.11' && vars.CODECOV_ENABLED == 'true'"
+    )
+    assert codecov["with"] == {
+        "files": "coverage.xml",
+        "disable_search": "true",
+        "fail_ci_if_error": "false",
+        "token": "${{ secrets.CODECOV_TOKEN }}",
+    }
+    project = tomllib.loads((REPOSITORY / "pyproject.toml").read_text())
+    assert project["tool"]["pytest"]["ini_options"]["addopts"].split() == [
+        "--strict-config",
+        "--strict-markers",
+        "--cov=judgmentllm",
+        "--cov-branch",
+        "--cov-report=term-missing",
+        "--cov-report=xml",
+        "--cov-fail-under=90",
+    ]

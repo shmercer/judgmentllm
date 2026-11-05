@@ -77,7 +77,9 @@ Grouped salvage, explicit subset retries, cancellation, immutable exports, publi
 Python services and installed CLI controls are implemented. Seven strict
 R/jsonlite gates cover file exports through independent installed-CLI lifecycle
 operations. Required hosted CI has five configurations; the exact-head local
-grid requires all six OS/Python 3.11/3.12 configurations.
+grid prospectively requires seven configurations: Linux Python 3.11/3.12/3.15
+and Windows/macOS Python 3.11/3.12. See [local CI](local-ci.md); historical
+Subphase 6 qualification below retains its original six-configuration scope.
 
 Subphase 6 benchmark tooling, persistence diagnostics and executable examples are
 implemented. The revised completion protocol combines retained complete

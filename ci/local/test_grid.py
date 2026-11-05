@@ -19,30 +19,45 @@ from source import stage
 from test_source import repository
 
 
-def summaries() -> list[dict[str, Any]]:
+def summaries(platform: str = "windows", mode: str = "check") -> list[dict[str, Any]]:
     return [
         {
             "commit": "a" * 40,
             "archive_sha256": "b" * 64,
             "lockfile_sha256": "c" * 64,
-            "mode": "check",
+            "mode": mode,
             "status": "passed",
             "source_verified_before": True,
             "source_verified_after": True,
             "all_scheduled_gates_finished": True,
-            "os": {"system": "Windows"},
-            "python": {"version": version},
+            "interpreter_verified": True,
+            "os": {"system": grid.SYSTEMS[platform]},
+            "python": {"version": version, "implementation": "CPython"},
+            "started_at": "2026-11-05T18:30:00+00:00",
+            "finished_at": "2026-11-05T18:40:00+00:00",
+            "steps": [
+                {
+                    "name": name,
+                    "status": "passed",
+                    "exit_code": 0,
+                    "coverage_enabled": name == "pytest-coverage",
+                    "coverage_percent": 91.8 if name == "pytest-coverage" else None,
+                }
+                for name in sorted(grid.required_gates(platform, version, mode))
+            ],
         }
-        for version in ("3.11.18", "3.12.16")
+        for version in sorted(grid.PYTHON_VERSIONS[platform])
     ]
 
 
-def admit(items: list[dict[str, Any]]) -> list[str]:
+def admit(
+    items: list[dict[str, Any]], platform: str = "windows", mode: str = "check"
+) -> list[str]:
     return grid.admission_errors(
         items,
-        platform="windows",
+        platform=platform,
         ref="a" * 40,
-        mode="check",
+        mode=mode,
         archive_sha256="b" * 64,
         lockfile_sha256="c" * 64,
     )
@@ -60,6 +75,8 @@ def admit(items: list[dict[str, Any]]) -> list[str]:
         ("mode", "prepare"),
         ("source_verified_after", False),
         ("all_scheduled_gates_finished", False),
+        ("interpreter_verified", False),
+        ("python", {"version": "3.11.18", "implementation": "PyPy"}),
     ],
 )
 def test_admission_rejects_wrong_source_os_or_partial_results(
@@ -94,6 +111,123 @@ def test_fresh_collection_ignores_old_results_and_rejects_extra_new_results(
     )
     assert admit(summaries() + summaries())
     assert admit(summaries()[:1])
+
+
+@pytest.mark.parametrize("platform,count", [("linux", 3), ("windows", 2), ("macos", 2)])
+@pytest.mark.parametrize("mode", ["prepare", "check"])
+def test_admission_requires_platform_specific_exact_versions(
+    platform: str, count: int, mode: str
+) -> None:
+    items = summaries(platform, mode)
+    assert len(items) == count
+    assert not admit(items, platform, mode)
+    assert admit(items[:-1], platform, mode)
+    assert admit(items + [items[0]], platform, mode)
+    items[-1] = items[0]
+    assert any("duplicates Python" in error for error in admit(items, platform, mode))
+
+
+def test_linux_315_failure_or_missing_result_prevents_full_grid_qualification() -> None:
+    items = summaries("linux")
+    assert {item["python"]["version"] for item in items} == {
+        "3.11.18",
+        "3.12.16",
+        "3.15.2",
+    }
+    assert not any(admit(summaries(platform), platform) for platform in grid.STATES)
+    assert admit(items[:2], "linux")
+    items[-1]["status"] = "failed"
+    assert admit(items, "linux")
+
+
+@pytest.mark.parametrize(
+    "timestamp",
+    [
+        "2026-11-05T18:45:00+00:00",
+        "2026-11-05T18:30:00",
+        "invalid",
+        None,
+    ],
+)
+def test_admission_rejects_invalid_or_unordered_timestamps(
+    timestamp: str | None,
+) -> None:
+    items = summaries("linux")
+    items[-1]["started_at"] = timestamp
+    assert any("timestamps" in error for error in admit(items, "linux"))
+
+
+@pytest.mark.parametrize("mutation", ["missing", "failed", "duplicate", "unexpected"])
+def test_admission_checks_actual_required_steps_even_with_completion_flag(
+    mutation: str,
+) -> None:
+    items = summaries("linux")
+    steps = items[-1]["steps"]
+    if mutation == "missing":
+        steps[:] = [s for s in steps if s["name"] != "r-cli-lifecycle-assertions"]
+    elif mutation == "failed":
+        steps[-1]["exit_code"] = 1
+    elif mutation == "duplicate":
+        steps.append(steps[0])
+    else:
+        steps.append({"name": "informational", "status": "passed", "exit_code": 0})
+    assert items[-1]["all_scheduled_gates_finished"] is True
+    assert admit(items, "linux")
+
+
+def test_seven_configurations_require_49_r_gates_and_one_coverage_gate() -> None:
+    configurations = [
+        (platform, version)
+        for platform, versions in grid.PYTHON_VERSIONS.items()
+        for version in versions
+    ]
+    assert len(configurations) == 7
+    r_gates = [
+        name
+        for platform, version in configurations
+        for name in grid.required_gates(platform, version, "check")
+        if name.startswith("r-") and name.endswith("-assertions")
+    ]
+    assert len(r_gates) == 49
+    assert (
+        sum(
+            "pytest-coverage" in grid.required_gates(platform, version, "check")
+            for platform, version in configurations
+        )
+        == 1
+    )
+    assert (
+        sum(
+            "pytest-no-coverage" in grid.required_gates(platform, version, "check")
+            for platform, version in configurations
+        )
+        == 6
+    )
+
+
+@pytest.mark.parametrize(
+    "platform,version,enabled,percentage",
+    [
+        ("linux", "3.11.18", False, None),
+        ("linux", "3.11.18", True, None),
+        ("linux", "3.11.18", True, 89.99),
+        ("linux", "3.11.18", True, float("nan")),
+        ("linux", "3.12.16", True, 91.8),
+        ("linux", "3.15.2", False, 0),
+        ("windows", "3.11.18", False, 91.8),
+        ("windows", "3.12.16", True, None),
+        ("macos", "3.11.18", True, None),
+        ("macos", "3.12.16", False, 0),
+    ],
+)
+def test_admission_enforces_measured_primary_and_null_noncoverage_results(
+    platform: str, version: str, enabled: bool, percentage: float | None
+) -> None:
+    items = summaries(platform)
+    item = next(item for item in items if item["python"]["version"] == version)
+    step = next(step for step in item["steps"] if step["name"].startswith("pytest-"))
+    step.update(coverage_enabled=enabled, coverage_percent=percentage)
+    assert any("coverage evidence" in error for error in admit(items, platform))
 
 
 def test_download_checks_bytes_before_publishing_and_reuses_valid_cache(

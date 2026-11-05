@@ -103,7 +103,12 @@ jobs:
         run: uv run --offline --no-sync pytest --no-cov -q tests/test_execution_privacy.py tests/test_execution.py::test_minimal_privacy_success_and_loss_windows -Werror::ResourceWarning -Werror::pytest.PytestUnraisableExceptionWarning
 
       - name: Run offline tests with coverage
+        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
         run: uv run --offline --no-sync pytest -ra -Werror::ResourceWarning -Werror::pytest.PytestUnraisableExceptionWarning
+
+      - name: Run offline tests without coverage
+        if: matrix.os != 'ubuntu-latest' || matrix.python != '3.11'
+        run: uv run --offline --no-sync pytest --no-cov -ra -Werror::ResourceWarning -Werror::pytest.PytestUnraisableExceptionWarning
 
       - name: Verify required Python-to-R interoperability
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
@@ -190,7 +195,7 @@ jobs:
         run: uv run --offline --no-sync python scripts/smoke_install.py dist/*.tar.gz
 
       - name: Preserve coverage report
-        if: always()
+        if: always() && matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-${{ matrix.os }}-${{ matrix.python }}

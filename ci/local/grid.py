@@ -1,4 +1,4 @@
-"""Run committed local CI adapters and require six fresh, exact-source results.
+"""Run committed local CI adapters and require seven fresh, exact-source results.
 
 Preparation may download pinned prerequisites; checks never download assets.
 Every adapter uses a separate project namespace and the existing VM locks.
@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import signal
@@ -23,6 +24,7 @@ from pathlib import Path
 from types import FrameType
 from typing import Any, cast
 
+from gates import R_GATES
 from source import stage
 
 UV_ASSETS = {
@@ -51,6 +53,48 @@ RESULTS = {
     "macos": "runs/*/guest/results/python-*/summary.json",
 }
 SYSTEMS = {"linux": "Linux", "windows": "Windows", "macos": "Darwin"}
+PYTHON_VERSIONS = {
+    "linux": frozenset(("3.11.18", "3.12.16", "3.15.2")),
+    "windows": frozenset(("3.11.18", "3.12.16")),
+    "macos": frozenset(("3.11.18", "3.12.16")),
+}
+
+
+def required_gates(platform: str, version: str, mode: str) -> set[str]:
+    """Require complete native gate evidence, rather than only a completion flag."""
+    names = {
+        "uv-version",
+        "locked-sync",
+        "dependency-versions",
+        "bundled-type-checker",
+        "r-jsonlite-versions",
+        "build",
+        "distribution-metadata",
+        "clean-wheel-installation",
+        "clean-source-installation",
+    }
+    if mode == "prepare":
+        return names | {"warm-pyright-node"}
+    names.update(("ruff-lint", "ruff-format", "strict-pyright"))
+    names.add(
+        "pytest-coverage"
+        if platform == "linux" and version == "3.11.18"
+        else "pytest-no-coverage"
+    )
+    for name, _, _ in R_GATES:
+        phases = ("generate",) if name == "exports" else ("persist", "export")
+        names.update(f"r-{name}-{phase}" for phase in phases)
+        names.add(f"r-{name}-assertions")
+    names.add("r-cli-lifecycle-assertions")
+    if platform == "windows":
+        names.update(
+            (
+                "windows-durability-cancellation",
+                "windows-signatures",
+                "windows-privacy-locks",
+            )
+        )
+    return names
 
 
 def digest(path: Path) -> str:
@@ -97,10 +141,14 @@ def admission_errors(
     archive_sha256: str,
     lockfile_sha256: str,
 ) -> list[str]:
-    """Admit only the two exact Python/OS/source results from this invocation."""
+    """Admit only the platform's exact Python/OS/source results from this run."""
     errors: list[str] = []
-    if len(summaries) != 2:
-        errors.append(f"Expected two fresh Python summaries; found {len(summaries)}")
+    expected_versions = set(PYTHON_VERSIONS[platform])
+    if len(summaries) != len(expected_versions):
+        errors.append(
+            f"Expected {len(expected_versions)} fresh {platform} Python summaries; "
+            f"found {len(summaries)}"
+        )
     versions: set[str] = set()
     for index, raw in enumerate(summaries):
         if not isinstance(raw, dict):
@@ -115,7 +163,27 @@ def admission_errors(
             else None
         )
         if isinstance(version, str):
+            if version in versions:
+                errors.append(f"Summary {index + 1} duplicates Python {version}")
             versions.add(version)
+        if (
+            item.get("interpreter_verified") is not True
+            or not isinstance(python, dict)
+            or cast(dict[str, Any], python).get("implementation") != "CPython"
+        ):
+            errors.append(f"Summary {index + 1} lacks exact CPython verification")
+        try:
+            started_at = datetime.fromisoformat(str(item.get("started_at")))
+            finished_at = datetime.fromisoformat(str(item.get("finished_at")))
+            valid_timestamps = (
+                started_at.utcoffset() is not None
+                and finished_at.utcoffset() is not None
+                and started_at <= finished_at
+            )
+        except (TypeError, ValueError):
+            valid_timestamps = False
+        if not valid_timestamps:
+            errors.append(f"Summary {index + 1} has invalid or unordered timestamps")
         for field, expected in (
             ("commit", ref),
             ("mode", mode),
@@ -139,14 +207,69 @@ def admission_errors(
             errors.append(f"Summary {index + 1} lacks complete source verification")
         if item.get("all_scheduled_gates_finished") is not True:
             errors.append(f"Summary {index + 1} did not finish its scheduled gates")
-    if versions != {"3.11.18", "3.12.16"}:
-        errors.append("Fresh summaries do not cover the two exact Python versions")
+        raw_steps = item.get("steps")
+        if not isinstance(raw_steps, list):
+            errors.append(f"Summary {index + 1} lacks required gate evidence")
+            continue
+        steps = cast(list[object], raw_steps)
+        passed_names: set[str] = set()
+        for raw_step in steps:
+            if not isinstance(raw_step, dict):
+                errors.append(f"Summary {index + 1} contains an invalid gate")
+                continue
+            step = cast(dict[str, Any], raw_step)
+            name = step.get("name")
+            if (
+                not isinstance(name, str)
+                or name in passed_names
+                or step.get("status") != "passed"
+                or step.get("exit_code") != 0
+            ):
+                errors.append(
+                    f"Summary {index + 1} contains a failed or duplicate gate"
+                )
+            else:
+                passed_names.add(name)
+            if name in {
+                "pytest-coverage",
+                "pytest-no-coverage",
+                "windows-durability-cancellation",
+                "windows-privacy-locks",
+            }:
+                enabled = name == "pytest-coverage"
+                percentage = step.get("coverage_percent")
+                valid_coverage = (
+                    isinstance(percentage, (int, float))
+                    and not isinstance(percentage, bool)
+                    and math.isfinite(percentage)
+                    and 90 <= percentage <= 100
+                    if enabled
+                    else percentage is None
+                )
+                if step.get("coverage_enabled") is not enabled or not valid_coverage:
+                    errors.append(
+                        f"Summary {index + 1} has incompatible coverage evidence"
+                    )
+        expected_names = required_gates(platform, str(version), mode)
+        if passed_names != expected_names:
+            errors.append(
+                f"Summary {index + 1} has incomplete or unexpected gates: "
+                f"missing={sorted(expected_names - passed_names)}, "
+                f"extra={sorted(passed_names - expected_names)}"
+            )
+    if versions != expected_versions:
+        errors.append(
+            f"Fresh summaries must cover exact {platform} Python versions "
+            f"{sorted(expected_versions)}; found {sorted(versions)}"
+        )
     return errors
 
 
 def collect_fresh(
     state: Path, pattern: str, before: set[Path]
 ) -> tuple[list[Path], list[object]]:
+    # Freshness uses new per-run paths and exact source identity. Guest clocks
+    # need not match the host clock, so timestamps are not a cross-OS time gate.
     paths = sorted(set(state.glob(pattern)) - before)
     return paths, [json.loads(path.read_text(encoding="utf-8-sig")) for path in paths]
 

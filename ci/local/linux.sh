@@ -17,7 +17,7 @@ fatal() { printf '[judgmentllm-linux] ERROR: %s\n' "$*" >&2; exit 1; }
 usage() {
   cat <<'HELP'
 Usage: linux.sh --ref COMMIT [--repo PATH] [--mode doctor|prepare|check]
-                [--python-version 3.11|3.12|all] [--state-root PATH]
+                [--python-version 3.11|3.12|3.15|all] [--state-root PATH]
                 [--uv-archive PATH --uv-sha256 SHA256]
                 [--jsonlite-archive PATH --jsonlite-sha256 SHA256]
 
@@ -43,7 +43,7 @@ while (( $# )); do
   esac
 done
 [[ $mode =~ ^(doctor|prepare|check)$ ]] || fatal 'Invalid mode'
-[[ $python_version =~ ^(3\.11|3\.12|all)$ ]] || fatal 'Invalid Python version'
+[[ $python_version =~ ^(3\.11|3\.12|3\.15|all)$ ]] || fatal 'Invalid Python version'
 [[ $mode == doctor || $ref =~ ^[0-9a-f]{40}$ ]] || fatal 'Use a full proposed commit SHA'
 for program in docker python3 mountpoint realpath flock sha256sum tee; do
   command -v "$program" >/dev/null || fatal "Missing host program: $program"
@@ -222,11 +222,16 @@ if [[ $mode == prepare ]]; then
   fi
 fi
 docker image inspect "$image" >"$run_root/image.json" || fatal 'Image absent; run prepare first'
-versions=(3.11 3.12)
+versions=(3.11 3.12 3.15)
 [[ $python_version == all ]] || versions=("$python_version")
 lanes=()
 for version in "${versions[@]}"; do
-  patch=3.11.18; [[ $version == 3.11 ]] || patch=3.12.16
+  case "$version" in
+    3.11) patch=3.11.18 ;;
+    3.12) patch=3.12.16 ;;
+    3.15) patch=3.15.2 ;;
+    *) fatal "Unpinned Python version: $version" ;;
+  esac
   lane="$run_root/python-$version"
   mkdir -- "$lane"
   mkdir -- "$lane/scratch"
@@ -257,8 +262,8 @@ for version in "${versions[@]}"; do
     "/state/runs/$run_id/bundle" "/state/runs/$run_id/python-$version" \
     "$mode" "$version" "$patch" "$ref" "$archive_hash"
 done
-# Start both fresh interpreters before waiting. A failed lane never cancels its
-# sibling; only explicit interruption/adapter exit invokes whole-run cleanup.
+# Start all three fresh interpreters before waiting. A failed lane never cancels
+# its siblings; only explicit interruption/adapter exit invokes whole-run cleanup.
 overall=0
 for index in "${!versions[@]}"; do
   status=0

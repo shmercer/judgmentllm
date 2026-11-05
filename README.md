@@ -143,11 +143,13 @@ uv run --offline --no-sync python scripts/smoke_install.py dist/*.tar.gz
 Use a writable `UV_CACHE_DIR` when the default cache is read-only. Tests are synthetic and offline. The coverage gate remains 90%; statement and branch coverage are reported. The installation helper creates clean environments and may download locked core dependencies; installed import, template, and preview checks run offline. Provider SDKs must be absent from these core installations.
 
 CI runs Ubuntu/macOS on Python 3.11/3.15 and Windows on Python 3.12, with a complete
-manual Windows 3.11 job. Quality checks, builds, clean installations, coverage
-artifacts and optional Codecov remain required. Ubuntu/Python 3.11 requires all
+manual Windows 3.11 job. Quality checks, builds and clean installations remain required. Branch coverage
+(≥90%), coverage artifacts and optional Codecov run on Ubuntu/Python 3.11 only;
+all other jobs run the complete suite with explicit `--no-cov`. Ubuntu/Python 3.11 requires all
 seven strict R/jsonlite gates, including installed-CLI lifecycle acceptance. The
-[local six-configuration grid](docs/local-ci.md) runs Python 3.11/3.12 on all three
-platforms, with all seven R gates in each lane; it does not replace hosted 3.15. See [repository setup](docs/repository-setup.md) for Codecov configuration.
+[local seven-configuration grid](docs/local-ci.md) runs Python 3.11/3.12 on all three
+platforms plus Ubuntu/3.15.2, with all seven R gates in each lane (49 executions).
+Only Ubuntu/3.11 measures coverage. Local qualification does not replace hosted CI. See [repository setup](docs/repository-setup.md) for Codecov configuration.
 
 ## Optional dependencies and later milestones
 
