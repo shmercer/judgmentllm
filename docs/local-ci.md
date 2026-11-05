@@ -245,6 +245,11 @@ the required exact-head full six-configuration qualification.
 
 ## Parity differences and proposed hosted workflow
 
+Historical infrastructure-rollout context follows. References here to the
+then-current six hosted jobs, six R gates, or proposed Windows selection describe
+that review stage. The current five-job matrix and seven strict local R gates
+are stated at the top of this document and implemented in the workflow/runner.
+
 The existing hosted matrix is Ubuntu/Windows/macOS with Python 3.11/3.15.
 The requested local matrix deliberately uses 3.11/3.12. Existing local guests
 have R 4.6.1, while hosted Ubuntu/Python 3.11 installs R 4.6.2. All local lanes

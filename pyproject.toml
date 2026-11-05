@@ -79,6 +79,7 @@ packages = ["src/judgmentllm"]
 
 [tool.hatch.build.targets.sdist]
 exclude = [
+    "/tests/test_observation_lookup_benchmark.py",
     "/tests/test_scale_benchmarks.py",
     "/tests/test_scale_diagnostics.py",
     "/tests/test_scale_storage.py",

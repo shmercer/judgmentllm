@@ -12,6 +12,8 @@ from typing import Any
 import gates
 import pytest
 
+from judgmentllm import __version__
+
 
 @pytest.fixture
 def staged(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
@@ -363,9 +365,9 @@ def test_smoke_installer_preserves_default_and_explicit_offline(
         if "--help" in command:
             return "--help --version"
         if "--version" in command:
-            return "judgmentllm 0.1.0a2"
+            return f"judgmentllm {__version__}"
         if "-c" in command:
-            return "0.1.0a2"
+            return __version__
         return "rubric_scores_only Synthetic installation response."
 
     monkeypatch.setattr(smoke, "run", execute)

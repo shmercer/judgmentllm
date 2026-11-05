@@ -5,6 +5,9 @@
 outputs in `judgmentllm.results`. Public lifecycle services execute synthetic
 assessments through the mock provider. Real provider integrations remain later milestones. The internal
 [persistence foundation](persistence-contracts.md) is implemented separately.
+Subphase 6 scale tooling uses these same contracts without adding public result
+fields or changing schema version 1. Benchmark reports are development evidence,
+separate from canonical assessment exports; exact-head qualification is pending.
 
 ## Validation and serialization
 

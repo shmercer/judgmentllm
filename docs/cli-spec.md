@@ -5,7 +5,7 @@ Executable name: `judgmentllm` (distribution and import name planned as `judgmen
 ## Implemented global commands
 
 - `judgmentllm --help` displays the available global options and exits successfully.
-- `judgmentllm --version` prints `judgmentllm VERSION` and exits successfully; the current development version is `0.1.0a2`.
+- `judgmentllm --version` prints `judgmentllm VERSION` and exits successfully; the current development candidate is `0.1.0a3`.
 - `judgmentllm` without arguments displays help and exits successfully.
 
 These operations require no credentials and make no provider requests.
@@ -207,6 +207,17 @@ cancellation is not evidence of confirmed provider cancellation.
 Hard process termination cannot guarantee a control envelope or exit 130. Later
 processes use durable state and authoritative recovery. Installed-CLI acceptance
 captures stdout, stderr, and exit status independently, including on Windows.
+
+For a practical partial-run/retry/export walkthrough, run
+`python examples/mock_recovery.py --output /local/fresh-example`. Each operation
+uses the installed console in a separate process. For interruption of a longer
+local mock run, Ctrl+C requests cleanup; preserve its returned run ID/store, query
+`runs status`, then `resume` with the original configuration and mock inputs.
+After hard termination, find the durable run with `runs list`; an inactive
+`running` record requires recovery. Never infer that it is still executing.
+Unresolved work may export zero rows; inspect `incomplete_source` and submission
+certainty rather than manufacturing a score. Exit 3 indicates retained partial
+work; historical failures remain after an authorized retry succeeds.
 
 ## Future commands and integrations
 

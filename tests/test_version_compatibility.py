@@ -30,9 +30,7 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 
 @pytest.fixture
-def old_store(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> tuple[Path, dict[str, Any]]:
+def old_store(tmp_path: Path) -> tuple[Path, dict[str, Any]]:
     root = tmp_path / "baseline"
     archive = extract_fixture(
         FIXTURES / "a2-compatibility.tar.gz", FIXTURES / "a2-compatibility.json", root
@@ -40,12 +38,7 @@ def old_store(
     assert archive["producer"]["commit"] == BASELINE
     assert archive["producer"]["package_version"] == "0.1.0a2"
     assert archive["producer"]["producer_helper_sha256"]
-    # During staged development only the consumer is a future-version stand-in.
-    # After the package bump the actual a3 loader executes without patching.
-    if judgmentllm.__version__ == "0.1.0a2":
-        monkeypatch.setattr(preparation, "__version__", "0.1.0a3")
-    else:
-        assert judgmentllm.__version__ == "0.1.0a3"
+    assert judgmentllm.__version__ == "0.1.0a3"
     return root, archive
 
 

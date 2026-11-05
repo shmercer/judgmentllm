@@ -96,14 +96,38 @@ def run_scale(
         shutil.rmtree(store)
     for path in directory.glob("service.sqlite3*"):
         path.unlink()
+    metrics = Metrics()
+
+    class Adapter(MockAdapter):
+        def prepare(self, *args: Any, **kwargs: Any) -> Any:
+            with metrics.phase("provider_payload_preparation"):
+                prepared = super().prepare(*args, **kwargs)
+            if mode == "profile":
+                with metrics.lock:
+                    metrics.counts["prepared_payload_bytes"] += len(prepared.payload)
+            return prepared
+
+        async def submit(self, *args: Any, **kwargs: Any) -> Any:
+            started_at = time.perf_counter_ns()
+            try:
+                return await super().submit(*args, **kwargs)
+            finally:
+                metrics.latency("submission", time.perf_counter_ns() - started_at)
+
+        async def retrieve(self, *args: Any, **kwargs: Any) -> Any:
+            started_at = time.perf_counter_ns()
+            try:
+                return await super().retrieve(*args, **kwargs)
+            finally:
+                metrics.latency("retrieval", time.perf_counter_ns() - started_at)
+
     with patch(
         "judgmentllm.providers.ledger.uuid.uuid4", return_value=uuid.UUID(int=42)
     ):
-        adapter = MockAdapter(
+        adapter = Adapter(
             directory / "service.sqlite3",
             scenario=MockScenario(category_index=1, probabilities=True),
         )
-    metrics = Metrics()
     profile = mode == "profile"
     allocation = mode in {"tracemalloc", "combined"}
     if profile:
@@ -116,6 +140,8 @@ def run_scale(
     queues: dict[int, int] = {}
     baseline: dict[str, int] = {}
     allocations: dict[str, Any] = {}
+    phase_allocations: dict[str, dict[str, int | float]] = {}
+    overall_traced_peak = 0
     exports: list[dict[str, Any]] = []
     sampler = StorageSampler(
         directory, budget_gib=disk_budget_gib, min_free_gib=min_free_gib
@@ -123,6 +149,20 @@ def run_scale(
 
     @contextmanager
     def phase(name: str) -> Generator[None, None, None]:
+        nonlocal overall_traced_peak
+        measure_phase = (
+            allocation and measurement_scope == "whole" and tracemalloc.is_tracing()
+        )
+        phase_baseline = 0
+        if measure_phase:
+            phase_baseline, prior_peak = tracemalloc.get_traced_memory()
+            # Capture peaks between phases too, before resetting the tracer's
+            # high-water mark. The whole-run maximum must never be lost.
+            overall_traced_peak = max(overall_traced_peak, prior_peak)
+            tracemalloc.reset_peak()
+            if name == "execution":
+                baseline["python_current_bytes"] = phase_baseline
+                baseline["native_peak_bytes"] = native_peak_bytes()
         start_wall, start_cpu = time.perf_counter_ns(), time.process_time_ns()
         try:
             with metrics.phase(name):
@@ -132,6 +172,23 @@ def run_scale(
                 "wall_seconds": (time.perf_counter_ns() - start_wall) / 1e9,
                 "cpu_seconds": (time.process_time_ns() - start_cpu) / 1e9,
             }
+            if measure_phase:
+                current, absolute_peak = tracemalloc.get_traced_memory()
+                overall_traced_peak = max(overall_traced_peak, absolute_peak)
+                gc_started = time.perf_counter()
+                gc.collect()
+                gc_wall = time.perf_counter() - gc_started
+                retained = tracemalloc.get_traced_memory()[0]
+                phase_allocations[name] = {
+                    "baseline_live_bytes": phase_baseline,
+                    "peak_absolute_bytes": absolute_peak,
+                    "live_after_bytes": current,
+                    "retained_after_gc_bytes": retained,
+                    "peak_above_baseline_bytes": max(0, absolute_peak - phase_baseline),
+                    "net_live_growth_bytes": current - phase_baseline,
+                    "net_retained_growth_bytes": retained - phase_baseline,
+                    "post_phase_gc_wall_seconds": gc_wall,
+                }
 
     def begin_execution_allocations() -> None:
         if (
@@ -227,10 +284,14 @@ def run_scale(
             loop.set_task_factory(None)
 
     def record_allocations() -> None:
+        nonlocal overall_traced_peak
         current, high = tracemalloc.get_traced_memory()
+        overall_traced_peak = max(overall_traced_peak, high)
         gc.collect()
         allocations.update(
-            python_peak_bytes=high,
+            python_peak_bytes=overall_traced_peak
+            if measurement_scope == "whole"
+            else high,
             python_live_bytes=current,
             python_retained_bytes=tracemalloc.get_traced_memory()[0],
         )
@@ -392,6 +453,28 @@ def run_scale(
         "python_retained_bytes": allocations.get("python_retained_bytes"),
         "export_python_peak_bytes": allocations.get("export_python_peak_bytes"),
         "allocation_baseline": baseline,
+        "phase_allocations": phase_allocations,
+        "allocation_measurement_note": "whole-scope phase peaks are absolute traced live bytes, including initialized survivors; baseline deltas are explanatory only; diagnostic wall time includes post-phase garbage collection"
+        if allocation and measurement_scope == "whole"
+        else None,
+        "phase_envelope_proof": {
+            "execution_below_32_mib": phase_allocations.get("execution", {}).get(
+                "peak_absolute_bytes", float("inf")
+            )
+            < 32 * 1024**2,
+            "all_exports_below_8_mib": len(
+                [name for name in phase_allocations if name.startswith("export_")]
+            )
+            == 3
+            and all(
+                value["peak_absolute_bytes"] < 8 * 1024**2
+                for name, value in phase_allocations.items()
+                if name.startswith("export_")
+            ),
+            "method": "absolute whole-scope live peaks include fixed survivors; true supplies a conservative envelope proof; false requires a separate execution-only diagnostic and does not establish failure of the original incremental envelope",
+        }
+        if allocation and measurement_scope == "whole" and extent != "prepare"
+        else None,
         "native_peak_bytes": native_peak_bytes(),
         "storage": sampler.report(),
         "export_files": exports,

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib
+import os
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -32,20 +33,33 @@ def test_inventory_reports_actual_logical_and_allocated_bytes(
     temporary = tmp_path / ".export-owned"
     objects.mkdir()
     temporary.mkdir()
-    paths = (tmp_path / "registry.sqlite3", objects / "hash", temporary / "results")
+    paths = (
+        tmp_path / "registry.sqlite3",
+        objects / "hash",
+        temporary / "results",
+        tmp_path / ".pending-owned",
+    )
     for index, path in enumerate(paths):
         path.write_bytes(b"x" * (1024 + index))
+    alias = tmp_path / "registry-alias"
+    os.link(paths[0], alias)
+    paths = (*paths, alias)
     measured = storage.inventory(tmp_path)
-    assert measured["files"] == 3
+    assert measured["files"] == 5
     assert measured["bytes"] == sum(path.stat().st_size for path in paths)
     assert measured["object_bytes"] == paths[1].stat().st_size
-    assert measured["temporary_bytes"] == paths[2].stat().st_size
+    assert (
+        measured["temporary_bytes"] == paths[2].stat().st_size + paths[3].stat().st_size
+    )
     if all(hasattr(path.stat(), "st_blocks") for path in paths):
         assert measured["allocated_bytes"] == sum(
             path.stat().st_blocks * 512 for path in paths
         )
         assert measured["object_allocated_bytes"] == paths[1].stat().st_blocks * 512
-        assert measured["temporary_allocated_bytes"] == paths[2].stat().st_blocks * 512
+        assert (
+            measured["temporary_allocated_bytes"]
+            == (paths[2].stat().st_blocks + paths[3].stat().st_blocks) * 512
+        )
     else:
         assert measured["allocated_bytes"] is None
 
@@ -78,6 +92,7 @@ def test_concurrent_observers_preserve_high_water_and_report_snapshots(
             assert time.monotonic() < deadline
             time.sleep(0.01)
     final = sampler.report()
+    assert "hardlink aliases" in final["inventory_accounting"]
     assert not sampler.thread.is_alive()
     assert (
         final["observed_file_high_water_bytes"]["store/registry.sqlite3-wal"] == 65536

@@ -1,6 +1,6 @@
 # JudgmentLLM: functional design specification
 
-**Design:** 0.5 (2026-11-02). **Implementation status:** Milestone 1 provides schema-version-1 contracts, synthetic normalization, structural planning, input/output, and offline prompt tools. Milestone 2 has durable persistence, generation configuration, and complete provider-free immutable source preparation with indexed access and independent-process reopening. Subphase 4 adds grouped outcomes, retry/cancellation and immutable exports; Subphase 5 exposes the shared public Python lifecycle and versioned CLI. Execution is limited to the deterministic mock provider; real adapters remain later milestones. The sections below describe the full approved direction; [data contracts](data-contracts.md) and [Python API](python-api.md) describe the implemented subset.
+**Design:** 0.5 (2026-11-02). **Implementation status:** Milestone 1 provides schema-version-1 contracts, synthetic normalization, structural planning, input/output, and offline prompt tools. Milestone 2 has durable persistence, generation configuration, and complete provider-free immutable source preparation with indexed access and independent-process reopening. Subphase 4 adds grouped outcomes, retry/cancellation and immutable exports; Subphase 5 exposes the shared public Python lifecycle and versioned CLI. Subphase 6 scale tooling is implemented, with exact-head qualification pending. Execution is limited to the deterministic mock provider; real adapters remain later milestones. The sections below describe the full approved direction; [data contracts](data-contracts.md) and [Python API](python-api.md) describe the implemented subset.
 
 ## 1. Goals
 
@@ -77,7 +77,7 @@ No provider-specific details should leak into normalized assessment interpretati
 
 - Default: independent scoring, one logical response x trait per request.
 - Configurable grouped scoring for generative APIs and structured APIs that can natively accept multiple questions.
-- All grouping plans must be deterministic and, once execution is implemented, stored in the manifest: ordered trait IDs, request grouping, actual text context, and per-request token estimate/limit.
+- Grouping plans must be deterministic and recorded in the manifest as ordered trait IDs and groups. Mock execution binds the actual rendered context and exact provider payload separately; capture policy controls retained bytes. Per-request token estimates remain unknown when no verified counter is available.
 - For oversized grouped requests: optionally split into smaller deterministic groups if the user explicitly requested `grouping: auto`; for `grouping: grouped` with a fixed group definition, error rather than alter it. Never split a single trait's exemplars implicitly.
 - For Decisions and Jev: questions grouped according to endpoint question count, content and level constraints; no assumption that calling multiple traits together yields an empirically equivalent assessment to independent scoring.
 - No hard-coded max number of traits in project schema; provider request limits constrain individual calls.
@@ -188,8 +188,8 @@ No provider-specific details should leak into normalized assessment interpretati
 - Python>=3.11, pure Python core, Linux/Windows/macOS test matrix.
 - Offline tests use synthetic fixtures; no paid API calls or cloud credentials in required CI.
 - R compatibility is a standing acceptance condition for schema, export, and CLI changes in every milestone. Preserve IDs as character strings, original/presented orientation, all attempts and explicit analysis selection, observed ties/failures, complete probability/mapping data, and selected/category-code versus expected-score semantics.
-- Require R round-trip steps in the existing Ubuntu/Python 3.11 matrix job: generate synthetic Python exports, import them using base R, and require `jsonlite` for full distribution/mapping recovery checks. Run the R example with `JUDGMENTLLM_R_STRICT=1`; missing R or `jsonlite` must fail this check, not silently skip it; optional pairwiseLLM checks remain separate. This gate validates file interoperability and does not implement the future R wrapper or execution commands.
-- Coverage via `pytest-cov` and Codecov; proposed 90% line coverage goal, branch coverage visible. Target near-complete testing of validation/parsing and recovery edge cases, not an artificial 100% of every line.
+- Require R round-trip steps in the existing Ubuntu/Python 3.11 matrix job: generate synthetic Python exports, import them using base R, and require `jsonlite` for full distribution/mapping recovery checks. Run with `JUDGMENTLLM_R_STRICT=1`; missing R or `jsonlite` must fail this check, not silently skip it; optional pairwiseLLM checks remain separate. Seven strict gates cover exports through the implemented installed-CLI lifecycle. The future R wrapper remains a separate deliverable.
+- Coverage via `pytest-cov` and Codecov; required branch-aware coverage is at least 90%. Target near-complete testing of validation/parsing and recovery edge cases, not an artificial 100% of every line.
 - Manual and prerelease live qualification tests with explicit budget ceiling and cleanup of test uploads/jobs.
 - Ruff format/lint, Pyright type checks on public modules, build validation with Hatchling, deterministic tests; documentation includes standard installation and CLI workflows.
 - Explicit test cases for: ordinal coding, invalid category, score vs probability expectation, missing explanation support, large traits, 0/many exemplars, unknown context limits, duplicate/out-of-order batch results, interrupted resume, cache off/auto/explicit policies, fallback rules, output provenance, malformed transport outcomes and secret redaction.
@@ -218,7 +218,7 @@ No provider-specific details should leak into normalized assessment interpretati
 
 All documented capabilities are subject to provider and account change. Date and qualify concrete model combinations rather than assuming live API availability from documentation alone.
 
-## Milestone 2 Subphase 5 implementation boundary
+## Milestone 2 implementation boundary
 
 Internal mock execution now integrates immutable preparation, exact adapter-owned
 payloads, bounded async workers, owner-token-checked durable writes, independent
@@ -230,6 +230,8 @@ submission. The service never retries a possibly submitted request because a
 process disappeared. Grouped salvage, explicit subset retries, conservative automatic
 retry, cancellation, immutable export, shared public Python services and the
 versioned lifecycle CLI are implemented. The installed-CLI R lifecycle gate adds
-to the six established strict interoperability gates. Real providers and large
-scale qualification remain outside this subphase. See the
-[Subphase 5 verification record](milestone-2-subphase-5-verification.md).
+to the six established strict interoperability gates. Subphase 6 supplies complete
+scale workloads, resource/storage diagnostics and user examples; exact-head
+milestone qualification is pending. Real providers remain later milestones.
+See the dated [Subphase 5 verification record](milestone-2-subphase-5-verification.md)
+and current [scale qualification record](milestone-2-subphase-6-verification.md).

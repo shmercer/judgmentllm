@@ -1,6 +1,6 @@
 # JudgmentLLM
 
-**Milestone 2, Subphase 5 — mock execution and public lifecycle. Version 0.1.0a2.**
+**Milestone 2, Subphase 6 — scale tooling implemented; exact-head qualification pending. Development version 0.1.0a3.**
 
 Milestone 2 adds an [internal preparation foundation](docs/persistence-contracts.md)
 for SQLite state, immutable source snapshots, indexed input access, complete run
@@ -9,6 +9,9 @@ Public Python services and the versioned CLI provide complete validation, planni
 mock live execution, durable status, conservative recovery, explicit subset retries,
 and immutable all-attempt exports. Real provider adapters remain later milestones.
 The [approved Milestone 2 plan](docs/milestone-2-execution-plan.md) records the boundaries.
+Subphase 6 adds reproducible complete-run benchmarks, storage diagnostics and
+practical examples. Final scale, compatibility and cross-platform acceptance
+remain pending in the [qualification record](docs/milestone-2-subphase-6-verification.md).
 
 JudgmentLLM provides typed, provider-independent contracts for ordinal rubric scoring and pairwise judgments. It loads synthetic assessments, validates category coding, prepares deterministic task groups, renders prompts, and normalizes supplied categorical or probability results. Synthetic mock execution is available; real provider execution arrives in later milestones.
 
@@ -45,6 +48,8 @@ judgmentllm runs status --store /tmp/judgmentllm-example --run RUN_ID --json
 judgmentllm resume --store /tmp/judgmentllm-example --run RUN_ID --json
 judgmentllm results export --store /tmp/judgmentllm-example --run RUN_ID --format csv --view r --json
 python examples/mock_lifecycle.py --store /tmp/judgmentllm-python-example
+judgmentllm run --config examples/mock-pairwise.yaml --store /tmp/judgmentllm-pairwise-example --json
+python examples/mock_recovery.py --output /tmp/judgmentllm-recovery-example
 ```
 
 Use the returned original run ID for `RUN_ID`. On Windows choose a local path,
@@ -59,6 +64,12 @@ authorized normalized explanations remain sensitive retained results. Recovery
 requires unchanged original sources and authoritative observation evidence.
 Uncertain submissions are never silently reissued. See [CLI controls](docs/cli-spec.md)
 and [public lifecycle APIs](docs/python-api.md) for retry authorization and errors.
+The installed-CLI recovery example inspects partial grouped outcomes, explicitly
+retries failed members in later processes, and proves that older exports and
+unsuccessful rows remain available. Use a fresh output directory for each example.
+The [scale qualification guide](docs/scale-qualification.md) describes the complete
+100,000-judgment mock workload, memory regressions, separate stress commands and
+the distinction between required CI and offline qualification.
 
 ## Python preparation
 

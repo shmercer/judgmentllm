@@ -127,6 +127,20 @@ def test_tiny_scale_complete_and_prefix_reports(tmp_path: Path) -> None:
             )
             assert report["verification"]["no_op_resume_acceptance_delta"] == 0
             assert all(item["rows"] == 21 for item in report["export_files"])
+            assert report["phases"]["provider_payload_preparation"]["calls"] > 0
+            assert (
+                report["phases"]["provider_payload_preparation"][
+                    "exclusive_thread_cpu_ns"
+                ]
+                >= 0
+            )
+            for name in ("submission", "retrieval"):
+                assert (
+                    report["phases"][name]["calls"]
+                    == report["completed_physical_requests"]
+                )
+                assert report["phases"][name]["wall_ns"] > 0
+                assert "exclusive_thread_cpu_ns" not in report["phases"][name]
         elif extent == "prepare":
             assert (
                 report["prepared_attempts"] == report["accepted_physical_requests"] == 0
@@ -215,6 +229,39 @@ def test_tiny_scale_allocation_diagnostics(tmp_path: Path, scope: str) -> None:
     if scope == "execution":
         assert report["export_python_peak_bytes"] < 8 * 1024**2
         assert report["allocation_baseline"]["native_peak_bytes"] > 0
+    else:
+        allocations = report["phase_allocations"]
+        assert set(allocations) == {
+            "configuration",
+            "preparation",
+            "execution",
+            "inspection",
+            "export_jsonl_canonical",
+            "export_csv_canonical",
+            "export_csv_r",
+        }
+        assert report["python_peak_bytes"] >= max(
+            value["peak_absolute_bytes"] for value in allocations.values()
+        )
+        assert allocations["execution"]["peak_absolute_bytes"] < 32 * 1024**2
+        assert report["phase_envelope_proof"]["execution_below_32_mib"] is True
+        assert report["phase_envelope_proof"]["all_exports_below_8_mib"] is True
+        assert (
+            report["allocation_baseline"]["python_current_bytes"]
+            == allocations["execution"]["baseline_live_bytes"]
+        )
+        for name, value in allocations.items():
+            assert value["peak_absolute_bytes"] >= value["baseline_live_bytes"]
+            assert (
+                value["peak_above_baseline_bytes"]
+                == value["peak_absolute_bytes"] - value["baseline_live_bytes"]
+            )
+            assert (
+                value["net_retained_growth_bytes"]
+                == value["retained_after_gc_bytes"] - value["baseline_live_bytes"]
+            )
+            if name.startswith("export_"):
+                assert value["peak_absolute_bytes"] < 8 * 1024**2
 
 
 def test_shared_fixture_rejects_changed_dimensions_before_removing_store(

@@ -8,6 +8,7 @@ All generated data and the final report stay in the supplied external directory.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import hashlib
 import importlib.metadata
 import json
@@ -27,7 +28,10 @@ import judgmentllm
 import judgmentllm.preparation as preparation
 from judgmentllm import LifecycleError, MockExecutionOptions, get_run, resume_run
 from judgmentllm.config import load_run_spec
+from judgmentllm.execution import execute_run
 from judgmentllm.planning import iter_requests
+from judgmentllm.preparation import prepare_run
+from judgmentllm.providers.mock import MockAdapter, MockScenario
 
 if __package__:
     from .cli_process_supervisor import interrupt_run
@@ -35,6 +39,33 @@ if __package__:
 else:
     from cli_process_supervisor import interrupt_run
     from version_compatibility_fixture import BASELINE, digest, evidence, write_json
+
+
+PRIMARY_KINDS = ("completed", "partial", "interrupted", "uncertain")
+BOUNDARIES = ("sealed", "after_preparation", "after_receipt", "after_observation")
+
+
+def expected_cases() -> set[str]:
+    return {
+        f"{kind}-{capture}"
+        for capture in ("full", "minimal")
+        for kind in (*PRIMARY_KINDS, *BOUNDARIES)
+    }
+
+
+def expected_counts(kind: str, capture: str) -> tuple[int, int, int, int, int]:
+    """Logical tasks, original requests, physical attempts, acceptances, result rows."""
+    if kind in BOUNDARIES:
+        return 3, 1, 1, 1, 3
+    if kind == "completed":
+        return (2, 2, 2, 2, 2) if capture == "full" else (6, 2, 2, 2, 6)
+    if kind == "partial":
+        return 6, 2, 4, 4, 8
+    if kind == "interrupted":
+        return 6, 2, 2, 1, 3
+    if kind == "uncertain":
+        return 6, 2, 2, 2, 6
+    raise ValueError("Unknown compatibility workload")
 
 
 def console() -> Path:
@@ -235,16 +266,157 @@ def settings(root: Path, fixture: str = "fixture.json") -> tuple[str, ...]:
     )
 
 
+def produce_boundary(root: Path, boundary: str) -> dict[str, Any]:
+    """Exit a genuine baseline child at an existing durable engine fault seam."""
+    if judgmentllm.__version__ != "0.1.0a2" or boundary not in BOUNDARIES:
+        raise ValueError("Boundary production requires the genuine a2 package")
+    spec = load_run_spec(root / "config.json")
+    run_id = f"a2-{boundary}-{spec.capture}"
+    adapter = MockAdapter(
+        root / "ledger.sqlite3",
+        scenario=MockScenario(
+            probabilities=True,
+            category_index=0,
+        ),
+    )
+    with prepare_run(
+        root / "config.json",
+        store=root / "store",
+        run_id=run_id,
+        capabilities=adapter.capabilities(spec),
+    ):
+        pass
+    planned = tuple(iter_requests(spec))
+    if len(planned) != 1 or len(planned[0].tasks) != 3:
+        raise AssertionError("Boundary supplement must contain one three-trait group")
+    marker = {
+        "run_id": run_id,
+        "boundary": boundary,
+        "package_version": judgmentllm.__version__,
+        "producer_module": judgmentllm.__file__,
+        "request_uid": planned[0].request_uid,
+        "task_ids": [task.task_id for task in planned[0].tasks],
+    }
+    if boundary == "sealed":
+        write_json(root / "boundary.json", marker)
+        return marker
+
+    def fault(stage: str, request_uid: str | None) -> None:
+        if stage == boundary:
+            if request_uid != marker["request_uid"]:
+                raise AssertionError("Fault request differs from the baseline plan")
+            write_json(root / "boundary.json", marker)
+            # The parent owns this exact child and joins its exit. No PID read
+            # from the journal selects a termination target.
+            os._exit(73)
+
+    asyncio.run(
+        execute_run(
+            run_id, store=root / "store", adapter=adapter, spec=spec, fault=fault
+        )
+    )
+    raise AssertionError("Baseline did not reach the requested durable boundary")
+
+
+def verify_boundary_before(
+    root: Path, boundary: str, capture: str, before: dict[str, Any]
+) -> None:
+    """Prove each supplement represents the claimed loss/preparation window."""
+    if boundary == "sealed":
+        for table in (
+            "tasks",
+            "requests",
+            "attempts",
+            "submissions",
+            "results",
+            "acceptances",
+            "observations",
+        ):
+            if before[table]:
+                raise AssertionError("Sealed fixture already materialized execution")
+        return
+    if (
+        len(before["tasks"]),
+        len(before["requests"]),
+        len(before["attempts"]),
+        len(before["submissions"]),
+        len(before["results"]),
+    ) != (3, 1, 1, 1, 0):
+        raise AssertionError("Boundary fixture has unexpected prepared membership")
+    accepted = sum(row["acceptance_count"] for row in before["acceptances"])
+    if accepted != (0 if boundary == "after_preparation" else 1):
+        raise AssertionError("Boundary fixture has unexpected provider acceptance")
+    if boundary == "after_preparation":
+        if before["attempts"][0]["state"] != "prepared" or before["observations"]:
+            raise AssertionError("Prepared fixture passed its submission boundary")
+        return
+    if len(before["observations"]) != (1 if boundary == "after_observation" else 0):
+        raise AssertionError("Receipt/observation window was not preserved")
+    receipt = next((root / "store").glob("runs/*/receipts/*.json"))
+    raw = json.loads(receipt.read_text(encoding="utf-8"))["raw"]
+    if capture == "full":
+        artifact = receipt.parent.parent / raw["relative_path"]
+        if digest(artifact) != raw["sha256"]:
+            raise AssertionError(
+                "Full response-loss fixture lacks exact captured bytes"
+            )
+    elif raw["relative_path"] is not None:
+        raise AssertionError("Minimal response-loss fixture retained raw output")
+
+
 def produce(root: Path) -> dict[str, Any]:
     if judgmentllm.__version__ != "0.1.0a2":
         raise ValueError("Only the authentic a2 interpreter may produce upgrade state")
     root.mkdir(parents=True, exist_ok=False)
     cases: list[dict[str, Any]] = []
     for capture in ("full", "minimal"):
-        for kind in ("completed", "partial", "interrupted", "uncertain"):
+        for kind in (*PRIMARY_KINDS, *BOUNDARIES):
             directory = root / f"{kind}-{capture}"
             create_case(directory, kind, capture)
-            if kind == "interrupted":
+            if kind in BOUNDARIES:
+                # Sources are finalized before baseline preparation commits any
+                # identity. Supplements contain just one grouped request.
+                response = (
+                    (directory / "responses.jsonl")
+                    .read_text(encoding="utf-8")
+                    .splitlines()[0]
+                )
+                (directory / "responses.jsonl").write_text(
+                    response + "\n", encoding="utf-8"
+                )
+                process = subprocess.run(
+                    [
+                        sys.executable,
+                        str(Path(__file__).resolve()),
+                        "--phase",
+                        "produce-boundary",
+                        "--boundary",
+                        kind,
+                        "--output",
+                        str(directory),
+                    ],
+                    cwd=directory,
+                    capture_output=True,
+                    text=True,
+                    timeout=45,
+                )
+                (directory / "boundary.stdout.json").write_text(
+                    process.stdout, encoding="utf-8"
+                )
+                (directory / "boundary.stderr.txt").write_text(
+                    process.stderr, encoding="utf-8"
+                )
+                if process.returncode != (0 if kind == "sealed" else 73):
+                    raise AssertionError("Genuine baseline boundary child failed")
+                marker = json.loads(
+                    (directory / "boundary.json").read_text(encoding="utf-8")
+                )
+                if marker["package_version"] != "0.1.0a2" or marker["boundary"] != kind:
+                    raise AssertionError(
+                        "Boundary marker conflicts with baseline producer"
+                    )
+                run_id = marker["run_id"]
+            elif kind == "interrupted":
                 interrupted = interrupt_run(directory, console(), evidence)
                 if not interrupted["exit_confirmed"]:
                     raise AssertionError("Original executor exit was not confirmed")
@@ -289,6 +461,8 @@ def produce(root: Path) -> dict[str, Any]:
                 )
                 exports.append(report)
             before = evidence(directory)
+            if kind in BOUNDARIES:
+                verify_boundary_before(directory, kind, capture, before)
             write_json(directory / "before.json", before)
             manifest = next((directory / "store").glob("runs/*/manifest.json"))
             if (
@@ -303,6 +477,9 @@ def produce(root: Path) -> dict[str, Any]:
                     "capture": capture,
                     "run_id": run_id,
                     "manifest_sha256": digest(manifest),
+                    "boundary_sha256": digest(directory / "boundary.json")
+                    if kind in BOUNDARIES
+                    else None,
                     "exports": exports,
                 }
             )
@@ -477,6 +654,14 @@ def consume(root: Path) -> dict[str, Any]:
     fixture: dict[str, Any] = json.loads(
         (root / "cases.json").read_text(encoding="utf-8")
     )
+    if (
+        fixture["producer_version"] != "0.1.0a2"
+        or {case["name"] for case in fixture["cases"]} != expected_cases()
+        or len(fixture["cases"]) != len(expected_cases())
+    ):
+        raise AssertionError(
+            "Compatibility matrix is missing required genuine baseline cases"
+        )
     passed: list[str] = []
     for case in fixture["cases"]:
         directory = root / case["name"]
@@ -517,6 +702,22 @@ def consume(root: Path) -> dict[str, Any]:
                 raise AssertionError(
                     "Missing authoritative evidence fabricated an outcome"
                 )
+        if case["kind"] in {"after_receipt", "after_observation"}:
+            recovered = call_cli(
+                directory,
+                "resume",
+                *arguments,
+                *settings(directory),
+                "--mock-no-retrieval",
+                expected=(0,) if case["capture"] == "full" else (3,),
+            )
+            expected_without_retrieval = 3 if case["capture"] == "full" else 0
+            if recovered["data"]["results"] != expected_without_retrieval:
+                raise AssertionError(
+                    "Response-loss recovery violated capture/evidence policy"
+                )
+            if evidence(directory)["acceptances"] != before["acceptances"]:
+                raise AssertionError("Response-loss recovery repeated an acceptance")
         call_cli(
             directory,
             "resume",
@@ -555,30 +756,30 @@ def consume(root: Path) -> dict[str, Any]:
                     )
         after = evidence(directory)
         compare_identities(before, after)
-        logical_count = (
-            2 if case["kind"] == "completed" and case["capture"] == "full" else 6
+        if case["kind"] in BOUNDARIES:
+            marker_path = directory / "boundary.json"
+            if digest(marker_path) != case["boundary_sha256"]:
+                raise AssertionError("Baseline boundary/plan evidence changed")
+            marker = json.loads(marker_path.read_text(encoding="utf-8"))
+            membership = sorted(after["attempt_tasks"], key=lambda row: row["position"])
+            if [row["task_id"] for row in membership] != marker["task_ids"] or [
+                row["request_uid"] for row in after["requests"]
+            ] != [marker["request_uid"]]:
+                raise AssertionError(
+                    "Upgraded scheduling differs from the actual a2 plan"
+                )
+        logical_count, requests, attempts, expected_accepted, expected_rows = (
+            expected_counts(case["kind"], case["capture"])
         )
-        if len(after["tasks"]) != logical_count or len(after["requests"]) != 2:
+        if len(after["tasks"]) != logical_count or len(after["requests"]) != requests:
             raise AssertionError("Logical and physical request counts changed")
-        if len(after["attempts"]) != (4 if case["kind"] == "partial" else 2):
+        if len(after["attempts"]) != attempts:
             raise AssertionError("Unexpected attempt count")
-        expected_accepted = {
-            "completed": 2,
-            "partial": 4,
-            "interrupted": 1,
-            "uncertain": 2,
-        }[case["kind"]]
         if (
             sum(row["acceptance_count"] for row in after["acceptances"])
             != expected_accepted
         ):
             raise AssertionError("Unexpected accepted submission count after upgrade")
-        expected_rows = {
-            "completed": logical_count,
-            "partial": 8,
-            "interrupted": 3,
-            "uncertain": 6,
-        }[case["kind"]]
         if len(after["results"]) != expected_rows:
             raise AssertionError("Unexpected all-attempt result count")
         for record in after["results"]:
@@ -642,9 +843,16 @@ def main() -> None:
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument(
         "--phase",
-        choices=("identify-a2", "identify-a3", "produce", "consume"),
+        choices=(
+            "identify-a2",
+            "identify-a3",
+            "produce",
+            "produce-boundary",
+            "consume",
+        ),
         help=argparse.SUPPRESS,
     )
+    parser.add_argument("--boundary", choices=BOUNDARIES, help=argparse.SUPPRESS)
     options = parser.parse_args()
     output = options.output.resolve()
     if options.phase:
@@ -654,6 +862,10 @@ def main() -> None:
             result = identify(options.candidate_source_archive, "0.1.0a3")
         elif options.phase == "produce":
             result = produce(output)
+        elif options.phase == "produce-boundary":
+            if options.boundary is None:
+                parser.error("Boundary child requires an explicit durable boundary")
+            result = produce_boundary(output, options.boundary)
         else:
             result = consume(output)
         print(json.dumps(result, sort_keys=True))

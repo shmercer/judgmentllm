@@ -1,6 +1,6 @@
 """Provider-independent assessment contracts, normalization, and offline prompts."""
 
-__version__ = "0.1.0a2"
+__version__ = "0.1.0a3"
 
 from judgmentllm.config import GenerationSpec, RunSpec, load_rubric, load_run_spec
 from judgmentllm.generation import GenerationCapabilities, GenerationParameterCapability

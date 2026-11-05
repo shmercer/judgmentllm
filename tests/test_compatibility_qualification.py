@@ -12,10 +12,55 @@ from pathlib import Path
 
 import pytest
 
-from scripts.qualify_version_compatibility import compare_identities
+from scripts.qualify_version_compatibility import (
+    compare_identities,
+    expected_cases,
+    expected_counts,
+    verify_boundary_before,
+)
 from scripts.version_compatibility_fixture import digest, evidence, extract_fixture
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def test_qualification_inventory_retains_preparation_and_response_loss_windows() -> (
+    None
+):
+    kinds = {
+        "completed",
+        "partial",
+        "interrupted",
+        "uncertain",
+        "sealed",
+        "after_preparation",
+        "after_receipt",
+        "after_observation",
+    }
+    assert expected_cases() == {
+        f"{kind}-{capture}" for kind in kinds for capture in ("full", "minimal")
+    }
+    assert len(expected_cases()) == 16
+    assert expected_counts("partial", "minimal") == (6, 2, 4, 4, 8)
+    assert expected_counts("completed", "full") == (2, 2, 2, 2, 2)
+    for kind in ("sealed", "after_preparation", "after_receipt", "after_observation"):
+        assert (
+            expected_counts(kind, "full")
+            == expected_counts(kind, "minimal")
+            == (3, 1, 1, 1, 3)
+        )
+
+
+def test_existing_results_cannot_impersonate_a_response_loss_fixture(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "fixture"
+    extract_fixture(
+        ROOT / "tests/fixtures/a2-compatibility.tar.gz",
+        ROOT / "tests/fixtures/a2-compatibility.json",
+        root,
+    )
+    with pytest.raises(AssertionError, match="prepared membership"):
+        verify_boundary_before(root, "after_receipt", "full", evidence(root))
 
 
 @pytest.mark.parametrize(

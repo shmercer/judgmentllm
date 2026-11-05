@@ -52,7 +52,8 @@ def inventory(root: Path) -> Inventory:
                 totals["object_bytes"] += size
                 totals["object_allocated_bytes"] += allocated
             if any(
-                part.startswith((".export-", ".stage-", ".tmp")) for part in path.parts
+                part.startswith((".export-", ".stage-", ".pending-", ".tmp"))
+                for part in path.parts
             ) or name.startswith("tmp"):
                 totals["temporary_bytes"] += size
                 totals["temporary_allocated_bytes"] += allocated
@@ -186,4 +187,10 @@ class StorageSampler:
                 "phase_inventory_wall_seconds": self.inventory_wall_seconds,
                 "timing_note": "ordinary wall times include sampling and phase-inventory overhead",
                 "scope": "sampled file high-water; phase inventories; volume-wide free-space growth",
+                "inventory_accounting": (
+                    "inventory sizes sum pathnames, including hardlink aliases; "
+                    "allocated bytes sum st_blocks per pathname where available, "
+                    "not unique physical disk usage; volume-wide free-space "
+                    "samples may miss brief export staging/publication overlap"
+                ),
             }

@@ -118,3 +118,20 @@ R interoperability is an acceptance condition throughout subsequent milestones, 
 - Require six local OS/Python 3.11/3.12 lanes on the final commit. Hosted CI retains
   Ubuntu/macOS 3.11/3.15 plus Windows 3.12 and optional full Windows 3.11 dispatch.
   Local results do not establish hosted 3.15 qualification.
+
+## Milestone 2 Subphase 6 candidate (2026-11-05)
+
+- Prepare development version `0.1.0a3` before freezing final qualification.
+  This identifies the candidate, rather than declaring acceptance or publishing
+  a release. Exact-commit local evidence remains outside the tracked source tree.
+- Permit only the explicitly qualified a2 producer under the a3 consumer, in
+  addition to each supported version reading itself. Preserve original manifests,
+  payload/attempt/submission identities, schema versions and historical exports.
+  Unknown producer/consumer transitions remain rejected; no migration framework
+  or schema migration is introduced.
+- Retain a small genuine baseline-a2 synthetic fixture in routine CI and require
+  the broader installed a2-to-a3 boundary matrix separately. Never manufacture
+  old state by substituting a version field in an a3-produced manifest.
+- Keep complete 5,000-by-20 qualification separate from routine CI unless actual
+  hosted complete-job measurements establish adequate margin. Preserve all
+  existing resource parameters, limits, R gates and job deadlines.

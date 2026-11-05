@@ -55,13 +55,34 @@ silently skipped. `PYTHONPATH` is removed from subprocesses, and each phase runs
 outside the checkout. Each installed interpreter selects its own installed
 console. No version field is assigned to manufacture an old fixture.
 
-The authentic a2 process creates eight tiny stores: full/minimal variants of
-completed, partial grouped, interrupted and uncertain runs. The completed full
+The authentic a2 process creates sixteen tiny stores. The primary eight are
+full/minimal variants of completed, partial grouped, interrupted and uncertain
+runs. The completed full
 case is pairwise, including reversed presentations and character IDs `001`/`002`;
-the remaining cases score grouped rubric traits with complete probabilities and
-nonuniform coding. All stores have two original physical requests. Rubric cases
+the remaining primary cases score grouped rubric traits with complete
+probabilities and nonuniform coding. All primary stores have two original
+physical requests. Rubric cases
 have six logical tasks; the pairwise case has two. These are compatibility
 fixtures, not performance or scale benchmarks.
+
+Eight supplementary stores exercise full/minimal variants of sealed-only
+preparation, a durable prepared attempt before submission, published response
+receipt before its observation transaction, and committed observation before
+normalization. Each supplement contains one response with three grouped traits:
+three logical tasks and one physical request. The actual installed a2 child uses
+the existing `prepare_run`/`execute_run` seams and exits at `after_preparation`,
+`after_receipt` or `after_observation`; sealed-only preparation performs no
+execution. Its parent owns and joins that child. Boundary markers, journal,
+receipt/raw-artifact checks and independent ledger counts prove the claimed
+windows before a3 consumes them. These helpers never relabel a saved version.
+
+The a3 consumer completes sealed/prepared work with one attempt and acceptance.
+For both full-capture response-loss windows, it must complete from exact retained
+bytes with authoritative retrieval disabled. Each corresponding minimal case
+must remain unresolved with zero results and unchanged acceptance while retrieval
+is disabled, then recover that same accepted observation when retrieval is
+restored. The original attempt/submission/payload/manifest commitments remain
+unchanged throughout.
 
 The a3 consumer performs public status, listing, absolute-directory resolution,
 resume and all three export views. It retries only failed grouped members using
@@ -98,7 +119,7 @@ Pydantic environments. Each case retains its genuine a2 `before.json`, candidate
 records, and interruption proof where applicable. `consumer-report.json` lists
 the passing cases and negative checks. Failures and stderr remain in place.
 
-Acceptance requires `qualified: true`, all eight cases and every negative check
+Acceptance requires `qualified: true`, all sixteen cases and every negative check
 passing on the exact final a3 source. A changed candidate commit requires fresh
 qualification; an earlier producer-only or same-version helper exercise is not
 cross-version acceptance. This command has its own bounded phase deadlines and

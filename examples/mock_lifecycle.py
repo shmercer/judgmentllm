@@ -27,7 +27,12 @@ def main() -> None:
     summary = run_live(configuration, store=options.store)
     print(summary.model_dump_json())
     print(get_run(summary.run_id, store=options.store).model_dump_json())
-    print(export_run_results(summary.run_id, store=options.store).model_dump_json())
+    for format, view in (("jsonl", "canonical"), ("csv", "r")):
+        print(
+            export_run_results(
+                summary.run_id, store=options.store, format=format, view=view
+            ).model_dump_json()
+        )
 
 
 if __name__ == "__main__":
