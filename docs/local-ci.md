@@ -26,6 +26,9 @@ and optional Windows/Python 3.11 run the full suite with explicit `--no-cov`.
 Only the primary job uploads coverage.xml (including failed-job evidence when
 available) and invokes the existing optional Codecov integration. The default
 pytest branch coverage settings and blocking 90% threshold remain unchanged.
+Hosted jobs have a 30-minute timeout, with a runtime target under 20 minutes.
+The resource fixtures retain their separate 180-second deadline and existing
+memory and workload limits.
 
 This seven-configuration requirement applies prospectively from this CI change.
 The six-configuration Subphase 6 results remain historical evidence for their
