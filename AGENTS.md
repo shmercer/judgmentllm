@@ -25,7 +25,7 @@ Read `docs/design-spec.md`, `docs/decisions.md`, `docs/data-contracts.md`, and t
 
 ## Validation workflow
 
-- Before publication, commit the proposed head and run `python3 ci/local/grid.py --ref FULL_HEAD_SHA --mode check`. Require all six local configurations (Linux/Windows/macOS, Python 3.11/3.12) to pass in parallel, including quality, coverage, package/offline smokes and all six strict R/jsonlite gates per configuration.
+- Before publication, commit the proposed head and run `python3 ci/local/grid.py --ref FULL_HEAD_SHA --mode check`. Require all six local configurations (Linux/Windows/macOS, Python 3.11/3.12) to pass in parallel, including quality, coverage, package/offline smokes and all seven strict R/jsonlite gates per configuration.
 - Then require GitHub CI on the exact final PR head: Ubuntu/macOS Python 3.11/3.15 and Windows Python 3.12. Keep the complete Windows 3.11 job available through manual dispatch; local 3.11/3.12 checks do not replace hosted 3.15 qualification.
 - Follow `docs/local-ci.md` for preparation, VM locks, isolation and graceful shutdown. Preserve resource thresholds (including the 180-second fixture deadline); retain exact-commit evidence and distinguish environment limitations from test failures.
 

@@ -97,7 +97,7 @@ def test_full_job_quality_r_and_resource_gates_are_preserved() -> None:
         assert step["run"] == command
         assert "if" not in step and step.get("continue-on-error", "false") == "false"
     r_gates = [step for step in steps if step["name"].startswith("Verify required ")]
-    assert len(r_gates) == 6
+    assert len(r_gates) == 7
     for step in r_gates:
         assert step["if"] == "matrix.os == 'ubuntu-latest' && matrix.python == '3.11'"
         assert step["env"]["JUDGMENTLLM_R_STRICT"] == "1"

@@ -32,9 +32,9 @@ lossless normalized CSV remain authoritative and keep their existing formats.
 The wrapper must perform the complete listed run lifecycle, not merely document
 manual invocations. It will use shared Python/CLI contracts rather than recreate
 provider adapters, scheduling, persistence, or result normalization in R. These
-are future wrapper requirements; no `rubricLLM` package or execution CLI is
-implemented by this documentation update. Existing Milestone 1 commands remain
-limited to offline template tools.
+are future wrapper requirements; no `rubricLLM` package is implemented in this milestone. Subphase 5 exposes
+execution through the shared public Python services and the installed CLI;
+Milestone 1 template behavior remains unchanged.
 
 Generation settings use the same optional `RunSpec.generation` through Python,
 future lifecycle CLI configuration, and the Milestone 6 wrapper. Preserve omitted
@@ -402,3 +402,56 @@ JUDGMENTLLM_R_STRICT=1 Rscript --vanilla examples/grouped_lifecycle_interoperabi
 
 All five earlier strict gates remain required. This sixth gate uses only base R
 and jsonlite; installed CLI lifecycle testing remains assigned to Subphase 5.
+
+
+## Subphase 5: installed-CLI lifecycle acceptance
+
+A seventh required gate launches the installed `judgmentllm` console executable
+for validation, planning, execution, status/listing, recovery, explicit subset
+retry and immutable export. Preserve all six earlier strict gates. The fixture
+uses independent processes for whole run operations and requires only base R
+and jsonlite; it does not install processx, rubricLLM, pairwiseLLM or Stan.
+
+```bash
+uv run --offline --no-sync python scripts/cli_lifecycle_r_gate.py --output /tmp/judgmentllm-cli-lifecycle-r
+```
+
+Use a fresh output directory. The wrapper resolves the installed console beside
+its Python interpreter and passes explicit absolute paths to R. The equivalent
+R invocation takes the output directory, installed executable, fixture Python,
+and helper path:
+
+```bash
+Rscript --vanilla examples/cli_lifecycle_interoperability.R OUT ABS_CONSOLE ABS_PYTHON ABS_HELPER
+```
+
+Each synchronous base-R `system2()` invocation writes stdout and stderr to
+separate files. R independently validates one version-1 stdout control object,
+every stderr diagnostic/progress JSONL record, and the process exit status.
+This avoids platform-dependent stdout/stderr merging, especially on Windows.
+Execution and export data are read from returned durable artifacts, not from
+stdout result streams.
+
+Small full/minimal independent/grouped rubric and pairwise fixtures retain
+leading-zero character IDs, original/reversed presentations, nonuniform category
+mappings, complete probabilities, selected/modal/expected distinctions, missing
+values and all attempts. Grouped failed-member retries retain unsuccessful
+originals and use one durable retry operation per original request. Reusing an
+operation cannot create another attempt; conflicting reuse and unapproved
+completed-task selection fail. Independent ledger reads verify acceptance counts
+rather than infer duplicate safety from result counts.
+
+The accepted-but-unavailable fixture recovers the original observation when
+retrieval becomes available. A separate real-process termination fixture waits
+for one committed result and a later durable submitting boundary, terminates
+the actual owner, then inspects/resumes/exports in new processes. Authoritative
+nonacceptance does not fabricate a result or create missing retry authority.
+Hard termination need not emit a final control envelope. POSIX graceful SIGINT
+and portable cancellation-boundary tests cover handled exit 130 separately.
+
+The helper writes synthetic fixture inputs and inspects independent SQLite
+records. It does not perform lifecycle operations in place of the executable.
+Expensive fault-window matrices and scale tests remain Python regressions;
+the R gate does not wait out synthetic long delays or run scale qualification.
+Missing executable/Rscript/jsonlite or failed assertions fail required acceptance.
+Hosted Ubuntu/Python 3.11 and all six local OS/Python lanes require this gate.

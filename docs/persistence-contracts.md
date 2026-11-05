@@ -6,7 +6,9 @@ This document describes the implemented durable foundation, generation
 commitments, and immutable source-preparation services.
 `judgmentllm.persistence` is an internal Python package. Its records use version
 1 independently of the unchanged assessment and normalized-result schemas.
-Subphase 3 adds internal mock execution and recovery; public lifecycle CLI commands remain deferred.
+Subphases 3–4 implement mock execution, conservative recovery, retries, cancellation
+and immutable exports. Subphase 5 exposes those services through public Python
+functions and the versioned CLI without changing registry schema version 1.
 
 ## Registry and transactions
 
@@ -44,7 +46,7 @@ while the existing Pydantic models validate complete scoring semantics.
 | `observations` | Append-only established provider response/refusal/error/cancellation metadata. Requires an accepted submission; raw bytes may intentionally be absent. |
 | `submission_failures` | Append-only definitive local submission failure/cancellation evidence linked to its attempt, submission, and failure audit event. Does not invent a provider observation. |
 | `results` | Append-only validated normalized records, unique per run/task/attempt, with observation or definitive failure evidence. |
-| `retry_operations` | Immutable authorization identity, selection digest and explicit completed-task permission. No retry execution or task selection is implemented. |
+| `retry_operations` | Immutable authorization identity, selected membership/prior-outcome digest and explicit completed-task permission. The shared retry service prepares exact subsets under ownership. |
 | `events` | Append-only typed event kind, entity identity, state transition, owner reference and timestamp. No arbitrary message or payload dictionary. |
 | `batches`, `batch_members` | Reserved future batch identities/membership; no batch submission methods. |
 | `exports` | Internal all-attempt export publication/high-water metadata; published rows immutable. Publication references retained exact output bytes and never overwrites earlier snapshots. |
@@ -210,8 +212,8 @@ capabilities=None, exhaustive_rendering=False)` validates the complete assessmen
 configuration/rubric/criteria/exemplar/template/response/pair files, builds ordered
 record indexes in the existing source tables, and seals a typed version-1
 `ExecutableRunManifest`. A direct Python `RunSpec` records its canonical identity
-without fabricating an originating source-file hash. The services are internal;
-the approved public lifecycle APIs/CLI remain assigned to later subphases.
+without fabricating an originating source-file hash. These preparation services remain internal; the public lifecycle APIs/CLI delegate
+to them rather than implementing another validation or execution pipeline.
 
 Source parsing, record validation, references, locators, hashes, and source-set
 consistency are always checked in full before sealing. Normal render preflight
@@ -299,8 +301,8 @@ records complete input preparation and the remaining submission-boundary work.
 
 ## Subphase 3 execution ownership, receipts, and provider evidence
 
-The internal `judgmentllm.execution` service now executes prepared single-member
-mock requests. It reuses the version-1 registry, memberships, result schemas,
+The internal `judgmentllm.execution` service executes prepared independent/grouped
+rubric and pairwise mock requests. It reuses the version-1 registry, memberships, result schemas,
 validators, and normalizers. No registry migration or result/export-column change
 is introduced.
 
@@ -402,7 +404,7 @@ original source's capture or recovery contract. Shared SHA-256 identities must
 have the same exact byte length.
 
 This service introduces no registry migration, result schema or R column changes.
-Public export CLI controls remain assigned to Subphase 5.
+Public `export_run_results()` and `results export` delegate to this service.
 
 Confirmed cancellation is a distinct established provider observation kind. The
 mock can return an authoritative `confirmed_cancellation` outcome bound to its
@@ -413,3 +415,42 @@ atomically. Receipt replay and authoritative retrieval recover the same evidence
 This mock outcome is explicit provider evidence; cancelling an asyncio task or
 safe unsubmitted work never generates it. No provider-side cancellation call or
 public cancellation CLI is introduced by this seam.
+
+
+## Public lifecycle boundary (Subphase 5)
+
+The public `validate_inputs`, `estimate_run`, `run_live`/`arun_live`,
+`resume_run`/`aresume_run`, `list_runs`, `get_run` and `export_run_results`
+services compose the existing preparation, execution, retry and export services.
+The CLI calls these same public functions. No migration or normalized-output
+schema change is introduced.
+
+Inspection checks an existing registry before opening it, uses bounded queries,
+and needs neither original assessment sources nor a provider adapter. Returned
+run IDs remain original strings; absolute run directories are checked against
+the existing hash-based mapping. Stored run state and an instantaneous OS-lock
+probe remain separate. Inspection never repairs stale ownership or starts work.
+
+`ReadOnlyRepository` opens the existing registry with SQLite URI `mode=ro`,
+plus connection-local `query_only`. It verifies the existing schema version,
+migration checksum and structural digest through the same verifier as the writer;
+it never initializes, migrates, checkpoints or repairs a registry. Empty,
+uninitialized, incompatible and malformed registries fail safely. Missing stores
+still produce empty listings or `not_found` for addressed runs. Inspection creates
+no application state, manifests, artifacts, run directories or lock files.
+SQLite-owned WAL/SHM coordination is permitted: normal locks and committed,
+uncheckpointed WAL visibility are preserved, including during active execution.
+Readers do not use SQLite's immutable or lock-bypassing modes.
+
+Runtime retry selection and mock fixture controls do not enter RunSpec. Custom
+mock ledgers and caller-owned fixture files must be supplied again on resume;
+missing ledgers are rejected before construction. Service-identity, source and
+exact payload commitments remain mandatory. Only current compatible evidence
+permits recovery; matching recipes or hashes alone never establish observations.
+
+Public summaries distinguish planned logical work from materialized rows,
+current task states from historical result counts, and uncertain submissions from
+acknowledged observations awaiting recovery. Public export reports return durable
+absolute file paths; they preserve the same immutable snapshot and all-attempt
+semantics described above. See [Python services](python-api.md) and
+[CLI controls](cli-spec.md).

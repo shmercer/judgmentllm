@@ -1,14 +1,16 @@
 # JudgmentLLM
 
-**Milestone 1 — assessment contracts and offline prompts. Version 0.1.0a2.**
+**Milestone 2, Subphase 5 — mock execution and public lifecycle. Version 0.1.0a2.**
 
 Milestone 2 adds an [internal preparation foundation](docs/persistence-contracts.md)
 for SQLite state, immutable source snapshots, indexed input access, complete run
 manifests, generation commitments, and local executor ownership.
-Execution and lifecycle commands remain unimplemented. The
-[approved Milestone 2 plan](docs/milestone-2-execution-plan.md) records the next steps.
+Public Python services and the versioned CLI provide complete validation, planning,
+mock live execution, durable status, conservative recovery, explicit subset retries,
+and immutable all-attempt exports. Real provider adapters remain later milestones.
+The [approved Milestone 2 plan](docs/milestone-2-execution-plan.md) records the boundaries.
 
-JudgmentLLM provides typed, provider-independent contracts for ordinal rubric scoring and pairwise judgments. It loads synthetic assessments, validates category coding, prepares deterministic task groups, renders prompts, and normalizes supplied categorical or probability results. Provider execution arrives in later milestones.
+JudgmentLLM provides typed, provider-independent contracts for ordinal rubric scoring and pairwise judgments. It loads synthetic assessments, validates category coding, prepares deterministic task groups, renders prompts, and normalizes supplied categorical or probability results. Synthetic mock execution is available; real provider execution arrives in later milestones.
 
 Python 3.11+, Linux, Windows, and macOS are supported. The core uses Pydantic 2, PyYAML, Jinja2, and Typer; pandas and PyArrow are not required.
 
@@ -28,6 +30,36 @@ uv run --offline --no-sync python examples/offline.py
 
 All bundled inputs are synthetic. Preview makes no network requests and needs no credentials. Example provider/model fields declare future intent; they do not establish provider support. The initial dependency installation may download packages. Use `uv sync --locked --no-dev` for core-only installation.
 
+## Offline execution lifecycle
+
+`examples/mock-run.yaml` declares the deterministic mock provider. The existing
+OpenAI examples remain valid for offline validation/preview; execution rejects
+unimplemented providers and never substitutes the mock.
+
+```bash
+judgmentllm validate --config examples/mock-run.yaml --json
+judgmentllm plan --config examples/mock-run.yaml --json
+judgmentllm run --config examples/mock-run.yaml --store /tmp/judgmentllm-example --json
+judgmentllm runs list --store /tmp/judgmentllm-example --json
+judgmentllm runs status --store /tmp/judgmentllm-example --run RUN_ID --json
+judgmentllm resume --store /tmp/judgmentllm-example --run RUN_ID --json
+judgmentllm results export --store /tmp/judgmentllm-example --run RUN_ID --format csv --view r --json
+python examples/mock_lifecycle.py --store /tmp/judgmentllm-python-example
+```
+
+Use the returned original run ID for `RUN_ID`. On Windows choose a local path,
+for example `C:\JudgmentLLM-data`. Keep runtime stores outside synchronized folders.
+`run` and `resume` block in their own process. JSON mode writes one control object
+to stdout and separate JSONL diagnostics to stderr. A later process can inspect
+or export without the original terminal or an HTTP server. Exports retain every
+recorded attempt; select successful attempts explicitly for analysis.
+
+Minimal capture omits source snapshots, prompts, payloads and raw responses;
+authorized normalized explanations remain sensitive retained results. Recovery
+requires unchanged original sources and authoritative observation evidence.
+Uncertain submissions are never silently reissued. See [CLI controls](docs/cli-spec.md)
+and [public lifecycle APIs](docs/python-api.md) for retry authorization and errors.
+
 ## Python preparation
 
 ```python
@@ -39,7 +71,8 @@ print(request.request_uid, request.trait_ids, request.exemplar_ids)
 print(preview_prompt(spec, item_id="essay_001", trait_id="organization").text)
 ```
 
-Independent scoring is the default. Fixed groups preserve their supplied order; auto grouping requires an explicit known trait-count limit. Planning is structural and provides no token/cost estimates or execution.
+Independent scoring is the default. Fixed groups preserve their supplied order; auto grouping requires an explicit known trait-count limit. The original `plan_run()` remains structural. `estimate_run()` validates the complete
+input and gives exact task/request counts with unavailable token/cost estimates explicit.
 
 ```python
 from judgmentllm import load_run_spec, prepare_pairs
@@ -70,7 +103,7 @@ Output-schema validation is separate from rendering. Unknown configuration field
 
 See [prompt guidance](docs/prompt-guidance.md) and [CLI documentation](docs/cli-spec.md).
 The provider-free internal preparation service freezes assessment sources and
-seals a complete manifest before later execution can begin. Full capture retains
+seals a complete manifest before submission can begin. Full capture retains
 verified exact snapshots; minimal capture retains hashes, structural indexes,
 and source references while requiring unchanged originals. Use a local runtime
 store outside cloud-synchronized or network-mounted directories. See the
@@ -96,11 +129,16 @@ uv run --offline --no-sync python scripts/smoke_install.py dist/*.tar.gz
 
 Use a writable `UV_CACHE_DIR` when the default cache is read-only. Tests are synthetic and offline. The coverage gate remains 90%; statement and branch coverage are reported. The installation helper creates clean environments and may download locked core dependencies; installed import, template, and preview checks run offline. Provider SDKs must be absent from these core installations.
 
-CI retains the Milestone 0 Linux/Windows/macOS matrix on Python 3.11 and 3.15, lint/type checks, builds, clean installations, coverage artifacts, and optional Codecov upload. A required Ubuntu/Python 3.11 R round trip also checks synthetic file imports and full probability/mapping recovery with `jsonlite`; R compatibility is a standing requirement for later schema/export/CLI changes. See [repository setup](docs/repository-setup.md) for Codecov configuration.
+CI runs Ubuntu/macOS on Python 3.11/3.15 and Windows on Python 3.12, with a complete
+manual Windows 3.11 job. Quality checks, builds, clean installations, coverage
+artifacts and optional Codecov remain required. Ubuntu/Python 3.11 requires all
+seven strict R/jsonlite gates, including installed-CLI lifecycle acceptance. The
+[local six-configuration grid](docs/local-ci.md) runs Python 3.11/3.12 on all three
+platforms, with all seven R gates in each lane; it does not replace hosted 3.15. See [repository setup](docs/repository-setup.md) for Codecov configuration.
 
 ## Optional dependencies and later milestones
 
-Extras remain `openai`, `anthropic`, `google`, `together`, `ollama`, `typesafe`, `parquet`, `api`, and `all`. Installing them adds dependencies, not implemented provider operations. Milestone 2 adds mock execution and persistence; live adapters, batching, catalogs, the functional CLI-first `rubricLLM` wrapper in Milestone 6, and the committed optional local FastAPI interface in Milestone 7 follow the [implementation plan](docs/implementation-plan.md). R calls will operate on runs/files or sized task groups, not spawn one Python process per judgment. These future services and wrapper operations are not implemented by the current offline tools.
+Extras remain `openai`, `anthropic`, `google`, `together`, `ollama`, `typesafe`, `parquet`, `api`, and `all`. Installing them adds dependencies, not implemented provider operations. Milestone 2 provides mock execution and persistence; live adapters, batching, catalogs, the functional CLI-first `rubricLLM` wrapper in Milestone 6, and the committed optional local FastAPI interface in Milestone 7 follow the [implementation plan](docs/implementation-plan.md). R calls will operate on runs/files or sized task groups, not spawn one Python process per judgment. The wrapper, batch operations and real-provider services remain future work.
 
 The repository is [shmercer/judgmentllm](https://github.com/shmercer/judgmentllm), licensed under [MIT](LICENSE), and not yet published to PyPI. The core does not implement Bradley–Terry fitting, adaptive pairing, or rubric calibration; these remain in `pairwiseLLM`.
 

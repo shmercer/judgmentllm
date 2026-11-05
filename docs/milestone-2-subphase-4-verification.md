@@ -1,5 +1,13 @@
 # Milestone 2, Subphase 4 verification
 
+Current context (Subphase 5): this is a dated verification record. PR #8 and
+PR #9 are merged into main `01fa7e47b86f36370f8df017873cf41668b2f363`;
+its five hosted jobs passed in run `41909583052`. Current hosted CI is
+Ubuntu/macOS Python 3.11/3.15 plus Windows 3.12, with optional full Windows
+3.11 dispatch. Keep the historical six-job results and failures below as evidence.
+The [Subphase 5 report](milestone-2-subphase-5-verification.md) records the new
+public lifecycle and seventh R gate; it does not replace these measurements.
+
 Implemented on `codex/milestone-2-outcomes-retry-lifecycle`, from clean
 `origin/main` at `ae26665fffbba551f22b18a7321b539358d34692` (PR #6).
 Package version remains `0.1.0a2`; normalized results and registry schema remain

@@ -5,8 +5,161 @@ Milestone 2 Subphase 2 adds provider-free immutable source preparation, indexed
 input access, complete manifests, and generation compatibility validation.
 All examples below run without credentials. Public assessment models, common
 normalization functions, planning functions, and preview are also exported from
-`judgmentllm`. Subphase 3 adds internal mock execution/recovery. Public lifecycle APIs and CLI
-commands remain later subphases.
+`judgmentllm`. Subphases 3–4 provide mock execution/recovery, grouped outcomes,
+retry/cancellation and immutable exports. Subphase 5 exposes the shared public
+lifecycle services below; the installed CLI calls these same functions.
+
+## Public execution lifecycle (Milestone 2 Subphase 5)
+
+The top-level `judgmentllm` package and `judgmentllm.lifecycle` expose:
+
+```python
+validate_inputs(spec_or_path, *, capabilities=None, exhaustive_rendering=False) -> InputValidationReport
+estimate_run(spec_or_path, *, capabilities=None) -> ExecutionPlan
+run_live(spec_or_path, *, store=None, progress=None, mock=None) -> RunSummary
+arun_live(spec_or_path, *, store=None, progress=None, mock=None) -> RunSummary
+resume_run(run_id, *, store=None, spec=None, use_frozen_snapshot=False,
+           retry=None, progress=None, mock=None) -> RunSummary
+aresume_run(run_id, *, store=None, spec=None, use_frozen_snapshot=False,
+            retry=None, progress=None, mock=None) -> RunSummary
+list_runs(*, store=None, limit=100, cursor=None) -> RunPage
+get_run(run_id, *, store=None) -> RunStatus
+export_run_results(run_id, *, store=None, format="jsonl", view="canonical",
+                   na_string="NA", high_water_mark=None) -> ResultManifest
+```
+
+`spec_or_path` accepts a `RunSpec`, string path or `Path`. Synchronous execution
+wrappers reject calls inside an active event loop before doing any I/O, with
+instructions to call their async equivalent. Both execute in the calling process;
+no background service continues after that process exits. Cancellation of async
+execution drains durable writes and ownership before propagating `CancelledError`.
+Coarse synchronous progress observers receive frozen `ProgressEvent` records with
+`stage` (`started`, `prepared`, `finished`), durable `run_id` and absolute `store`.
+Progress contains no prompt, assessment text, raw response or exception dump.
+
+Only the exact combination `provider="mock"`, `endpoint="synthetic"` executes in
+this release. Other provider identities fail with `unsupported_capability` before
+mock construction or submission. Offline validation/planning continue to accept
+other valid configurations with explicit capability unknowns; validity does not
+claim that a real adapter is implemented. The provider-owned pure mock preflight
+rejects unsupported mock modes, tiers and explicit caching before execution.
+No price, token count, cache saving or model qualification is invented.
+
+`InputValidationReport` validates the complete source set through the existing
+immutable preparation pipeline and returns at most 100 issues, `total_issues`
+and `truncated`. Structural warnings remain visible. Counts are null when
+validation could not establish them; invalid source/configuration input returns
+`valid=False`, while storage/internal failures raise `LifecycleError`.
+`exhaustive_rendering=True` additionally renders every actual request; normal
+validation uses the established bounded representative rendering checks.
+`ExecutionPlan` derives exact logical task/request counts and ordered trait groups
+from the same privately prepared sources. Token/cost estimates remain null;
+synthetic billing is `not_applicable`. Neither function leaves a durable user run.
+
+Store selection is the explicit `store`, then `JUDGMENTLLM_RUN_HOME`, then the
+configuration's resolved `output_path`, otherwise `./run-data`. Commands without
+configuration need an explicit store or that environment variable to discover
+nondefault stores. Run references accept original string IDs or absolute run
+directories. Run directories retain the existing hashed basenames; the library
+recovers and verifies the original identity rather than deriving it from that
+basename. An exact registry ID in an explicitly selected store takes precedence,
+including for IDs that resemble filesystem paths. Paths in returned `ArtifactPaths`
+are absolute and durable; unavailable artifacts are null.
+
+Status/list/export do not submit, retrieve provider work or require original
+assessment sources. Status uses a short database snapshot and a source-independent
+verified manifest. `executor_active` reflects a read-only OS-lock probe (null when
+it cannot be established); heartbeat age is never takeover authority. A persisted
+`running` state with no executor and `recovery_required=True` describes interrupted
+work, not continuing background activity. Queries do not fabricate provider
+cancellation or repair execution by making provider calls.
+
+`RunStatus` keeps exact planned counts separate from materialized tasks, physical
+attempts and historical successful/unsuccessful result rows. `completed_tasks`
+counts current logical task states; `failed_tasks` counts invalid/refused/errored
+logical states, and `cancelled_tasks` / `blocked_tasks` remain distinct.
+`pending_tasks` includes unfinished active/blocked/unmaterialized work, excluding
+terminal failed/cancelled tasks. Planned/pending counts are null for incomplete
+unsealed preparation. `submission_certainty` reports not-started, not-submitted,
+unknown and accepted counts independently of results. `recovery_required` covers
+unresolved submissions and inactive created/submitted/running runs. Usage fields
+remain null when unreported; grouped request usage is never multiplied across
+traits. `RunSummary.outcome` describes this processing call independently of the
+durable `run_status`; a completed successful retry may retain older unsuccessful
+result rows while its current logical tasks are complete.
+
+`RunPage.runs` contains at most `limit` summaries (default 100, maximum 1,000),
+newest first by creation time and original run ID, plus `next_cursor`. Cursors are
+versioned, opaque and tied to the selected store. An absent store lists no runs
+without creating a database; a missing status/export resource raises `not_found`.
+
+### Mock reconstruction and explicit subset retries
+
+`MockExecutionOptions(ledger_path=None, fixture_path=None,
+retrieval_available=True, reconciliation_available=True)` is frozen and typed.
+The default independent acceptance ledger is `<store>/mock-service.sqlite3`.
+Custom ledger and fixture paths must be supplied again in later processes.
+Resume refuses a missing ledger rather than replacing its service identity.
+An optional caller-owned JSON fixture has strict fields `schema_version: 1`,
+`scenario` (an existing `MockScenario`) and `scenarios` (a mapping from original
+request IDs to scenarios). Unknown fields are rejected. Fixtures are synthetic
+adapter controls, never arbitrary provider request bodies, and their text is not
+copied into public metadata, diagnostics, manifests or the acceptance ledger.
+Missing/changed fixture inputs for an unfinished attempt cannot pass its exact
+payload commitments. Ledger recipes and hashes alone never reconstruct an
+unobserved minimal-capture response.
+
+```python
+from judgmentllm import (
+    MockExecutionOptions,
+    RetrySelection,
+    run_live,
+    resume_run,
+    export_run_results,
+)
+
+summary = run_live("examples/mock-run.yaml", store="/local/runtime/store")
+assert summary.run_id
+# Later, in an independent process:
+resumed = resume_run(summary.run_id, store="/local/runtime/store")
+exported = export_run_results(
+    summary.run_id, store="/local/runtime/store", format="csv", view="r"
+)
+```
+
+`RetrySelection(task_ids=(...), operation_id="retry-001", allow_completed=False)`
+selects explicit tasks from one original request. Pass it as `retry=` to resume.
+The existing service freezes original membership, exact prior outcomes and
+permission under exclusive ownership, prepares a fresh physical attempt, and
+keeps the parent task/request IDs. Any task with an earlier completed result
+requires `allow_completed=True`. Reusing an operation ID resumes its original
+attempt; changed membership, permission or authorization is rejected. The existing
+three-attempt budget and persistent automatic backoff remain in force. A fresh
+retry can select a new mock fixture after earlier outcomes have committed;
+recovering an unfinished attempt requires its matching original fixture.
+
+Normal resume never repeats completed judgments or invents missing outcomes.
+Uncertain acceptance is reconciled, and acknowledged missing observations require
+authoritative retrieval. Unavailable evidence remains unresolved. Invalid/refused
+outputs never qualify for automatic retry. Full capture requires matching original
+sources unless `use_frozen_snapshot=True` explicitly authorizes verified retained
+snapshots. Minimal capture requires matching originals; Python-origin minimal runs
+also need their original `spec`. Minimal capture still retains authorized normalized
+explanations, which can contain sensitive text.
+
+`LifecycleError` exposes safe `category`, `message`, `retryable`, nullable `run_id`
+and nullable absolute `store`. Categories align with the version-1 CLI contract;
+retry selection/permission/conflict/budget failures are validation errors, while
+corrupt durable evidence remains an execution error. No raw exception or provider
+body is exposed through these errors.
+
+`ResultManifest` identifies the selected immutable export, all-attempt row count,
+result high-water mark, current run state, `incomplete_source`, exact file
+paths/hashes/lengths and artifact references. Select canonical JSONL/CSV or R CSV;
+`na_string` applies to the R view. Export never creates rows for pending or
+unresolved tasks. Equal snapshots/options return identical export identities and
+bytes. An explicit older `high_water_mark` preserves its original file references;
+querying/exporting an incomplete run can succeed while reporting that state.
 
 ## Models and loading
 

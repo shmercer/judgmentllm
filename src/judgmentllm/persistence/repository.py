@@ -38,13 +38,14 @@ from judgmentllm.persistence.models import (
     PersistenceError,
     RequestRecord,
     RetryAuthorization,
+    RetryAuthorizationError,
     RunRecord,
     SubmissionRecord,
     TaskRecord,
     utc_now,
     validate_transition,
 )
-from judgmentllm.persistence.schema import initialize
+from judgmentllm.persistence.schema import initialize, verify
 from judgmentllm.persistence.sources import InputRecord, SourceRecord
 from judgmentllm.results import PairwiseResult, RubricResult
 
@@ -323,7 +324,8 @@ class Repository:
             (run_id, sha256),
         )
         identity = ArtifactIdentity.model_validate(dict(row))
-        ArtifactStore(self.run_directory(run_id)).verify(identity)
+        if identity.relative_path is not None:
+            ArtifactStore(self.run_directory(run_id), create=False).verify(identity)
         return identity
 
     def iter_artifacts(self, run_id: str) -> Iterator[ArtifactIdentity]:
@@ -656,7 +658,7 @@ class Repository:
                 data = dict(row)
                 data["allow_completed"] = bool(data["allow_completed"])
                 if RetryAuthorization.model_validate(data) != authorization:
-                    raise IntegrityError(
+                    raise RetryAuthorizationError(
                         "retry identity is already authorized differently"
                     )
                 return
@@ -1101,3 +1103,41 @@ class Repository:
             )
             if cursor.rowcount != 1:
                 raise OwnershipError("ownership token does not match")
+
+
+class ReadOnlyRepository(Repository):
+    """Inspect an existing registry without initialization or write pragmas.
+
+    SQLite's read-only WAL connections still participate in SQLite-owned shared
+    coordination; unlike immutable readers they observe committed WAL changes.
+    No application directory, schema, ownership or assessment artifact is created.
+    """
+
+    def __init__(self, root: str | Path, *, busy_timeout_ms: int = 5000) -> None:
+        if type(busy_timeout_ms) is not int or busy_timeout_ms < 0:
+            raise ValueError("busy timeout must be a nonnegative integer")
+        self.root = Path(root).resolve()
+        database = self.root / "registry.sqlite3"
+        if not database.is_file():
+            raise NotFoundError("durable registry was not found")
+        # mode=ro forbids database creation, including a deletion race between
+        # the existence check above and SQLite opening the URI.
+        self.connection = sqlite3.connect(
+            database.as_uri() + "?mode=ro",
+            uri=True,
+            isolation_level=None,
+            timeout=busy_timeout_ms / 1000,
+        )
+        self._depth = 0
+        self._execution_owner: tuple[str, str] | None = None
+        try:
+            self.connection.row_factory = sqlite3.Row
+            self.connection.execute("PRAGMA query_only=ON")
+            self.connection.execute("PRAGMA foreign_keys=ON")
+            self.connection.execute(f"PRAGMA busy_timeout={busy_timeout_ms}")
+            self.connection.execute("BEGIN")
+            verify(self.connection)
+            self.connection.execute("ROLLBACK")
+        except BaseException:
+            self.connection.close()
+            raise

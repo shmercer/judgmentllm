@@ -3,8 +3,15 @@
 This development harness runs the committed JudgmentLLM checkout on six local
 configurations before publication: Ubuntu, Windows and macOS, each with CPython
 3.11.18 and 3.12.16. It is separate from the installed library/CLI and does not
-implement Milestone 2 Subphase 5. The infrastructure branch is based on proposed
-performance commit `5a333b077b8a8a27ba2a80d85474b6eb802e206d`.
+implement scoring. It qualifies the exact committed public lifecycle implementation
+through the same quality, installation and seven strict interoperability gates.
+The original infrastructure was merged through PR #9 and PR #8 into main
+`01fa7e47b86f36370f8df017873cf41668b2f363`.
+
+Current hosted CI has five routine jobs: Ubuntu/macOS Python 3.11/3.15 and
+Windows Python 3.12. Manual `windows_311_only=true` retains the complete Windows
+3.11 job. Historical proposal and qualification records below describe the
+infrastructure rollout; they do not override this matrix or the seventh gate.
 
 ## Existing infrastructure and isolation
 
@@ -162,13 +169,19 @@ recover SSH. The runner does not silently restart services or waive readiness.
 ## Gates and evidence
 
 Every check runs Ruff lint/format, strict Pyright, locked offline synchronization,
-the full Python suite with branch coverage and the existing 90% gate, all six
+the full Python suite with branch coverage and the existing 90% gate, all seven
 strict R/jsonlite gates, wheel/sdist builds, strict Twine metadata and clean core
 installation/CLI/execution smokes. Windows also runs its existing durability,
 cancellation, privacy, lock and signature prechecks. ResourceWarning and
 PytestUnraisableExceptionWarning remain errors. The 180-second execution resource
 fixture timeout, 64-completion samples, memory limits, worker/task/queue bounds,
 source scales, and all integrity/durability assertions are preserved.
+
+The seventh `cli-lifecycle` gate runs the installed console through base R,
+with stdout/stderr captured separately and process status checked independently.
+Its wrapper is `scripts/cli_lifecycle_r_gate.py`; the first six gates retain their
+existing generation/persist/export phases. Supplemental process fault tests stay
+in pytest rather than expanding the R fixture into another fault matrix.
 
 The guest runner also runs its portable selftests. Source-admission/grid tests
 are Linux-host tests, run with:

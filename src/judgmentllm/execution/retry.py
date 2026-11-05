@@ -26,6 +26,7 @@ from judgmentllm.persistence.models import (
     ExecutionModel,
     IntegrityError,
     RetryAuthorization,
+    RetryAuthorizationError,
     SubmissionRecord,
 )
 from judgmentllm.persistence.ownership import ExecutorOwnership
@@ -107,10 +108,10 @@ def subset_dependency(
     """Keep the logical request identity and select its original ordered members."""
     selected = tuple(task_ids)
     if not selected or len(set(selected)) != len(selected):
-        raise IntegrityError("retry selection requires unique task IDs")
+        raise RetryAuthorizationError("retry selection requires unique task IDs")
     membership = tuple(t.task_id for t in dependency.request.tasks)
     if any(task_id not in membership for task_id in selected):
-        raise IntegrityError("retry task is outside the original request")
+        raise RetryAuthorizationError("retry task is outside the original request")
     tasks = tuple(t for t in dependency.request.tasks if t.task_id in selected)
     # Callers may supply IDs in arbitrary order; wire membership always follows
     # the immutable original request, never selector or response array order.
@@ -154,7 +155,9 @@ def _prior_outcomes(
             (run_id, request_uid, task_id, before_attempt),
         ).fetchone()
         if row is None:
-            raise IntegrityError("retry member requires an established prior outcome")
+            raise RetryAuthorizationError(
+                "retry member requires an established prior outcome"
+            )
         outcomes.append(
             PriorOutcome(
                 task_id=task_id,
@@ -327,7 +330,7 @@ def prepare_subset_retry(
                 existing.request_uid != request_uid
                 or repository.attempt_task_ids(run_id, existing.attempt_id) != selected
             ):
-                raise IntegrityError("retry operation selection conflicts")
+                raise RetryAuthorizationError("retry operation selection conflicts")
             prior = _prior_outcomes(
                 repository, run_id, request_uid, selected, existing.attempt_number
             )
@@ -349,7 +352,7 @@ def prepare_subset_retry(
         ).fetchone()
         attempt_number = cast(int, row[0]) + 1
         if attempt_number < 2 or attempt_number > policy.max_attempts:
-            raise IntegrityError("retry submission budget is exhausted")
+            raise RetryAuthorizationError("retry submission budget is exhausted")
         previous = repository.get_attempt_for_request(
             run_id, request_uid, attempt_number=attempt_number - 1
         )
@@ -361,7 +364,7 @@ def prepare_subset_retry(
                 (run_id, reserved_id),
             ).fetchone()
             if reserved is not None and reserved_id != operation_id:
-                raise IntegrityError(
+                raise RetryAuthorizationError(
                     "a durable retry authorization already reserves this prior basis"
                 )
         unresolved = repository.connection.execute(
@@ -370,7 +373,7 @@ def prepare_subset_retry(
             (run_id, request_uid),
         ).fetchone()
         if unresolved is not None:
-            raise IntegrityError("retry cannot replace unresolved prior work")
+            raise RetryAuthorizationError("retry cannot replace unresolved prior work")
         prior = _prior_outcomes(
             repository, run_id, request_uid, selected, attempt_number
         )
@@ -381,7 +384,7 @@ def prepare_subset_retry(
                     (run_id, task_id),
                 ).fetchone()
                 if completed is not None:
-                    raise IntegrityError(
+                    raise RetryAuthorizationError(
                         "retry of completed tasks requires explicit permission"
                     )
     checkpoint("before_retry_preparation", request_uid)
@@ -490,7 +493,7 @@ def authorize_subset_retry(
     """Provider-free owned operation selecting tasks from one logical request."""
     selected = tuple(task_ids)
     if not selected or len(set(selected)) != len(selected):
-        raise IntegrityError("retry selection requires unique task IDs")
+        raise RetryAuthorizationError("retry selection requires unique task IDs")
     with Repository(store) as bootstrap, ExecutorOwnership(bootstrap, run_id) as owner:
         assert owner.owner is not None
         owner_token = owner.owner.token
@@ -511,10 +514,12 @@ def authorize_subset_retry(
                     (run_id, task_id),
                 ).fetchall()
                 if len(rows) != 1:
-                    raise IntegrityError("retry task has no unique original request")
+                    raise RetryAuthorizationError(
+                        "retry task has no unique original request"
+                    )
                 parent = cast(str, rows[0][0])
                 if request_uid is not None and parent != request_uid:
-                    raise IntegrityError(
+                    raise RetryAuthorizationError(
                         "retry operation must select one original request"
                     )
                 request_uid = parent

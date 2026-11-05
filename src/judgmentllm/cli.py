@@ -1,19 +1,34 @@
 """Offline command-line tools backed by the public library functions."""
 
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
 import typer
 
 from judgmentllm import __version__
+from judgmentllm.cli_controls import LifecycleGroup, perform, progress
 from judgmentllm.config import load_run_spec
+from judgmentllm.lifecycle import (
+    LifecycleError,
+    MockExecutionOptions,
+    RetrySelection,
+    RunSummary,
+    estimate_run,
+    export_run_results,
+    get_run,
+    list_runs,
+    resume_run,
+    run_live,
+    validate_inputs,
+)
 from judgmentllm.planning import validate_run
 from judgmentllm.preview import preview_prompt
 from judgmentllm.prompts import init_template, list_templates
 
 app = typer.Typer(
     name="judgmentllm",
-    help="Assessment contracts and offline prompt tools. Execution arrives in Milestone 2.",
+    cls=LifecycleGroup,
+    help="Assessment preparation and durable local execution lifecycle.",
     add_completion=False,
     no_args_is_help=False,
 )
@@ -85,3 +100,236 @@ def templates_preview(
     except (ValueError, OSError) as error:
         typer.echo(f"Error: {error}", err=True)
         raise typer.Exit(2) from error
+
+
+runs_app = typer.Typer(help="Inspect durable local runs without contacting providers.")
+results_app = typer.Typer(help="Publish immutable all-attempt result exports.")
+app.add_typer(runs_app, name="runs")
+app.add_typer(results_app, name="results")
+
+ConfigOption = Annotated[
+    Path, typer.Option("--config", help="YAML/JSON run configuration.")
+]
+StoreOption = Annotated[
+    Path | None, typer.Option("--store", help="Local runtime store.")
+]
+RunOption = Annotated[
+    str, typer.Option("--run", help="Original run ID or absolute run directory.")
+]
+JsonOption = Annotated[
+    bool, typer.Option("--json", help="Emit one version-1 JSON control object.")
+]
+MockLedgerOption = Annotated[
+    Path | None, typer.Option("--mock-ledger", help="Original mock acceptance ledger.")
+]
+MockFixtureOption = Annotated[
+    Path | None,
+    typer.Option("--mock-fixture", help="Strict synthetic scenario document."),
+]
+MockNoRetrievalOption = Annotated[
+    bool,
+    typer.Option(
+        "--mock-no-retrieval", help="Disable authoritative mock observation retrieval."
+    ),
+]
+MockNoReconciliationOption = Annotated[
+    bool,
+    typer.Option(
+        "--mock-no-reconciliation",
+        help="Disable authoritative mock submission reconciliation.",
+    ),
+]
+
+
+def _mock(
+    ledger: Path | None,
+    fixture: Path | None,
+    no_retrieval: bool,
+    no_reconciliation: bool,
+) -> MockExecutionOptions | None:
+    if (
+        ledger is None
+        and fixture is None
+        and not no_retrieval
+        and not no_reconciliation
+    ):
+        return None
+    return MockExecutionOptions(
+        ledger_path=ledger,
+        fixture_path=fixture,
+        retrieval_available=not no_retrieval,
+        reconciliation_available=not no_reconciliation,
+    )
+
+
+@app.command("validate")
+def validate_command(
+    config: ConfigOption,
+    exhaustive_rendering: Annotated[
+        bool, typer.Option(help="Render every actual request during validation.")
+    ] = False,
+    json_output: JsonOption = False,
+) -> None:
+    """Validate all local sources without provider submission."""
+    perform(
+        lambda: validate_inputs(config, exhaustive_rendering=exhaustive_rendering),
+        validation=True,
+    )
+
+
+@app.command("plan")
+def plan_command(config: ConfigOption, json_output: JsonOption = False) -> None:
+    """Count exact tasks/requests and retain unknown token or price estimates."""
+    perform(lambda: estimate_run(config))
+
+
+@app.command("run")
+def run_command(
+    config: ConfigOption,
+    store: StoreOption = None,
+    mock_ledger: MockLedgerOption = None,
+    mock_fixture: MockFixtureOption = None,
+    mock_no_retrieval: MockNoRetrievalOption = False,
+    mock_no_reconciliation: MockNoReconciliationOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    """Execute within this process and retain durable state for later inspection."""
+    perform(
+        lambda: run_live(
+            config,
+            store=store,
+            progress=progress,
+            mock=_mock(
+                mock_ledger, mock_fixture, mock_no_retrieval, mock_no_reconciliation
+            ),
+        ),
+        processing=True,
+    )
+
+
+@app.command("resume")
+def resume_command(
+    run: RunOption,
+    store: StoreOption = None,
+    config: Annotated[
+        Path | None,
+        typer.Option(
+            "--config", help="Original compatible specification, when required."
+        ),
+    ] = None,
+    use_frozen_snapshot: Annotated[
+        bool,
+        typer.Option(
+            help="Explicitly authorize original verified full-capture snapshots."
+        ),
+    ] = False,
+    retry_task: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--retry-task",
+            help="Explicit member task ID; repeat within one original request.",
+        ),
+    ] = None,
+    retry_id: Annotated[
+        str | None,
+        typer.Option(
+            "--retry-id",
+            help="Stable retry-operation ID; required with task selection.",
+        ),
+    ] = None,
+    allow_completed: Annotated[
+        bool, typer.Option(help="Authorize selected previously completed tasks.")
+    ] = False,
+    mock_ledger: MockLedgerOption = None,
+    mock_fixture: MockFixtureOption = None,
+    mock_no_retrieval: MockNoRetrievalOption = False,
+    mock_no_reconciliation: MockNoReconciliationOption = False,
+    json_output: JsonOption = False,
+) -> None:
+    """Recover original work or execute a durably authorized exact subset retry."""
+
+    def operation() -> RunSummary:
+        if retry_task and retry_id is None:
+            raise LifecycleError("usage", "--retry-task requires --retry-id.")
+        if not retry_task and (retry_id is not None or allow_completed):
+            raise LifecycleError(
+                "usage", "--retry-id and --allow-completed require --retry-task."
+            )
+        retry = (
+            RetrySelection(
+                task_ids=tuple(retry_task),
+                operation_id=retry_id,
+                allow_completed=allow_completed,
+            )
+            if retry_task and retry_id is not None
+            else None
+        )
+        return resume_run(
+            run,
+            store=store,
+            spec=load_run_spec(config) if config is not None else None,
+            use_frozen_snapshot=use_frozen_snapshot,
+            retry=retry,
+            progress=progress,
+            mock=_mock(
+                mock_ledger, mock_fixture, mock_no_retrieval, mock_no_reconciliation
+            ),
+        )
+
+    perform(operation, processing=True)
+
+
+@runs_app.command("list")
+def runs_list(
+    store: StoreOption = None,
+    limit: Annotated[
+        int,
+        typer.Option(help="Maximum number of runs (1 through 1000).", min=1, max=1000),
+    ] = 100,
+    cursor: Annotated[
+        str | None, typer.Option(help="Opaque cursor from the preceding page.")
+    ] = None,
+    json_output: JsonOption = False,
+) -> None:
+    """List a bounded page of local runs."""
+    perform(lambda: list_runs(store=store, limit=limit, cursor=cursor))
+
+
+@runs_app.command("status")
+def runs_status(
+    run: RunOption, store: StoreOption = None, json_output: JsonOption = False
+) -> None:
+    """Inspect durable state; an incomplete or failed run is a successful query."""
+    perform(lambda: get_run(run, store=store))
+
+
+@results_app.command("export")
+def results_export(
+    run: RunOption,
+    store: StoreOption = None,
+    format: Annotated[
+        Literal["jsonl", "csv"], typer.Option(help="jsonl or csv.")
+    ] = "jsonl",
+    view: Annotated[
+        Literal["canonical", "r"],
+        typer.Option(help="canonical or r; R view requires CSV."),
+    ] = "canonical",
+    na_string: Annotated[
+        str, typer.Option(help="Missing marker for R-compatible CSV only.")
+    ] = "NA",
+    high_water_mark: Annotated[
+        int | None, typer.Option(help="Explicit immutable result snapshot.", min=0)
+    ] = None,
+    json_output: JsonOption = False,
+) -> None:
+    """Publish recorded attempts, including unsuccessful outcomes, without provider calls."""
+    perform(
+        lambda: export_run_results(
+            run,
+            store=store,
+            format=format,
+            view=view,
+            na_string=na_string,
+            high_water_mark=high_water_mark,
+        )
+    )

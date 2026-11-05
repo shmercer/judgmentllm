@@ -59,7 +59,7 @@ async def execute_run(
     fault: Fault | None = None,
     retry_policy: RetryPolicy = DEFAULT_RETRY_POLICY,
 ) -> ExecutionReport:
-    """Execute/resume prepared single-member work without retrying any submission.
+    """Execute/recover prepared work and durable eligible retry operations.
 
     Caller must have prepared a durable run. Failures expose content-free
     exceptions; a later call reopens and reconciles original work under ownership.
@@ -239,7 +239,7 @@ async def recover_run(
     fault: Fault | None = None,
     retry_policy: RetryPolicy = DEFAULT_RETRY_POLICY,
 ) -> ExecutionReport:
-    """Reconcile original prepared work; never allocate retries or resubmit uncertainty."""
+    """Reconcile original work and authorized retries; never resubmit uncertainty."""
     return await execute_run(
         run_id,
         store=store,

@@ -96,8 +96,16 @@ class ArtifactStore:
     or temporary file, never a deliberately overwritten earlier object.
     """
 
-    def __init__(self, root: str | Path) -> None:
+    def __init__(self, root: str | Path, *, create: bool = True) -> None:
         self.root = Path(root).resolve()
+        if not create:
+            try:
+                if not self.root.is_dir():
+                    raise OSError
+                self._root_identity = self.root.stat()
+            except OSError:
+                raise PersistenceError("artifact store could not be opened") from None
+            return
         try:
             missing: list[Path] = []
             parent = self.root

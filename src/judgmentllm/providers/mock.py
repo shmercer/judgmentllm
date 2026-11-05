@@ -207,9 +207,8 @@ class MockAdapter:
         self.reconciliation_available = reconciliation_available
         self.submit_calls = 0
 
-    def capabilities_for(
-        self, provider: str, endpoint: str, model: str
-    ) -> CapabilityProfile:
+    @staticmethod
+    def capabilities_for(provider: str, endpoint: str, model: str) -> CapabilityProfile:
         if (provider, endpoint) != ("mock", "synthetic"):
             raise ProviderError(
                 "mock adapter requires provider mock and endpoint synthetic"
@@ -237,9 +236,19 @@ class MockAdapter:
         return self.capabilities_for(spec.provider, spec.endpoint, spec.model)
 
     def validate(self, spec: RunSpec) -> None:
+        self.validate_configuration(spec, capabilities=self.capabilities(spec))
+
+    @staticmethod
+    def validate_configuration(
+        spec: RunSpec, *, capabilities: CapabilityProfile | None = None
+    ) -> None:
+        """Pure mock preflight, shared with provider-free public validation."""
         try:
             spec = _revalidate_record(spec)
-            report = validate_run(spec, capabilities=self.capabilities(spec))
+            profile = capabilities or MockAdapter.capabilities_for(
+                spec.provider, spec.endpoint, spec.model
+            )
+            report = validate_run(spec, capabilities=profile)
             if not report.valid:
                 raise ValueError("incompatible capabilities")
             if (
@@ -249,9 +258,9 @@ class MockAdapter:
                 raise ValueError("unsupported cache or tier")
             # Unknown support is never permission to discard an explicit value.
             if spec.generation is not None:
-                profile = self.capabilities(spec).generation
-                if profile is None or any(
-                    getattr(profile, name).supported is not True
+                generation_profile = profile.generation
+                if generation_profile is None or any(
+                    getattr(generation_profile, name).supported is not True
                     for name in spec.generation.model_dump()
                 ):
                     raise ValueError("generation support is unconfirmed")

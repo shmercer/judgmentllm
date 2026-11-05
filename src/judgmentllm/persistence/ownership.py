@@ -195,3 +195,42 @@ def _unlock(stream: BinaryIO) -> None:
         import fcntl
 
         fcntl.flock(stream.fileno(), fcntl.LOCK_UN)
+
+
+def executor_is_active(repository: Repository, run_id: str) -> bool | None:
+    """Probe the existing OS lock without modifying ownership or creating files.
+
+    The answer describes the instant of the probe, not a transferable lease.
+    Stale heartbeat/PID metadata never determines executor presence.
+    """
+    directory = repository.run_directory(run_id)
+    root = repository.root.resolve()
+    try:
+        relative = directory.relative_to(root)
+    except ValueError:
+        raise OwnershipError("executor lock location is outside the store") from None
+    current = root
+    for part in (*relative.parts, "executor.lock"):
+        current /= part
+        if current.is_symlink():
+            raise OwnershipError("executor lock location must not be a symlink")
+    # Match executor path checks, but inspection never creates directories or
+    # initializes a lock file for a run whose preparation is still incomplete.
+    path = directory / "executor.lock"
+    try:
+        stream = path.open("r+b", buffering=0)
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return None
+    try:
+        try:
+            _lock(stream)
+        except OSError as error:
+            if error.errno in {errno.EACCES, errno.EAGAIN, errno.EDEADLK}:
+                return True
+            raise OwnershipError("executor lock could not be inspected") from None
+        _unlock(stream)
+        return False
+    finally:
+        stream.close()
