@@ -1,0 +1,19 @@
+# Synthetic comparative judgment through the implemented mock adapter.
+schema_version: 1
+task_kind: pairwise
+input: responses.csv
+criteria: criteria.yaml
+pairs: pairs.jsonl
+provider: mock
+endpoint: synthetic
+model: synthetic-v1
+prompt:
+  preset: pairwise_forced_choice
+execution:
+  mode: live
+  grouping: independent
+  cache_policy: "off"
+  concurrency: 2
+capture: full
+seed: 41
+output_path: run-data/mock-pairwise-example

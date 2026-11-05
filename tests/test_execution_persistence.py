@@ -261,6 +261,50 @@ def test_single_observation_lookup_rejects_multiple_evidence(
         registry.get_observation_for_submission("run", "submission-0")
 
 
+def test_single_observation_lookup_work_is_bounded_by_submission(
+    registry: Repository,
+) -> None:
+    """Unrelated observations must not turn one missing lookup into a run scan."""
+
+    def steps_for_missing() -> int:
+        steps = 0
+
+        def progress() -> int:
+            nonlocal steps
+            steps += 1
+            return 0
+
+        registry.connection.set_progress_handler(progress, 1)
+        try:
+            assert registry.get_observation_for_submission("run", "missing") is None
+        finally:
+            registry.connection.set_progress_handler(None, 0)
+        return steps
+
+    small = 0
+    with registry.transaction():
+        _prepare(registry, 0)
+        registry.transition("attempt", "run", "attempt-0", "claimed")
+        registry.transition("attempt", "run", "attempt-0", "submitting")
+        registry.transition("submission", "run", "submission-0", "submitting")
+        registry.transition("submission", "run", "submission-0", "acknowledged")
+        for ordinal in range(50):
+            registry.record_observation(
+                ObservationRecord(
+                    run_id="run",
+                    attempt_id="attempt-0",
+                    submission_id="submission-0",
+                    observation_id=f"observation-{ordinal:03}",
+                    observation_key=f"key-{ordinal:03}",
+                    kind="response",
+                )
+            )
+            if ordinal == 4:
+                small = steps_for_missing()
+        large = steps_for_missing()
+    assert small > 0 and large < 2 * small, (small, large)
+
+
 def _receipt(store: ArtifactStore, *, minimal: bool = False) -> ResponseReceipt:
     raw = b"synthetic-raw-only-sentinel"
     identity = (

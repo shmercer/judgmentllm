@@ -29,7 +29,7 @@ from provenance import (
     runtime_identity,
     source_fingerprint,
 )
-from workloads import WORKLOADS, Workload, inputs
+from workloads import WORKLOADS, Workload, inputs, scale_workload
 
 from judgmentllm.config import load_run_spec
 from judgmentllm.execution import execute_run
@@ -47,7 +47,9 @@ class PrefixComplete(Exception):
 
 def native_peak_bytes() -> int:
     # Share the existing portable OS measurement without shipping it in the core.
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+    root = str(Path(__file__).resolve().parents[1])
+    if root not in sys.path:
+        sys.path.insert(0, root)
     from scripts.preparation_memory_fixture import native_peak_bytes as measure
 
     return measure()
@@ -463,7 +465,9 @@ def main() -> None:
     parser.add_argument("--expected-harness-sha256")
     parser.add_argument("--expected-fixture-sha256")
     parser.add_argument(
-        "--workload", choices=[item.name for item in WORKLOADS], required=True
+        "--workload",
+        choices=[item.name for item in WORKLOADS] + ["scale-rubric"],
+        required=True,
     )
     parser.add_argument("--capture", choices=["full", "minimal"], required=True)
     parser.add_argument(
@@ -471,6 +475,23 @@ def main() -> None:
         choices=["plain", "profile", "tracemalloc", "coverage", "combined"],
         default="plain",
     )
+    parser.add_argument("--responses", type=int, default=5000)
+    parser.add_argument("--traits", type=int, default=20)
+    parser.add_argument("--group-size", type=int, default=5)
+    parser.add_argument("--concurrency", type=int, default=4)
+    parser.add_argument("--response-bytes", type=int, default=4096)
+    parser.add_argument(
+        "--fixture-variant", choices=["default", "rich"], default="default"
+    )
+    parser.add_argument(
+        "--extent", choices=["complete", "prefix", "prepare"], default="complete"
+    )
+    parser.add_argument("--completed-requests", type=int, default=64)
+    parser.add_argument(
+        "--measurement-scope", choices=["whole", "execution"], default="whole"
+    )
+    parser.add_argument("--disk-budget-gib", type=float, default=32)
+    parser.add_argument("--min-free-gib", type=float, default=10)
     options = parser.parse_args()
     if options.expected_source_sha256 is not None:
         imported_root = (
@@ -490,13 +511,37 @@ def main() -> None:
         and fixture_fingerprint() != options.expected_fixture_sha256
     ):
         raise RuntimeError("Fixture definition changed before sample")
-    workload = next(item for item in WORKLOADS if item.name == options.workload)
-    result = run(
-        options.directory,
-        workload,
-        cast(Literal["full", "minimal"], options.capture),
-        options.mode,
-    )
+    if options.workload == "scale-rubric":
+        from scale_execution import run_scale
+
+        workload = scale_workload(
+            responses=options.responses,
+            traits=options.traits,
+            group_size=options.group_size,
+            concurrency=options.concurrency,
+            response_bytes=options.response_bytes,
+            variant=options.fixture_variant,
+            extent=options.extent,
+            completed_requests=options.completed_requests,
+        )
+        result = run_scale(
+            options.directory,
+            workload,
+            options.capture,
+            options.mode,
+            extent=options.extent,
+            measurement_scope=options.measurement_scope,
+            disk_budget_gib=options.disk_budget_gib,
+            min_free_gib=options.min_free_gib,
+        )
+    else:
+        workload = next(item for item in WORKLOADS if item.name == options.workload)
+        result = run(
+            options.directory,
+            workload,
+            cast(Literal["full", "minimal"], options.capture),
+            options.mode,
+        )
     imported_root = Path(sys.modules["judgmentllm"].__file__ or "").resolve().parents[2]
     if result["source_tree_sha256"] != source_fingerprint(imported_root):
         raise RuntimeError("Source changed during sample; discard this measurement")
@@ -529,6 +574,8 @@ def main() -> None:
             }
         )
     )
+    if result.get("status") == "failed":
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

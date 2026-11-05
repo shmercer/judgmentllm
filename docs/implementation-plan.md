@@ -14,7 +14,7 @@
 
 ## Milestone 1 - Data contracts, rubrics, results, prompts
 
-Implemented in `0.1.0a2`; see [public Python API](python-api.md) and [verification record](milestone-1-verification.md). Planning is structural only; token/cost estimates and persistent execution remain later milestones. Provider-selected and distribution-derived modal categories are separate, and probability-sum tolerance is configurable.
+Implemented in `0.1.0a2`; see [public Python API](python-api.md) and [verification record](milestone-1-verification.md). Milestone 1 planning is structural; Milestone 2 adds exact source counts and persistent mock execution. Token/cost estimates remain unknown. Provider-selected and distribution-derived modal categories are separate, and probability-sum tolerance is configurable.
 
 - Implement Pydantic models for ResponseItem, Trait, Level, Rubric, Exemplar, PairTask, RunSpec and normalized result types; version schemas.
 - Validate ordered levels and explicit/default numeric coding, duplicate IDs, unknown config keys, and explanation capability requirements.
@@ -34,8 +34,11 @@ only; Subphase 2 now supplies immutable source freezing/indexing, complete
 executable input manifests, capture policies and independently verified reopening.
 Subphases 3–4 implement mock execution, grouped outcomes, retries, cancellation
 and immutable exports; Subphase 5 exposes public Python/CLI lifecycle controls
-and installed-CLI R acceptance. Real providers and Subphase 6 scale qualification
-remain deferred. See the [source-preparation verification record](milestone-2-subphase-2-verification.md) and
+and installed-CLI R acceptance. Subphase 6 scale tooling is implemented;
+exact-source qualification is recorded in the external ledger defined below.
+Real providers remain later milestones.
+See the [scale qualification record](milestone-2-subphase-6-verification.md),
+[source-preparation verification record](milestone-2-subphase-2-verification.md) and
 [Subphase 1 verification record](milestone-2-subphase-1-verification.md).
 
 Begin Subphase 2 with the generation configuration, capability-validation and
@@ -62,23 +65,32 @@ No-generation fixtures preserve Milestone 1 IDs/serialization and add no
 generation warnings, including strict mode. Capability-evidence changes preserve
 requested identity; newly known restrictions still block continuation. Actual
 Python-generated generation provenance is consumed in the required R/jsonlite
-gate. No cloud request builder or complete executable manifest is claimed.
+gate. Generation-only fixtures do not establish complete preparation by
+themselves; the separate immutable-preparation acceptance covers executable
+manifests. Real-provider request builders remain later milestones.
 
 ### Milestone 2 implementation status
 
-Submission/recovery core is implemented as internal services with a typed mock
-protocol, independent acceptance ledger, exact payload commitments, owner-checked
-execution, bounded queues, receipts, and single-member rubric/pairwise result
-processing. Verification and limitations are recorded in
-[milestone-2-subphase-3-verification.md](milestone-2-subphase-3-verification.md).
-A fifth required Ubuntu/Python 3.11 offline R/jsonlite gate consumes separately
-executed/reopened mock attempt, submission, observation, and normalized-result
-records. The original four gates and cross-platform matrix remain unchanged.
-Subphase 4 implements grouped salvage, retry/subset selection, cancellation and
-export lifecycle. Subphase 5 implements public execution services and CLI controls,
-with a seventh strict installed-CLI R/jsonlite gate alongside all six earlier gates. Large scale qualification
-remains Subphase 6. The unreleased package version remains `0.1.0a2` during this
-independently reviewed subphase; the complete milestone target remains `0.1.0a3`.
+Mock execution integrates immutable preparation, exact payload commitments,
+bounded workers/queues, independent acceptance evidence and conservative recovery.
+Grouped salvage, explicit subset retries, cancellation, immutable exports, public
+Python services and installed CLI controls are implemented. Seven strict
+R/jsonlite gates cover file exports through independent installed-CLI lifecycle
+operations. Required hosted CI has five configurations; the exact-head local
+grid requires all six OS/Python 3.11/3.12 configurations.
+
+Subphase 6 benchmark tooling, persistence diagnostics and executable examples are
+implemented. The revised completion protocol combines retained complete
+100,000-judgment minimal/full execution evidence, bounded 64-request execution
+allocation comparisons at 200 versus 5,000 responses, separate initialization
+and complete-export measurements, genuine package compatibility and the final
+six-configuration local grid. Further full-size timing repetitions, full-run
+cProfile/tracemalloc and optional diagnostic/stress sweeps are not required.
+Limited full-capture sample counts must remain explicit; no qualified throughput
+distribution is inferred from them. The unreleased `0.1.0a3` version is not
+evidence that acceptance has completed. The
+[qualification record](milestone-2-subphase-6-verification.md) distinguishes
+executed workloads, outstanding checks and later publication requirements.
 
 ## Milestone 3 - Generative live adapters
 

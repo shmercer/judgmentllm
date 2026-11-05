@@ -318,6 +318,21 @@ def prepare_run(
         raise
 
 
+def _compatible_package_version(producer: str, consumer: str) -> bool:
+    """Allow only explicitly qualified, directional preparation compatibility.
+
+    Package provenance remains immutable. Schema/serializer, content, payload and
+    provider-evidence validation still apply independently when reopening a run.
+    Future releases must qualify their own producer set rather than inherit a
+    permissive version range.
+    """
+    producers = {
+        "0.1.0a2": {"0.1.0a2"},
+        "0.1.0a3": {"0.1.0a2", "0.1.0a3"},
+    }
+    return producer in producers.get(consumer, set())
+
+
 def _load_manifest(
     repository: Repository, run_id: str, *, unsealed: bool
 ) -> ExecutableRunManifest:
@@ -351,7 +366,7 @@ def _load_manifest(
         manifest.capture,
     ):
         raise PreparationError("manifest run identity is inconsistent")
-    if manifest.package_version != __version__:
+    if not _compatible_package_version(manifest.package_version, __version__):
         raise PreparationError("prepared software version is incompatible")
     return manifest
 

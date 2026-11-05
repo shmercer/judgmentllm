@@ -11,6 +11,10 @@ Milestone 1 supplies provider-independent CSV views through
 neither R nor pandas in the Python installation. The functional thin `rubricLLM`
 R wrapper is a Milestone 6 deliverable. FastAPI remains committed for Milestone 7
 as an optional local service; ordinary R use does not require that server.
+Seven strict offline R/jsonlite gates now cover the implemented mock lifecycle,
+including independent installed-CLI processes. Subphase 6 adds a separate
+bounded-read checker for large rubric exports; exact-head qualification remains
+pending. Large exports are not added to every routine R gate.
 
 These exports are **all-attempts audit views**: every supplied record remains,
 including failures, observed ties, reversals, repeated judgments, and multiple
@@ -37,7 +41,7 @@ execution through the shared public Python services and the installed CLI;
 Milestone 1 template behavior remains unchanged.
 
 Generation settings use the same optional `RunSpec.generation` through Python,
-future lifecycle CLI configuration, and the Milestone 6 wrapper. Preserve omitted
+the installed lifecycle CLI configuration, and the future Milestone 6 wrapper. Preserve omitted
 controls and explicit zeros; do not add R-side provider defaults, merge them into
 execution controls, or reinterpret the pairing `seed` as a generation seed.
 Capability support and qualification evidence remain separate from requested
@@ -401,7 +405,8 @@ JUDGMENTLLM_R_STRICT=1 Rscript --vanilla examples/grouped_lifecycle_interoperabi
 ```
 
 All five earlier strict gates remain required. This sixth gate uses only base R
-and jsonlite; installed CLI lifecycle testing remains assigned to Subphase 5.
+and jsonlite. At this stage installed-CLI lifecycle testing was assigned to
+Subphase 5; the next section documents that implemented seventh gate.
 
 
 ## Subphase 5: installed-CLI lifecycle acceptance

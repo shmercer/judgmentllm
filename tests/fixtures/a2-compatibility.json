@@ -1,0 +1,152 @@
+{
+  "archive_sha256": "0521a9b0a2f7358bb0d76db13d9c4d38fb396bb66f3a5360453adfef656a3468",
+  "files": {
+    "before.json": {
+      "bytes": 14037,
+      "sha256": "de59356fe9bbbfae3f7dbf77125509877af5a32854e9c7a33ac6b99b463d4457"
+    },
+    "fixture.json": {
+      "bytes": 212,
+      "sha256": "d1cba7cd3ca949431e3f39eea14f5a52a6b45dd2f7e8487363755bb4b8347be9"
+    },
+    "ledger.sqlite3": {
+      "bytes": 24576,
+      "sha256": "55a77479573f2ad2df8cbccf08ffa4cc2a9fe9adf8851232cd1e8f2a88ed587f"
+    },
+    "producer.json": {
+      "bytes": 5631,
+      "sha256": "183cdbdda5fc795b96281d8c251bcfa2f66f34c4adcd8198c9d691aead42f2f3"
+    },
+    "store/registry.sqlite3": {
+      "bytes": 393216,
+      "sha256": "9ef169e37eae064e3267822bb29afa6c2030c64177374185f12ce89edc6c1b60"
+    },
+    "store/registry.sqlite3-shm": {
+      "bytes": 32768,
+      "sha256": "fd4c9fda9cd3f9ae7c962b0ddf37232294d55580e1aa165aa06129b8549389eb"
+    },
+    "store/registry.sqlite3-wal": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "store/runs/470a9200b6959db525b3452fa9225541d9c9224149014c0fde1e53210d7f798a/acknowledgments/cff208cc89568cecd7d20aea33a4eb18d19821a9ea9d2b567b94afbc8f6861ed.json": {
+      "bytes": 623,
+      "sha256": "951c8ff7f4ab23555791fa1b1679f477fb962a2c6f526aebb79fff3a290d86db"
+    },
+    "store/runs/470a9200b6959db525b3452fa9225541d9c9224149014c0fde1e53210d7f798a/executor.lock": {
+      "bytes": 1,
+      "sha256": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d"
+    },
+    "store/runs/470a9200b6959db525b3452fa9225541d9c9224149014c0fde1e53210d7f798a/manifest.json": {
+      "bytes": 5100,
+      "sha256": "b9b02b16d9839b07c20b2c1de278785bc29fc02973002cf4d4557bb7a5762ca7"
+    },
+    "store/runs/470a9200b6959db525b3452fa9225541d9c9224149014c0fde1e53210d7f798a/objects/04/046f0565580ac1ac11d4014ba8969e68dea24a2718ddb38355b8fb1118f3cd7c": {
+      "bytes": 4534,
+      "sha256": "046f0565580ac1ac11d4014ba8969e68dea24a2718ddb38355b8fb1118f3cd7c"
+    },
+    "store/runs/470a9200b6959db525b3452fa9225541d9c9224149014c0fde1e53210d7f798a/objects/09/0903bc9ad3a20adfee139ab3f9fa34817945706df158abe8fc1d076c204c24e2": {
+      "bytes": 3362,
+      "sha256": "0903bc9ad3a20adfee139ab3f9fa34817945706df158abe8fc1d076c204c24e2"
+    },
+    "store/runs/470a9200b6959db525b3452fa9225541d9c9224149014c0fde1e53210d7f798a/objects/42/42a8977d0af9146a1f5c1b4108d22af5009aa69ed1e4f5d9c41cff9756208d83": {
+      "bytes": 955,
+      "sha256": "42a8977d0af9146a1f5c1b4108d22af5009aa69ed1e4f5d9c41cff9756208d83"
+    },
+    "store/runs/470a9200b6959db525b3452fa9225541d9c9224149014c0fde1e53210d7f798a/objects/43/4378d960eeb672ee4235735a8041c873bb5aa1338b94028e0f1d62e1efff6e56": {
+      "bytes": 82,
+      "sha256": "4378d960eeb672ee4235735a8041c873bb5aa1338b94028e0f1d62e1efff6e56"
+    },
+    "store/runs/470a9200b6959db525b3452fa9225541d9c9224149014c0fde1e53210d7f798a/objects/44/448ca02c15aaede1c2e9dc56fe09a60096c899cf3c9e54cec29e713098f6f99e": {
+      "bytes": 1728,
+      "sha256": "448ca02c15aaede1c2e9dc56fe09a60096c899cf3c9e54cec29e713098f6f99e"
+    },
+    "store/runs/470a9200b6959db525b3452fa9225541d9c9224149014c0fde1e53210d7f798a/objects/4e/4e7eb91c84ae493e6428857b33e70319f85bb9c9e136455b183570afbb7e2da0": {
+      "bytes": 3016,
+      "sha256": "4e7eb91c84ae493e6428857b33e70319f85bb9c9e136455b183570afbb7e2da0"
+    },
+    "store/runs/470a9200b6959db525b3452fa9225541d9c9224149014c0fde1e53210d7f798a/objects/69/69dea1e8c9e8a33acd8bc2d57283e80861b8f5e8d6e80b5e3043a3cec930a8c7": {
+      "bytes": 1837,
+      "sha256": "69dea1e8c9e8a33acd8bc2d57283e80861b8f5e8d6e80b5e3043a3cec930a8c7"
+    },
+    "store/runs/470a9200b6959db525b3452fa9225541d9c9224149014c0fde1e53210d7f798a/objects/95/951c8ff7f4ab23555791fa1b1679f477fb962a2c6f526aebb79fff3a290d86db": {
+      "bytes": 623,
+      "sha256": "951c8ff7f4ab23555791fa1b1679f477fb962a2c6f526aebb79fff3a290d86db"
+    },
+    "store/runs/470a9200b6959db525b3452fa9225541d9c9224149014c0fde1e53210d7f798a/objects/99/99083f1072d722c65b5df09374d7b68e938f7cdfb1dc4f504001eb7376767a65": {
+      "bytes": 926,
+      "sha256": "99083f1072d722c65b5df09374d7b68e938f7cdfb1dc4f504001eb7376767a65"
+    },
+    "store/runs/470a9200b6959db525b3452fa9225541d9c9224149014c0fde1e53210d7f798a/objects/b9/b9b02b16d9839b07c20b2c1de278785bc29fc02973002cf4d4557bb7a5762ca7": {
+      "bytes": 5100,
+      "sha256": "b9b02b16d9839b07c20b2c1de278785bc29fc02973002cf4d4557bb7a5762ca7"
+    },
+    "store/runs/470a9200b6959db525b3452fa9225541d9c9224149014c0fde1e53210d7f798a/objects/c0/c01d56712242cf6db9ae39be1328fb6f9905fa53150effe20da8f92c8d1f2fe4": {
+      "bytes": 3826,
+      "sha256": "c01d56712242cf6db9ae39be1328fb6f9905fa53150effe20da8f92c8d1f2fe4"
+    },
+    "store/runs/470a9200b6959db525b3452fa9225541d9c9224149014c0fde1e53210d7f798a/receipts/cff208cc89568cecd7d20aea33a4eb18d19821a9ea9d2b567b94afbc8f6861ed.json": {
+      "bytes": 955,
+      "sha256": "42a8977d0af9146a1f5c1b4108d22af5009aa69ed1e4f5d9c41cff9756208d83"
+    }
+  },
+  "producer": {
+    "archive_sha256": "0f6226b7fb1588aab3b9efd56c27867a6308bd84d372bd88652b4cbfd52b3828",
+    "commit": "4b4563102d1bf2dbb7ede8e40b87a7734f9437dd",
+    "manifest_sha256": "b9b02b16d9839b07c20b2c1de278785bc29fc02973002cf4d4557bb7a5762ca7",
+    "package_files": {
+      "src/judgmentllm/__init__.py": "140282310d6ec89371a1d1c726ed54ffafecd0815ca4539df5735a90528da420",
+      "src/judgmentllm/_lifecycle_store.py": "3ef97ed273abcebbe3de07a631056fe16300d2abb9e59f5b34cd96b0459a2e3a",
+      "src/judgmentllm/_verification.py": "e519638709eb7e85f0879a0b211da24f09c9956fa3ed30382353ac55191280b8",
+      "src/judgmentllm/cli.py": "10d14064b065c0bf2093c4ce57cd92cd1a67c53ebbf6d9777c6bcf95cd3a4310",
+      "src/judgmentllm/cli_controls.py": "a0080281441b0d4dd402f35e035eac05ed2f3851f7de3f73fc00f2c177f86fcf",
+      "src/judgmentllm/config.py": "b8fb3a4d6e12435dbfa82201126fe24de30fb71d5623dabe5c4490af5da08703",
+      "src/judgmentllm/execution/__init__.py": "25ef807aa6926ff50f6a2c704f81bb23334824a53a47326b0ea78f683dffa046",
+      "src/judgmentllm/execution/cancellation.py": "75bede4bee9a23eef334faa867a2d1d4a1fbed76ddd91c3b8dab93efb4e2a465",
+      "src/judgmentllm/execution/core.py": "c4720c7b348e77500f388f95a1c1b1e54999afc1dbb233949711abc31be123e5",
+      "src/judgmentllm/execution/exports.py": "b67ee8e4ff4758da8296d64d803ee2a2a2ad1ed7ede664d9a914ccee672bb738",
+      "src/judgmentllm/execution/processing.py": "6df21078a7640ae3ac400742f2fa95e077cb723cca8b4fe575b30a62c44fdd70",
+      "src/judgmentllm/execution/retry.py": "9bb5f36bd335c6712d2a46425ccb4d5fb1ecf08f4600a7b1bc671fe96fd0dd7e",
+      "src/judgmentllm/execution/session.py": "0ecaed1f01e6472390abeb44425d850c80250795fe74e4ee7651566108ee0202",
+      "src/judgmentllm/generation.py": "b2985de2ff514a57148227291cde8c695ea418655deb540c65de150113df5578",
+      "src/judgmentllm/io.py": "33d8f623ded818dc007525dcf41fe65010ae83ee778691fa474de3d2898ccbc4",
+      "src/judgmentllm/lifecycle.py": "7b63c16dd6510e78dc5eecde1a0582e7a63361b7fba3a822499b8848b71e1a8c",
+      "src/judgmentllm/lifecycle_models.py": "70d6528318084258bfdead9bb4f0a8ddf0dc7464ecca0e56cdc96540834c9cf0",
+      "src/judgmentllm/models.py": "b3553efee0d7e34cf39f5e97ead5655a9d8bf525b52a77b2ea36338bf41402c4",
+      "src/judgmentllm/persistence/__init__.py": "fef7ac7144c3d2ff0afb73bd01cd7c81c0af6072155eb808af749bedd36d01ce",
+      "src/judgmentllm/persistence/artifacts.py": "b5fe99454aab742d3d284fefd393413f06297145fac6f692979d46dafbae612e",
+      "src/judgmentllm/persistence/generation.py": "fe56b446a28a031d7d5fc1f1174951f9aa5c21d8f6be44929399274c4d0e4afa",
+      "src/judgmentllm/persistence/hashing.py": "0efd79c2abb06f7bbd07114f599be73e5c8606e0d4d0373958db4e89967a635c",
+      "src/judgmentllm/persistence/models.py": "4efc63164e85f9e208311658cc22564e2b442aec626a511c598c39a646f7f0b0",
+      "src/judgmentllm/persistence/ownership.py": "2017993071a0a45c604d60e11eab8decfef745ad14a0e794ac54d0f5e14faf10",
+      "src/judgmentllm/persistence/receipts.py": "d310b4e65b998b5fa1b7cb058f08a3976573f542561084bcff0578c58d6ae7c5",
+      "src/judgmentllm/persistence/repository.py": "c6b5f64e595c05104a89344270f8f44e53f847e1728f6f2e84ea052d39f9bad5",
+      "src/judgmentllm/persistence/schema.py": "ecf1b1534a0a9fc4103fab21e3958179438ea5195d1d945f5220dcbeb5d67735",
+      "src/judgmentllm/persistence/sources.py": "d549c3809f594e87449acdce24bf7def099e22fdb670d3959f0006b64b09969c",
+      "src/judgmentllm/planning.py": "445802bd5017035a3171e2301a3ae725d6f50475d7d1a2b45140bd707c5f0941",
+      "src/judgmentllm/preparation/__init__.py": "e4fb17025b259f317f27c79aa7f35927e60d220b84d13e14eda96a7ae1f88296",
+      "src/judgmentllm/preparation/capture.py": "587223559afc67895311ddeae5b6befe599ff5e10bb9a648c583332dc67a4e50",
+      "src/judgmentllm/preparation/freezing.py": "108a655a14ae755f0535c1392cfc043e480f39d87ce800186c2c6412c80c5c13",
+      "src/judgmentllm/preparation/index.py": "14f36a35c1fd6850bb7676e6c015c83dab97447e894b06779eee30480ac41eb2",
+      "src/judgmentllm/preparation/manifest.py": "65d7536a111a985366d4e51b41a506d3b2cc97f1bf5107ac273609a2bd662231",
+      "src/judgmentllm/preparation/records.py": "7d44674162dad8ac445187cc1a7530f0a601ed0c3122ede66d7c47318b94201a",
+      "src/judgmentllm/preparation/session.py": "a53efa3de08386eb1d780da3037391c96aeb7f8b6793967e367808686154114d",
+      "src/judgmentllm/preview.py": "df8a3ee8b1a876f682f29a16ea1feac058b47f7665efc2b6990c2a1c5118bf9d",
+      "src/judgmentllm/prompts.py": "d4a947b508649f513301a1fc1d8e5f4a4480d6d13e70237812ea975f9d98a1ee",
+      "src/judgmentllm/providers/__init__.py": "bc58cd0b869779020b489772e60b64f5504a535b8b16981ccd5e2a6ede5b810f",
+      "src/judgmentllm/providers/ledger.py": "b8ffa9e4e206262a99e8bb11cac19d25744d32fb8acde0f1718371c98c93df8e",
+      "src/judgmentllm/providers/mock.py": "84234282aaf1a9a4de3e55f4cbd9e77c637cbff379cf8429bdabd75de3509d0b",
+      "src/judgmentllm/providers/protocol.py": "91c9995a4ecac684b209d6b756be7ddca206527bf3c0f952f6720fb040fbff88",
+      "src/judgmentllm/py.typed": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "src/judgmentllm/r_exports.py": "220c6b076a549d542ec52d4fae6a2176ed12ce961cfa0b6eb51554b7e023b7aa",
+      "src/judgmentllm/results.py": "8295219df11f47d33de3671ce90956ae906e1f70fa608e4a34a7637cce64197a",
+      "src/judgmentllm/templates/pairwise_forced_choice.txt": "4e9308db0d87141368d43ce891bcdb84093cc8f26939b09a592eda95f06575c0",
+      "src/judgmentllm/templates/rubric_scores_only.txt": "e4d0d9d81969e7733fe5b74c7132db9b28b80204c56d11de69cee8591af44ca1",
+      "src/judgmentllm/templates/rubric_scores_with_explanations.txt": "903ef7ef7aa1b6e5b5a874843539ce16a7d2b169ee6f91e31e0c8c8ee840a0f8"
+    },
+    "package_version": "0.1.0a2",
+    "producer_helper_sha256": "6ab9f3cab169272f110af9854ce2c1149dd54bc3a685ba06e8df9612432ccf49",
+    "run_id": "d8b9ac318f3c45079aef0b664309014c"
+  },
+  "schema_version": 1
+}

@@ -52,6 +52,15 @@ def summarize(raw: Path) -> dict[str, Any]:
         if "warmup" in path.name:
             continue
         row: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
+        if row.get("status") == "failed":
+            raise RuntimeError(f"Cannot summarize a failed sample: {path}")
+        if row.get("workload") == "scale-rubric" and (
+            row.get("status") != "passed"
+            or (row.get("extent") != "prepare" and not row.get("verification_complete"))
+        ):
+            raise RuntimeError(
+                f"Scale sample lacks completed independent verification: {path}"
+            )
         identity = row.get("source_tree_sha256")
         if not isinstance(identity, str):
             raise RuntimeError(f"Sample lacks source identity: {path}")
@@ -73,7 +82,7 @@ def summarize(raw: Path) -> dict[str, Any]:
             "python_retained_bytes",
             "native_peak_bytes",
         ):
-            values = [float(row[field]) for row in rows if row[field] is not None]
+            values = [float(row[field]) for row in rows if row.get(field) is not None]
             measured[field] = distribution(values) if values else None
         phases = {
             name: {
@@ -129,7 +138,7 @@ def main() -> None:
     parser.add_argument(
         "--workloads",
         nargs="+",
-        choices=[item.name for item in WORKLOADS],
+        choices=[item.name for item in WORKLOADS] + ["scale-rubric"],
         default=[item.name for item in WORKLOADS],
     )
     parser.add_argument(
@@ -147,6 +156,23 @@ def main() -> None:
     parser.add_argument("--repetitions", type=int, default=5)
     parser.add_argument("--instrumented-repetitions", type=int, default=1)
     parser.add_argument("--warmups", type=int, default=1)
+    parser.add_argument("--responses", type=int, default=5000)
+    parser.add_argument("--traits", type=int, default=20)
+    parser.add_argument("--group-size", type=int, default=5)
+    parser.add_argument("--concurrency", type=int, default=4)
+    parser.add_argument("--response-bytes", type=int, default=4096)
+    parser.add_argument(
+        "--fixture-variant", choices=["default", "rich"], default="default"
+    )
+    parser.add_argument(
+        "--extent", choices=["complete", "prefix", "prepare"], default="complete"
+    )
+    parser.add_argument("--completed-requests", type=int, default=64)
+    parser.add_argument(
+        "--measurement-scope", choices=["whole", "execution"], default="whole"
+    )
+    parser.add_argument("--disk-budget-gib", type=float, default=32)
+    parser.add_argument("--min-free-gib", type=float, default=10)
     parser.add_argument(
         "--timeout",
         type=int,
@@ -164,6 +190,28 @@ def main() -> None:
         or options.warmups < 0
     ):
         parser.error("repetitions and timeout must be positive; warmups nonnegative")
+    if (
+        min(
+            options.responses,
+            options.traits,
+            options.group_size,
+            options.concurrency,
+            options.response_bytes,
+            options.completed_requests,
+            options.disk_budget_gib,
+        )
+        <= 0
+        or options.min_free_gib < 0
+    ):
+        parser.error(
+            "scale dimensions and disk budget must be positive; free reserve nonnegative"
+        )
+    if "scale-rubric" in options.workloads and any(
+        mode in {"coverage", "combined"} for mode in options.modes
+    ):
+        parser.error(
+            "scale qualification separates plain/profile/tracemalloc; coverage uses the required test suite"
+        )
     root = options.source_root.resolve()
     if not (root / "src" / "judgmentllm").is_dir():
         parser.error("source-root must contain src/judgmentllm")
@@ -172,6 +220,12 @@ def main() -> None:
     raw = output / "raw"
     raw.mkdir(parents=True, exist_ok=True)
     worker = Path(__file__).with_name("execution_worker.py").resolve()
+
+    def failure_destination(name: str) -> Path:
+        folder = output / "failures"
+        folder.mkdir(exist_ok=True)
+        return folder / f"{Path(name).stem}-{time.time_ns()}.json"
+
     environment = {
         **os.environ,
         "PYTHONPATH": str(root / "src"),
@@ -190,6 +244,26 @@ def main() -> None:
             raise RuntimeError(
                 "Output belongs to different source/environment (or lacks identity); choose a fresh output directory"
             )
+        if "scale-rubric" in options.workloads:
+            keys = (
+                "responses",
+                "traits",
+                "group_size",
+                "concurrency",
+                "response_bytes",
+                "fixture_variant",
+                "extent",
+                "completed_requests",
+                "measurement_scope",
+                "disk_budget_gib",
+                "min_free_gib",
+            )
+            if any(
+                previous["options"].get(key) != getattr(options, key) for key in keys
+            ):
+                raise RuntimeError(
+                    "Scale configuration changed; choose a fresh output directory"
+                )
         expected_tool = previous.get("harness_sha256") or previous.get(
             "compatible_harness_sha256"
         )
@@ -214,8 +288,10 @@ def main() -> None:
         "python": sys.executable,
         "started_at": datetime.now(UTC).isoformat(),
         "options": vars(options).copy(),
-        "initial_state": "fresh process; unchanged source files/paths; SQLite backup restores pristine empty registry and empty ledger with fixed synthetic service identity42 before timing",
-        "filesystem_cache": "not flushed; same filesystem/path; one plain warm-up per case/capture; OS cache state uncontrolled",
+        "initial_state": "fresh process; unchanged source files/paths; empty registry and ledger with fixed synthetic service identity42 recreated before timing"
+        if "scale-rubric" in options.workloads
+        else "fresh process; unchanged source files/paths; SQLite backup restores pristine empty registry and empty ledger with fixed synthetic service identity42 before timing",
+        "filesystem_cache": "not flushed; same filesystem/path; configured fresh-process plain warm-ups; OS cache state uncontrolled",
         "phase_accounting": "phase wall durations inclusive/overlapping; synchronous thread CPU exclusive within each thread; async submission/retrieval report latency without CPU attribution",
     }
     metadata["options"] = {
@@ -246,8 +322,26 @@ def main() -> None:
                     destination = (
                         raw / f"{workload}-{capture}-{mode}-{kind}-{index}.json"
                     )
+                    if destination.exists() and not options.resume:
+                        raise RuntimeError(
+                            f"Sample already exists at {destination}; use --resume or a fresh output directory"
+                        )
                     if options.resume and destination.exists():
                         previous = json.loads(destination.read_text(encoding="utf-8"))
+                        if previous.get("status") == "failed":
+                            raise RuntimeError(
+                                f"Failed sample retained at {destination}; choose a fresh output directory"
+                            )
+                        if workload == "scale-rubric" and (
+                            previous.get("status") != "passed"
+                            or (
+                                previous.get("extent") != "prepare"
+                                and not previous.get("verification_complete")
+                            )
+                        ):
+                            raise RuntimeError(
+                                f"Scale sample is not independently verified at {destination}; choose a fresh output directory"
+                            )
                         if (
                             previous.get("source_tree_sha256"),
                             previous.get("runtime_identity"),
@@ -312,33 +406,165 @@ def main() -> None:
                         ),
                         flush=True,
                     )
-                    result = subprocess.run(
-                        [
-                            sys.executable,
-                            str(worker),
-                            "--directory",
-                            str(work_root / f"{workload}-{capture}"),
-                            "--output",
-                            str(destination),
-                            "--workload",
-                            workload,
-                            "--capture",
-                            capture,
-                            "--mode",
-                            mode,
-                            "--expected-source-sha256",
-                            source_identity,
-                            "--expected-harness-sha256",
-                            tool_identity,
-                            "--expected-fixture-sha256",
-                            fixture_identity,
-                        ],
-                        env=environment,
-                        capture_output=True,
-                        text=True,
-                        timeout=options.timeout,
-                    )
+                    arguments = [
+                        sys.executable,
+                        str(worker),
+                        "--directory",
+                        str(work_root / f"{workload}-{capture}"),
+                        "--output",
+                        str(destination),
+                        "--workload",
+                        workload,
+                        "--capture",
+                        capture,
+                        "--mode",
+                        mode,
+                        "--expected-source-sha256",
+                        source_identity,
+                        "--expected-harness-sha256",
+                        tool_identity,
+                        "--expected-fixture-sha256",
+                        fixture_identity,
+                    ]
+                    if workload == "scale-rubric":
+                        for flag in (
+                            "responses",
+                            "traits",
+                            "group_size",
+                            "concurrency",
+                            "response_bytes",
+                            "fixture_variant",
+                            "extent",
+                            "completed_requests",
+                            "measurement_scope",
+                            "disk_budget_gib",
+                            "min_free_gib",
+                        ):
+                            arguments.extend(
+                                [
+                                    "--" + flag.replace("_", "-"),
+                                    str(getattr(options, flag)),
+                                ]
+                            )
+                    attempt_started = datetime.now(UTC).isoformat()
+                    attempt_clock = time.monotonic()
+                    try:
+                        result = subprocess.run(
+                            arguments,
+                            env=environment,
+                            capture_output=True,
+                            text=True,
+                            timeout=options.timeout,
+                        )
+                        if (
+                            workload == "scale-rubric"
+                            and result.returncode == 0
+                            and not result.stderr
+                            and options.extent != "prepare"
+                        ):
+                            sample = json.loads(destination.read_text(encoding="utf-8"))
+                            remaining = options.timeout - (
+                                time.monotonic() - attempt_clock
+                            )
+                            if remaining <= 0:
+                                raise subprocess.TimeoutExpired(
+                                    arguments, options.timeout
+                                )
+                            verify_start = time.monotonic()
+                            verified = subprocess.run(
+                                [
+                                    sys.executable,
+                                    str(worker.with_name("scale_verify.py")),
+                                    "--report",
+                                    str(destination),
+                                ],
+                                env=environment,
+                                capture_output=True,
+                                text=True,
+                                timeout=remaining,
+                            )
+                            if verified.returncode or verified.stderr:
+                                sample["status"] = "failed"
+                                sample["failure"] = {
+                                    "type": "IndependentVerificationError",
+                                    "message": verified.stderr,
+                                }
+                                result = verified
+                            else:
+                                sample["verification"] = json.loads(verified.stdout)
+                                sample["verification_complete"] = True
+                                sample["status"] = "passed"
+                                sample["verification_wall_seconds"] = (
+                                    time.monotonic() - verify_start
+                                )
+                                sample["qualification_total_wall_seconds"] = (
+                                    sample["wall_seconds"]
+                                    + sample["verification_wall_seconds"]
+                                )
+                            destination.write_text(
+                                json.dumps(sample, indent=2), encoding="utf-8"
+                            )
+                    except subprocess.TimeoutExpired as error:
+                        progress = work_root / f"{workload}-{capture}" / "progress.json"
+                        if destination.exists():
+                            partial = json.loads(
+                                destination.read_text(encoding="utf-8")
+                            )
+                            partial["status"] = "failed"
+                            partial["failure"] = {
+                                "type": "WatchdogTimeout",
+                                "message": "worker or independent verification exceeded the configured deadline",
+                            }
+                            destination.write_text(
+                                json.dumps(partial, indent=2), encoding="utf-8"
+                            )
+                        failed = {
+                            "status": "failed",
+                            "returncode": None,
+                            "reason": "watchdog_timeout",
+                            "timeout_seconds": options.timeout,
+                            "started_at": attempt_started,
+                            "finished_at": datetime.now(UTC).isoformat(),
+                            "stdout": str(error.stdout or ""),
+                            "stderr": str(error.stderr or ""),
+                            "arguments": arguments,
+                            "source_tree_sha256": source_identity,
+                            "harness_sha256": tool_identity,
+                            "fixture_definition_sha256": fixture_identity,
+                            "partial_progress": json.loads(progress.read_text())
+                            if progress.exists()
+                            else None,
+                            "partial_report": json.loads(destination.read_text())
+                            if destination.exists()
+                            else None,
+                        }
+                        failure_path = failure_destination(destination.name)
+                        failure_path.write_text(
+                            json.dumps(failed, indent=2), encoding="utf-8"
+                        )
+                        raise RuntimeError(
+                            f"Benchmark watchdog timeout; retained evidence: {failure_path}"
+                        ) from error
                     if result.returncode or result.stderr:
+                        failure_path = failure_destination(destination.name)
+                        failed = {
+                            "status": "failed",
+                            "returncode": result.returncode,
+                            "started_at": attempt_started,
+                            "finished_at": datetime.now(UTC).isoformat(),
+                            "stdout": result.stdout,
+                            "stderr": result.stderr,
+                            "arguments": arguments,
+                            "source_tree_sha256": source_identity,
+                            "harness_sha256": tool_identity,
+                            "fixture_definition_sha256": fixture_identity,
+                            "partial_report": json.loads(destination.read_text())
+                            if destination.exists()
+                            else None,
+                        }
+                        failure_path.write_text(
+                            json.dumps(failed, indent=2), encoding="utf-8"
+                        )
                         raise RuntimeError(
                             f"Benchmark child failed ({result.returncode}): {result.stdout}\n{result.stderr}"
                         )

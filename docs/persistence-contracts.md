@@ -1,4 +1,4 @@
-# Internal persistence contracts — Milestone 2 submission/recovery
+# Internal persistence contracts — Milestone 2 mock execution and lifecycle
 
 The approved [execution plan](milestone-2-execution-plan.md) is preserved as
 reviewed, with the generation requirement added at the start of Subphase 2.
@@ -9,6 +9,9 @@ commitments, and immutable source-preparation services.
 Subphases 3–4 implement mock execution, conservative recovery, retries, cancellation
 and immutable exports. Subphase 5 exposes those services through public Python
 functions and the versioned CLI without changing registry schema version 1.
+Subphase 6 adds qualification tooling around these services. Its exact-head
+scale and compatibility evidence remains pending; no new registry, manifest,
+assessment, result, export or control schema version is introduced.
 
 ## Registry and transactions
 
@@ -281,23 +284,26 @@ durability. Artifact publication requires atomic no-overwrite hard links;
 unsupported filesystems fail safely. Flush/fsync is used where supported;
 Windows has no stdlib directory-fsync equivalent. No overwrite fallback is used.
 
-## Subphase 3 handoff
+## Historical Subphase 3 handoff
+
+This handoff records the preparation-stage boundary. The following sections
+describe the subsequently implemented execution and public lifecycle services.
 
 Subphase 3 consumes request dependencies incrementally and binds exact prompt/
 payload bytes before submission. Retain original request membership and use
 attempt subsets for retries. Minimal response recovery must retrieve the same
 authoritative observation or remain unresolved; a request hash is insufficient.
 
-The package remains at its existing development version during this independently
-reviewable subphase; the approved `0.1.0a3` target remains the next milestone
-package version. Generation configuration and capability interfaces are additive;
+The package remained `0.1.0a2` during Subphases 1–5; the approved `0.1.0a3`
+transition belongs to the Subphase 6 candidate and its compatibility qualification.
+Generation configuration and capability interfaces are additive;
 no-generation serialization/IDs/diagnostics and normalized result/export schemas
 remain unchanged. The [Subphase 1 verification record](milestone-2-subphase-1-verification.md)
 continues to describe its earlier durable-foundation checks only.
 The [generation verification record](milestone-2-generation-verification.md)
 records its earlier foundation only. The
 [source-preparation verification record](milestone-2-subphase-2-verification.md)
-records complete input preparation and the remaining submission-boundary work.
+records complete input preparation and the then-remaining submission-boundary work.
 
 ## Subphase 3 execution ownership, receipts, and provider evidence
 

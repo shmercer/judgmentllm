@@ -1,7 +1,7 @@
 """Execute synthetic assessments, then independently reopen and export for R.
 
-Both phases are offline and credential-free. This fixture uses the internal
-execution service, not the deferred public lifecycle CLI or an R wrapper.
+Both phases are offline and credential-free. This fixture exercises internal
+execution; the separate seventh gate covers the installed public lifecycle CLI.
 """
 
 from __future__ import annotations

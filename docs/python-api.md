@@ -8,8 +8,19 @@ normalization functions, planning functions, and preview are also exported from
 `judgmentllm`. Subphases 3–4 provide mock execution/recovery, grouped outcomes,
 retry/cancellation and immutable exports. Subphase 5 exposes the shared public
 lifecycle services below; the installed CLI calls these same functions.
+Subphase 6 adds development benchmark tooling and executable examples around
+these services. Exact-head scale and compatibility qualification is pending;
+no additional public lifecycle interface or schema is introduced.
 
 ## Public execution lifecycle (Milestone 2 Subphase 5)
+
+Runnable public examples are `examples/mock_lifecycle.py` (validation, planning,
+grouped rubric execution, inspection and canonical/R exports) and
+`examples/mock_recovery.py` (independent installed-CLI processes, partial outcomes,
+explicit failed-member retries and immutable old exports). Pairwise execution
+uses `examples/mock-pairwise.yaml`. See the [scale guide](scale-qualification.md)
+for local storage and separate benchmark commands. These examples use synthetic
+inputs and the mock adapter; real providers remain unimplemented.
 
 The top-level `judgmentllm` package and `judgmentllm.lifecycle` expose:
 
@@ -260,8 +271,8 @@ Plans contain no provider request bodies, token/cost estimates, remote submissio
 
 ## Immutable source preparation (internal)
 
-`judgmentllm.preparation` provides provider-free internal services, separate from
-the future public run/CLI lifecycle. `prepare_run(spec_or_path, *, store, run_id,
+`judgmentllm.preparation` provides the provider-free internal services used by
+the public run/CLI lifecycle. `prepare_run(spec_or_path, *, store, run_id,
 capabilities=None, exhaustive_rendering=False)` validates all inputs, consistently freezes every applicable
 source, builds byte-accurate CSV/JSONL indexes, and seals a complete executable
 manifest. A direct `RunSpec` receives a validated canonical identity without an
@@ -278,8 +289,8 @@ not render every real response-by-trait combination. Content-specific output
 limits or conditional inclusion failures in later records are checked when each
 actual request is selected.
 
-Call `run.render(dependency)` on each selected verified dependency before any
-future submission. This uses the existing full renderer and validates the real
+The internal executor calls `run.render(dependency)` on each selected verified
+dependency before submission. This uses the full renderer and validates the real
 response texts, trait group, exemplars, exact output limits, and protected blocks.
 `iter_request_dependencies()` verifies content dependencies without implying that
 the request has rendered successfully.
