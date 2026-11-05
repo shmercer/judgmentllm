@@ -1,6 +1,20 @@
 # JudgmentLLM: functional design specification
 
-**Design:** 0.5 (2026-11-02). **Implementation status:** Milestone 1 provides schema-version-1 contracts, synthetic normalization, structural planning, input/output, and offline prompt tools. Milestone 2 has durable persistence, generation configuration, and complete provider-free immutable source preparation with indexed access and independent-process reopening. Subphase 4 adds grouped outcomes, retry/cancellation and immutable exports; Subphase 5 exposes the shared public Python lifecycle and versioned CLI. Subphase 6 scale tooling is implemented, with exact-head qualification pending. Execution is limited to the deterministic mock provider; real adapters remain later milestones. The sections below describe the full approved direction; [data contracts](data-contracts.md) and [Python API](python-api.md) describe the implemented subset.
+**Design:** 0.5 (2026-11-02). **Implementation status:** Milestone 1 provides schema-version-1 contracts, synthetic normalization, structural planning, input/output, and offline prompt tools. Milestone 2 has durable persistence, generation configuration, and complete provider-free immutable source preparation with indexed access and independent-process reopening. Subphase 4 adds grouped outcomes, retry/cancellation and immutable exports; Subphase 5 exposes the shared public Python lifecycle and versioned CLI. Subphase 6 is merged in PR #11; its final implementation head `db198aeb0a6387e6a3030c584c34bdd0b41e890f` has retained local and hosted qualification evidence, with the historical six-configuration scope described below. Execution is limited to the deterministic mock provider; real adapters remain later milestones. The sections below describe the full approved direction; [data contracts](data-contracts.md) and [Python API](python-api.md) describe the implemented subset.
+
+## Proposed Milestone 3 consolidation (documentation only)
+
+The [assessment output design](assessment-output-design.md) defines the proposed
+next milestone: three single-call rubric layouts independent of grouping,
+editable templates and optional exemplars, native structured-output translation,
+winner-only generative forced choice, shared secure authentication with offline
+status and opt-in verification, request-level usage and explicitly authorized
+reasoning evidence. Its [prompt examples](assessment-prompt-examples.md) and
+[provider evidence](assessment-provider-evidence.md) separate design from SDK
+documentation and live qualification. New controls use an explicit future RunSpec
+version 2; implemented version-1 contracts, mock execution and normalized results
+remain unchanged by this documentation work. Small M3 PRs implement the design;
+native decisions remain M4, bulk/batch parity M5 and thin CLI-first R exposure M6.
 
 ## 1. Goals
 
@@ -231,7 +245,16 @@ process disappeared. Grouped salvage, explicit subset retries, conservative auto
 retry, cancellation, immutable export, shared public Python services and the
 versioned lifecycle CLI are implemented. The installed-CLI R lifecycle gate adds
 to the six established strict interoperability gates. Subphase 6 supplies complete
-scale workloads, resource/storage diagnostics and user examples; exact-head
-milestone qualification is pending. Real providers remain later milestones.
+scale workloads, resource/storage diagnostics and user examples. Its final
+implementation head `db198aeb0a6387e6a3030c584c34bdd0b41e890f` passed the then-required
+six local Python 3.11/3.12 configurations and all 42 strict R/jsonlite executions,
+plus all five hosted configurations on the PR and literal final head.
+[PR #11](https://github.com/shmercer/judgmentllm/pull/11) is merged; the
+[final-head hosted run](https://github.com/shmercer/judgmentllm/actions/runs/42077694940)
+and external `qualification/db198aeb0a6387e6a3030c584c34bdd0b41e890f/ledger.json`
+under `/mnt/VM_Fast/judgmentllm-subphase6/` preserve the measured source/equivalence
+and earlier failed/interrupted records. This historical qualification does not
+qualify later design heads under the current seven-configuration local policy.
+Real providers remain later milestones.
 See the dated [Subphase 5 verification record](milestone-2-subphase-5-verification.md)
 and current [scale qualification record](milestone-2-subphase-6-verification.md).

@@ -13,8 +13,10 @@ R wrapper is a Milestone 6 deliverable. FastAPI remains committed for Milestone 
 as an optional local service; ordinary R use does not require that server.
 Seven strict offline R/jsonlite gates now cover the implemented mock lifecycle,
 including independent installed-CLI processes. Subphase 6 adds a separate
-bounded-read checker for large rubric exports; exact-head qualification remains
-pending. Large exports are not added to every routine R gate.
+bounded-read checker for large rubric exports and is merged with retained
+qualification evidence for its final implementation head; see the
+[historical qualification scope](design-spec.md#milestone-2-implementation-boundary).
+Large exports are not added to every routine R gate.
 
 These exports are **all-attempts audit views**: every supplied record remains,
 including failures, observed ties, reversals, repeated judgments, and multiple
@@ -459,4 +461,51 @@ records. It does not perform lifecycle operations in place of the executable.
 Expensive fault-window matrices and scale tests remain Python regressions;
 the R gate does not wait out synthetic long delays or run scale qualification.
 Missing executable/Rscript/jsonlite or failed assertions fail required acceptance.
-Hosted Ubuntu/Python 3.11 and all six local OS/Python lanes require this gate.
+Hosted Ubuntu/Python 3.11 and all seven current local OS/Python configurations
+require this gate: Linux Python 3.11/3.12/3.15 and Windows/macOS Python 3.11/3.12.
+Together the seven strict gates require 49 local executions. Historical Subphase 6
+qualification used six local Python 3.11/3.12 configurations and 42 executions;
+that retained evidence is not relabeled as the current seven-configuration grid.
+
+
+## Proposed Milestone 3 usage and evidence joins (proposed, not implemented)
+
+See the [consolidated assessment output design](assessment-output-design.md)
+for explicit future version-2 RunSpec/renderer controls, unchanged normalized
+result schema 1, linked request/submission/observation usage and authorized
+reasoning records, streaming companion exports and R join/aggregation rules.
+Existing columns, frozen records, identities and missing-value semantics in
+this document remain implemented contracts. New sidecars require their own
+typed versions and deterministic offline Python/CLI-to-R acceptance; grouped
+requests cannot multiply token usage or duplicate reasoning by trait. Any
+internal persistence revision requires deliberate compatibility handling, not
+implicit mutation/migration of an existing registry. Credential diagnostics
+never add credential values or private identities to assessment evidence.
+
+
+The proposed `ProviderObservationMetadata` sidecar version 1 is exported once
+per provider observation, including observations with null usage. Usage exports
+include this canonical JSONL/CSV or R-compatible audit companion and identify it
+through nullable `EvidenceManifest.observation_file` (`ExportFile` path/hash/
+length); absent legacy metadata remains unavailable. Retain `requested_order`
+(`together|scores_first|explanations_first|null`, null for pairwise),
+`observed_key_order` (original emitted root key list or null), `member_key_orders`
+(a list of `{array, index, trait_id|null, keys|null}` records for per-entry order),
+`order_adherence` (`adherent|mismatch|unknown`), `order_evidence`
+(`raw_output_text|raw_tokens|reassembled_stream|unavailable`) and nullable safe
+`unknown_reason`.
+
+CSV root/member key lists use JSON cells, and unavailable order uses explicit
+missing values rather than an empty list or inferred sorted order. Import IDs
+as character and recover nested values with `jsonlite`. Use the existing
+run/request/attempt/submission/observation bridge for joins to assessment rows,
+without duplicating observation metadata across grouped traits. Deterministic R
+acceptance covers adherent, mismatched and unknown root/member order under
+full/minimal capture; minimal retains only safely observable nonsensitive fields
+under the authoritative retention policy. Public metadata retains only
+allowlisted contract key names and known trait IDs. Unsafe keys produce a null
+affected sequence, unknown adherence and `unknown_reason: unsafe_key_names`;
+unknown trait IDs become null with stable indices and content-free counts. R
+fixtures must verify those nulls and codes without retaining arbitrary names.
+Order mismatch remains diagnostic and does not alter valid scores, retry authority or normalized-result/R outcome
+semantics. Visible order is not evidence of internal model reasoning order.

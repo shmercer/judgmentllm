@@ -324,7 +324,8 @@ results alone cannot establish hosted Windows headroom. Keep the full fixture
 offline unless the stronger promotion criterion is demonstrated.
 
 Final publication qualification still requires Ruff lint/format, strict Pyright,
-full branch coverage ≥90%, all durability/privacy/recovery/resource regressions,
+the full test suite and total coverage ≥90% with branch measurement enabled on
+Linux/3.11 only, all durability/privacy/recovery/resource regressions,
 all seven strict R/jsonlite gates, lock verification, offline distributions,
 strict Twine and clean wheel/source smokes. Commit the final proposed head and run:
 
@@ -332,9 +333,12 @@ strict Twine and clean wheel/source smokes. Commit the final proposed head and r
 python3 ci/local/grid.py --ref FULL_HEAD_SHA --mode check
 ```
 
-Require all six exact-commit local configurations, followed by the five hosted
-jobs on the eventual exact PR head. Local 3.11/3.12 qualification does not replace
-hosted 3.15. Follow [local CI isolation and locks](local-ci.md); do not overlap
+The historical Subphase 6 qualification used six exact-commit local
+configurations. Current publication requires seven (Linux 3.11/3.12/3.15 and
+Windows/macOS 3.11/3.12), with coverage measured only on Linux/3.11 and disabled
+elsewhere, followed by the five hosted jobs on the exact PR head. Historical
+six-lane evidence remains valid for its stated scope; current local qualification
+does not replace hosted 3.15. Follow [local CI isolation and locks](local-ci.md); do not overlap
 ordinary performance collection with the grid, Docker operations or other heavy
 checks. No provider adapter, HTTP server, R wrapper or package release is part of
 these commands.

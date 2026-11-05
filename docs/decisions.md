@@ -135,3 +135,60 @@ R interoperability is an acceptance condition throughout subsequent milestones, 
 - Keep complete 5,000-by-20 qualification separate from routine CI unless actual
   hosted complete-job measurements establish adequate margin. Preserve all
   existing resource parameters, limits, R gates and job deadlines.
+
+
+## Milestone 3 consolidated design proposal (2026-11-05; not implemented)
+
+The [authoritative design](assessment-output-design.md) and its supporting
+[prompt examples](assessment-prompt-examples.md) /
+[provider evidence register](assessment-provider-evidence.md) consolidate the
+requested direction into reviewable proposed contracts. This entry does not
+claim these interfaces have shipped or authorize implementation in this PR.
+
+- Three model-facing rubric layouts: `together` by default, `scores_first`,
+  `explanations_first`; one call per configured trait group. Nondefault order
+  requires explanations. Match separated arrays by trait ID; preserve sibling
+  salvage with complete score/explanation validation per successful member.
+- Retain sandbox/protected-block safeguards and `output_instructions`; v2
+  built-ins omit empty exemplar sections, while every supplied exemplar remains
+  exact and ordered. Output schema/local validation stay independent of prose.
+- Prefer compatible native schemas through typed `structured_output=auto`;
+  `native` requires a tested translation and `text` explicitly uses inline schema.
+  Fallback is decided before request commitment, with diagnostics. Native
+  projection limitations remain explicit and local validation mandatory.
+- Requested/observed visible order is separate from documented provider order
+  and inaccessible internal reasoning. Preserve ordered serialization separately
+  from canonical hashes; mismatches diagnose rather than automatically rescore.
+- New generative forced-choice wire needs only `winner_id`; accept historical
+  explicit false, normalize tie=false, retain explicit tie policy and every
+  original/presented/probability/R outcome contract. Native scoring stays M4.
+- Usage belongs to one physical submission/observation, retained in full/minimal
+  capture including failures, unknown values null and provider semantics intact.
+  Preserve legacy normalized token columns for historical reading; new adapters
+  leave them null and export joinable usage separately.
+- Reasoning effort/request is separate from retention and assessment
+  explanations. Non-none reasoning capture explicitly authorizes that documented
+  type under full capture. Unsolicited sensitive blocks are removed from retained
+  evidence, with derivatives labeled; no complete internal-trace claims.
+- Shared SDK-backed resolver serves adapters/status/verify/smoke. No secrets or
+  private identities in configuration/evidence/diagnostics; status is offline.
+  Use documented key precedence, conservative unknown ADC, initial API-key-only
+  Anthropic/Together resolution without implicit alternative-source fallthrough.
+- `auth status` Python/CLI is mandatory M3, with typed JSON under the existing v1
+  control envelope; optional missing sources succeed, unmet `--require` exits 2.
+  `auth verify` implements suitable protected non-generative checks provider by
+  provider, never hidden generation. Auth acceptance is not live qualification.
+- Live synthetic smoke requires explicit model, billing authorization where
+  applicable, bounded calls/output and feature-specific qualification records.
+  Ordinary CI remains credential-free and offline, including real Python/CLI/R
+  synthetic joins and all existing strict R/jsonlite gates.
+- Explicit future RunSpec v2 gates new configuration/renderer behavior. Preserve
+  v1 artifacts/identities and normalized result schema 1. Version linked evidence
+  and any internal persistence extension deliberately, with no automatic old-store
+  migration. This design PR changes no package or schema versions in code.
+
+Review-sensitive choices and pending provider qualifications are collected in
+section 13 of the design. M3 lands in small coherent PRs; M4 native endpoints
+reuse auth/evidence, M5 adds durable bulk/batch parity, M6 exposes implemented
+features through the thin CLI-first R wrapper. No second R engine or HTTP
+requirement is introduced.

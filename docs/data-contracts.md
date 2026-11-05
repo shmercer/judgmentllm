@@ -323,3 +323,18 @@ retrieval/normalization; deterministic recipes and hashes alone cannot establish
 acceptance. Local preparation failures and unresolved submissions create no
 normalized judgments. Refusal, invalid received output, authoritative provider
 error, and definite invoked transport nonacceptance retain distinct evidence.
+
+
+## Run and evidence schema design (proposed, not implemented)
+
+See the [consolidated assessment output design](assessment-output-design.md)
+for explicit future version-2 RunSpec/renderer controls, unchanged normalized
+result schema 1, linked request/submission/observation usage and authorized
+reasoning records, streaming companion exports and R join/aggregation rules.
+Existing columns, frozen records, identities and missing-value semantics in
+this document remain implemented contracts. New sidecars require their own
+typed versions and deterministic offline Python/CLI-to-R acceptance; grouped
+requests cannot multiply token usage or duplicate reasoning by trait. Any
+internal persistence revision requires deliberate compatibility handling, not
+implicit mutation/migration of an existing registry. Credential diagnostics
+never add credential values or private identities to assessment evidence.

@@ -9,8 +9,11 @@ normalization functions, planning functions, and preview are also exported from
 retry/cancellation and immutable exports. Subphase 5 exposes the shared public
 lifecycle services below; the installed CLI calls these same functions.
 Subphase 6 adds development benchmark tooling and executable examples around
-these services. Exact-head scale and compatibility qualification is pending;
-no additional public lifecycle interface or schema is introduced.
+these services. Its final implementation head `db198aeb0a6387e6a3030c584c34bdd0b41e890f`
+was qualified and merged in PR #11; the retained historical six-configuration
+evidence and current seven-configuration policy are distinguished in the
+[design status](design-spec.md#milestone-2-implementation-boundary). No additional
+public lifecycle interface or schema is introduced by that subphase.
 
 ## Public execution lifecycle (Milestone 2 Subphase 5)
 
@@ -500,3 +503,170 @@ Export does not require an adapter and never generates missing judgments.
 `successful_results` and `unresolved_submissions`. A partially valid request has
 state `partial`. Authorized normalized explanations remain exportable under
 minimal capture; prompts, payloads and raw output remain unavailable.
+
+## Proposed Milestone 3 API additions (not implemented)
+
+The [assessment output design](assessment-output-design.md) is the authoritative
+proposal. The signatures and models in this section are design contracts for
+future small implementation PRs; imports below do not work in Milestone 2.
+Existing normalized results, schema-version-1 configuration and mock execution
+remain the compatibility baseline.
+
+### Credential diagnostics
+
+```python
+from judgmentllm.auth import CredentialStatus, credential_status
+
+statuses: tuple[CredentialStatus, ...] = credential_status()
+for status in statuses:
+    print(status.provider, status.status)
+
+openai_status = credential_status(providers=("openai",))
+```
+
+`credential_status(*, providers=None) -> tuple[CredentialStatus, ...]` is a
+synchronous offline service. Omitted selection returns the documented provider
+registry in stable order; an explicit provider filter retains that registry
+order, rejects unknown IDs and deduplicates repeated IDs. Return frozen strict models matching existing public
+control-model conventions, with `provider`, `auth_type`, nullable `source`,
+`status` and nullable `diagnostic_code`. Status values are `configured`, `missing`,
+`unknown`, `not_required`, `unsupported`; diagnostics use allowlisted codes.
+Never return secret values, substrings, hashes, identity/account names, arbitrary
+file paths or unsanitized SDK messages. The CLI wraps these same records under
+version-1 `data.providers`; `--require` is a CLI policy check over status records,
+not another credential resolver.
+
+The shared internal resolver keeps secret material transient and delegates to
+SDK authentication in actual adapters. Its offline inspection path cannot
+refresh tokens, contact metadata/provider endpoints, load arbitrary credential
+files or implicitly load `.env` files. Google cloud identities can remain
+`unknown`. A configured source is not authenticated; local Ollama requiring no
+ordinary authentication is not evidence of daemon connectivity.
+
+Provider-specific live verification and smoke services must share that resolver
+and the safe `LifecycleError` boundary. Their thin CLI contracts are documented
+in [CLI design](cli-spec.md#proposed-milestone-3-commands-and-configuration-not-implemented).
+Explicit authentication verification is never called by status or planning.
+No suitable non-generative operation means verification unsupported; model
+requests require the separately authorized smoke workflow.
+
+### Output, usage and reasoning boundaries
+
+New configuration capabilities opt into RunSpec schema version 2: proposed
+`PromptSpec.output_order` defaults to `together` and accepts `scores_first` and
+`explanations_first`; `PromptSpec.structured_output` defaults to `auto` and accepts
+`native` or `text`. Typed `GenerationSpec.reasoning` preserves omitted controls
+and separates reasoning effort/request from retention. `ExecutionSpec` continues
+to own grouping and assessment explanation requests; capture policy owns detailed
+evidence authorization. Do not add authentication secrets to these models.
+
+Extend generated provider-facing output schemas and local validators deliberately;
+the existing version-1 functions described above retain their historical
+contracts until the implementing PR specifies the compatible entry points.
+Separated arrays join by `trait_id`, never position, and grouped interpretation
+continues to preserve valid siblings while recording every failed expected
+member. All layouts normalize to existing `RubricResult` fields. Generative
+forced-choice output may omit `tie`; normalized `PairwiseResult.tie` remains false,
+while historical explicit `tie: false` inputs remain valid. Native decision/score
+contracts remain separate Milestone 4 work.
+
+Add typed request/observation usage and optional reasoning evidence records,
+linked through stable run/request/attempt/submission/observation identities.
+These records need versioned public schemas; they do not require a second
+assessment-result format or duplicated request totals in grouped trait rows.
+Existing nullable normalized usage columns remain readable and are not reused
+as a multiplication-prone source for new accounting; new real adapters leave
+those legacy result usage fields null. Missing usage remains null.
+Assessment explanations stay in result rows; provider-exposed summaries/thinking
+and raw evidence remain distinct observation-level records.
+
+Streaming companion usage and authorized reasoning exports use independent
+immutable artifacts, consistent evidence cuts and the same safe lifecycle export
+report conventions. Preserve all attempts, provider-native usage semantics,
+leading-zero character IDs, nulls and complete audit joins in deterministic R
+acceptance. Aggregation selects one authoritative usage revision per physical submission
+before joining assessment rows; it preserves separately billable retries and
+must not silently sum repeated retrievals, evidence revisions or overlapping
+nested usage components. See the authoritative design for fields and accounting rules.
+
+A proposed strict `ProviderObservationMetadata` sidecar has its own version 1
+and one row per provider observation, linked by existing run/request/attempt/
+submission/observation identities. It contains these order-audit fields:
+
+- `requested_order`: `together|scores_first|explanations_first|null`; pairwise is null.
+- `observed_key_order`: `tuple[str, ...] | None`, the original emitted root key order.
+- `member_key_orders`: a list of `{array, index, trait_id, keys}` records retaining
+  per-entry key order, including `together` score/explanation order. `index` is
+  zero-based, `trait_id` is nullable when it cannot be attributed safely, and
+  `keys` is a nullable ordered key list.
+- `order_adherence`: `adherent|mismatch|unknown`.
+- `order_evidence`: `raw_output_text|raw_tokens|reassembled_stream|unavailable`.
+- `unknown_reason`: nullable allowlisted diagnostic code.
+
+Unknown original order stays null/unknown; parsed-object reserialization is not
+emission evidence. Keep this metadata once per observation, without copying it
+into grouped trait results. Companion canonical JSONL/CSV and R-compatible audit
+exports retain it even when usage is null; JSON CSV cells preserve root/member
+key lists and explicit missing values remain unknown. Minimal capture retains
+only safely observable nonsensitive metadata under the authoritative retention
+policy. Public order metadata permits only allowlisted contract key names and
+known trait IDs: an unsafe unknown key makes its affected sequence null and
+`order_adherence: unknown`, with `unknown_reason: unsafe_key_names`. Unknown
+trait IDs become null, retaining stable indices and content-free diagnostic
+counts. This public rule also applies under full capture; inspecting any
+authorized original evidence separately remains subject to secret sanitization.
+An order mismatch remains diagnostic; it does not change score validity
+or authorize a new call. This metadata neither establishes internal reasoning
+order nor modifies normalized result schema 1.
+
+### Proposed evidence export services
+
+Expose these typed services from `judgmentllm.lifecycle` and the top-level package,
+following the existing synchronous result-export convention:
+
+```python
+export_run_usage(run_id, *, store=None, format="jsonl", view="canonical",
+                 na_string="NA", high_water_mark=None,
+                 evidence_high_water_mark=None) -> EvidenceManifest
+export_run_reasoning(run_id, *, store=None, format="jsonl", view="canonical",
+                     na_string="NA", high_water_mark=None,
+                     evidence_high_water_mark=None) -> EvidenceManifest
+```
+
+Arguments follow `export_run_results`: run ID or absolute run directory, optional
+store, `format="jsonl"|"csv"`, `view="canonical"|"r"`, configurable R missing marker,
+and optional nonnegative result high-water mark. The R view requires CSV;
+canonical CSV retains existing null escaping and nested JSON. The new optional
+`evidence_high_water_mark` selects an append-only evidence revision cut.
+Omitted cuts are captured in one database snapshot. Validate explicit boundaries;
+reject future cuts and a result/evidence combination that excludes evidence links
+required by the selected results. Usage facts with no normalized result remain
+included through the evidence cut. Do not infer an evidence cut solely from the
+largest assessment result ID.
+
+`EvidenceManifest` is a new frozen version-1 export control model. It contains
+`run_id`, `run_status`, `export_id`, `kind: usage|reasoning`, `format`, `view`,
+`row_count`, `result_high_water_mark`, `evidence_high_water_mark`,
+`incomplete_source`, immutable `files` (existing `ExportFile` path/hash/length
+records), nullable `bridge_file`, nullable `observation_file`, and existing
+`ArtifactPaths`. Usage exports publish revision-selected facts, revision audit,
+the task-to-submission/observation/usage bridge, and the observation metadata
+companion regardless of whether usage counts were reported. `bridge_file` and
+`observation_file` use existing `ExportFile` path/hash/length models to identify
+those artifacts. Missing legacy evidence can leave `observation_file` null;
+do not infer order. Reasoning-only exports set `bridge_file` null and retain
+observation identifiers in rows.
+Assessment `ResultManifest` and normalized-result schemas stay unchanged.
+
+Both services traverse bounded pages and atomically publish immutable outputs.
+Repeated matching cuts/options converge. They read persisted evidence without
+provider construction, network activity or original assessment sources. Reasoning
+exports include only the authorized retained type and explicit availability/null
+metadata for unavailable/redacted records. No text is emitted to control stdout.
+CLI `usage export` and `reasoning export` call these services and serialize the
+same safe metadata inside their existing version-1 control envelopes.
+
+No proposed API in this section authorizes a live call during ordinary tests.
+Offline synthetic adapter/CLI exports must pass the standing R/jsonlite gates;
+Milestone 6 exposes the implemented services through CLI-first `rubricLLM` without
+creating an R authentication or assessment engine.

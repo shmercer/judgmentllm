@@ -124,5 +124,7 @@ passing on the exact final a3 source. A changed candidate commit requires fresh
 qualification; an earlier producer-only or same-version helper exercise is not
 cross-version acceptance. This command has its own bounded phase deadlines and
 does not change the 180-second required execution-memory fixture deadline.
-Full six-configuration local qualification and the exact-head hosted matrix
-remain required independently.
+The historical Subphase 6 boundary qualified six local configurations. Current
+publication independently requires the seven-configuration local grid and the
+exact-head hosted matrix in [local CI](local-ci.md); retain the historical
+six-lane evidence without treating it as the current publication matrix.

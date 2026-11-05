@@ -94,23 +94,104 @@ evidence that acceptance has completed. The
 [qualification record](milestone-2-subphase-6-verification.md) distinguishes
 executed workloads, outstanding checks and later publication requirements.
 
-## Milestone 3 - Generative live adapters
+## Milestone 3 - Assessment outputs, authentication and generative live adapters
 
-- Implement OpenAI Responses and Chat; Anthropic Messages; Gemini Developer; Vertex Gemini; Together AI; Ollama local, with maintained SDKs when available.
-- Per-adapter offline fixtures validate request building, response parsing, errors, usage, optional explanations, tier/cache settings and output schemas.
-- Implement and test supported generation parameters for every implemented provider/model/endpoint, including exact wire mappings, omitted values, bounds and incompatible combinations. Add supported extensions only through typed documented adapter-owned schemas. Exact prepared bodies and hashes must reflect every explicitly requested control; distinguish fixture evidence from live qualification.
-- Exercise each adapter's normalized synthetic outputs through the established Python-to-R exports, covering successful rubric/pairwise judgments, refusals, invalid outputs, errors, and missing optional usage/probability/provenance fields.
-- Implement provider model discovery where officially available; unknown-model pass-through with documented limits.
+**Design only; implementation has not begun.** The authoritative
+[assessment output design](assessment-output-design.md) consolidates output
+layouts, templates, generated schemas, authentication, provider evidence,
+usage/reasoning retention and qualification. The implemented Milestone 2 engine,
+mock protocol, public result schemas and CLI remain the baseline. Implement this
+milestone through the following small, independently reviewable PRs; each PR
+updates its tests and user documentation and passes applicable R acceptance.
 
-**Acceptance:** Each adapter passes the shared contract tests without API credentials and has an opt-in live smoke test plan. A validated score-only task and paired-choice task can be exercised against each available provider in prerelease qualification. Required R interoperability fixtures consume actual normalized exports from every implemented generative adapter without credentials or network calls and preserve IDs, statuses, original/presented positions, optional/missing values, and categorical score semantics rather than dropping unsuccessful outcomes.
+1. **Output contracts and interpretation.** Add provider-neutral generated JSON
+   Schemas and local validators for `together` (default), `scores_first` and
+   `explanations_first`, with one provider call per configured trait group.
+   Preserve scores-only behavior, strict incompatible-setting preflight,
+   trait-ID joins, complete-member validation and grouped sibling salvage.
+   Normalize to existing `RubricResult`; accept forced-choice `winner_id` alone
+   while retaining normalized `tie: false` and historical explicit-false input.
+2. **Templates and examples.** Extend the sandboxed renderer/output instructions
+   for all layouts. Omit empty exemplar sections, allow custom templates without
+   an exemplar placeholder when none are selected, and preserve exact inclusion
+   and order when supplied. Ship the six editable/rendered examples in the
+   [prompt example design](assessment-prompt-examples.md); no two-stage calls.
+3. **Shared credentials and offline diagnostics.** Add the typed credential
+   resolver reused by adapters; mandatory `auth status`, its Python API,
+   versioned JSON response and `--require` checks. Status must be offline, reveal
+   no credential values or identities and never claim validity. Unsupported or
+   unknowable cloud identity states remain explicit. Use SDK authentication;
+   no credentials in RunSpec, immutable evidence, logs or exports.
+4. **Provider evidence and schema transport.** Add request/observation-level usage
+   and authorized optional reasoning evidence, strict native-schema translation,
+   scoped capabilities, controlled explicit textual fallback, sanitized errors
+   and exact nonsecret request/response commitments. Version affected public
+   schemas independently; do not migrate or rewrite historical runs implicitly.
+   Export usage separately from trait results, including unsuccessful attempts.
+5. **Generative adapters, one provider/endpoint family per PR.** Implement OpenAI
+   Responses/Chat, Anthropic Messages, Gemini Developer, Vertex Gemini, Together
+   and local Ollama through maintained SDKs where suitable. Use the shared
+   credential resolver and schema/evidence infrastructure. Each PR supplies
+   credential-free fixtures for request construction, native schema subset,
+   fallback, parsing, errors, usage, optional explanations/reasoning and supported
+   generation, tier/cache controls. Preserve omitted generation values; reject
+   known incompatibilities before submission. Implement model discovery and
+   provider-specific `auth verify` only where documented suitable protected
+   non-generative operations exist; unsupported mechanisms remain explicit.
+   Unknown-model pass-through does not establish support.
+6. **Companion exports and R acceptance.** Add streaming immutable `usage export`
+   and authorized `reasoning export`, corresponding shared Python services,
+   canonical JSONL/CSV and R-compatible views, consistent result/evidence cuts
+   and result-to-evidence bridges. Verify all-attempt joins and aggregation
+   without multiplying grouped usage through actual offline Python/CLI/R tests.
+7. **Live diagnostics and qualification.** Deliver `providers smoke` with explicit model,
+   endpoint and billable-call authorization, conservative enforced request/output
+   controls and nonsecret feature-scoped qualification records. Test the command
+   orchestration offline. Live runs remain separate and never run implicitly.
 
-Generation fixtures prove each supported setting reaches the correct endpoint
-field unchanged, unset controls remain absent, and known unsupported settings or
-combinations fail before submission. Do not claim untested models are qualified.
+**Acceptance:** Deterministic offline tests cover all three layouts, scores only,
+independent/grouped traits, ID/order mismatches, duplicates, unknown/malformed
+members, category validity, complete explanations, historical outputs and valid
+sibling salvage. Template/schema tests preserve protected content and optional
+exemplar behavior, verify generated instructions and every provider translation,
+and distinguish requested visible order from actually verified serialization.
+Native schema support must not be silently weakened. Every generative adapter
+passes the shared provider contract suite with synthetic credentials/fixtures.
+
+Authentication tests forbid network access during status, cover blank/missing/
+configured/unknown/unsupported mechanisms, Ollama's ordinary local no-auth case,
+multiple required providers, JSON/exit codes, sanitized errors and consistency
+with execution credential resolution. Assert no secret leakage through stdout,
+stderr, artifacts, manifests, exports or qualification records. Verification
+outcomes distinguish rejection, permission, network/service, rate limits and
+inconclusive evidence; successful authentication does not qualify a model.
+
+Usage/reasoning tests cover minimal/full capture, partial or missing usage,
+provider-specific cache/reasoning semantics, grouped calls without duplication,
+failed attempts and retries, explicit reasoning authorization and immutable
+observation links. Assessment explanations remain separate from provider-exposed
+reasoning summaries and raw evidence.
+
+Required offline Python/CLI-to-R fixtures consume actual normalized generative
+adapter outputs and companion usage/evidence exports, preserve character IDs,
+all attempts, original/presented orientation, full probabilities/mappings and
+missing values, and demonstrate joins without multiplying request usage.
+Extend rather than replace the seven existing strict R/jsonlite gates. Missing
+Rscript/jsonlite or failed assertions fail applicable required acceptance;
+ordinary CI remains offline and credential-free.
+
+Each supported generative provider has an opt-in live smoke workflow exercising
+synthetic rubric and forced-choice requests, normalization, reported usage,
+native structured output where supported, requested reasoning when available,
+exact scope provenance and practical export/R consistency. An unexecuted plan,
+SDK installation, configured credential or successful `auth verify` establishes
+no `live_qualified` status. Record `discovered`, `implemented`, `fixture_tested`
+and `live_qualified` separately for the tested endpoint/model/features. Do not
+conduct paid calls as part of this design task.
 
 ## Milestone 4 - Native decision/score adapters
 
-- Implement OpenAI Decisions and TypeSafe Jev with separate typed-question request builders.
+- Implement OpenAI Decisions and TypeSafe Jev with separate typed-question request builders. Reuse the Milestone 3 secure credential resolver, sanitized diagnostics and request/observation evidence infrastructure; generative output layouts and winner-only JSON must not be imposed on native endpoints without verifying their contracts.
 - Map probability-weighted zero-based score indices to user numeric category coding, preserve the entire distribution and raw index, support pairwise choices.
 - For both native endpoints, verify complete ordinal and choice distributions through Python normalization and R import, using differing and nonuniform numeric mappings. Preserve provider-selected categories when explicitly supplied, distribution-derived modes, mapped means, raw provider expected indices, and original/presented pairwise probability orientation as distinct evidence.
 - Reject explanation generation, unsupported level counts and unsupported batch operations before sending.
@@ -127,6 +208,7 @@ locally and are never silently ignored.
 - Implement deterministic splitting, upload, durable submission ID registry, cancel/status/collect, partial outputs, reordered results and safe resumption.
 - Deliver managed bulk-live mode for every live provider, including Ollama, Decisions and Jev.
 - Implement `off`/`auto`/`explicit` cache policies and provider-specific availability checks, with true usage accounting where reported.
+- Extend applicable authentication, generated output contracts, optional reasoning, request-level usage and qualification provenance to managed bulk-live and native batch. Preserve observation identities and all attempts, handle reordered/multiple observations without double counting usage, and retain journaled intent/reconciliation before retry. Never infer live feature support establishes native-batch support.
 - Preserve generation parameter parity across live, managed bulk-live and native batch. Use the same validated run configuration and adapter mappings; report unsupported mode-specific combinations before submission and retain requested values in manifests, prepared payloads and recovery checks.
 - Verify R-driven CLI submission/status/resumption/collection/export across separate processes using offline native-batch and managed bulk-live mocks. Retain durable IDs and artifacts across restarts, including partial collections, reordered outputs, repeated attempts, errors, and provider provenance.
 
@@ -140,6 +222,7 @@ and omission semantics, including after recovery and collection.
 - Implement generated `models.json` and `docs/model-support.md` with dated sources/qualifications; GitHub Action opens reviewable PR for catalog changes.
 - Deliver a functional thin `rubricLLM` R package (provisional name) around the versioned CLI control contract using `processx`, with documented executable/virtual-environment discovery and configuration. Reuse Python services; do not implement a second scoring, normalization, or persistence engine in R.
 - Expose the implemented validation, planning, prompt preview, rubric scoring, pairwise judging, run/status/resume, batch submission/status/collection/cancellation, and result-export operations through that wrapper. Provide installation and first-run documentation with actual synthetic end-to-end examples and clear diagnostics for missing executables/environments.
+- Expose implemented `auth status`/`auth verify`, output-order controls, usage exports, authorized reasoning evidence and scoped qualification information through the same CLI contracts. Do not introduce R-side credential storage, authentication resolution, assessment logic or provider execution. Offline diagnostics remain offline when invoked from R.
 - Supply generation controls through the same RunSpec used by Python and CLI. Test wrapper serialization of absent and explicit values, capability diagnostics and frozen-generation resume compatibility; do not add R-side provider defaults or arbitrary request bodies.
 - Verify the actual `pairwiseLLM` source/version in required R integration tests. Demonstrate explicit successful-attempt selection, binary winner preparation for `build_bt_data()`, supported `object1`/`object2`/numeric-`result` workflows including deliberate tie handling, and rubric/probability import. Keep JudgmentLLM's audit IDs/provenance authoritative when conversion helpers generate their own occurrence IDs or timestamps.
 - Evaluate `reticulate` as an optional secondary enhancement, implementing it only when justified by a demonstrated need; CLI/`processx` operation must not depend on `reticulate`, a resident Python process, or HTTP.

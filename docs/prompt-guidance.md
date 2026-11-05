@@ -160,3 +160,50 @@ prompts under minimal capture.
 Prompt text and `output_schema` are separate. Rubric generative output is a `scores` list containing `trait_id`, `category_label`, and an explanation when requested. Local `validate_categorical_output` additionally rejects missing, duplicate, or unknown traits and invalid categories. Pairwise output contains `winner_id`, `tie`, and an explanation when requested; a tie requires a null winner. Editing wording cannot disable those checks, invent probabilities, or provide an arbitrary provider request body.
 
 Built-in rubric prompts place shared guidance, criteria, exemplars, and output instructions before the variable response. This preserves reusable prefixes. Milestone 1 does not implement provider caching or token estimates. Unknown capabilities remain explicit in preflight; a preview makes no claim about exact context size, endpoint availability, or provider behavior.
+
+## Proposed Milestone 3 extensions (not implemented)
+
+The authoritative [assessment output design](assessment-output-design.md) extends
+these existing contracts. The [six complete template and rendered-prompt
+examples](assessment-prompt-examples.md) cover scores only, the existing together
+shape, scores first, explanations first, winner-only forced choice, and explicit
+ties. They show the proposed generated instructions, complete output contracts,
+and representative synthetic model responses; they are design snapshots, not
+installed presets or live qualifications.
+
+Proposed `prompt.output_order` values are `together` (default), `scores_first`, and
+`explanations_first`. Layout is independent of trait grouping and always uses one
+call per planned group. Separated arrays join by `trait_id`, never by position,
+and normalize into the existing per-trait results. Nondefault order requires
+rubric scoring with explanations; incompatible settings fail preflight. Keep
+the current scores-only shape when explanations are disabled.
+
+Proposed `prompt.structured_output` is `auto` (default), `native`, or `text`.
+Provider-native enforcement, where evidenced compatible, carries the generated
+schema separately. Use concise `output_instructions` without repeating the
+complete schema where the endpoint's documented practice permits; retain the
+schema copy where recommended or required. Local validation remains mandatory.
+Explicit native enforcement fails preflight when unavailable; automatic selection reports any text fallback
+before immutable request preparation. No fallback follows a rejected submission.
+Neither a prompt nor schema property order proves a model's reasoning order;
+serialized key-order guarantees require endpoint-specific verification from
+original emitted text. Observe both top-level keys and score-object keys to
+assess `together`'s category-before-explanation order. Full capture can retain
+authorized original evidence for later review; minimal capture retains only
+nontext order metadata and hashes after in-memory inspection.
+Persist these root/member key sequences in one linked evidence record per
+provider observation, rather than copying them into grouped result rows.
+
+Built-in templates will omit the reference-example section entirely for zero
+exemplars. Custom templates may already omit `{{ exemplars }}` when none are
+supplied. The documented advanced `exemplar_items` conditional needs no new
+placeholder. All supplied exemplars retain exact inclusion, identity, and order
+checks. Assessor role, scoring procedure, evidence requirements, explanation
+style, and section arrangement remain editable around protected blocks.
+
+The proposed generative forced-choice response requires only `winner_id`;
+normalization retains `tie: false`. Historical responses with explicit
+`tie: false` remain supported through compatibility validation. Ties-enabled
+responses retain explicit `winner_id` and `tie`. Assessment explanations remain
+distinct from optional provider-exposed reasoning evidence. None of these
+changes enables unsupported explanation generation on native decision endpoints.
