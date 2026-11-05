@@ -16,9 +16,9 @@ ENV UV_PYTHON_INSTALL_DIR=/opt/judgmentllm/python \
     UV_PYTHON_INSTALL_BIN=0 \
     UV_PYTHON_INSTALL_REGISTRY=0 \
     R_LIBS_USER=/opt/judgmentllm/r-library
-RUN /opt/judgmentllm/tools/uv python install --no-bin --no-registry 3.11.18 3.12.16
+RUN /opt/judgmentllm/tools/uv python install --no-bin --no-registry 3.11.18 3.12.16 3.15.2
 
 LABEL org.judgmentllm.local-ci.uv="0.13.6" \
-      org.judgmentllm.local-ci.python="3.11.18,3.12.16" \
+      org.judgmentllm.local-ci.python="3.11.18,3.12.16,3.15.2" \
       org.judgmentllm.local-ci.jsonlite="2.0.0"
 WORKDIR /state

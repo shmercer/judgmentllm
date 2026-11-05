@@ -25,6 +25,11 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, cast
 
 MANIFEST = ".judgmentllm-source.json"
+PYTHON_VERSIONS = {
+    "Linux": {"3.11": "3.11.18", "3.12": "3.12.16", "3.15": "3.15.2"},
+    "Windows": {"3.11": "3.11.18", "3.12": "3.12.16"},
+    "Darwin": {"3.11": "3.11.18", "3.12": "3.12.16"},
+}
 R_PROBE = """
 stopifnot(requireNamespace('jsonlite', quietly=TRUE))
 stopifnot(as.character(utils::packageVersion('jsonlite')) == '2.0.0')
@@ -75,6 +80,21 @@ class Options:
 def digest(path: Path) -> str:
     with path.open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def verify_interpreter(python_version: str) -> None:
+    """Reject a substitute implementation, patch version, or unsupported OS lane."""
+    expected = PYTHON_VERSIONS.get(platform.system(), {}).get(python_version)
+    if (
+        expected is None
+        or platform.python_implementation() != "CPython"
+        or platform.python_version() != expected
+    ):
+        raise ValueError(
+            "Runner interpreter does not match the pinned CPython version "
+            f"for {platform.system()}/Python {python_version}: expected {expected}, "
+            f"found {platform.python_implementation()} {platform.python_version()}"
+        )
 
 
 def atomic_json(path: Path, value: Any) -> None:
@@ -284,6 +304,17 @@ class Runner:
             "status": "running",
             "started_at": datetime.now(UTC).isoformat(),
         }
+        is_pytest = command[1:3] == ["-m", "pytest"]
+        if is_pytest:
+            record.update(
+                coverage_enabled="--no-cov" not in command,
+                coverage_percent=None,
+                pytest_elapsed_seconds=None,
+                tests={
+                    outcome: None
+                    for outcome in ("passed", "failed", "skipped", "errors")
+                },
+            )
         self.summary["steps"].append(record)
         self.save()
         print(f"{name}: running", flush=True)
@@ -324,20 +355,29 @@ class Runner:
             record["duration_seconds"] = time.monotonic() - started
             self.save()
         text = log.read_text(encoding="utf-8", errors="replace")
-        totals = [
-            line
-            for line in text.splitlines()
-            if re.search(r"\d+ (?:passed|failed|skipped|errors?).* in [\d.]+s", line)
-        ]
-        record["tests"] = {
-            outcome: int(count)
-            for count, outcome in re.findall(
-                r"(\d+) (passed|failed|skipped|errors?)", totals[-1] if totals else ""
-            )
-        }
-        coverage = re.search(r"Total coverage:\s*([\d.]+)%", text)
-        if coverage:
-            record["coverage_percent"] = float(coverage.group(1))
+        if is_pytest:
+            totals = [
+                line
+                for line in text.splitlines()
+                if re.search(
+                    r"\d+ (?:passed|failed|skipped|errors?).* in [\d.]+s", line
+                )
+            ]
+            if totals:
+                counts = {
+                    outcome: 0 for outcome in ("passed", "failed", "skipped", "errors")
+                }
+                for count, outcome in re.findall(
+                    r"(\d+) (passed|failed|skipped|errors?)", totals[-1]
+                ):
+                    counts["errors" if outcome == "error" else outcome] = int(count)
+                record["tests"] = counts
+                elapsed = re.search(r" in ([\d.]+)s", totals[-1])
+                if elapsed:
+                    record["pytest_elapsed_seconds"] = float(elapsed.group(1))
+            coverage = re.search(r"Total coverage:\s*([\d.]+)%", text)
+            if record["coverage_enabled"] and coverage:
+                record["coverage_percent"] = float(coverage.group(1))
         if record["status"] != "passed":
             record.setdefault(
                 "failure_kind",
@@ -442,13 +482,8 @@ class Runner:
             )
             phase = "environment-setup"
             self.configure_data_paths()
-            if (
-                f"{sys.version_info.major}.{sys.version_info.minor}"
-                != self.options.python_version
-            ):
-                raise ValueError(
-                    "Runner interpreter does not match requested Python version"
-                )
+            verify_interpreter(self.options.python_version)
+            self.summary["interpreter_verified"] = True
             self.required("uv-version", [self.uv, "--version"], timeout=30)
             self.summary["uv"] = (
                 (self.output / self.summary["steps"][-1]["log"])
@@ -587,13 +622,21 @@ class Runner:
                     scratch_name="l",
                 ),
             )
+        coverage_enabled = (
+            platform.system() == "Linux" and self.options.python_version == "3.11"
+        )
+        coverage_arguments = (
+            [f"--cov-report=xml:{self.output / 'coverage.xml'}"]
+            if coverage_enabled
+            else ["--no-cov"]
+        )
         self.step(
-            "pytest-coverage",
+            "pytest-coverage" if coverage_enabled else "pytest-no-coverage",
             self.pytest_command(
                 "-ra",
                 "tests",
                 "ci/local/test_gates.py",
-                f"--cov-report=xml:{self.output / 'coverage.xml'}",
+                *coverage_arguments,
                 *warnings,
                 scratch_name="p",
             ),
@@ -627,7 +670,9 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--commit", required=True)
     parser.add_argument("--archive-sha256", required=True)
-    parser.add_argument("--python-version", choices=("3.11", "3.12"), required=True)
+    parser.add_argument(
+        "--python-version", choices=("3.11", "3.12", "3.15"), required=True
+    )
     parser.add_argument("--mode", choices=("prepare", "check"), required=True)
     parser.add_argument("--uv", required=True)
     options = parser.parse_args()

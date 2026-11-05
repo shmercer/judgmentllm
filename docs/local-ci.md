@@ -1,8 +1,8 @@
 # Local cross-platform verification
 
-This development harness runs the committed JudgmentLLM checkout on six local
-configurations before publication: Ubuntu, Windows and macOS, each with CPython
-3.11.18 and 3.12.16. It is separate from the installed library/CLI and does not
+This development harness runs the committed JudgmentLLM checkout on seven local
+configurations before publication: Ubuntu with CPython 3.11.18, 3.12.16 and
+3.15.2; Windows and macOS each with CPython 3.11.18 and 3.12.16. It is separate from the installed library/CLI and does not
 implement scoring. It qualifies the exact committed public lifecycle implementation
 through the same quality, installation and seven strict interoperability gates.
 The original infrastructure was merged through PR #9 and PR #8 into main
@@ -12,6 +12,27 @@ Current hosted CI has five routine jobs: Ubuntu/macOS Python 3.11/3.15 and
 Windows Python 3.12. Manual `windows_311_only=true` retains the complete Windows
 3.11 job. Historical proposal and qualification records below describe the
 infrastructure rollout; they do not override this matrix or the seventh gate.
+
+| Platform | Local Python (exact) | Coverage |
+|---|---|---|
+| Ubuntu | 3.11.18 | Enabled, branch coverage ≥90% |
+| Ubuntu | 3.12.16 | Disabled (`--no-cov`) |
+| Ubuntu | 3.15.2 | Disabled (`--no-cov`) |
+| macOS | 3.11.18, 3.12.16 | Disabled (`--no-cov`), both lanes |
+| Windows | 3.11.18, 3.12.16 | Disabled (`--no-cov`), both lanes |
+
+Hosted coverage also runs only on Ubuntu/Python 3.11. All other routine jobs
+and optional Windows/Python 3.11 run the full suite with explicit `--no-cov`.
+Only the primary job uploads coverage.xml (including failed-job evidence when
+available) and invokes the existing optional Codecov integration. The default
+pytest branch coverage settings and blocking 90% threshold remain unchanged.
+Hosted jobs have a 30-minute timeout, with a runtime target under 20 minutes.
+The resource fixtures retain their separate 180-second deadline and existing
+memory and workload limits.
+
+This seven-configuration requirement applies prospectively from this CI change.
+The six-configuration Subphase 6 results remain historical evidence for their
+recorded commits; they are not seven-configuration qualification.
 
 ## Existing infrastructure and isolation
 
@@ -74,7 +95,7 @@ Preparation installs only project-specific tools and caches:
 - uv 0.13.6 archives and executable bytes are pinned/verified. Official archive
   checksums are in `ci/local/grid.py`; macOS/Windows adapters also verify their
   cached executable bytes.
-- Managed CPython 3.11.18/3.12.16 installs use their own directory, `--no-bin`
+- Managed CPython 3.11.18/3.12.16 (all platforms) and 3.15.2 (Linux only) installs use their own directory, `--no-bin`
   and `--no-registry`; system Python, PATH startup files, and registry defaults
   are not replaced.
 - `uv sync --locked --all-extras --group dev` populates a JudgmentLLM cache.
@@ -96,6 +117,26 @@ forwarded from the host. Preparation is the only dependency-download phase.
 See [uv cache behavior](https://docs.astral.sh/uv/concepts/cache/) and
 [managed Python configuration](https://docs.astral.sh/uv/concepts/python-versions/).
 
+### Linux Python 3.15 provenance
+
+Pinned uv 0.13.6 lists the stable, default-GIL interpreter
+`cpython-3.15.2-linux-x86_64-gnu`. Its [release notes](https://github.com/astral-sh/uv/releases/tag/0.13.6)
+include CPython 3.15.2. The managed installation is the
+[20261026 standalone build](https://github.com/astral-sh/python-build-standalone/releases/tag/20261026),
+archive `cpython-3.15.2+20261026-x86_64-unknown-linux-gnu-install_only_stripped.tar.gz`
+from releases.astral.sh (availability verified before pinning). The derivative
+image installs all three exact versions under `/opt/judgmentllm/python`, using
+the unchanged checksum-pinned uv. Preparation performs locked all-extras/dev
+sync and warms build/install caches independently for 3.15.2. Checks forbid
+interpreter downloads and never substitute an interpreter on failure.
+
+Hosted `setup-python` continues selecting the latest available 3.15 patch;
+the local 3.15.2 pin makes local qualification reproducible and does not replace
+hosted qualification. Local Linux uses the existing Ubuntu 24.04/R 4.6.1 image;
+hosted Ubuntu and macOS use GitHub images and hosted R is 4.6.2. Local macOS
+remains Intel with its private native build toolchain; Windows remains the
+existing Server VM. Local Windows/macOS do not add 3.15 in this change.
+
 ## Commands
 
 Commit the proposed runner/test/documentation changes before qualifying them.
@@ -109,8 +150,9 @@ python3 ci/local/grid.py --ref "$REF" --mode prepare
 python3 ci/local/grid.py --ref "$REF" --mode check
 ```
 
-The grid starts Linux, macOS and Windows concurrently, and each adapter runs
-both Python versions concurrently: six independent configurations in parallel.
+The grid starts Linux, macOS and Windows concurrently, and Linux runs
+all three Python versions concurrently, while Windows and macOS each run their
+two versions concurrently: seven independent configurations in parallel.
 Shared tool bootstrap and archive verification precede a platform's Python lanes.
 Each lane has its own checkout, virtual environment, scratch and results; cached
 dependencies are shared only through the tool's locking. Existing VM locks remain
@@ -128,9 +170,15 @@ request alone. Cancellation now also uses guest-local control, avoiding reliance
 on a newly created SMB file becoming visible.
 Linux cleanup can remove a stopped disposable CI container after verifying its
 full ID and exact run label, without force; mounted source/results are retained.
-The two Linux containers retain six CPUs/16 GiB each; both Python lanes in a VM
+The three Linux containers retain six CPUs/16 GiB each; both Python lanes in a VM
 share that VM's existing six CPUs and memory allocation. No test threshold is
-adjusted for concurrent execution.
+adjusted for concurrent execution. The preparation inventory found 32 logical
+CPUs (16 physical cores), 125 GiB RAM and about 99 GiB available. The bounded
+allocations total 30 logical CPUs and 76 GiB RAM (Linux 18/48, Windows 6/12,
+macOS 6/16). These fit this host without changing limits. SMT, VM overhead and
+other host work can still cause contention; keep other heavy work idle and
+record full-grid wall time and resource-test outcomes. The 180-second resource
+fixture deadline and all memory acceptance thresholds stay unchanged.
 A platform can be inspected/prepared/checked independently:
 
 ```bash
@@ -169,8 +217,9 @@ recover SSH. The runner does not silently restart services or waive readiness.
 ## Gates and evidence
 
 Every check runs Ruff lint/format, strict Pyright, locked offline synchronization,
-the full Python suite with branch coverage and the existing 90% gate, all seven
-strict R/jsonlite gates, wheel/sdist builds, strict Twine metadata and clean core
+the full Python suite (branch coverage and the existing 90% gate on Linux/3.11
+only; explicit `--no-cov` elsewhere), all seven
+strict R/jsonlite gates (7 configurations × 7 gates = 49 required executions), wheel/sdist builds, strict Twine metadata and clean core
 installation/CLI/execution smokes. Windows also runs its existing durability,
 cancellation, privacy, lock and signature prechecks. ResourceWarning and
 PytestUnraisableExceptionWarning remain errors. The 180-second execution resource
@@ -193,15 +242,26 @@ uv run --offline --no-sync pytest --no-cov ci/local
 `source.py` creates `git archive` plus a manifest containing the exact commit,
 archive SHA-256, lockfile SHA-256 and every tracked file's hash. Guests verify
 archive bytes before extraction and tracked source bytes before/after gates.
-Every output directory is fresh; existing runs are never replaced.
+Every output directory is fresh; existing runs are never replaced. Freshness
+uses newly created result paths and exact source commitments. VM clocks can
+step during startup, so wall-clock ordering does not determine admission;
+monotonic elapsed times remain the timing evidence.
 
 Machine-readable `summary.json` records Python/R/jsonlite/uv/OS versions,
 dependency versions, source/lock identities, commands, exit codes, test/coverage
 summaries, elapsed times, and retained log/artifact paths. Failures remain visible;
 environment setup errors and timeouts are distinguished from check failures.
 Partial suites, missing results, or successful preparation never qualify a lane.
-The grid requires two fresh successful Python results per OS at the requested
-commit. A six-configuration qualification requires all three OS adapters.
+Each pytest step records coverage enabled/disabled, passed/failed/skipped counts,
+pytest elapsed time, process duration, exit status and its log path. Coverage is
+null when unmeasured; only actual primary-lane measurements populate a percentage.
+The grid requires exactly three fresh Linux results and two each for Windows
+and macOS at the expected exact interpreter versions and requested commit,
+archive and lockfile hashes. Duplicate, missing, extra, wrong-version/OS,
+failed, stale or incomplete results cannot qualify. Each result must contain
+passing required quality, pytest, R and packaging steps with full source
+verification. `--platform linux` requires all three Linux lanes;
+`--platform all` requires all seven lanes across the three OS adapters.
 
 Grid evidence is under `/mnt/VM_Fast/judgmentllm-ci/grid/<run-id>/`; native details
 remain in the per-platform roots above. Do not publish raw logs automatically.

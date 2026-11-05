@@ -37,16 +37,26 @@ def staged(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     }
     (source / gates.MANIFEST).write_text(json.dumps(manifest), encoding="utf-8")
     monkeypatch.setattr(gates, "__file__", str(source / "ci/local/gates.py"))
+    minor = f"{sys.version_info.major}.{sys.version_info.minor}"
+    patch = gates.PYTHON_VERSIONS.get(gates.platform.system(), {}).get(minor)
+    if patch is not None:
+        monkeypatch.setattr(gates.platform, "python_version", lambda: patch)
     return source
 
 
-def options(source: Path, output: Path, *, mode: str = "check") -> gates.Options:
+def options(
+    source: Path,
+    output: Path,
+    *,
+    mode: str = "check",
+    python_version: str | None = None,
+) -> gates.Options:
     return gates.Options(
         source,
         output,
         "a" * 40,
         "b" * 64,
-        f"{sys.version_info.major}.{sys.version_info.minor}",
+        python_version or f"{sys.version_info.major}.{sys.version_info.minor}",
         mode,
         sys.executable,
     )
@@ -90,6 +100,7 @@ def fake_commands(
     monkeypatch: pytest.MonkeyPatch,
     *,
     fail_lint: bool = False,
+    fail_pytest: bool = False,
     mutate: Path | None = None,
 ) -> list[list[str]]:
     calls: list[list[str]] = []
@@ -113,11 +124,18 @@ def fake_commands(
                 (directory / name).write_bytes(b"synthetic artifact")
         elif "pytest" in command:
             stream.write(
-                "1376 passed in 1s\nRequired test coverage of 90% reached. Total coverage: 96.16%\n"
+                (
+                    "1 failed, 1375 passed, 4 skipped in 1.25s\n"
+                    if fail_pytest
+                    else "1376 passed in 1s\n"
+                )
+                + "Required test coverage of 90% reached. Total coverage: 96.16%\n"
             )
         if mutate is not None and "twine" in command:
             mutate.write_text("Changed during checks")
-        failed = fail_lint and "ruff" in command and "check" in command
+        failed = (fail_lint and "ruff" in command and "check" in command) or (
+            fail_pytest and "pytest" in command
+        )
         if failed:
             stream.write("synthetic lint failure retained\n")
         return subprocess.CompletedProcess(command, 1 if failed else 0)
@@ -131,6 +149,123 @@ def fake_commands(
     monkeypatch.setenv("PYTHONPATH", "ignored-external-source")
     monkeypatch.setenv("UV_PROJECT_ENVIRONMENT", "ignored-old-environment")
     return calls
+
+
+@pytest.mark.parametrize(
+    ("system", "minor", "patch"),
+    [
+        ("Linux", "3.11", "3.11.18"),
+        ("Linux", "3.12", "3.12.16"),
+        ("Linux", "3.15", "3.15.2"),
+        ("Darwin", "3.11", "3.11.18"),
+        ("Darwin", "3.12", "3.12.16"),
+        ("Windows", "3.11", "3.11.18"),
+        ("Windows", "3.12", "3.12.16"),
+    ],
+)
+@pytest.mark.parametrize("fail_pytest", [False, True])
+def test_seven_lanes_preserve_full_tests_r_gates_and_single_coverage_lane(
+    staged: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    system: str,
+    minor: str,
+    patch: str,
+    fail_pytest: bool,
+) -> None:
+    monkeypatch.setattr(gates.platform, "system", lambda: system)
+    monkeypatch.setattr(gates.platform, "python_version", lambda: patch)
+    monkeypatch.setattr(gates.platform, "python_implementation", lambda: "CPython")
+
+    def allocate(environment: dict[str, str]) -> Path:
+        return gates.create_scratch(tmp_path / "scratch")
+
+    monkeypatch.setattr(gates, "allocate_windows_scratch", allocate)
+    calls = fake_commands(monkeypatch, fail_pytest=fail_pytest)
+    runner = gates.Runner(options(staged, tmp_path / "result", python_version=minor))
+    runner.windows = system == "Windows"
+    assert runner.run() == int(fail_pytest)
+    assert runner.summary["interpreter_verified"] is True
+    coverage_enabled = system == "Linux" and minor == "3.11"
+    name = "pytest-coverage" if coverage_enabled else "pytest-no-coverage"
+    step = next(step for step in runner.summary["steps"] if step["name"] == name)
+    command = step["command"]
+    assert "tests" in command and "ci/local/test_gates.py" in command
+    assert "-ra" in command
+    assert "-Werror::ResourceWarning" in command
+    assert "-Werror::pytest.PytestUnraisableExceptionWarning" in command
+    assert not any(
+        argument.startswith(("--ignore", "--deselect")) for argument in command
+    )
+    assert "-k" not in command and "-m" not in command[3:]
+    assert ("--no-cov" not in command) == coverage_enabled
+    assert (
+        any(argument.startswith("--cov-report=xml:") for argument in command)
+        == coverage_enabled
+    )
+    assert step["coverage_enabled"] == coverage_enabled
+    assert step["coverage_percent"] == (96.16 if coverage_enabled else None)
+    assert step["exit_code"] == int(fail_pytest)
+    assert step["pytest_elapsed_seconds"] == (1.25 if fail_pytest else 1.0)
+    assert step["tests"] == {
+        "passed": 1375 if fail_pytest else 1376,
+        "failed": int(fail_pytest),
+        "skipped": 4 if fail_pytest else 0,
+        "errors": 0,
+    }
+    assert (runner.output / step["log"]).is_file()
+    assert (
+        sum(
+            step["name"].startswith("r-") and step["name"].endswith("-assertions")
+            for step in runner.summary["steps"]
+        )
+        == 7
+    )
+    assert runner.summary["all_scheduled_gates_finished"] is True
+    if fail_pytest:
+        assert step["failure_kind"] == "check_failure"
+        assert runner.summary["status"] == "failed"
+    if system == "Windows":
+        focused = [
+            command
+            for command in calls
+            if "pytest" in command and "tests" not in command
+        ]
+        assert len(focused) == 2
+        assert all("--no-cov" in command for command in focused)
+
+
+@pytest.mark.parametrize(
+    ("system", "minor", "patch", "implementation"),
+    [
+        ("Linux", "3.15", "3.15.1", "CPython"),
+        ("Linux", "3.11", "3.11.19", "CPython"),
+        ("Linux", "3.12", "3.12.16", "PyPy"),
+        ("Darwin", "3.15", "3.15.2", "CPython"),
+        ("Windows", "3.15", "3.15.2", "CPython"),
+        ("Other", "3.11", "3.11.18", "CPython"),
+    ],
+)
+def test_unqualified_interpreters_fail_before_running_any_gate(
+    staged: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    system: str,
+    minor: str,
+    patch: str,
+    implementation: str,
+) -> None:
+    monkeypatch.setattr(gates.platform, "system", lambda: system)
+    monkeypatch.setattr(gates.platform, "python_version", lambda: patch)
+    monkeypatch.setattr(gates.platform, "python_implementation", lambda: implementation)
+    calls = fake_commands(monkeypatch)
+    runner = gates.Runner(options(staged, tmp_path / "result", python_version=minor))
+    runner.windows = False
+    assert runner.run() == 1
+    assert calls == []
+    assert "pinned CPython" in runner.summary["error"]["message"]
+    assert runner.summary["all_scheduled_gates_finished"] is False
+    assert runner.summary["status"] == "failed"
 
 
 @pytest.mark.parametrize("fail_lint", [False, True])
@@ -164,10 +299,21 @@ def test_complete_offline_plan_preserves_failures(
     ]
     assert len(smokes) == 2 and all("--offline" in command for command in smokes)
     pytest_step = next(
-        step for step in summary["steps"] if step["name"] == "pytest-coverage"
+        step for step in summary["steps"] if step["name"].startswith("pytest-")
     )
-    assert pytest_step["coverage_percent"] == 96.16
-    assert pytest_step["tests"] == {"passed": 1376}
+    coverage_enabled = (
+        gates.platform.system() == "Linux" and runner.options.python_version == "3.11"
+    )
+    assert pytest_step["coverage_enabled"] == coverage_enabled
+    assert pytest_step["coverage_percent"] == (96.16 if coverage_enabled else None)
+    assert pytest_step["tests"] == {
+        "passed": 1376,
+        "failed": 0,
+        "skipped": 0,
+        "errors": 0,
+    }
+    assert pytest_step["pytest_elapsed_seconds"] == 1.0
+    assert pytest_step["exit_code"] == 0
     if fail_lint:
         failure = next(step for step in summary["steps"] if step["status"] == "failed")
         assert failure["failure_kind"] == "check_failure"
