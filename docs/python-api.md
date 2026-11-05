@@ -1,4 +1,4 @@
-# Public Python API, schema version 1
+# Public Python API and versioned assessment contracts
 
 Milestone 1 supports offline preparation and normalization of supplied synthetic outputs.
 Milestone 2 Subphase 2 adds provider-free immutable source preparation, indexed
@@ -244,6 +244,92 @@ All identity arguments above are required and remain distinct. Without probabili
 `normalize_pairwise_result(pair, *, run_id, task_id, request_uid, attempt_id, winner_id=None, tie=False, p_left=None, p_right=None, p_tie=None, allow_ties=False, explanation=None, options=None, provider=None, endpoint=None, model=None)` preserves the original pair orientation and presented order. A completed result requires an observed winner or explicitly allowed tie. Probabilities do not manufacture a winner.
 
 `validate_categorical_output(data, traits, *, explanations=False)` validates a `scores` list of `{trait_id, category_label, explanation?}` objects for complete unique trait coverage and known categories. `validate_pairwise_output(data, pair, *, allow_ties=False, explanations=False)` validates `{winner_id, tie, explanation?}` with both outcome fields required. Both validators permit `explanation` only when requested; generative category labels must be strings matching the rendered schema. These functions are independent of custom prompt text. Normalization returns typed `RubricResult` / `PairwiseResult` records; their validators also reject inconsistent derived values.
+
+## Standalone assessment-output contracts (Milestone 3 Phase 1)
+
+These APIs are imported explicitly from `judgmentllm.output_contracts`; they
+perform no provider submission, network operation or durable preparation.
+`AssessmentOutputContract` is the union of the rubric and pairwise contract
+models accepted by schema generation and explicit interpretation:
+
+```python
+from judgmentllm.output_contracts import (
+    RubricOutputContract,
+    PairwiseOutputContract,
+    generate_output_schema,
+    serialize_output_schema,
+    decode_assessment_output,
+    validate_rubric_contract_output,
+    validate_pairwise_contract_output,
+)
+
+contract = RubricOutputContract(
+    traits=tuple(rubric.traits),
+    output_order="scores_first",
+    explanations=True,
+)
+schema = generate_output_schema(contract)  # dict[str, JsonValue], JSON Schema 2020-12
+ordered_bytes = serialize_output_schema(contract)  # UTF-8 bytes, preserves key order
+selection = validate_rubric_contract_output(
+    '{"scores":[{"trait_id":"cohesion","category_label":"high"}],'
+    '"explanations":[{"trait_id":"cohesion","text":"Ideas connect."}]}',
+    RubricOutputContract(
+        traits=(rubric.traits[0],), output_order="scores_first", explanations=True
+    ),
+)
+```
+
+The example selection assumes the first rubric trait is `cohesion` with a `high`
+category. `RubricOutputContract(*, traits, task_kind="rubric", contract_version=2,
+output_order="together", explanations=False)` requires a nonempty unique tuple
+of validated traits. The other orders are `scores_first` and
+`explanations_first`, both requiring explanations. `PairwiseOutputContract(*,
+pair, task_kind="pairwise", contract_version=2, allow_ties=False,
+explanations=False, output_order="together")` rejects nondefault ordering.
+Neither model accepts arbitrary schemas or incompatible assessment controls.
+`AssessmentOutputContract` is the union of these two contract types for shared
+schema-generation and interpretation interfaces.
+
+`generate_output_schema(contract) -> dict[str, JsonValue]` and
+`serialize_output_schema(contract) -> bytes` generate from exact contract
+membership. Intentional root/member order, category order and trait-alternative
+order are deterministic; serialization does not alter historical canonical
+hashing. `decode_assessment_output(raw: str | bytes) -> object` strictly decodes
+JSON, requiring strict UTF-8 for bytes and rejecting duplicate object keys and
+nonfinite numeric tokens. Parsed inputs are recursively checked for finite JSON
+values; nonstring object keys and arbitrary Python objects are rejected. Use
+raw decoding at the original output-text boundary. Already-decoded SDK dictionaries cannot
+provide evidence that original JSON keys were unique.
+
+`validate_rubric_contract_output(data, contract) -> CategoricalOutput` accepts
+raw JSON or parsed data, requires the complete expected group and joins separated
+explanations by exact trait ID. Feed each selection and its corresponding trait
+to existing `normalize_rubric_result`; no new normalized model is introduced.
+`validate_pairwise_contract_output(data, contract) -> PairwiseOutput` accepts
+forced-choice winner-only or historical explicit-false input; ties enabled
+require an explicit consistent tie/winner pair. Normalize through
+`normalize_pairwise_result` with the original `contract.pair` to retain both
+orientations. Requested explanations must be nonblank; disabled explanations
+and additional fields are rejected, including null fields.
+
+The internal `execution.processing.interpret(..., contract=contract)` is the
+Phase 1 grouped interpretation entry point. Its default remains the historical
+v1 parser. An explicit contract must match task kind, exact ordered request
+membership, trait definitions and the specification's explanation/tie flags. Recognizable envelopes may preserve
+independently valid siblings; failed whole-output validation stays a failure.
+Scores and explanations match solely by trait ID, with duplicates invalidating
+that trait. Results retain original logical identities and existing error/status
+semantics; no retry, explanation follow-up, provider call or persistence occurs.
+
+`contract_version=2` versions these standalone semantics and is forbidden in
+model output; RunSpec and normalized results remain `schema_version=1`. The CLI, preview, renderer, immutable preparation,
+mock wire and executor submission path do not activate these contracts. Phase 2
+must integrate explicit RunSpec v2 and versioned rendering/ordered schema/request
+commitments together. Provider translation/adapters, authentication, usage and
+reasoning/order-evidence sidecars remain later work. The six approved
+[prompt examples](assessment-prompt-examples.md) remain design examples for that
+future renderer; `examples/export_r.py` exercises the implemented contract API
+offline through the established R export gate.
 
 ## Structural plans and pair schedules
 
@@ -507,8 +593,9 @@ minimal capture; prompts, payloads and raw output remain unavailable.
 ## Proposed Milestone 3 API additions (not implemented)
 
 The [assessment output design](assessment-output-design.md) is the authoritative
-proposal. The signatures and models in this section are design contracts for
-future small implementation PRs; imports below do not work in Milestone 2.
+proposal. The signatures and models in this section remain design contracts for
+future small implementation PRs; the credential/evidence imports below are not
+implemented. Phase 1's working standalone output APIs are documented above.
 Existing normalized results, schema-version-1 configuration and mock execution
 remain the compatibility baseline.
 
@@ -560,9 +647,9 @@ and separates reasoning effort/request from retention. `ExecutionSpec` continues
 to own grouping and assessment explanation requests; capture policy owns detailed
 evidence authorization. Do not add authentication secrets to these models.
 
-Extend generated provider-facing output schemas and local validators deliberately;
-the existing version-1 functions described above retain their historical
-contracts until the implementing PR specifies the compatible entry points.
+Phase 1 supplies the standalone generated schemas and local validators described
+above. Integrating them with versioned rendering/preparation remains Phase 2;
+the existing version-1 functions retain their historical contracts.
 Separated arrays join by `trait_id`, never position, and grouped interpretation
 continues to preserve valid siblings while recording every failed expected
 member. All layouts normalize to existing `RubricResult` fields. Generative

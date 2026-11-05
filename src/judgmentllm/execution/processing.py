@@ -2,10 +2,20 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from typing import cast
 
 from judgmentllm.config import RunSpec
+from judgmentllm.output_contracts import (
+    AssessmentOutputContract,
+    PairwiseOutputContract,
+    RubricOutputContract,
+    _checked_contract,  # pyright: ignore[reportPrivateUsage]
+    _checked_output,  # pyright: ignore[reportPrivateUsage]
+    validate_pairwise_contract_output,
+    validate_rubric_contract_output,
+)
 from judgmentllm.preparation import RequestDependency
 from judgmentllm.providers import ParsedResponse
 from judgmentllm.results import (
@@ -46,6 +56,76 @@ def member_dependency(dependency: RequestDependency, index: int) -> RequestDepen
     )
 
 
+def _request_contract(
+    contract: AssessmentOutputContract,
+    spec: RunSpec,
+    dependency: RequestDependency,
+) -> AssessmentOutputContract:
+    """Check explicit interpretation settings against the original request."""
+    contract = _checked_contract(contract)
+    if contract.task_kind != spec.task_kind:
+        raise ValueError("output contract assessment kind must match the run")
+    if contract.explanations != spec.execution.explanations:
+        raise ValueError("output contract explanations must match the run")
+    request = dependency.request
+    if isinstance(contract, PairwiseOutputContract):
+        if contract.allow_ties != spec.allow_ties:
+            raise ValueError("output contract tie policy must match the run")
+        if request.pair != contract.pair:
+            raise ValueError("output contract pair must match the presented request")
+        if (
+            len(request.tasks) != 1
+            or request.trait_ids != (contract.pair.trait_id,)
+            or request.tasks[0].trait_id != contract.pair.trait_id
+            or request.tasks[0].pair_uid != contract.pair.pair_uid
+            or request.tasks[0].pair_id != contract.pair.pair_id
+        ):
+            raise ValueError(
+                "pairwise request membership must match the output contract"
+            )
+    else:
+        if request.pair is not None or spec.rubric is None:
+            raise ValueError("rubric output contract requires a rubric request")
+        if spec.allow_ties:
+            raise ValueError("tie policy is only valid for pairwise assessment")
+        trait_ids = tuple(trait.trait_id for trait in contract.traits)
+        if (
+            request.trait_ids != trait_ids
+            or tuple(task.trait_id for task in request.tasks) != trait_ids
+        ):
+            raise ValueError(
+                "output contract traits must match ordered request membership"
+            )
+        traits = {trait.trait_id: trait for trait in spec.rubric.traits}
+        if any(traits.get(trait.trait_id) != trait for trait in contract.traits):
+            raise ValueError("output contract traits must match the run rubric")
+    return contract
+
+
+def _index_members(
+    entries: Sequence[object], expected: set[str]
+) -> tuple[dict[str, list[object]], int, int]:
+    """Keep only bounded attributable evidence and content-free extra counts."""
+    members: dict[str, list[object]] = {}
+    unexpected = unattributable = 0
+    for entry in entries:
+        if not isinstance(entry, dict):
+            unattributable += 1
+            continue
+        fields = cast(dict[str, object], entry)
+        trait_id = fields.get("trait_id")
+        if not isinstance(trait_id, str):
+            unattributable += 1
+            continue
+        if trait_id not in expected:
+            unexpected += 1
+            continue
+        attributable = members.setdefault(trait_id, [])
+        if len(attributable) < 2:
+            attributable.append(fields)
+    return members, unexpected, unattributable
+
+
 def interpret(
     parsed: ParsedResponse | None,
     spec: RunSpec,
@@ -54,18 +134,32 @@ def interpret(
     attempt_id: str,
     *,
     member_checkpoint: Callable[[], None] | None = None,
+    contract: AssessmentOutputContract | None = None,
 ) -> InterpretedResponse:
     """Match exact trait IDs and salvage independently valid rubric members.
 
     This intentionally does not relax whole-group validation. Every attributable
     member passes that validator with exactly its own requested trait. Unknown
     IDs and unattributable entries yield counts, never persisted provider text.
+
+    An explicit version-2 output contract enables detached interpretation only;
+    the executor continues using its committed version-1 contract. Parsed SDK
+    objects cannot establish whether the original JSON contained duplicate keys.
     """
+    if contract is not None:
+        contract = _request_contract(contract, spec, dependency)
+        if parsed is not None and parsed.kind == "response":
+            try:
+                _checked_output(parsed.output)
+            except ValueError:
+                parsed = None
     tasks = dependency.request.tasks
     if dependency.request.pair is not None:
         try:
             result = (
-                normalize(parsed, spec, dependency, run_id, attempt_id)
+                normalize(
+                    parsed, spec, dependency, run_id, attempt_id, contract=contract
+                )
                 if parsed is not None
                 else None
             )
@@ -83,32 +177,33 @@ def interpret(
             recognizable=parsed is not None,
         )
     output = parsed.output if parsed is not None else None
+    separated = (
+        isinstance(contract, RubricOutputContract)
+        and contract.output_order != "together"
+    )
+    required_fields = {"scores", "explanations"} if separated else {"scores"}
     recognizable = (
         isinstance(output, dict)
-        and set(output) == {"scores"}
-        and isinstance(output["scores"], list)
+        and set(output) == required_fields
+        and all(isinstance(output[field], list) for field in required_fields)
     )
     expected = {task.trait_id for task in tasks}
     members: dict[str, list[object]] = {}
+    explanation_members: dict[str, list[object]] = {}
     unexpected = unattributable = 0
     if recognizable:
         assert output is not None
         scores = output["scores"]
         assert isinstance(scores, list)
-        for entry in scores:
-            if not isinstance(entry, dict) or not isinstance(
-                entry.get("trait_id"), str
-            ):
-                unattributable += 1
-                continue
-            trait_id = entry["trait_id"]
-            assert isinstance(trait_id, str)
-            if trait_id not in expected:
-                unexpected += 1
-                continue
-            attributable = members.setdefault(trait_id, [])
-            if len(attributable) < 2:
-                attributable.append(entry)
+        members, unexpected, unattributable = _index_members(scores, expected)
+        if separated:
+            explanations = output["explanations"]
+            assert isinstance(explanations, list)
+            explanation_members, extra_unexpected, extra_unattributable = (
+                _index_members(explanations, expected)
+            )
+            unexpected += extra_unexpected
+            unattributable += extra_unattributable
     results: list[Result] = []
     for index, task in enumerate(tasks):
         selected = member_dependency(dependency, index)
@@ -124,10 +219,11 @@ def interpret(
             )
         elif recognizable:
             entries = members.get(task.trait_id, [])
-            if not entries:
-                error = "missing_output"
-            elif len(entries) > 1:
+            explanation_entries = explanation_members.get(task.trait_id, [])
+            if len(entries) > 1 or len(explanation_entries) > 1:
                 error = "duplicate_output"
+            elif not entries or (separated and not explanation_entries):
+                error = "missing_output"
             else:
                 probabilities = (
                     parsed.member_probabilities.get(task.trait_id)
@@ -143,16 +239,31 @@ def interpret(
                     if parsed is not None and len(tasks) == 1
                     else None
                 )
+                member_output: dict[str, object] = {"scores": entries}
+                if separated:
+                    member_output["explanations"] = explanation_entries
+                member_contract = (
+                    contract.model_copy(update={"traits": (contract.traits[index],)})
+                    if isinstance(contract, RubricOutputContract)
+                    else None
+                )
                 try:
                     member = ParsedResponse.model_validate(
                         {
                             "kind": "response",
-                            "output": {"scores": entries},
+                            "output": member_output,
                             "rubric_probabilities": probabilities,
                             "provider_expected_index": expected_index,
                         }
                     )
-                    result = normalize(member, spec, selected, run_id, attempt_id)
+                    result = normalize(
+                        member,
+                        spec,
+                        selected,
+                        run_id,
+                        attempt_id,
+                        contract=member_contract,
+                    )
                 except ValueError:
                     pass
         results.append(
@@ -222,6 +333,8 @@ def normalize(
     dependency: RequestDependency,
     run_id: str,
     attempt_id: str,
+    *,
+    contract: AssessmentOutputContract | None = None,
 ) -> Result:
     """Only received provider evidence reaches this function."""
     if parsed.kind == "refusal":
@@ -239,11 +352,15 @@ def normalize(
     task = dependency.request.tasks[0]
     pair = dependency.request.pair
     if pair is not None:
-        output = validate_pairwise_output(
-            parsed.output,
-            pair,
-            allow_ties=spec.allow_ties,
-            explanations=spec.execution.explanations,
+        output = (
+            validate_pairwise_contract_output(parsed.output, contract)
+            if isinstance(contract, PairwiseOutputContract)
+            else validate_pairwise_output(
+                parsed.output,
+                pair,
+                allow_ties=spec.allow_ties,
+                explanations=spec.execution.explanations,
+            )
         )
         return normalize_pairwise_result(
             pair,
@@ -265,8 +382,12 @@ def normalize(
         )
     assert spec.rubric is not None and task.item_id is not None
     trait = next(t for t in spec.rubric.traits if t.trait_id == task.trait_id)
-    output = validate_categorical_output(
-        parsed.output, [trait], explanations=spec.execution.explanations
+    output = (
+        validate_rubric_contract_output(parsed.output, contract)
+        if isinstance(contract, RubricOutputContract)
+        else validate_categorical_output(
+            parsed.output, [trait], explanations=spec.execution.explanations
+        )
     )
     return normalize_rubric_result(
         trait,
