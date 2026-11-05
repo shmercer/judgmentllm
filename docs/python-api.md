@@ -500,3 +500,136 @@ Export does not require an adapter and never generates missing judgments.
 `successful_results` and `unresolved_submissions`. A partially valid request has
 state `partial`. Authorized normalized explanations remain exportable under
 minimal capture; prompts, payloads and raw output remain unavailable.
+
+## Proposed Milestone 3 API additions (not implemented)
+
+The [assessment output design](assessment-output-design.md) is the authoritative
+proposal. The signatures and models in this section are design contracts for
+future small implementation PRs; imports below do not work in Milestone 2.
+Existing normalized results, schema-version-1 configuration and mock execution
+remain the compatibility baseline.
+
+### Credential diagnostics
+
+```python
+from judgmentllm.auth import CredentialStatus, credential_status
+
+statuses: tuple[CredentialStatus, ...] = credential_status()
+for status in statuses:
+    print(status.provider, status.status)
+
+openai_status = credential_status(providers=("openai",))
+```
+
+`credential_status(*, providers=None) -> tuple[CredentialStatus, ...]` is a
+synchronous offline service. Omitted selection returns the documented provider
+registry in stable order; an explicit provider filter retains that registry
+order, rejects unknown IDs and deduplicates repeated IDs. Return frozen strict models matching existing public
+control-model conventions, with `provider`, `auth_type`, nullable `source`,
+`status` and nullable `diagnostic_code`. Status values are `configured`, `missing`,
+`unknown`, `not_required`, `unsupported`; diagnostics use allowlisted codes.
+Never return secret values, substrings, hashes, identity/account names, arbitrary
+file paths or unsanitized SDK messages. The CLI wraps these same records under
+version-1 `data.providers`; `--require` is a CLI policy check over status records,
+not another credential resolver.
+
+The shared internal resolver keeps secret material transient and delegates to
+SDK authentication in actual adapters. Its offline inspection path cannot
+refresh tokens, contact metadata/provider endpoints, load arbitrary credential
+files or implicitly load `.env` files. Google cloud identities can remain
+`unknown`. A configured source is not authenticated; local Ollama requiring no
+ordinary authentication is not evidence of daemon connectivity.
+
+Provider-specific live verification and smoke services must share that resolver
+and the safe `LifecycleError` boundary. Their thin CLI contracts are documented
+in [CLI design](cli-spec.md#proposed-milestone-3-commands-and-configuration-not-implemented).
+Explicit authentication verification is never called by status or planning.
+No suitable non-generative operation means verification unsupported; model
+requests require the separately authorized smoke workflow.
+
+### Output, usage and reasoning boundaries
+
+New configuration capabilities opt into RunSpec schema version 2: proposed
+`PromptSpec.output_order` defaults to `together` and accepts `scores_first` and
+`explanations_first`; `PromptSpec.structured_output` defaults to `auto` and accepts
+`native` or `text`. Typed `GenerationSpec.reasoning` preserves omitted controls
+and separates reasoning effort/request from retention. `ExecutionSpec` continues
+to own grouping and assessment explanation requests; capture policy owns detailed
+evidence authorization. Do not add authentication secrets to these models.
+
+Extend generated provider-facing output schemas and local validators deliberately;
+the existing version-1 functions described above retain their historical
+contracts until the implementing PR specifies the compatible entry points.
+Separated arrays join by `trait_id`, never position, and grouped interpretation
+continues to preserve valid siblings while recording every failed expected
+member. All layouts normalize to existing `RubricResult` fields. Generative
+forced-choice output may omit `tie`; normalized `PairwiseResult.tie` remains false,
+while historical explicit `tie: false` inputs remain valid. Native decision/score
+contracts remain separate Milestone 4 work.
+
+Add typed request/observation usage and optional reasoning evidence records,
+linked through stable run/request/attempt/submission/observation identities.
+These records need versioned public schemas; they do not require a second
+assessment-result format or duplicated request totals in grouped trait rows.
+Existing nullable normalized usage columns remain readable and are not reused
+as a multiplication-prone source for new accounting; new real adapters leave
+those legacy result usage fields null. Missing usage remains null.
+Assessment explanations stay in result rows; provider-exposed summaries/thinking
+and raw evidence remain distinct observation-level records.
+
+Streaming companion usage and authorized reasoning exports use independent
+immutable artifacts, consistent evidence cuts and the same safe lifecycle export
+report conventions. Preserve all attempts, provider-native usage semantics,
+leading-zero character IDs, nulls and complete audit joins in deterministic R
+acceptance. Aggregation selects one authoritative usage revision per physical submission
+before joining assessment rows; it preserves separately billable retries and
+must not silently sum repeated retrievals, evidence revisions or overlapping
+nested usage components. See the authoritative design for fields and accounting rules.
+
+### Proposed evidence export services
+
+Expose these typed services from `judgmentllm.lifecycle` and the top-level package,
+following the existing synchronous result-export convention:
+
+```python
+export_run_usage(run_id, *, store=None, format="jsonl", view="canonical",
+                 na_string="NA", high_water_mark=None,
+                 evidence_high_water_mark=None) -> EvidenceManifest
+export_run_reasoning(run_id, *, store=None, format="jsonl", view="canonical",
+                     na_string="NA", high_water_mark=None,
+                     evidence_high_water_mark=None) -> EvidenceManifest
+```
+
+Arguments follow `export_run_results`: run ID or absolute run directory, optional
+store, `format="jsonl"|"csv"`, `view="canonical"|"r"`, configurable R missing marker,
+and optional nonnegative result high-water mark. The R view requires CSV;
+canonical CSV retains existing null escaping and nested JSON. The new optional
+`evidence_high_water_mark` selects an append-only evidence revision cut.
+Omitted cuts are captured in one database snapshot. Validate explicit boundaries;
+reject future cuts and a result/evidence combination that excludes evidence links
+required by the selected results. Usage facts with no normalized result remain
+included through the evidence cut. Do not infer an evidence cut solely from the
+largest assessment result ID.
+
+`EvidenceManifest` is a new frozen version-1 export control model. It contains
+`run_id`, `run_status`, `export_id`, `kind: usage|reasoning`, `format`, `view`,
+`row_count`, `result_high_water_mark`, `evidence_high_water_mark`,
+`incomplete_source`, immutable `files` (existing `ExportFile` path/hash/length
+records), nullable `bridge_file` and existing `ArtifactPaths`. Usage exports
+publish the revision-selected facts, revision audit and task-to-submission/
+observation/usage bridge. `bridge_file` identifies its bridge artifact;
+reasoning-only exports set it null and retain observation identifiers in rows.
+Assessment `ResultManifest` and normalized-result schemas stay unchanged.
+
+Both services traverse bounded pages and atomically publish immutable outputs.
+Repeated matching cuts/options converge. They read persisted evidence without
+provider construction, network activity or original assessment sources. Reasoning
+exports include only the authorized retained type and explicit availability/null
+metadata for unavailable/redacted records. No text is emitted to control stdout.
+CLI `usage export` and `reasoning export` call these services and serialize the
+same safe metadata inside their existing version-1 control envelopes.
+
+No proposed API in this section authorizes a live call during ordinary tests.
+Offline synthetic adapter/CLI exports must pass the standing R/jsonlite gates;
+Milestone 6 exposes the implemented services through CLI-first `rubricLLM` without
+creating an R authentication or assessment engine.

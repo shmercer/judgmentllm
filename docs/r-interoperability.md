@@ -460,3 +460,18 @@ Expensive fault-window matrices and scale tests remain Python regressions;
 the R gate does not wait out synthetic long delays or run scale qualification.
 Missing executable/Rscript/jsonlite or failed assertions fail required acceptance.
 Hosted Ubuntu/Python 3.11 and all six local OS/Python lanes require this gate.
+
+
+## Proposed Milestone 3 usage and evidence joins (proposed, not implemented)
+
+See the [consolidated assessment output design](assessment-output-design.md)
+for explicit future version-2 RunSpec/renderer controls, unchanged normalized
+result schema 1, linked request/submission/observation usage and authorized
+reasoning records, streaming companion exports and R join/aggregation rules.
+Existing columns, frozen records, identities and missing-value semantics in
+this document remain implemented contracts. New sidecars require their own
+typed versions and deterministic offline Python/CLI-to-R acceptance; grouped
+requests cannot multiply token usage or duplicate reasoning by trait. Any
+internal persistence revision requires deliberate compatibility handling, not
+implicit mutation/migration of an existing registry. Credential diagnostics
+never add credential values or private identities to assessment evidence.

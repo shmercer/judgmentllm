@@ -1,6 +1,6 @@
 # Provider and endpoint compatibility (design target)
 
-**As of 2026-11-02.** A design commitment is not the same as a qualified model/endpoint combination. Current per-model/region/account status belongs in generated `model-support.md` with evidence dates.
+**Baseline matrix as of 2026-11-02; Milestone 3 design evidence reviewed 2026-11-05.** A design commitment is not the same as a qualified model/endpoint combination. Current per-model/region/account status belongs in generated `model-support.md` with evidence dates.
 
 | Adapter | Live | Native provider batch | Managed bulk-live | Rubric | Pairwise | Notes |
 |---|---|---|---|---|---|---|
@@ -19,6 +19,34 @@
 On 2026-11-02, the [official OpenAI Decisions guide](https://developers.openai.com/api/docs/guides/decisions#score-against-a-rubric) specified a 2–10 ordered-level range. Milestone 1 preflight enforces that endpoint bound independently of caller capability overrides. The provider-neutral rubric schema still permits any number of levels above its two-level minimum.
 
 TypeSafe's [official Score guide](https://docs.typesafe.ai/primitives/score#request-structure), checked separately on the same date, documents a maximum of 10 score criteria and recommends at least two. This independently supports the upper bound; it does not establish that the API enforces the same lower bound as OpenAI Decisions. The [System One API reference](https://docs.typesafe.ai/api/system-one) identifies the endpoint as `/v1/systemone`. No request was sent and no Jev adapter or model was live-qualified. Milestone 1 does not embed the Jev bound: callers can supply the independently documented `CapabilityProfile(max_levels=10)` until endpoint-specific adapter validation is implemented. Other providers do not inherit either endpoint's limits.
+
+### Proposed Milestone 3 output and authentication contracts
+
+The [unified assessment output design](assessment-output-design.md) is the
+normative proposed extension. Its [provider evidence ledger](assessment-provider-evidence.md)
+distinguishes documented behavior, planned integration policy and pending
+qualification. None of these additions is implemented by the design PR.
+
+- Shared credential resolution uses official SDK mechanisms: provider-specific
+  API-key environment variables, Google ADC for Vertex, and no authentication
+  for ordinary local Ollama. The ledger records actual source names, precedence
+  and SDK alternate-source constraints. Offline status never initializes ADC,
+  refreshes tokens, contacts metadata or checks daemon connectivity.
+- `auth status` is mandatory Milestone 3 work. Separate opt-in `auth verify`
+  implementations use documented protected non-generative operations where
+  available; authentication acceptance does not qualify an assessment model.
+- Native structured outputs are preferred where compatible. Generated schemas
+  and local validators remain provider-neutral; each adapter reports the native
+  subset actually enforced and any locally enforced constraints. Property order
+  requires endpoint-specific evidence; schema support does not prove reasoning
+  order. Incompatible core schema requirements fail native-mode preflight;
+  documented subset projections retain the full local contract.
+- Request/observation usage and optional authorized reasoning evidence stay
+  separate from normalized per-trait/judgment results. Live qualification remains
+  explicitly opt-in; mandatory fixture and Python/R tests remain credential-free.
+- Native Decisions/Jev assessment integration stays in Milestone 4. Managed
+  bulk-live/native batch parity and recovery stay in Milestone 5; the CLI-first
+  R wrapper exposes implemented services in Milestone 6.
 
 ### Required capability checks
 
