@@ -72,7 +72,9 @@ def test_repeated_native_measurements_do_not_grow_import_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     worker = benchmark_module("execution_worker")
-    monkeypatch.setattr(sys, "path", [entry for entry in sys.path if entry != str(ROOT)])
+    monkeypatch.setattr(
+        sys, "path", [entry for entry in sys.path if entry != str(ROOT)]
+    )
     first = worker.native_peak_bytes()
     assert first > 0 and sys.path.count(str(ROOT)) == 1
     initialized = tuple(sys.path)
