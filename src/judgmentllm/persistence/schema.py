@@ -620,6 +620,27 @@ def _schema_digest(connection: sqlite3.Connection) -> str:
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
+def verify(connection: sqlite3.Connection) -> None:
+    """Verify an existing schema without initializing, migrating or writing.
+
+    The caller supplies its read transaction, so version, migration evidence and
+    actual structure are checked against the same committed database snapshot.
+    """
+    version = connection.execute("PRAGMA user_version").fetchone()[0]
+    if version != SCHEMA_VERSION:
+        raise SchemaVersionError("unsupported database schema version")
+    migrations = connection.execute(
+        "SELECT version,checksum,schema_sha256 FROM schema_migrations ORDER BY version"
+    ).fetchall()
+    if len(migrations) != 1 or tuple(migrations[0][:2]) != (
+        SCHEMA_VERSION,
+        SCHEMA_CHECKSUM,
+    ):
+        raise SchemaVersionError("database migration checksum is inconsistent")
+    if migrations[0][2] != _schema_digest(connection):
+        raise SchemaVersionError("database schema integrity check failed")
+
+
 def initialize(connection: sqlite3.Connection) -> None:
     """Create or verify schema in one transaction; never silently migrate.
 
@@ -657,16 +678,7 @@ def initialize(connection: sqlite3.Connection) -> None:
             )
             connection.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
         else:
-            migrations = connection.execute(
-                "SELECT version,checksum,schema_sha256 FROM schema_migrations ORDER BY version"
-            ).fetchall()
-            if len(migrations) != 1 or tuple(migrations[0][:2]) != (
-                SCHEMA_VERSION,
-                SCHEMA_CHECKSUM,
-            ):
-                raise SchemaVersionError("database migration checksum is inconsistent")
-            if migrations[0][2] != _schema_digest(connection):
-                raise SchemaVersionError("database schema integrity check failed")
+            verify(connection)
         connection.commit()
     except sqlite3.DatabaseError as exc:
         connection.rollback()

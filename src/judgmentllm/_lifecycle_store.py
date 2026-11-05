@@ -16,8 +16,9 @@ from judgmentllm.lifecycle_models import (
 )
 from judgmentllm.models import VersionedModel
 from judgmentllm.persistence.hashing import bytes_digest
+from judgmentllm.persistence.models import NotFoundError
 from judgmentllm.persistence.ownership import executor_is_active
-from judgmentllm.persistence.repository import Repository
+from judgmentllm.persistence.repository import ReadOnlyRepository, Repository
 from judgmentllm.preparation import _load_manifest  # pyright: ignore[reportPrivateUsage]
 
 
@@ -57,7 +58,7 @@ def _directory_id(directory: Path, root: Path) -> str:
         return identifier
     # Unsealed preparations have no manifest. Compare established directory
     # hashes through bounded registry pages, without retaining an ID inventory.
-    with Repository(root) as repository:
+    with ReadOnlyRepository(root) as repository:
         after = ""
         while True:
             rows = repository.connection.execute(
@@ -82,7 +83,7 @@ def resolve_run(
     if store is not None:
         selected = Path(store).resolve()
         require_store(selected)
-        with Repository(selected) as repository:
+        with ReadOnlyRepository(selected) as repository:
             row = repository.connection.execute(
                 "SELECT 1 FROM runs WHERE run_id=?", (str(run_id),)
             ).fetchone()
@@ -98,7 +99,7 @@ def resolve_run(
             raise LifecycleError("validation", "run directory and store disagree")
         require_store(root)
         identifier = _directory_id(directory, root)
-        with Repository(root) as repository:
+        with ReadOnlyRepository(root) as repository:
             if repository.run_directory(identifier) != directory:
                 raise LifecycleError("validation", "run directory identity disagrees")
             if repository.get_run(identifier).manifest_sha256 is not None:
@@ -106,6 +107,19 @@ def resolve_run(
         return identifier, root
     root = discover_store(store, spec)
     require_store(root)
+    # Resolve only existing, verified identities. Callers that will later export
+    # or execute must not reach a write-capable constructor on an unknown run or
+    # an uninitialized registry merely to discover that identity.
+    with ReadOnlyRepository(root) as repository:
+        try:
+            repository.get_run(str(run_id))
+        except NotFoundError:
+            raise LifecycleError(
+                "not_found",
+                "durable run or resource was not found",
+                run_id=str(run_id),
+                store=str(root),
+            ) from None
     return str(run_id), root
 
 

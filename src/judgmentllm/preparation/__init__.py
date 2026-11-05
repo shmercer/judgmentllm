@@ -321,12 +321,13 @@ def prepare_run(
 def _load_manifest(
     repository: Repository, run_id: str, *, unsealed: bool
 ) -> ExecutableRunManifest:
-    store = ArtifactStore(repository.run_directory(run_id))
-    fixed = store.root / "manifest.json"
+    directory = repository.run_directory(run_id)
+    fixed = directory / "manifest.json"
     if fixed.is_symlink() or not fixed.is_file():
         raise PreparationError(
             "no complete published manifest; incomplete preparation requires a new run"
         )
+    store = ArtifactStore(directory, create=False)
     try:
         raw = fixed.read_bytes()
         manifest = ExecutableRunManifest.model_validate_json(raw)

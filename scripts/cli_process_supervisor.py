@@ -12,6 +12,7 @@ import os
 import signal
 import sqlite3
 import subprocess
+import sys
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -36,9 +37,15 @@ class OwnedProcess(Protocol):
 class PosixProcess:
     """An unreaped child anchors its PID and private session until exit is joined."""
 
+    process: subprocess.Popen[bytes]
+    _reaped: bool
+    _can_signal: bool
+
     def __init__(
         self, command: list[str], cwd: Path, stdout: BinaryIO, stderr: BinaryIO
     ) -> None:
+        if sys.platform == "win32":
+            raise ProcessIdentityError("POSIX supervision is unavailable on Windows")
         if signal.getsignal(signal.SIGCHLD) != signal.SIG_DFL:
             raise ProcessIdentityError(
                 "POSIX supervision requires default SIGCHLD; automatic child reaping is unsafe"
@@ -70,6 +77,8 @@ class PosixProcess:
         )
 
     def _signal(self, signum: int) -> None:
+        if sys.platform == "win32":
+            raise ProcessIdentityError("POSIX supervision is unavailable on Windows")
         if self._can_signal and not self._reaped and self.process.returncode is None:
             try:
                 os.killpg(self.pid, signum)
@@ -92,6 +101,8 @@ class PosixProcess:
         self._reaped = True
 
     def close(self) -> None:
+        if sys.platform == "win32":
+            raise ProcessIdentityError("POSIX supervision is unavailable on Windows")
         if self.process.returncode is not None:
             self._reaped = True
         if not self._reaped:

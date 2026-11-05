@@ -52,7 +52,7 @@ from judgmentllm.persistence.models import (
     PersistenceError,
     RetryAuthorizationError,
 )
-from judgmentllm.persistence.repository import Repository
+from judgmentllm.persistence.repository import ReadOnlyRepository
 from judgmentllm.planning import (
     CapabilityProfile,
     PreflightError,
@@ -425,7 +425,7 @@ async def aresume_run(
     with _errors(identifier, root):
         # Inspect immutable identity without requiring original source files. The
         # execution/retry services perform complete source and context checks.
-        with Repository(root) as repository:
+        with ReadOnlyRepository(root) as repository:
             run = repository.get_run(identifier)
         adapter = _mock_adapter(run.provider, run.endpoint, root, mock, resume=True)
         _progress(progress, "started", identifier, root)
@@ -502,7 +502,7 @@ def get_run(run_id: str | Path, *, store: str | Path | None = None) -> RunStatus
     """Inspect persisted state without submitting, retrieving, or reading sources."""
     with _errors():
         identifier, root = resolve_run(run_id, store)
-    with _errors(identifier, root), Repository(root) as repository:
+    with _errors(identifier, root), ReadOnlyRepository(root) as repository:
         return inspect_run(repository, identifier)
 
 
@@ -518,7 +518,7 @@ def list_runs(
         if not (root / "registry.sqlite3").exists():
             return RunPage(runs=(), next_cursor=None)
         require_store(root)
-        with Repository(root) as repository:
+        with ReadOnlyRepository(root) as repository:
             rows = repository.connection.execute(
                 "SELECT run_id,created_at FROM runs "
                 + ("WHERE (created_at,run_id)<(?,?) " if boundary else "")

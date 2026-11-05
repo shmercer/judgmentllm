@@ -56,6 +56,12 @@ Keep runtime stores on a local filesystem outside cloud-synchronized directories
 A later process can inspect, resume, retry, or export using the same durable run.
 Neither `run` nor `resume` claims that execution continues after its process exits.
 
+`runs list` and `runs status` open existing registries read-only and validate their
+schema without initializing or repairing them. Invalid existing registries fail;
+missing stores retain empty-list/`not_found` behavior. Inspection creates no
+JudgmentLLM artifacts or ownership records. SQLite-owned WAL/SHM coordination is
+allowed so concurrent readers see committed, uncheckpointed work normally.
+
 `resume --config` supplies the original compatible specification when needed;
 it cannot replace the frozen configuration. Minimal Python-origin runs require
 the original specification. Minimal capture always requires unchanged sources.

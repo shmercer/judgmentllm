@@ -1,5 +1,10 @@
 # Milestone 2, Subphase 5 verification
 
+This records the original implementation qualification. Subsequent PR #10
+read-only inspection and process-safety corrections are documented in
+[PR #10 review corrections](pr-10-review-corrections.md); their exact-head
+qualification evidence is retained separately from the original evidence below.
+
 Implemented on `codex/milestone-2-subphase-5-cli-lifecycle`, in the separate local
 worktree `/tmp/judgmentllm-subphase-5`, from freshly fetched main
 `01fa7e47b86f36370f8df017873cf41668b2f363`. PR #8 and PR #9 are merged and

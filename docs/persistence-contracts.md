@@ -431,6 +431,17 @@ run IDs remain original strings; absolute run directories are checked against
 the existing hash-based mapping. Stored run state and an instantaneous OS-lock
 probe remain separate. Inspection never repairs stale ownership or starts work.
 
+`ReadOnlyRepository` opens the existing registry with SQLite URI `mode=ro`,
+plus connection-local `query_only`. It verifies the existing schema version,
+migration checksum and structural digest through the same verifier as the writer;
+it never initializes, migrates, checkpoints or repairs a registry. Empty,
+uninitialized, incompatible and malformed registries fail safely. Missing stores
+still produce empty listings or `not_found` for addressed runs. Inspection creates
+no application state, manifests, artifacts, run directories or lock files.
+SQLite-owned WAL/SHM coordination is permitted: normal locks and committed,
+uncheckpointed WAL visibility are preserved, including during active execution.
+Readers do not use SQLite's immutable or lock-bypassing modes.
+
 Runtime retry selection and mock fixture controls do not enter RunSpec. Custom
 mock ledgers and caller-owned fixture files must be supplied again on resume;
 missing ledgers are rejected before construction. Service-identity, source and
