@@ -24,6 +24,32 @@ attempts for the same task. They perform no implicit success filter, retry
 selection, aggregation, or winner inference. The canonical normalized JSONL and
 lossless normalized CSV remain authoritative and keep their existing formats.
 
+## Milestone 3 Phase 1 contract acceptance
+
+The existing export gate (`examples/export_r.py` followed by
+`examples/r_interoperability.R`) also creates separate
+`assessment_contract_rubric_r.csv`, `assessment_contract_pairwise_r.csv` and
+`assessment_contract_results.jsonl` fixtures. Historical baseline files and their
+row counts remain unchanged. The new files use existing result models and
+exporters; they add no columns or R-side scoring logic.
+
+Python validates complete raw responses and invokes explicit contract-based
+member interpretation offline, without provider submission or durable v2
+execution. R checks equivalent categorical results/explanations for `together`,
+`scores_first` and `explanations_first`, mixed score/explanation array order,
+nonuniform numeric mappings, distinct grouped tasks, incomplete-member failure,
+missing expected values/probabilities and character IDs with leading zeros.
+Winner-only, historical explicit-false, allowed ties and reversed-presentation
+outputs retain existing pairwise outcome semantics. Existing fixtures continue
+checking genuine probabilities, expected/modal scores and original-orientation
+probability mappings.
+
+This extends one of the seven strict gates; all seven local configurations still
+run all 49 gate executions. Missing R/jsonlite or failed assertions remain
+blocking in required acceptance. RunSpec v2 rendering/preparation, real provider
+adapters and usage/reasoning/order-evidence sidecars remain later phases; these
+fixtures do not advertise new layouts through the installed CLI.
+
 ## Approved R architecture and delivery boundaries
 
 | Component | Role |

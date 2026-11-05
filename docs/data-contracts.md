@@ -7,7 +7,9 @@ assessments through the mock provider. Real provider integrations remain later m
 [persistence foundation](persistence-contracts.md) is implemented separately.
 Subphase 6 scale tooling uses these same contracts without adding public result
 fields or changing schema version 1. Benchmark reports are development evidence,
-separate from canonical assessment exports; exact-head qualification is pending.
+separate from canonical assessment exports. Milestone 3 Phase 1 adds a separate
+standalone assessment-output contract boundary described below; document and
+normalized-result schemas remain version 1.
 
 ## Validation and serialization
 
@@ -84,6 +86,68 @@ occurrence. Repetitions and reversal audit occurrences have distinct `pair_uid`
 values. The preparation helper preserves the base occurrence as `source_pair_uid`.
 Seeded presentation changes order, not occurrence identity. Reversal presentations
 are opposite their corresponding base presentation.
+
+## Standalone assessment-output contracts (Milestone 3 Phase 1)
+
+`judgmentllm.output_contracts` defines strict `RubricOutputContract` and
+`PairwiseOutputContract` models. Their literal integer `contract_version=2`
+identifies output interpretation semantics only. It is neither a RunSpec version
+nor a permitted model-output field: closed output validators reject it. The existing shared `VersionedModel`
+continues to accept document `schema_version=1` only.
+
+Rubric contracts contain a nonempty, unique ordered tuple of validated `traits`,
+`task_kind="rubric"`, `output_order="together"` and `explanations=false` by default.
+`scores_first` and `explanations_first` require explanations; each uses separate
+`scores` and `explanations` arrays, joined exclusively by exact trait ID. Pairwise
+contracts contain the exact `pair`, `task_kind="pairwise"`, `allow_ties=false`,
+`explanations=false`, and only the default `output_order="together"`. Tie policy
+is not a rubric setting. Unknown or incompatible fields are errors.
+
+`generate_output_schema` produces closed JSON Schema 2020-12 objects from that
+validated membership. Scores use disjoint exact-trait alternatives and each
+trait's ordered category enum. Arrays have exact membership-count bounds;
+local validation additionally enforces complete unique membership. Required
+explanations must be nonblank locally. The schema requests meaningful property
+order, and `serialize_output_schema` preserves that order in UTF-8 JSON bytes.
+Historical canonical semantic hashes continue sorting keys; they are distinct
+from ordered provider-facing serialization. No user-authored schema is accepted.
+
+The strict contract validators accept raw JSON text/bytes or parsed data and
+return existing `CategoricalOutput`/`PairwiseOutput` selections. Raw bytes must be strict UTF-8. Raw decoding rejects duplicate object keys,
+malformed JSON and nonfinite numeric tokens. Parsed data is recursively checked
+for finite JSON values, rejecting nonstring object keys and arbitrary Python
+objects. Duplicate-key detection must occur before SDK decoding: a parsed dictionary
+cannot reveal discarded duplicate keys and carries no such guarantee. Complete
+rubric validation rejects every missing, duplicate, unknown or malformed member;
+it never reports partial salvage as a valid whole output. Explanation fields,
+including explicit nulls, are forbidden when disabled; separated scores forbid
+inline explanations. IDs/category labels match exactly without coercion or repair.
+
+The new pairwise schema requests only `winner_id` for forced choice, plus a
+required nonblank explanation when enabled. Its compatibility validator also
+accepts the closed historical `tie:false` form and normalizes an omitted tie to
+false. With ties enabled, explicit `tie` is required and must agree with a null
+winner for a tie or a presented winner ID for a non-tie. Neither probabilities
+nor missing output imply an observed winner. The historical v1 parser still
+requires its explicit `tie` field.
+
+The optional explicit contract on internal `execution.processing.interpret`
+allows independent-member salvage from recognizable envelopes. It indexes
+scores/explanations separately, invalidates a trait duplicated on either side,
+and preserves complete siblings through existing normalizers. Unexpected entries
+produce bounded content-free counts. An unrecognizable envelope completes no
+members. Contract task kind, exact ordered membership, trait definitions and
+explanation/tie settings must match the supplied request/specification. All task/request/attempt IDs, statuses, mapped codes,
+probabilities and original/presented orientations use existing result semantics.
+Generative categorical selection without probabilities remains `category_code`,
+with no fabricated expected score, probability distribution or modal category.
+
+This is an offline Python boundary, not an enabled RunSpec v2 lifecycle. Phase 2
+must add versioned configuration, rendering/preview and immutable request/schema
+commitments before submission can use it. The installed CLI, legacy prompts,
+mock protocol, persistence schema and exports keep their v1 behavior. Real
+provider adapters/translation and usage/reasoning/order-evidence persistence are
+separate later deliverables. See the [Python API](python-api.md#standalone-assessment-output-contracts-milestone-3-phase-1).
 
 ## Run configuration
 

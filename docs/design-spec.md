@@ -2,7 +2,7 @@
 
 **Design:** 0.5 (2026-11-02). **Implementation status:** Milestone 1 provides schema-version-1 contracts, synthetic normalization, structural planning, input/output, and offline prompt tools. Milestone 2 has durable persistence, generation configuration, and complete provider-free immutable source preparation with indexed access and independent-process reopening. Subphase 4 adds grouped outcomes, retry/cancellation and immutable exports; Subphase 5 exposes the shared public Python lifecycle and versioned CLI. Subphase 6 is merged in PR #11; its final implementation head `db198aeb0a6387e6a3030c584c34bdd0b41e890f` has retained local and hosted qualification evidence, with the historical six-configuration scope described below. Execution is limited to the deterministic mock provider; real adapters remain later milestones. The sections below describe the full approved direction; [data contracts](data-contracts.md) and [Python API](python-api.md) describe the implemented subset.
 
-## Proposed Milestone 3 consolidation (documentation only)
+## Milestone 3 consolidation and Phase 1 contracts
 
 The [assessment output design](assessment-output-design.md) defines the proposed
 next milestone: three single-call rubric layouts independent of grouping,
@@ -13,7 +13,11 @@ reasoning evidence. Its [prompt examples](assessment-prompt-examples.md) and
 [provider evidence](assessment-provider-evidence.md) separate design from SDK
 documentation and live qualification. New controls use an explicit future RunSpec
 version 2; implemented version-1 contracts, mock execution and normalized results
-remain unchanged by this documentation work. Small M3 PRs implement the design;
+remain unchanged by the new standalone Phase 1 contract API. Phase 1 now implements
+provider-neutral schemas, strict validation and detached member interpretation;
+RunSpec v2 rendering/preparation and lifecycle activation remain Phase 2. See the
+[Python contract API](python-api.md#standalone-assessment-output-contracts-milestone-3-phase-1).
+Small M3 PRs implement the remaining design;
 native decisions remain M4, bulk/batch parity M5 and thin CLI-first R exposure M6.
 
 ## 1. Goals

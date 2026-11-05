@@ -255,5 +255,105 @@ if (has_jsonlite) {
 } else {
   cat("jsonlite not installed: optional JSON decoding check pending\n")
 }
+# Phase 1 contracts are interpreted offline; the installed CLI remains v1.
+# Separate files preserve the original baseline export rows above.
+contract_rubric <- read_audit("assessment_contract_rubric_r.csv", c(
+  identity_columns, "schema_version", "item_id", "trait_id", "category_label",
+  "numeric_category_value", "primary_score", "primary_score_kind", "expected_value",
+  "explanation", "probabilities_json", "resolved_levels_json", "modal_category_label"
+))
+contract_rubric <- convert_numeric(contract_rubric, c(
+  "numeric_category_value", "primary_score", "expected_value"
+))
+stopifnot(
+  nrow(contract_rubric) == 8L, all(contract_rubric$schema_version == "1"),
+  all(contract_rubric$item_id == "001"), is.character(contract_rubric$item_id),
+  is.character(contract_rubric$trait_id), all(contract_rubric$attempt_id == "attempt-001"),
+  all(contract_rubric$provider == "synthetic"), all(contract_rubric$endpoint == "offline"),
+  all(contract_rubric$model == "contract-fixture"),
+  all(is.na(contract_rubric$expected_value)), all(is.na(contract_rubric$probabilities_json)),
+  all(is.na(contract_rubric$modal_category_label))
+)
+layouts <- c("together", "scores_first", "explanations_first")
+layout_rows <- lapply(layouts, function(layout) {
+  selected <- contract_rubric[
+    contract_rubric$run_id == paste0("contract-", layout), , drop = FALSE
+  ]
+  selected <- selected[order(selected$trait_id), , drop = FALSE]
+  stopifnot(
+    nrow(selected) == 2L, identical(selected$trait_id, c("001", "002")),
+    length(unique(selected$task_id)) == 2L, length(unique(selected$request_uid)) == 1L,
+    all(selected$status == "complete"), all(selected$primary_score_kind == "category_code"),
+    identical(selected$category_label, c("middle", "2")),
+    identical(selected$primary_score, c(3, 40)),
+    identical(selected$numeric_category_value, c(3, 40)),
+    identical(selected$explanation, c("Assessment for 001.", "Assessment for 002."))
+  )
+  selected
+})
+equivalent_columns <- c(
+  "task_id", "trait_id", "category_label", "numeric_category_value", "primary_score",
+  "primary_score_kind", "explanation", "resolved_levels_json"
+)
+for (selected in layout_rows[-1L]) {
+  for (column in equivalent_columns) {
+    stopifnot(identical(selected[[column]], layout_rows[[1L]][[column]]))
+  }
+}
+partial_contract <- contract_rubric[
+  contract_rubric$run_id == "contract-partial", , drop = FALSE
+]
+stopifnot(
+  nrow(partial_contract) == 2L, length(unique(partial_contract$task_id)) == 2L,
+  length(unique(partial_contract$request_uid)) == 1L,
+  identical(partial_contract$status, c("complete", "invalid")),
+  partial_contract$trait_id[[1L]] == "001", partial_contract$primary_score[[1L]] == 3,
+  partial_contract$explanation[[1L]] == "Assessment for 001.",
+  partial_contract$trait_id[[2L]] == "002", is.na(partial_contract$primary_score[[2L]]),
+  is.na(partial_contract$category_label[[2L]]), is.na(partial_contract$explanation[[2L]])
+)
+contract_pairs <- read_audit("assessment_contract_pairwise_r.csv", c(
+  identity_columns, "schema_version", "ID1", "ID2", "left_item_id", "right_item_id",
+  "better_id", "result", "winner_pos", "tie", "allow_ties", "is_reversal",
+  "source_pair_uid", "repetition_index", "p_left", "p_right", "p_first", "p_second", "p_tie"
+))
+contract_pairs <- convert_numeric(contract_pairs, c("result", "winner_pos", "repetition_index"))
+contract_pairs <- convert_logical(contract_pairs, c("tie", "allow_ties", "is_reversal"))
+stopifnot(
+  nrow(contract_pairs) == 4L, all(contract_pairs$status == "complete"),
+  all(contract_pairs$schema_version == "1"), all(contract_pairs$left_item_id == "001"),
+  all(contract_pairs$right_item_id == "002"), all(contract_pairs$source_pair_uid == "001"),
+  all(contract_pairs$repetition_index == 1),
+  all(is.na(contract_pairs[c("p_left", "p_right", "p_first", "p_second", "p_tie")])),
+  length(unique(contract_pairs$task_id)) == 4L,
+  contract_pairs$better_id[[1L]] == "002", !contract_pairs$tie[[1L]],
+  !contract_pairs$allow_ties[[1L]], contract_pairs$result[[1L]] == 0,
+  contract_pairs$is_reversal[[2L]], contract_pairs$ID1[[2L]] == "002",
+  contract_pairs$ID2[[2L]] == "001", contract_pairs$better_id[[2L]] == "001",
+  contract_pairs$winner_pos[[2L]] == 2, contract_pairs$result[[2L]] == 0,
+  contract_pairs$tie[[3L]], contract_pairs$allow_ties[[3L]],
+  is.na(contract_pairs$better_id[[3L]]), is.na(contract_pairs$winner_pos[[3L]]),
+  contract_pairs$result[[3L]] == 0.5, contract_pairs$allow_ties[[4L]],
+  !contract_pairs$tie[[4L]], contract_pairs$better_id[[4L]] == "002"
+)
+if (has_jsonlite) {
+  for (selected in layout_rows) {
+    first_coding <- jsonlite::fromJSON(selected$resolved_levels_json[[1L]])
+    second_coding <- jsonlite::fromJSON(selected$resolved_levels_json[[2L]])
+    stopifnot(
+      identical(first_coding$label, c("low", "middle", "high")),
+      identical(first_coding$numeric_value, c(1, 3, 8)),
+      identical(second_coding$label, c("1", "2")),
+      identical(second_coding$numeric_value, c(10, 40))
+    )
+  }
+  canonical <- lapply(readLines(
+    file.path(export_directory, "assessment_contract_results.jsonl"), encoding = "UTF-8"
+  ), jsonlite::fromJSON)
+  stopifnot(length(canonical) == 12L, all(vapply(canonical, function(row) {
+    identical(row$schema_version, 1L)
+  }, logical(1L))))
+}
+cat("Assessment contracts R smoke passed: 3 layouts, grouped partial outcomes, winner-only/historical/tie outputs\n")
 cat(if (strict) "Strict mode: required jsonlite checks completed\n" else "Local mode: jsonlite checks remain optional\n")
 cat("R interoperability smoke passed: 6 pair audit rows, 4 chosen outcomes, 3 binary wins, 1 retained tie, 3 rubric audit rows, 2 chosen rubric outcomes\n")

@@ -1,15 +1,45 @@
 # Milestone 3 assessment outputs, provider evidence, and authentication
 
-**Status: proposed, documentation only; 2026-11-05.** This is the authoritative
-consolidated Milestone 3 design, prepared from `origin/main` at
-`d6ab99f` after Subphase 6 merged in PR #11. It proposes no changes to the
-Milestone 2 engine, package version, installed CLI, or implemented schemas.
+**Status: Phase 1 standalone output contracts implemented; later integrations
+remain proposed.** This is the authoritative consolidated Milestone 3 design,
+originally prepared on 2026-11-05 from `origin/main` at `d6ab99f` after Subphase 6
+merged in PR #11. Phase 1 adds typed provider-neutral output contracts, ordered
+schema generation, strict whole-response validators and explicit contract-based
+member interpretation. It preserves the Milestone 2 package version, installed
+CLI, renderer, mock wire protocol, persistence and normalized-result schemas.
 [Data contracts](data-contracts.md), [persistence contracts](persistence-contracts.md),
 and [Python API](python-api.md) remain the descriptions of working behavior.
 The [six complete prompt examples](assessment-prompt-examples.md) and
 [provider evidence register](assessment-provider-evidence.md) are supporting
-appendices; this document resolves cross-cutting policy. Documentation evidence
-is not an implementation or live qualification claim.
+appendices; this document resolves cross-cutting policy. Design examples and
+documentation evidence do not establish live provider qualification.
+
+## Implemented Phase 1 and activation boundary
+
+`judgmentllm.output_contracts` now provides `RubricOutputContract`,
+`PairwiseOutputContract`, `generate_output_schema`, `serialize_output_schema`,
+`decode_assessment_output`, `validate_rubric_contract_output`, and
+`validate_pairwise_contract_output`. The standalone `contract_version=2` is
+independent of document `schema_version` and forbidden in model output; no
+version-2 RunSpec is accepted.
+The three rubric layouts, whole-group checks, trait-ID joins/member salvage and
+winner-only/legacy-false/tie-enabled comparative contracts normalize to existing
+version-1 results. Raw JSON decoding rejects duplicate keys; already-decoded SDK
+objects cannot establish that original keys were unique. Internal
+`execution.processing.interpret(..., contract=...)` exposes testable interpretation
+without changing its default v1 behavior or enabling submission.
+
+Phase 2 must jointly implement versioned RunSpec v2, renderer/preview support,
+and exact immutable prompt/schema/request commitments before the new layouts
+can reach durable execution. The installed CLI cannot select them today.
+The six prompt examples remain authoritative future renderer examples; no
+presets, exemplars or prompt bytes change in Phase 1. Provider-native translation,
+real adapters/authentication and usage/reasoning/order-evidence sidecars remain
+later work. Existing atomic grouped-execution/recovery tests remain required;
+Phase 1's explicit contract path itself has no durable transaction integration.
+The established exports R gate now verifies actual Python-generated contract
+results alongside unchanged historical fixtures. Qualification requires the
+separate exact-head local/hosted evidence described in the implementation plan.
 
 ## 1. Baseline and extension boundaries
 
@@ -774,5 +804,5 @@ implementation PR. In particular Vertex identity/constructor behavior and Togeth
 v3 verification must use current SDK contracts, rather than older examples. These gaps block
 claiming those features supported, not writing credential-free adapters with
 explicit unsupported diagnostics. No unresolved decision requires paid requests
-or expanding scope. Stop at the consolidated reviewable design PR; no merge,
-release or Milestone 3 implementation.
+or expanding scope. The original design PR stopped at documentation; Phase 1's
+subsequent implementation boundary is documented at the top of this document.
