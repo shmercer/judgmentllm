@@ -63,6 +63,10 @@ assessment inputs, databases, profiles and exports outside synchronized folders.
 The examples use the existing `/mnt/VM_Fast` local filesystem; choose equivalent
 local storage on Windows/macOS. Every output directory must be fresh. Record the
 full Git SHA, archive hash and environment before collecting evidence.
+Use a short Windows root such as `C:\jbench`: immutable object/reference names
+add hash components to that root. Native qualification exposed hard-link failures
+with the tests' deeply nested 262/268-character destinations; shorter test-owned
+roots preserve the same workload and all resource assertions.
 
 ```bash
 REF=$(git rev-parse HEAD)

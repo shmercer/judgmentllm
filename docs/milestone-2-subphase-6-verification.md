@@ -299,6 +299,19 @@ grid and require a new complete six-configuration grid on the corrected final
 commit. Neither earlier passing lanes nor unchanged production bytes replace
 that final grid.
 
+The subsequent `d426dc04e99979e2a37d9d638fcc233b35d69821` grid passed
+type checking and all forty-two R assertions, but three benchmark tests per
+Windows lane still failed. Retained worker reports and two small native
+reproductions identified test-directory depth: a 252-character object path
+produced a 262-character acknowledgment reference, and the nested allocation
+fixture used a 268-character object path. Native hard-link calls failed with
+Windows error 3; the identical short-root fixture completed all 21 judgments and
+six requests. These are failed qualification records, not passing lanes.
+The correction gives those three tests short, owned temporary roots. It preserves
+every workload parameter, completed count, capture condition, assertion and
+deadline, and changes no production or benchmark algorithm. Verify the three
+cases natively on both Windows versions before the new complete exact-head grid.
+
 The ledger must identify the full commit, source/archive/lock hashes, package
 version, benchmark/tool/fixture/input fingerprints, seed, commands, exits, timing
 windows and Python/SQLite/Pydantic/dependency/OS/CPU/RAM/R inventory. Index each raw

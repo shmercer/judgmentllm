@@ -129,7 +129,10 @@ initialization_sample(Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3]), 2
     } == before
 
 
-def test_focused_execution_cli_uses_tiny_test_only_prefixes(tmp_path: Path) -> None:
+def test_focused_execution_cli_uses_tiny_test_only_prefixes(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> None:
+    tmp_path = tmp_path_factory.mktemp("f")
     root = Path(__file__).resolve().parents[1]
     output = tmp_path / "focused"
     completed = subprocess.run(

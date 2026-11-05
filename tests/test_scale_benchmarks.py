@@ -85,7 +85,10 @@ def test_repeated_native_measurements_do_not_grow_import_path(
     assert tuple(sys.path) == initialized
 
 
-def test_tiny_scale_complete_and_prefix_reports(tmp_path: Path) -> None:
+def test_tiny_scale_complete_and_prefix_reports(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> None:
+    tmp_path = tmp_path_factory.mktemp("s")
     for extent in ("complete", "prefix", "prepare"):
         output = tmp_path / extent
         process = subprocess.run(
@@ -388,8 +391,9 @@ def test_verification_watchdog_marks_raw_sample_failed(
 
 @pytest.mark.parametrize("capture", ["minimal", "full"])
 def test_focused_export_allocations_preserve_original_store(
-    tmp_path: Path, capture: str
+    tmp_path_factory: pytest.TempPathFactory, capture: str
 ) -> None:
+    tmp_path = tmp_path_factory.mktemp("e")
     producer = tmp_path / "producer"
     process = subprocess.run(
         [
