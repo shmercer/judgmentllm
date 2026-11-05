@@ -84,16 +84,19 @@ def host_identity(root: Path) -> dict[str, object]:
     import os
 
     def git(*arguments: str) -> str | None:
-        result = subprocess.run(
-            ["git", "-C", str(root), *arguments],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
+        try:
+            result = subprocess.run(
+                ["git", "-C", str(root), *arguments],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        except FileNotFoundError:
+            return None
         return result.stdout.strip() if result.returncode == 0 else None
 
     memory: int | None = None
-    if hasattr(os, "sysconf"):
+    if os.name != "nt" and hasattr(os, "sysconf"):
         try:
             memory = int(os.sysconf("SC_PAGE_SIZE")) * int(os.sysconf("SC_PHYS_PAGES"))
         except (OSError, ValueError):

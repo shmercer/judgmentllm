@@ -51,7 +51,7 @@ def test_inventory_reports_actual_logical_and_allocated_bytes(
     assert (
         measured["temporary_bytes"] == paths[2].stat().st_size + paths[3].stat().st_size
     )
-    if all(hasattr(path.stat(), "st_blocks") for path in paths):
+    if os.name != "nt" and all(hasattr(path.stat(), "st_blocks") for path in paths):
         assert measured["allocated_bytes"] == sum(
             path.stat().st_blocks * 512 for path in paths
         )

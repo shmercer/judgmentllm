@@ -277,6 +277,28 @@ production bytes alone is not permission to relabel a measured harness or claim
 that new tools ran. Material behavioral differences leave an acceptance gap;
 they are not waived by the mapping.
 
+The first complete local grid for
+`0ac76248d4089fd2d536cb5911c3eb1dc16c2550` exposed benchmark-tool portability
+defects on both Windows lanes. Missing Git raised `FileNotFoundError` before
+the existing archived-source fallback; Pyright also rejected POSIX-only
+`sysconf` and test `st_blocks` references. Ten tool tests failed in each Windows
+lane. All forty-two strict R gates, resource regressions, builds and installation
+smokes passed, but that grid remains failed and does not establish acceptance.
+The correction is confined to metadata collection and platform guards, with a
+small missing-Git regression. It changes no production package, workload,
+serialization, execution, storage measurement or resource threshold.
+
+Retained focused execution/initialization and eight complete-export allocation
+reports identify that actual `0ac7624` source. Their reuse, alongside the `937352a`
+complete runs, requires an explicit review of this metadata-only tool delta.
+On the measured Ubuntu environment Git was available and the POSIX branch was
+already taken; its successful probe and measured execution/allocation paths are
+unchanged. The ledger must retain the earlier harness fingerprint and record the
+corrected final harness fingerprint separately. It must also index the failed
+grid and require a new complete six-configuration grid on the corrected final
+commit. Neither earlier passing lanes nor unchanged production bytes replace
+that final grid.
+
 The ledger must identify the full commit, source/archive/lock hashes, package
 version, benchmark/tool/fixture/input fingerprints, seed, commands, exits, timing
 windows and Python/SQLite/Pydantic/dependency/OS/CPU/RAM/R inventory. Index each raw

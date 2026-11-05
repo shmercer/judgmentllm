@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import importlib.util
 import json
 import subprocess
@@ -512,3 +513,77 @@ def test_focused_export_allocations_preserve_original_store(
         )
         assert envelope["below_8_mib_proof"]
     assert hashlib.sha256(database.read_bytes()).hexdigest() == before
+
+
+def test_missing_git_uses_archived_source_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "path",
+        [str(Path(__file__).resolve().parents[1] / "benchmarks"), *sys.path],
+    )
+    provenance = importlib.import_module("provenance")
+    monkeypatch.setattr(provenance.platform, "processor", lambda: "synthetic CPU")
+    archived: dict[str, object] = {
+        "commit": "a" * 40,
+        "archive_sha256": "b" * 64,
+        "files": {},
+    }
+    (tmp_path / ".judgmentllm-source.json").write_text(
+        json.dumps(archived), encoding="utf-8"
+    )
+    calls: list[list[str]] = []
+
+    def missing(
+        arguments: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        calls.append(arguments)
+        raise FileNotFoundError("synthetic missing Git executable")
+
+    monkeypatch.setattr(provenance.subprocess, "run", missing)
+    result = provenance.host_identity(tmp_path)
+    assert result["git_commit"] == archived["commit"]
+    assert result["archived_source"] == archived
+    assert result["git_tracked_status"] is None
+    assert calls == [
+        ["git", "-C", str(tmp_path), "rev-parse", "HEAD"],
+        ["git", "-C", str(tmp_path), "status", "--porcelain", "--untracked-files=no"],
+    ]
+
+
+@pytest.mark.parametrize("exit_code", [0, 128])
+def test_present_git_retains_existing_success_and_nonrepository_behavior(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, exit_code: int
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "path",
+        [str(Path(__file__).resolve().parents[1] / "benchmarks"), *sys.path],
+    )
+    provenance = importlib.import_module("provenance")
+    monkeypatch.setattr(provenance.platform, "processor", lambda: "synthetic CPU")
+    archived = {"commit": "a" * 40}
+    (tmp_path / ".judgmentllm-source.json").write_text(
+        json.dumps(archived), encoding="utf-8"
+    )
+    head = "c" * 40
+
+    def present(
+        arguments: list[str], **kwargs: object
+    ) -> subprocess.CompletedProcess[str]:
+        assert kwargs == {"capture_output": True, "text": True, "check": False}
+        value = (
+            head + "\n"
+            if arguments[-2:] == ["rev-parse", "HEAD"]
+            else " M modified.py\n"
+        )
+        return subprocess.CompletedProcess(
+            arguments, exit_code, stdout=value, stderr=""
+        )
+
+    monkeypatch.setattr(provenance.subprocess, "run", present)
+    result = provenance.host_identity(tmp_path)
+    assert result["git_commit"] == (head if exit_code == 0 else archived["commit"])
+    assert result["git_tracked_status"] == ("M modified.py" if exit_code == 0 else None)
+    assert result["archived_source"] == archived
