@@ -180,13 +180,19 @@ the current scores-only shape when explanations are disabled.
 
 Proposed `prompt.structured_output` is `auto` (default), `native`, or `text`.
 Provider-native enforcement, where evidenced compatible, carries the generated
-schema separately and uses concise `output_instructions` without repeating the
-complete schema. Local validation remains mandatory. Explicit native enforcement
-fails preflight when unavailable; automatic selection reports any text fallback
+schema separately. Use concise `output_instructions` without repeating the
+complete schema where the endpoint's documented practice permits; retain the
+schema copy where recommended or required. Local validation remains mandatory.
+Explicit native enforcement fails preflight when unavailable; automatic selection reports any text fallback
 before immutable request preparation. No fallback follows a rejected submission.
 Neither a prompt nor schema property order proves a model's reasoning order;
 serialized key-order guarantees require endpoint-specific verification from
-original emitted text.
+original emitted text. Observe both top-level keys and score-object keys to
+assess `together`'s category-before-explanation order. Full capture can retain
+authorized original evidence for later review; minimal capture retains only
+nontext order metadata and hashes after in-memory inspection.
+Persist these root/member key sequences in one linked evidence record per
+provider observation, rather than copying them into grouped result rows.
 
 Built-in templates will omit the reference-example section entirely for zero
 exemplars. Custom templates may already omit `{{ exemplars }}` when none are

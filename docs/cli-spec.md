@@ -235,7 +235,9 @@ judgmentllm auth status --require openai,anthropic --json
 ```
 
 The Python credential-status service and adapters share one resolver. Status
-inspects only documented nonsensitive configuration signals, never constructs a
+may inspect documented process-environment credential values transiently to
+resolve presence, blank handling and precedence; it never prints, logs, persists
+or returns those values. It opens no credential files and never constructs a
 client that can contact a provider, refresh credentials or query metadata.
 Statuses are `configured`, `missing`, `unknown`, `not_required`, `unsupported`.
 Configured means a usable-looking source is present, without verifying validity.
@@ -368,6 +370,26 @@ artifact reports. Neither contacts a provider or invents missing evidence.
 Control stdout contains bounded metadata and file paths, never reasoning text.
 The [Python API design](python-api.md#proposed-evidence-export-services) specifies
 the corresponding shared service signatures.
+
+Usage exports include a `ProviderObservationMetadata` version-1 companion,
+with one row per observation even when usage counts are null. Return its durable
+path/hash/length as nullable `EvidenceManifest.observation_file` using the existing
+`ExportFile` model; absent legacy metadata stays unavailable. Canonical JSONL/CSV
+and R-compatible audit views retain `requested_order` (the rubric layout enum,
+null for pairwise), nullable root `observed_key_order`, `member_key_orders`
+(`{array, index, trait_id|null, keys|null}`), `order_adherence`
+(`adherent|mismatch|unknown`), `order_evidence`
+(`raw_output_text|raw_tokens|reassembled_stream|unavailable`), and nullable safe
+`unknown_reason`. CSV encodes root/member key lists as JSON cells and preserves
+unknowns using its documented missing marker. Minimal capture retains only
+safely observable nonsensitive metadata under the authoritative retention policy;
+only allowlisted contract keys and known trait IDs enter public metadata. An
+unsafe key makes its affected sequence null and adherence unknown with
+`unknown_reason: unsafe_key_names`; an unknown trait ID becomes null, with stable
+indices and content-free counts. No original order evidence means unknown, never
+reconstructed order. Join through the existing identity bridge, without adding fields to every grouped trait row.
+Control stdout contains only bounded export metadata. An order mismatch remains
+diagnostic, without invalidating scores or enabling retry.
 
 Output layout is configured through proposed schema-version-2
 `prompt.output_order: together|scores_first|explanations_first` (`together`

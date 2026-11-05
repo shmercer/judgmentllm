@@ -9,8 +9,11 @@ normalization functions, planning functions, and preview are also exported from
 retry/cancellation and immutable exports. Subphase 5 exposes the shared public
 lifecycle services below; the installed CLI calls these same functions.
 Subphase 6 adds development benchmark tooling and executable examples around
-these services. Exact-head scale and compatibility qualification is pending;
-no additional public lifecycle interface or schema is introduced.
+these services. Its final implementation head `db198aeb0a6387e6a3030c584c34bdd0b41e890f`
+was qualified and merged in PR #11; the retained historical six-configuration
+evidence and current seven-configuration policy are distinguished in the
+[design status](design-spec.md#milestone-2-implementation-boundary). No additional
+public lifecycle interface or schema is introduced by that subphase.
 
 ## Public execution lifecycle (Milestone 2 Subphase 5)
 
@@ -586,6 +589,36 @@ before joining assessment rows; it preserves separately billable retries and
 must not silently sum repeated retrievals, evidence revisions or overlapping
 nested usage components. See the authoritative design for fields and accounting rules.
 
+A proposed strict `ProviderObservationMetadata` sidecar has its own version 1
+and one row per provider observation, linked by existing run/request/attempt/
+submission/observation identities. It contains these order-audit fields:
+
+- `requested_order`: `together|scores_first|explanations_first|null`; pairwise is null.
+- `observed_key_order`: `tuple[str, ...] | None`, the original emitted root key order.
+- `member_key_orders`: a list of `{array, index, trait_id, keys}` records retaining
+  per-entry key order, including `together` score/explanation order. `index` is
+  zero-based, `trait_id` is nullable when it cannot be attributed safely, and
+  `keys` is a nullable ordered key list.
+- `order_adherence`: `adherent|mismatch|unknown`.
+- `order_evidence`: `raw_output_text|raw_tokens|reassembled_stream|unavailable`.
+- `unknown_reason`: nullable allowlisted diagnostic code.
+
+Unknown original order stays null/unknown; parsed-object reserialization is not
+emission evidence. Keep this metadata once per observation, without copying it
+into grouped trait results. Companion canonical JSONL/CSV and R-compatible audit
+exports retain it even when usage is null; JSON CSV cells preserve root/member
+key lists and explicit missing values remain unknown. Minimal capture retains
+only safely observable nonsensitive metadata under the authoritative retention
+policy. Public order metadata permits only allowlisted contract key names and
+known trait IDs: an unsafe unknown key makes its affected sequence null and
+`order_adherence: unknown`, with `unknown_reason: unsafe_key_names`. Unknown
+trait IDs become null, retaining stable indices and content-free diagnostic
+counts. This public rule also applies under full capture; inspecting any
+authorized original evidence separately remains subject to secret sanitization.
+An order mismatch remains diagnostic; it does not change score validity
+or authorize a new call. This metadata neither establishes internal reasoning
+order nor modifies normalized result schema 1.
+
 ### Proposed evidence export services
 
 Expose these typed services from `judgmentllm.lifecycle` and the top-level package,
@@ -615,10 +648,14 @@ largest assessment result ID.
 `run_id`, `run_status`, `export_id`, `kind: usage|reasoning`, `format`, `view`,
 `row_count`, `result_high_water_mark`, `evidence_high_water_mark`,
 `incomplete_source`, immutable `files` (existing `ExportFile` path/hash/length
-records), nullable `bridge_file` and existing `ArtifactPaths`. Usage exports
-publish the revision-selected facts, revision audit and task-to-submission/
-observation/usage bridge. `bridge_file` identifies its bridge artifact;
-reasoning-only exports set it null and retain observation identifiers in rows.
+records), nullable `bridge_file`, nullable `observation_file`, and existing
+`ArtifactPaths`. Usage exports publish revision-selected facts, revision audit,
+the task-to-submission/observation/usage bridge, and the observation metadata
+companion regardless of whether usage counts were reported. `bridge_file` and
+`observation_file` use existing `ExportFile` path/hash/length models to identify
+those artifacts. Missing legacy evidence can leave `observation_file` null;
+do not infer order. Reasoning-only exports set `bridge_file` null and retain
+observation identifiers in rows.
 Assessment `ResultManifest` and normalized-result schemas stay unchanged.
 
 Both services traverse bounded pages and atomically publish immutable outputs.

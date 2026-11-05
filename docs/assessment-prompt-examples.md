@@ -32,8 +32,17 @@ Milestone 2 renderer currently sorts schema keys for textual display; the
 proposed ordered contract serializer must preserve requested display order
 without changing global canonical hashing. Even this visible order cannot
 establish a model's internal reasoning order. Exact emitted order is a separate
-provider-observation property, inspected from retained original generated text
-before parse/reserialization, when capture and provider behavior permit.
+provider-observation property, inspected from original generated text before
+canonicalization or reserialization. Inspect both the top-level keys and each
+score object's keys: top-level order alone cannot verify `together`'s requested
+category-before-explanation presentation. Authorized full capture permits later
+inspection of retained original evidence; minimal capture retains only the
+nontext observation metadata and hashes. If original generated text is unavailable
+at observation time, record the relevant order as unknown rather than infer it
+from an SDK's object representation.
+Persist the observed root and member key sequences once per provider observation
+in the linked output-order evidence record described in the authoritative design;
+do not duplicate this record across grouped per-trait assessment results.
 
 Each rubric example uses one grouped request for two traits. The same layout
 works with independent single-trait requests or deterministically planned auto
@@ -457,8 +466,10 @@ no retry may silently change presentation after submission or an API rejection.
 Schema and presentation choice enter immutable request preparation.
 
 When the complete translated schema is already attached to the native endpoint
-request, `output_instructions` contains concise instructions rather than another
-complete schema copy. The separate generated contract remains in
+request and its documented practice permits omitting the textual schema copy,
+`output_instructions` contains concise instructions. Otherwise retain the schema
+copy recommended or required by that endpoint and commit that exact presentation.
+The separate generated contract remains in
 `RenderedPrompt.output_schema` and immutable nonsecret request evidence. Proposed
 exact concise text for the examples is:
 
@@ -485,8 +496,10 @@ Native JSON Schema enforcement does not generally establish serialized key order
 Preserve the contract property order when translating; require endpoint/model
 qualification evidence before claiming enforcement of that order. Inspect the
 original generated text, not an SDK's parsed object or a sorted JSON export.
-Unavailable original text means emitted order is unknown. A field-order mismatch
-is diagnostic and prevents ordering qualification; it does not invalidate otherwise
+Order not observable from original generated text is unknown. Deleting original
+text under minimal capture does not invalidate metadata observed before deletion.
+A field-order mismatch is diagnostic and prevents ordering qualification; it does
+not invalidate otherwise
 valid assessment values or authorize rescoring. No visible ordering claim
 establishes internal model reasoning order.
 

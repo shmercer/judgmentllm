@@ -13,9 +13,11 @@ OpenAI-specific evidence is recorded in the authoritative design.
 
 The following is the **proposed JudgmentLLM resolver policy**, not a claim that
 the underlying SDK supports only these sources. API-key resolution examines
-process environment variables only; absent, empty or whitespace-only values are
-missing. Never print or persist a value, fragment, hash, credential identity or
-credential-file path. An explicit runtime key is passed to the official SDK only
+process environment variables only. It may inspect values transiently in memory
+to distinguish absent, empty, whitespace-only and nonblank settings; that does
+not authorize retaining or displaying those values. Absent, empty or
+whitespace-only values are missing. Never print or persist a value, fragment,
+hash, credential identity or credential-file path. An explicit runtime key is passed to the official SDK only
 after resolution succeeds, avoiding undocumented fallthrough when it is missing.
 Provider-required key syntax checks may reject unusable values with sanitized
 diagnostics; `configured` establishes presence, never validity.
@@ -75,18 +77,82 @@ reviewed adapter translation that explicitly identifies the constraints enforced
 locally; do not claim full native enforcement of those constraints. The
 `structured_output: native` policy requires a compatible tested translation as
 defined in the authoritative design; limitations such as cardinality remain
-explicit and locally enforced. Reject native mode when its required core schema
-cannot be represented. There is no separate complete-native-enforcement option.
+explicit and locally enforced. Native schema keyword coverage need not match
+the full local contract: a safely tested native projection can leave closure,
+cardinality or relational constraints to mandatory strict local validation.
+Reject native mode when a compatible tested projection cannot be established;
+never silently weaken accepted assessments. There is no separate
+complete-native-enforcement option.
 No property-order statement below establishes internal reasoning order.
 
 | Provider / endpoint | Documented mechanism and subset | Order and implementation qualification |
 |---|---|---|
 | Anthropic Messages | `output_config.format` JSON Schema; basic types, scalar enums, const, anyOf, internal references, required, closed objects. Array cardinality above minItems 1 and string lengths are not supported. | Required properties precede optional ones; use all required properties for the chosen layout. Refusals and max-token stops can violate the structure. [Structured outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs). Exact trait uniqueness/completeness and nonblank explanations remain local. |
 | Gemini Developer | `response_mime_type='application/json'` plus `response_schema` / JSON-schema route in [SDK examples](https://googleapis.github.io/python-genai/) | Verify the exact API version/model and keyword translation; do not assume Developer and Vertex share subsets. Direct current structured-output guide could not be fetched in this review, so its detailed subset/order guarantees remain pending. |
-| Vertex Gemini | Cloud schema subset includes anyOf, string enums, items, min/maxItems, nullable, properties and required; unsupported fields can be ignored. `propertyOrdering` controls emission order. | Explicitly generate propertyOrdering and consistent prompt examples. Cloud guide advises against duplicating the full schema in prompt text. [Cloud structured output](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/multimodal/control-generated-output). Local unknown-field checks remain mandatory. |
+| Vertex Gemini | Two distinct SDK routes: `response_schema` uses the Cloud Schema/OpenAPI subset; `response_json_schema` sends JSON Schema. See the pinned-interface evidence below. | The [Cloud guide](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/multimodal/control-generated-output) describes a restricted response-schema subset, explicit `propertyOrdering`, and avoiding duplicate schema text. Its shorter keyword list does not establish the limits of every SDK/API route. Verify each exact route; unknown-field validation remains local in all cases. |
 | Together Chat | `response_format` with `type: json_schema` on supported models | [Guide](https://docs.together.ai/docs/inference/chat/structured-outputs) instructs including schema text as well. Do not assume OpenAI's strict subset or property-order behavior; precise supported keywords/order remain fixture/live qualification work. |
 | Ollama local chat | JSON Schema in `format` | [Guide](https://docs.ollama.com/capabilities/structured-outputs) recommends schema text in the prompt too. Precise keyword/order coverage depends on daemon/model and must be tested; cloud support is outside the local adapter. |
 | TypeSafe System One | Native typed questions and answers, not generated assessment JSON | Generative layouts and explanation requests do not apply. Preserve native distributions and mappings in Milestone 4; see [System One](https://docs.typesafe.ai/api/system-one). |
+
+### Vertex: distinguish the pinned schema interfaces
+
+In google-genai **2.34.0**, `GenerateContentConfig.response_schema` and
+`response_json_schema` are alternatives, not interchangeable spellings. The
+[pinned configuration models](https://github.com/googleapis/python-genai/blob/v2.34.0/google/genai/types.py)
+describe the former as a selected OpenAPI 3.0 subset; the latter accepts JSON
+Schema, requires the JSON response MIME type and omits `response_schema`.
+Its documented subset includes `additionalProperties`, required/properties,
+string/numeric enums, arrays/bounds, references, and alternatives; `oneOf` is
+interpreted as `anyOf`. It also permits nonstandard `propertyOrdering`.
+Neither interface claims full JSON Schema coverage.
+
+The [pinned Vertex request conversion](https://github.com/googleapis/python-genai/blob/v2.34.0/google/genai/models.py)
+maps these settings to separate `responseSchema` and `responseJsonSchema`
+wire fields. The [pinned transformers](https://github.com/googleapis/python-genai/blob/v2.34.0/google/genai/_transformers.py)
+route the first through `t_schema`/`types.Schema` processing, which can resolve
+references, transform nullability and string constants, and insert property
+ordering. The JSON-schema route instead uses `t_json_schema`, which returns its
+input unchanged. Freeze and test the emitted body, including transformations;
+SDK acceptance alone is not proof of endpoint enforcement.
+
+The [Cloud REST Schema reference](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/reference/rest/v1/Schema)
+explicitly represents `additionalProperties` and defines boolean false as
+forbidding unknown fields. This is evidence against a blanket claim that Vertex
+cannot express closure. Its presence in a type/reference also does not prove
+that every serving model/API version enforces it. Distinguish this reference
+and the JSON-schema interface from the guide's restricted `response_schema`
+usage rather than applying the guide's list to all Vertex schemas.
+
+A deterministic offline converter probe on 2026-11-05 used the installed,
+locked 2.34.0 package, a synthetic two-field object, and a plain stub exposing
+only `vertexai=True`. No SDK client or credential resolver was constructed;
+a Python audit hook rejected socket connection, DNS and bind events. The probe
+called `_GenerateContentConfig_to_vertex`, followed the SDK's
+`convert_to_dict`/`encode_unserializable_types` preparation steps, and asserted
+that closure=false, both required fields, the exact two-item winner enum and
+property order survived. All three input cases passed:
+
+| Input | Observed converted request fragment | Scope of evidence |
+|---|---|---|
+| `response_schema` dictionary | `responseSchema`; uppercase type names; `additional_properties: false` and `property_ordering` | Local conversion only |
+| `response_schema` `types.Schema` instance | Same output as the dictionary case | Local conversion only |
+| `response_json_schema` dictionary | `responseJsonSchema`; original JSON-schema dictionary unchanged, including `additionalProperties: false` and `propertyOrdering` | Local conversion only |
+
+The different keyword casing reflects the measured SDK preparation boundary;
+it must not be replaced by an assumed camel-case rendering in committed evidence.
+These checks prove retained local translation for this tiny schema, not server
+acceptance, constraint enforcement, other schemas, or emitted key ordering.
+No provider API call occurred and provider acceptance remains pending. This
+probe is design research, not an implemented JudgmentLLM adapter contract test.
+
+Milestone 3 fixtures must separately cover both routes, mutually exclusive
+settings, MIME requirements, actual translated bytes, closed-field handling,
+per-trait alternatives and enums, nulls, cardinality, and visible ordering.
+Use an explicit, tested projection when native enforcement is partial, retaining
+every omitted constraint in local validation and recording the limitation.
+Known safe partial coverage is compatible with native mode; unestablished or
+incompatible route/model support follows the documented preflight/text policy.
+This design does not enable a Vertex adapter or mark any route/model live-qualified.
 
 Token efficiency is endpoint-specific: omit schema repetition where documented
 and verified safe; retain it where provider guidance requires or recommends it

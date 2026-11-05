@@ -187,10 +187,57 @@ all identities and selected/modal distinctions. No new normalized rubric format.
 | Endpoint documentation plus matching offline/live evidence | Scoped provider enforcement/qualification claim |
 | Scores/explanations appear first | No conclusion about internal model reasoning order |
 
-Store requested layout and observed top-level key sequence separately. Ordering
-mismatch is a diagnostic, not a reason to discard otherwise valid assessment
-values or rescore. A valid but differently ordered response cannot qualify the
-ordering feature. Preserve the original response-body/output-string bytes under
+Persist a strict, version-1 `ProviderObservationMetadata` record once per
+established provider observation, linked by existing `run_id`, `request_uid`,
+`attempt_id`, `submission_id` and `observation_id`. This is a companion provenance
+record, not a field copied into every trait result. Its order fields are:
+
+| Field | Durable meaning |
+|---|---|
+| `requested_order` | Frozen rubric layout `together/scores_first/explanations_first`; null for non-rubric observations |
+| `observed_key_order` | Root output-object key sequence in emitted order, or null when unavailable; never inferred from an SDK model dump |
+| `member_key_orders` | Ordered records `{array, index, trait_id, keys}` for score/explanation objects; array/index identify occurrence without assuming trait order; known trait ID or null and observed key sequence or null |
+| `order_adherence` | `adherent`, `mismatch`, or `unknown`; independent of assessment validity |
+| `order_evidence` | `raw_output_text`, `raw_tokens`, `reassembled_stream`, or `unavailable`; identifies the evidence actually inspected |
+| `unknown_reason` | Nullable safe code: e.g. `not_applicable`, `not_returned`, `malformed_output`, `incomplete_evidence`, `sdk_object_only`, or `unsafe_key_names` |
+
+Compare observed sequences with the committed ordered output contract. For
+`together`, inspect each score object's category/explanation order as well as
+the root; a root containing only `scores` cannot establish that distinction.
+For separated layouts inspect root scores/explanations order and their observed
+member objects. Do not treat different trait-array ordering as nonadherence.
+Complete trusted sequence evidence matching the contract is `adherent`; a
+verifiable ordering difference is `mismatch`. Without sufficient emitted-order
+evidence use `unknown`, never infer adherence from requested schema order or
+reserialized provider objects. Refusal/no output, incomplete/unparseable evidence
+and unavailable original text can therefore be unknown while usage is known.
+
+Inspect the original output transiently before discarding it under minimal
+capture. Safe order metadata persists under both capture modes with the
+observation/receipt, survives reopening and replay, and does not require retained
+body bytes. Export only allowlisted contract key names and known trait IDs;
+unexpected model-generated names may themselves contain sensitive text. Use
+null for an unsafe sequence/ID, content-free unexpected-member counts, and
+`unknown`/`unsafe_key_names` where that prevents evaluation. Full original
+evidence remains separately subject to secret sanitization and retention policy.
+Do not reconstruct previously unavailable order later from a normalized result.
+
+The observation/receipt commitment includes this metadata before normalization;
+replay verifies the same identity/content and cannot insert a second copy. Example
+canonical provenance row (synthetic mismatch, no raw text or usage duplication):
+
+```json
+{"schema_version":1,"run_id":"run-001","request_uid":"request-001","attempt_id":"attempt-001","submission_id":"submission-001","observation_id":"observation-001","requested_order":"scores_first","observed_key_order":["explanations","scores"],"member_key_orders":[{"array":"explanations","index":0,"trait_id":"cohesion","keys":["trait_id","text"]},{"array":"explanations","index":1,"trait_id":"grammar","keys":["trait_id","text"]},{"array":"scores","index":0,"trait_id":"cohesion","keys":["trait_id","category_label"]},{"array":"scores","index":1,"trait_id":"grammar","keys":["trait_id","category_label"]}],"order_adherence":"mismatch","order_evidence":"raw_output_text","unknown_reason":null}
+```
+
+For SDK-object-only evidence the corresponding fields are
+`observed_key_order=null`, `member_key_orders=[]`, `order_adherence="unknown"`,
+`order_evidence="unavailable"`, `unknown_reason="sdk_object_only"`. An empty
+member list means no safely observed members, not a matching layout.
+
+An order mismatch is diagnostic: it does not automatically invalidate scores,
+alter normalized statuses, or authorize rescoring. A valid but differently
+ordered response cannot qualify the ordering feature. Preserve the original response-body/output-string bytes under
 authorized full capture; SDK object reserialization cannot establish exact wire
 order. Adapters must use a supported raw-response hook or mark wire evidence
 unavailable. For streams record the supported raw event stream and reassembled
@@ -251,9 +298,14 @@ Record the exact subset/dialect, unsupported keywords, enforcement versus local
 checks, SDK/API version and evidence scope. A native projection may omit a
 constraint the provider cannot express only when the same strict local check
 remains mandatory and the limitation is explicit; it cannot relax accepted
-assessment values. If the endpoint cannot represent required field types,
-category enums, or closed output fields, reject `native` and diagnose `auto`'s
-text choice. Relational completeness/uniqueness is always locally enforced.
+assessment values. If the endpoint cannot represent required field types
+or category enums through a safe tested projection, reject `native` and diagnose
+`auto`'s text choice. Native enforcement may cover structural types, required
+fields and category constraints while closure (`additionalProperties: false`),
+nonblank text, bounds or cross-entry relations remain explicit mandatory local
+checks where the interface cannot safely express them. Missing native closure
+alone does not make a provider incompatible. The full closed local contract is
+unchanged. Relational completeness/uniqueness is always locally enforced.
 Disjoint `oneOf` may translate to `anyOf`, `const` to single-value `enum`;
 unsupported bounds/nonblank constraints may be local-only. Never drop categories,
 truncate schemas/exemplars or change group membership to satisfy schema limits
@@ -264,8 +316,16 @@ Strict schemas require closed objects and all declared fields required; nested
 alternatives have subset limits. Official documentation describes schema key
 ordering, but a JudgmentLLM ordering claim still needs the exact tested endpoint,
 model and feature evidence. [OpenAI structured outputs](https://developers.openai.com/api/docs/guides/structured-outputs).
-Vertex native compatibility remains pending where closed fields cannot be
-expressed in the documented subset; use explicit text fallback until verified.
+Google's `response_schema` (`responseSchema`, SDK `Schema` transformation) and
+`response_json_schema` (`responseJsonSchema`, JSON Schema route) are distinct,
+mutually exclusive interfaces, not interchangeable schema dialects. The pinned
+SDK exposes `additionalProperties` in both, while the JSON Schema route also
+documents reference/alternative constraints and `oneOf` behaving as `anyOf`.
+The shorter structured-output guide's subset is not evidence that all Vertex
+interfaces lack closure. The [pinned-interface evidence](assessment-provider-evidence.md)
+records exact conversion paths, provider references and local-only constraints.
+Select a fixture-tested safe translation for the exact API version/model; no
+new mechanism is automatically enabled or live-qualified by this research.
 Other provider translations and ordering restrictions are in the
 [evidence register](assessment-provider-evidence.md); no cross-provider ordering
 guarantee is inferred.
@@ -279,7 +339,9 @@ instructions, neutral/native schemas and nonsecret body evidence for reproductio
 
 Offline fixtures must cover each supported subset, closed fields, per-trait
 categories, native/text selection and rejection, refusals/incomplete responses,
-ordered schema bytes and responses that reorder fields. Live qualification must
+ordered schema bytes and responses that reorder root/member fields. Persisted
+metadata must distinguish mismatches from unknown evidence under full/minimal
+capture, including SDK-object-only fixtures and observation replay. Live qualification must
 exercise actual native enforcement, not simply receive coincidentally valid JSON;
 record submitted mechanism/schema and supported constraints without overclaiming
 what a small positive test establishes.
@@ -430,8 +492,12 @@ results, exports or qualification records. No prefixes/suffixes/fingerprints,
 headers, private account names, project identities or credential file paths in
 status output. Permit only constant public source identifiers.
 
-For API keys, inspect presence without printing values; whitespace-only is
-missing. Do not strip/rewrite nonblank keys before SDK use; reject malformed
+Offline inspection may read **process environment variable values transiently**
+to establish presence, detect empty/whitespace-only values and apply documented
+source precedence. Those values stay in resolver memory only; never log, return,
+hash, fingerprint or persist them. This permitted environment inspection does
+not authorize credential-file reads, SDK authentication initialization, metadata
+requests or token refresh. For API keys, whitespace-only is missing. Do not strip/rewrite nonblank keys before SDK use; reject malformed
 whitespace-bearing keys safely rather than alter them. With multiple Gemini
 variables, ignore blank values and select the documented higher-precedence
 nonblank source; diagnostics and execution use the same selection and may
@@ -492,7 +558,9 @@ frozen strict `CredentialStatus`: `provider`, `auth_type`, nullable `source`,
 `status` (`configured/missing/unknown/not_required/unsupported`), nullable
 allowlisted `diagnostic_code`. Stable registration order; requested filtering
 preserves that order, rejects unknown IDs, and deduplicates repeated IDs.
-No SDK creation, refresh, metadata call, browser, daemon probe or credential read.
+Transient inspection of documented process environment values is permitted.
+No credential-file reads, SDK/authentication initialization, refresh, metadata
+call, browser or daemon probe is permitted.
 A known mechanism unavailable on this platform is unsupported; an installed SDK
 is not needed just to inspect a supported environment variable. Configured means
 only a plausible source was present, never valid/verified.
@@ -607,6 +675,17 @@ CSV uses documented null escaping (`\N`), nested JSON cells, and an R-compatible
 view using the established configurable NA marker/collision rejection. Numeric
 unknowns stay missing; IDs always import as character, including leading zeros.
 
+Canonical JSONL/CSV and R-compatible usage/provenance exports also publish an
+`observations` companion artifact containing `ProviderObservationMetadata`, even
+when usage counters are all null. `EvidenceManifest.observation_file` identifies
+that immutable artifact. Include requested order, observed root/member key
+sequences, adherence, evidence kind and unknown reason once per observation.
+CSV nested sequences use JSON cells, null uses the selected canonical/R missing
+marker, and IDs are character values in R. Join through the existing bridge;
+do not copy these call-level fields into each grouped trait result. Include this
+artifact in the same evidence cut and atomic publication as usage/audit/bridge
+files, so R can count mismatches/unknowns without re-reading provider bodies.
+
 Usage snapshots include all submissions, even without assessment rows; snapshots
 record evidence revision high-water marks alongside result snapshot identity.
 Reasoning export requires explicit request and returns only authorized retained
@@ -633,7 +712,10 @@ original/presented orientation and R `result` semantics unchanged.
 
 Required offline Python/CLI-to-R fixtures must verify many-traits-to-one-usage
 joins, retries and no-result failures, unknown fields, leading zeros, all layouts,
-explanations, probabilities, score kinds and omission semantics. Extend required
+explanations, probabilities, score kinds and omission semantics. Also verify
+requested/observed/adherence joins, unknown versus mismatch, together's nested
+key order, absence of unsafe key names under minimal capture, and one metadata
+row per observation across grouped traits and retries. Extend required
 R/jsonlite CI gates in M3; missing Rscript/jsonlite or failed assertions fails
 Ubuntu/Python 3.11 and all seven local lanes. The future `rubricLLM` wrapper passes
 these same configs and commands at run/group/file granularity, with no R auth or
@@ -645,7 +727,7 @@ assessment engine and no required HTTP server.
 |---|---|
 | Rubric | Three layouts, scores-only, independent/grouped, one call/group, different trait orders, missing/duplicate/unknown/malformed entries on either array, wrong categories/types/nulls, blank/missing explanations, whole validation versus salvage, atomic complete/invalid outcomes, no implicit rescore |
 | Prompts | Six exact rendered examples, zero exemplars and conditional sections, all supplied exemplars exactly once/in order, protected integrity, custom templates, limits fail without truncation, v1 preview/identity unchanged |
-| Schema | Neutral generator by trait/category/tie policy, supported subset translation, unsupported constraints and capability diagnostics, explicit fallback before commitment only, native/text prompt forms, requested/serialized/observed order, raw hook versus reserialization, refusal/truncation |
+| Schema | Neutral generator by trait/category/tie policy, supported subset translation, unsupported constraints and capability diagnostics, explicit fallback before commitment only, native/text prompt forms, requested/serialized/observed root and member order, durable per-observation adherence/unknown evidence, canonical/R provenance exports, raw hook versus reserialization, refusal/truncation |
 | Pairwise | Winner-only plus historical explicit false, tie true/null versus false/winner, unknown winner/fields, optional explanations, reversed presentation/repetitions/probabilities, unchanged normalization/R semantics |
 | Usage | One fact per submission, grouped nonduplication, partial/missing/cache/reasoning semantics, unsuccessful attempts/retries/uncertainty, receipt replay and immutable revisions, full/minimal retention, no hidden SDK retries |
 | Reasoning | Explanations versus exposed text versus raw evidence, effort separate from capture, summary/type fidelity, explicit full authorization, minimal incompatibility, unsolicited blocks redacted, null/availability behavior, no grouped duplication |
@@ -679,7 +761,9 @@ Review this design's deliberate choices together: explicit opt-in RunSpec v2;
 `structured_output=auto` as preflight fallback authorization; field-order mismatch
 as diagnostic; request-level usage with legacy result token fields left null for
 new adapters; capture setting as explicit reasoning authorization under full;
-initial Anthropic API-key-only resolver; conservative unknown ADC status.
+initial Anthropic API-key-only resolver; conservative unknown ADC status. The
+overall direction is approved; this documentation correction clarifies the
+Google interface evidence and durable ordering analysis without changing scope.
 These are concrete proposals for approval in this design PR, not implemented
 behavior or additional work authorized after it.
 
