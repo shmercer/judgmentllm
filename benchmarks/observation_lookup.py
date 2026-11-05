@@ -16,7 +16,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from provenance import host_identity, source_fingerprint
+from provenance import host_identity, runtime_identity, source_fingerprint
 
 QUERIES = {
     "baseline": "SELECT observation_id FROM observations WHERE run_id=? AND submission_id=? ORDER BY observation_id LIMIT 2",
@@ -152,6 +152,7 @@ def run(
     return {
         "recorded_at": datetime.now(UTC).isoformat(),
         "sqlite": sqlite3.sqlite_version,
+        "runtime_identity": runtime_identity(),
         "source_tree_sha256": source_fingerprint(source_root),
         "host_identity": host_identity(source_root),
         "tool_identity": file_identity(Path(__file__)),

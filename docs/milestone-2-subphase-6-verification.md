@@ -66,6 +66,35 @@ confirmed the run-wide scan. A reproducible read-only query experiment must
 precede any narrow correction. No schema, transaction, privacy, provider-evidence
 or source-integrity change is authorized by that observation alone.
 
+## Evidence-supported observation lookup correction
+
+The read-only experiment used the pilot's unchanged 20,000-observation database
+in the same Ubuntu/CPython 3.11.18/SQLite 3.53.1 environment. Eight fixed lookups
+per batch, one warm-up and five interleaved ordinary samples measured median
+batch wall time 0.157347670 seconds for the original query and 0.000056190
+seconds for the indexed-order candidate. Separate exact SQLite VM counters were
+100,015 versus 20 steps per lookup. Returned identities matched and the database
+SHA-256 remained `c97dd19004bd7d5e25b7502949b1ad12f6690724d8fd59e17c30fcd0a9426495`.
+These are query measurements, not an end-to-end execution speedup claim.
+
+The correction changes only the sole-observation lookup to order by
+`observation_key`, using the existing composite index. Zero rows still return
+no observation, one returns that same immutable observation, and two or more
+still raise a conflict. Schema/migration checksums, transactions, ownership,
+source/payload verification, evidence requirements and privacy are unchanged.
+
+A small production-getter regression first failed the original query: growing
+unrelated observations from five to fifty increased VM work from 47 to 262
+steps. It passes after the correction, alongside 184 persistence, execution,
+safety, process-recovery, grouped and lookup-tool cases. The ten-case full/minimal
+parity catalog against pinned a3 baseline
+`3ad90aca02c374efc7ecdd6870e8eb0ea709bcbd` passed exact prompt, wire, response,
+identity/history and export comparisons. Its comparison digest is
+`5d1429972af2c4107b94212773a45e5bdbd227824272ae997cf78c6d6d6b904d`.
+The pilot's 100,000 actual canonical/R rows also passed the separate R checker
+using R 4.6.2/jsonlite 2.0.0. Raw query counters/timings, red evidence, parity
+and R output remain outside Git under the external evidence root.
+
 ## Milestone-wide acceptance matrix
 
 | Subphase | Required acceptance evidence |

@@ -535,8 +535,10 @@ class Repository:
         self, run_id: str, submission_id: str
     ) -> ObservationRecord | None:
         """Read the sole single-response observation; reject conflicting evidence."""
+        # Match the existing (run_id, submission_id, observation_key) index.
+        # Order cannot affect a sole result; two rows still establish a conflict.
         rows = self.connection.execute(
-            "SELECT observation_id FROM observations WHERE run_id=? AND submission_id=? ORDER BY observation_id LIMIT 2",
+            "SELECT observation_id FROM observations WHERE run_id=? AND submission_id=? ORDER BY observation_key LIMIT 2",
             (run_id, submission_id),
         ).fetchall()
         if len(rows) > 1:
