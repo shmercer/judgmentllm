@@ -172,18 +172,6 @@ def admission_errors(
             or cast(dict[str, Any], python).get("implementation") != "CPython"
         ):
             errors.append(f"Summary {index + 1} lacks exact CPython verification")
-        try:
-            started_at = datetime.fromisoformat(str(item.get("started_at")))
-            finished_at = datetime.fromisoformat(str(item.get("finished_at")))
-            valid_timestamps = (
-                started_at.utcoffset() is not None
-                and finished_at.utcoffset() is not None
-                and started_at <= finished_at
-            )
-        except (TypeError, ValueError):
-            valid_timestamps = False
-        if not valid_timestamps:
-            errors.append(f"Summary {index + 1} has invalid or unordered timestamps")
         for field, expected in (
             ("commit", ref),
             ("mode", mode),

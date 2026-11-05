@@ -10,6 +10,7 @@ import signal
 import subprocess
 import sys
 import time
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -51,7 +52,7 @@ def summaries(platform: str = "windows", mode: str = "check") -> list[dict[str, 
 
 
 def admit(
-    items: list[dict[str, Any]], platform: str = "windows", mode: str = "check"
+    items: Sequence[object], platform: str = "windows", mode: str = "check"
 ) -> list[str]:
     return grid.admission_errors(
         items,
@@ -140,21 +141,38 @@ def test_linux_315_failure_or_missing_result_prevents_full_grid_qualification() 
     assert admit(items, "linux")
 
 
-@pytest.mark.parametrize(
-    "timestamp",
-    [
-        "2026-11-05T18:45:00+00:00",
-        "2026-11-05T18:30:00",
-        "invalid",
-        None,
-    ],
-)
-def test_admission_rejects_invalid_or_unordered_timestamps(
-    timestamp: str | None,
+@pytest.mark.parametrize("mode", ["prepare", "check"])
+def test_fresh_results_allow_guest_boot_clock_correction_without_admitting_stale_source(
+    tmp_path: Path,
+    mode: str,
 ) -> None:
-    items = summaries("linux")
-    items[-1]["started_at"] = timestamp
-    assert any("timestamps" in error for error in admit(items, "linux"))
+    # Windows can correct its clock by eight hours during VM boot. Wall-clock
+    # ordering cannot establish freshness; new paths and source identity do.
+    items = summaries("windows", mode)
+    for item in items:
+        item.update(
+            started_at="2026-11-06T02:50:20+00:00",
+            finished_at="2026-11-05T18:51:05+00:00",
+            duration_seconds=43.797,
+        )
+    for index, item in enumerate(items):
+        path = tmp_path / f"old-{index}/summary.json"
+        path.parent.mkdir()
+        path.write_text(json.dumps(item))
+    before = set(tmp_path.glob("*/summary.json"))
+    _, stale = grid.collect_fresh(tmp_path, "*/summary.json", before)
+    assert admit(stale, "windows", mode)
+    for index, item in enumerate(items):
+        path = tmp_path / f"new-{index}/summary.json"
+        path.parent.mkdir()
+        path.write_text(json.dumps(item))
+    paths, fresh = grid.collect_fresh(tmp_path, "*/summary.json", before)
+    assert len(paths) == 2 and not before.intersection(paths)
+    assert not admit(fresh, "windows", mode)
+    items[0]["commit"] = "d" * 40
+    (tmp_path / "new-0/summary.json").write_text(json.dumps(items[0]))
+    _, wrong_source = grid.collect_fresh(tmp_path, "*/summary.json", before)
+    assert admit(wrong_source, "windows", mode)
 
 
 @pytest.mark.parametrize("mutation", ["missing", "failed", "duplicate", "unexpected"])

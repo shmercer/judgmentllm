@@ -239,7 +239,10 @@ uv run --offline --no-sync pytest --no-cov ci/local
 `source.py` creates `git archive` plus a manifest containing the exact commit,
 archive SHA-256, lockfile SHA-256 and every tracked file's hash. Guests verify
 archive bytes before extraction and tracked source bytes before/after gates.
-Every output directory is fresh; existing runs are never replaced.
+Every output directory is fresh; existing runs are never replaced. Freshness
+uses newly created result paths and exact source commitments. VM clocks can
+step during startup, so wall-clock ordering does not determine admission;
+monotonic elapsed times remain the timing evidence.
 
 Machine-readable `summary.json` records Python/R/jsonlite/uv/OS versions,
 dependency versions, source/lock identities, commands, exit codes, test/coverage
