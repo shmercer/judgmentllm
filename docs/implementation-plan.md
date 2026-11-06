@@ -165,6 +165,17 @@ updates its tests and user documentation and passes applicable R acceptance.
    provider-specific `auth verify` only where documented suitable protected
    non-generative operations exist; unsupported mechanisms remain explicit.
    Unknown-model pass-through does not establish support.
+   **Vertex authentication follow-up (required for the Vertex adapter PR):**
+   support explicitly selected Google Cloud authorization API keys alongside
+   ADC wherever the exact Agent Platform/Vertex endpoint and SDK route qualify.
+   Keep Vertex credentials separate from Gemini Developer API keys; a user-held
+   `vertex` keyring entry does not make a credential available to JudgmentLLM.
+   Define a distinct Vertex key source and mode, with deliberate versioned
+   registry/status changes; never silently read Gemini's `GOOGLE_API_KEY` or
+   replace/fall back from ADC. Verify the pinned SDK constructor/transport,
+   supported endpoints, service-account binding, API restrictions, IAM and
+   sanitized failures with synthetic offline fixtures and explicitly authorized
+   live qualification. No key material in manifests, evidence, logs or exports.
 6. **Companion exports and R acceptance.** Add streaming immutable `usage export`
    and authorized `reasoning export`, corresponding shared Python services,
    canonical JSONL/CSV and R-compatible views, consistent result/evidence cuts

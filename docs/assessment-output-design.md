@@ -552,6 +552,21 @@ registration; fail closed without its key instead of invoking an undocumented
 fallback. Ollama cloud/remote authentication is outside ordinary local scope.
 ADC may be configured even when status is unknown; unknown never means invalid.
 
+**Planned Vertex authorization-key mode (not implemented in Phase 3).**
+Google Cloud also documents API-key authentication for selected Gemini Enterprise
+Agent Platform/Vertex operations, including service-account-bound authorization
+keys. The Vertex adapter must evaluate and, where the exact endpoint and SDK
+route are qualified, implement an **explicitly selected** API-key mode alongside
+ADC; neither mode silently substitutes for the other. Vertex keys must remain
+distinct from Gemini Developer `GOOGLE_API_KEY`/`GEMINI_API_KEY` credentials.
+A user-owned keyring entry named `vertex` does not itself register a source with
+JudgmentLLM. Define a separate public source/mode and compatible offline status
+contract before enabling this path; test SDK mode, endpoint, IAM/key restrictions,
+source isolation and error sanitization with synthetic fixtures and opt-in live
+qualification. The implemented Phase 3 `vertex` status remains
+`unknown`/`google_adc`, without API-key lookup. See the
+[provider evidence register](assessment-provider-evidence.md#planned-vertex-authorization-key-route).
+
 Authenticated transport headers/query keys are transient. Immutable request
 body evidence commits exact **nonsecret** generation/schema/prompt bytes, not an
 HTTP request including authentication. Remove auth-bearing URL/query/header

@@ -51,6 +51,33 @@ provider identity; fixture-test the selected SDK flag and endpoint explicitly,
 including preventing Developer API-key environment settings from selecting the
 wrong authentication mode. Do not rename public providers because docs moved.
 
+### Planned Vertex authorization-key route
+
+**Deferred to the Vertex adapter implementation; not supported by the Phase 3
+resolver.** Google documents both ADC (recommended for production) and API-key
+authentication for eligible Gemini Enterprise Agent Platform operations. A
+Google Cloud **authorization key** may be bound to a service account and scoped
+to the Agent Platform API (`aiplatform.googleapis.com`); it is not equivalent
+to a Gemini Developer key for `generativelanguage.googleapis.com`. Restriction
+and IAM configuration, applicable methods and endpoint/SDK behavior must be
+verified for the intended mode, not inferred from a key's presence.
+
+The future Vertex adapter must retain ADC and offer a distinct, explicitly
+selected API-key path where supported. Do not implicitly reuse
+`GOOGLE_API_KEY`/`GEMINI_API_KEY`, which Phase 3 reserves for the `gemini`
+provider. A GNOME Keyring `provider=vertex` entry may be used by an external
+launcher later, but JudgmentLLM does **not** currently read that entry or
+register any Vertex API-key environment source. Define and test a separate
+source/selection policy, shared resolver/status integration, pinned SDK
+constructor and endpoint selection, no-auth-fallback behavior, key restrictions,
+service-account/IAM authorization, and safe error/evidence boundaries before
+qualifying live requests. Keep standard offline tests credential-free.
+
+Official references:
+[Agent Platform quickstart: ADC or API key](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/start?usertype=apikey);
+[Google Cloud: standard versus authorization keys](https://docs.cloud.google.com/docs/authentication/api-keys);
+[Agent Platform: getting an authorization key](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/start/api-keys?usertype=standard).
+
 ## Feasibility of explicit live authentication verification
 
 These are candidate implementations for the separate, opt-in `auth verify`
