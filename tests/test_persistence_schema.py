@@ -216,7 +216,7 @@ def test_schema_verification_does_not_need_a_writer_lock(tmp_path: Path) -> None
         writer.rollback()
 
 
-@pytest.mark.parametrize("version", [-1, 2, 99])
+@pytest.mark.parametrize("version", [-1, SCHEMA_VERSION + 1, 99])
 def test_schema_rejects_unknown_versions(
     connection: sqlite3.Connection, version: int
 ) -> None:

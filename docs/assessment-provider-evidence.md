@@ -1,6 +1,6 @@
 # Milestone 3 provider evidence ledger
 
-**Documentation reviewed 2026-11-05; Phase 4A offline interfaces added 2026-11-06.
+**Documentation reviewed 2026-11-05; Phases 4A/4B use offline synthetic evidence.
 No provider request or live qualification.**
 This supports the normative [assessment output design](assessment-output-design.md).
 It records provider documentation, planned integration policy and remaining
@@ -14,9 +14,10 @@ OpenAI-specific evidence is recorded in the authoritative design.
 
 `judgmentllm.evidence` now implements version-1 strict evidence records and pure,
 deterministic extraction over explicitly supplied synthetic inputs. This is
-model/extractor implementation, not operational runtime evidence capture or
-provider qualification. No SDK client, authentication resolution or provider call
-is involved. The existing mock protocol and execution path remain unchanged.
+model/extractor implementation. Phase 4B integrates these records into durable
+synthetic execution without establishing real-provider qualification. No SDK
+client, authentication resolution or provider call is involved. Existing mock
+protocol bytes remain unchanged.
 
 Usage interpretation is deliberately limited to typed, allowlisted source fields.
 `openai.chat.usage` maps Chat prompt/completion/total counters; cached prompt and
@@ -37,8 +38,8 @@ they do not retain text or send effort/exposure controls. Scoped descriptors kee
 documentation/fixture provenance separate from independent live qualification.
 See the [exact public API](python-api.md#standalone-evidence-phase-4a-implemented).
 
-Phase 4B must integrate receipt-safe retention/redaction and revisions. Phase 4C
-must translate native schemas and resolve actual transport support. Phase 5 adds
+Phase 4B integrates receipt-safe retention/redaction and append-only revisions
+through the existing execution service. Phase 4C must translate native schemas and resolve actual transport support. Phase 5 adds
 real generative adapters, including the Vertex authorization-key follow-up below;
 Phase 6 adds companion exports/R joins; Phase 7 adds explicitly authorized live
 qualification. The documentation-only SDK converter probe below remains design
@@ -268,3 +269,21 @@ stream snapshots of one call are not separate usage charges. Verify actual
 Python-generated exports in R with leading-zero IDs and request/attempt joins.
 Documentation research establishes candidate capabilities only; all real
 adapters remain unimplemented and unqualified on this design branch.
+
+## Phase 4B implementation boundary
+
+Durable integration uses offline synthetic fixtures through the existing execution,
+receipt, repository and recovery layers. New internal schema 2 stores retain safe
+submission usage, append-only revisions and observation order/reasoning metadata.
+Historical schema 1 is not migrated. Capture filtering precedes retained bytes;
+ordinary execution grants no reasoning retention. Exact emitted assessment text
+is distinct from a transport envelope or parsed dictionary. Companion evidence
+receipts are independently versioned and verify immutable execution relationships.
+
+Complete Anthropic cache-write subdivisions cannot exceed a reported parent in
+combination. Synthetic reported costs require mock provider identities and cannot
+be represented as actual provider billing. No pricing table or live-provider
+capture is implemented. Native translation, adapter construction/model access,
+companion exports and live qualification remain deferred. The Vertex
+[authorization-key requirement](#planned-vertex-authorization-key-route) remains
+mandatory for the later adapter work.

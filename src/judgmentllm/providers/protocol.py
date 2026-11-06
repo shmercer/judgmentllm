@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Literal, Protocol
+from collections.abc import Mapping
+from typing import Any, Literal, Protocol, Self
 
-from pydantic import JsonValue, field_validator, model_validator
+from pydantic import Field, JsonValue, field_validator, model_validator
 
 from judgmentllm.config import GenerationSpec, RunSpecification
+from judgmentllm.evidence._base import EvidenceModel
+from judgmentllm.evidence.usage import ReportedUsageInput
 from judgmentllm.models import ID
 from judgmentllm.output_commitments import OutputCommitmentV2
 from judgmentllm.persistence.hashing import bytes_digest
@@ -14,6 +17,7 @@ from judgmentllm.persistence.models import SHA256, ExecutionModel
 from judgmentllm.planning import CapabilityProfile
 from judgmentllm.preparation.session import RequestDependency
 from judgmentllm.prompts import RenderedAssessmentPrompt
+from judgmentllm.providers.evidence import ProviderEvidence
 from judgmentllm.results import CategoryProbability
 
 
@@ -22,7 +26,22 @@ class ProviderError(RuntimeError):
 
 
 class TransportNotSubmitted(ProviderError):
-    """An invoked call conclusively did not reach acceptance."""
+    """An invoked call conclusively did not reach acceptance.
+
+    Optional usage is an explicit reported invocation fact, not proof of billing
+    or acceptance. It never creates an observation or authorizes another call.
+    """
+
+    def __init__(
+        self,
+        message: str = "transport conclusively did not submit",
+        *,
+        usage: ReportedUsageInput | None = None,
+    ):
+        super().__init__(message)
+        self.usage = (
+            ReportedUsageInput.model_validate(usage) if usage is not None else None
+        )
 
 
 class TransientNotSubmitted(TransportNotSubmitted):
@@ -33,8 +52,9 @@ class TransientNotSubmitted(TransportNotSubmitted):
         message: str = "transient authoritative nonacceptance",
         *,
         retry_after: float | None = None,
+        usage: ReportedUsageInput | None = None,
     ):
-        super().__init__(message)
+        super().__init__(message, usage=usage)
         if retry_after is not None and (
             type(retry_after) not in (int, float) or not 0 <= retry_after < float("inf")
         ):
@@ -108,12 +128,22 @@ class ReconciliationEvidence(ExecutionModel):
     observation_key: ID | None = None
 
 
-class ProviderResponse(ExecutionModel):
+class ProviderResponse(EvidenceModel):
     """Exact received bytes; only full capture may retain them."""
 
     observation_key: ID
     kind: Literal["response", "refusal", "provider_error", "confirmed_cancellation"]
-    raw: bytes
+    raw: bytes = Field(exclude=True, repr=False)
+    evidence: ProviderEvidence | None = Field(default=None, exclude=True, repr=False)
+
+    def model_copy(
+        self, *, update: Mapping[str, Any] | None = None, deep: bool = False
+    ) -> Self:
+        # Preserve excluded transient bytes while validating the complete copy.
+        values = dict(self)
+        if update is not None:
+            values.update(update)
+        return type(self).model_validate(values)
 
 
 class ParsedResponse(ExecutionModel):

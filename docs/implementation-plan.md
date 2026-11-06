@@ -158,7 +158,7 @@ updates its tests and user documentation and passes applicable R acceptance.
      No provider/SDK calls, evidence persistence, RunSpec activation, new export,
      native translation or execution/protocol change is included. Existing R
      exports and all seven strict gates remain unchanged and mandatory.
-   - **4B, deferred: durable evidence integration.** Bind usage/order/reasoning to
+   - **4B, durable evidence integration.** Bind usage/order/reasoning to
      existing physical submission/observation identities before normalization;
      filter unauthorized reasoning before capture; extend receipts/recovery and
      append-only evidence revisions deliberately with genuine old-store tests.
@@ -329,3 +329,13 @@ Apply stage-specific questions where relevant; the required baseline for the est
 - Are IDs, ordering, scores, probabilities, attempts, and provenance preserved?
 - Does the required R interoperability CI check pass?
 - Are any new R interoperability requirements or limitations documented?
+
+### Phase 4B acceptance evidence
+
+Durable integration adds schema-2 evidence storage and separate version-1 receipts
+without migrating historical stores or changing assessment/R exports. Execution
+and recovery tests must pass before implementation acceptance, followed by all
+seven exact-head local configurations, 49 R gates, 70 resource measurements,
+primary branch coverage ≥90% and five hosted jobs. Qualification records remain
+outside Dropbox and identify the exact commit; no live requests/authentication
+operations are part of these gates. Phase 4C and later work remain deferred.

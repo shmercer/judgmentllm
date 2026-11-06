@@ -1,6 +1,6 @@
 # JudgmentLLM
 
-**Milestone 3, Phase 4A — standalone evidence contracts and offline extraction alongside versioned mock execution. Development version 0.1.0a3.**
+**Milestone 3, Phase 4B — durable provider evidence integration with offline synthetic execution. Development version 0.1.0a3; exact-head qualification is recorded separately.**
 
 Milestone 2 adds an [internal preparation foundation](docs/persistence-contracts.md)
 for SQLite state, immutable source snapshots, indexed input access, complete run
@@ -39,10 +39,13 @@ All bundled inputs are synthetic. Preview makes no network requests and needs no
 
 `judgmentllm.evidence` provides strict version-1 contracts and pure offline
 services for reported usage, observable JSON property order, reasoning retention
-authorization and scoped provenance. These services do not yet attach evidence
-to execution, write sidecars or call providers. See the
-[Python API](docs/python-api.md#standalone-evidence-phase-4a-implemented) for exact
-interfaces and the separate durable-integration/native-transport boundaries.
+authorization and scoped provenance. Phase 4B attaches safe evidence to physical
+submissions and observations through immutable companion receipts and registry
+schema 2. Full and minimal capture retain safe metadata; reasoning text requires
+an explicit immutable synthetic-fixture grant. Existing result and R exports
+remain unchanged. See the [Python API](docs/python-api.md#internal-durable-evidence-inspection-phase-4b)
+for internal inspection and compatibility. Real providers, native transport,
+companion exports and live qualification remain deferred.
 
 ## Offline credential status
 

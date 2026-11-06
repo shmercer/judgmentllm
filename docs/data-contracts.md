@@ -169,7 +169,7 @@ with no fabricated expected score, probability distribution or modal category.
 Phase 2 binds this contract-aware boundary to explicit RunSpec v2, shared
 rendering/preview and immutable schema/request commitments before mock
 submission. V1 retains its original behavior. Real provider adapters/translation
-and usage/reasoning/order-evidence persistence remain later deliverables.
+remain later deliverables. Phase 4B now persists safe usage/reasoning/order evidence through separate companion receipts.
 
 ## Run configuration
 
@@ -464,3 +464,25 @@ documented in the [Python API](python-api.md#credential-diagnostics-phase-3-impl
 The CLI uses the existing version-1 control envelope. No RunSpec v1/v2, result,
 manifest, database or export schema changes accompany authentication diagnostics;
 no credential values or status snapshots enter those contracts.
+
+## Durable provider evidence (Phase 4B)
+
+Normalized result schema 1, RunSpec v1/v2, mock wire v1/v2, canonical/R columns
+and CLI envelope 1 are unchanged. New internal stores use registry schema 2;
+historical schema 1 is verified without migration/backfill and has unavailable
+companion evidence. Usage is once per physical submission, order/reasoning once
+per observation, joined through existing attempt/request/submission identities.
+No token counts or reasoning blocks are added to assessment rows.
+
+Separate evidence receipts version 1 bind immutable execution identities, payload,
+acknowledgment/response commitments and capture/authorization policy. Append-only
+usage revisions have explicit source/version and stable sequence high-water
+selection; corrections replace selection, never add charges. Safe order metadata
+survives minimal capture. Reasoning retention defaults to none and filtering
+precedes body retention; positive synthetic fixture grants are separately sealed.
+See [persistence contracts](persistence-contracts.md#phase-4b-durable-evidence-integration).
+
+Complete reported Anthropic 5-minute/1-hour cache-write subdivisions cannot sum
+to more than their reported parent. Partial subdivisions and absent parents stay
+valid unknown/partial facts; equality and missing totals are never manufactured.
+`synthetic.reported_cost` cannot accompany a real-provider usage identity.

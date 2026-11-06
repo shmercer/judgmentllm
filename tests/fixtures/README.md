@@ -60,3 +60,17 @@ metadata, so it produces new expected hashes. Regeneration is deliberate and
 reviewable; routine CI consumes the committed archive without fetching history,
 building an older wheel or changing its bytes. Large compatibility matrices,
 databases and profiler/export artifacts remain outside the repository.
+
+## Phase 4B synthetic evidence
+
+`tests/durable_evidence_fixture.py` supplies an optional typed provider boundary
+through the actual mock lifecycle without changing either mock wire protocol.
+Its exact emitted assessment substrings establish order; parsed dictionaries do
+not. Test-only reasoning and fake authentication envelopes are filtered before
+executor persistence. Positive retention requires an immutable synthetic-only
+grant. Companion/revision receipts, interruption/reopening, canary scans and
+historical schema-1 compatibility are covered in `test_durable_evidence_lifecycle`,
+`test_evidence_failure_retry`, `test_evidence_persistence` and
+`test_provider_evidence_boundary`. Never add real credentials or live SDK calls.
+Use scratch/build/qualification paths outside synchronized folders. Keep all seven
+strict R gates, assessment columns and historical retained fixtures unchanged.

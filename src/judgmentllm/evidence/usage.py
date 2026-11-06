@@ -278,6 +278,22 @@ class ReportedUsageInput(_UsageSemantics):
                 parent = getattr(self, row.related_counter)
                 if parent is not None and row.value > parent:
                     raise ValueError("usage component exceeds its reported parent")
+        if self.usage_source == "anthropic.messages.usage":
+            subdivisions = {
+                row.field: row.value
+                for row in self.breakdown
+                if row.field
+                in (
+                    "cache_creation.ephemeral_5m_input_tokens",
+                    "cache_creation.ephemeral_1h_input_tokens",
+                )
+            }
+            if (
+                len(subdivisions) == 2
+                and self.cache_write_tokens is not None
+                and sum(subdivisions.values()) > self.cache_write_tokens
+            ):
+                raise ValueError("usage subdivisions exceed their reported parent")
         if self.usage_source == "unknown" and self.breakdown:
             raise ValueError(
                 "unknown usage source cannot establish breakdown semantics"
@@ -296,6 +312,8 @@ class ProviderUsage(EvidenceIdentity, UsageContext, ReportedUsageInput):
 
     @model_validator(mode="after")
     def provider_source(self) -> ProviderUsage:
+        if self.reported_cost is not None and self.provider != "mock":
+            raise ValueError("synthetic reported cost requires a synthetic provider")
         if self.usage_source == "openai.chat.usage" and (
             self.provider,
             self.endpoint,

@@ -142,6 +142,8 @@ async def execute_run(
                             await responses.put((work, saved))
                             result_high = max(result_high, responses.qsize())
                             continue
+                        if await call(session.has_results, work):
+                            continue
                         acknowledgment = await call(session.saved_acknowledgment, work)
                         if acknowledgment is None:
                             evidence = await adapter.reconcile(
@@ -185,9 +187,12 @@ async def execute_run(
                         invoked=True,
                         transient=True,
                         retry_after=exc.retry_after,
+                        usage=exc.usage,
                     )
-                except TransportNotSubmitted:
-                    await call(session.not_submitted, work, invoked=True)
+                except TransportNotSubmitted as exc:
+                    await call(
+                        session.not_submitted, work, invoked=True, usage=exc.usage
+                    )
                 except (SubmissionUncertain, RetrievalUnavailable, TimeoutError):
                     await call(session.uncertain, work)
             await responses.put(None)

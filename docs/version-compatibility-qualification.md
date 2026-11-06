@@ -128,3 +128,12 @@ The historical Subphase 6 boundary qualified six local configurations. Current
 publication independently requires the seven-configuration local grid and the
 exact-head hosted matrix in [local CI](local-ci.md); retain the historical
 six-lane evidence without treating it as the current publication matrix.
+
+## Phase 4B registry revision
+
+The consumer additionally creates internal registry schema 2 for new stores.
+Genuine retained schema-1 alpha2/alpha3 stores remain verified in place with their
+original checksums, source artifacts and receipts. Legacy execution/resume/retry
+and exports remain supported without evidence backfill. Internal companion
+readers report unavailable rather than zero usage or verified order. Evidence
+writes to schema 1 are rejected safely; there is no implicit migration command.
