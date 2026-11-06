@@ -97,3 +97,10 @@ reasoning text are excluded from model dumps and representations; validation err
 remain content-free. Original-body hashes are recorded only when the adapter has
 established that authentication-bearing material is excluded. Reasoning block
 source hashes are omitted for unauthorized text.
+
+Compiled field validators are reused through a bounded cache keyed only by the
+declared evidence model class and field name. Inputs, responses, reasoning text,
+authorization decisions and validated records are never cached. Every payload
+still passes strict field validation, full cross-field checks and safe error
+sanitization. This removes repeated schema compilation without relaxing capture
+policy, persistence verification or interoperability deadlines.
