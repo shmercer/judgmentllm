@@ -11,9 +11,6 @@ from uuid import uuid4
 
 import pytest
 from test_auth_cli import KEY_NAMES, exclude_secrets, private_failure
-from typer.testing import CliRunner
-
-from judgmentllm.cli import app
 
 # The child installs admission guards before its first JudgmentLLM import.
 # Secret material arrives through a pipe and is never written to a fixture file.
@@ -181,25 +178,49 @@ def test_fresh_import_and_extraction_forbid_sdks_network_and_writes(
 @private_failure
 def test_existing_cli_stderr_warnings_and_files_exclude_synthetic_keys(
     tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     __tracebackhide__ = True
     secret = "synthetic-private-" + uuid4().hex
-    for variable in (*KEY_NAMES, "GOOGLE_APPLICATION_CREDENTIALS"):
-        monkeypatch.delenv(variable, raising=False)
+    environment = {
+        key: value
+        for key, value in os.environ.items()
+        if key not in {*KEY_NAMES, "GOOGLE_APPLICATION_CREDENTIALS"}
+    }
     # Whitespace makes this an unusable key. The existing required-provider
     # failure path must display only its fixed safe diagnostics.
-    monkeypatch.setenv("OPENAI_API_KEY", secret + " " + secret)
-    monkeypatch.setenv("JUDGMENTLLM_RUN_HOME", str(tmp_path / "unused-store"))
-    monkeypatch.chdir(tmp_path)
+    environment["OPENAI_API_KEY"] = secret + " " + secret
+    environment["JUDGMENTLLM_RUN_HOME"] = str(tmp_path / "unused-store")
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    environment["PYTHONWARNINGS"] = "error"
+    installed = Path(sys.executable).with_name(
+        "judgmentllm.exe" if os.name == "nt" else "judgmentllm"
+    )
+    assert installed.is_file()
     before = snapshot(tmp_path)
     with warnings.catch_warnings(record=True) as emitted:
-        result = CliRunner().invoke(
-            app, ["auth", "status", "--json", "--require", "openai"]
+        # A fresh interpreter prevents pending finalizers or global Click/Typer
+        # state from unrelated collected tests from entering this privacy check.
+        # Warnings are errors in the actual CLI process as well as inspected in
+        # this parent; stdout and stderr remain separate real process streams.
+        result = subprocess.run(
+            [
+                str(installed),
+                "auth",
+                "status",
+                "--json",
+                "--require",
+                "openai",
+            ],
+            text=True,
+            capture_output=True,
+            cwd=tmp_path,
+            env=environment,
+            timeout=30,
+            check=False,
         )
     exclude_secrets(result.stdout + result.stderr + caplog.text, (secret,))
-    assert result.exit_code == 2
+    assert result.returncode == 2
     assert not emitted
     assert snapshot(tmp_path) == before
     for name, content in snapshot(tmp_path).items():

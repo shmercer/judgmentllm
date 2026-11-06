@@ -9,7 +9,7 @@ from typing import Any
 from uuid import uuid4
 
 import pytest
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 
 from judgmentllm.evidence._base import EvidenceIdentity
 from judgmentllm.evidence.usage import (
@@ -444,3 +444,39 @@ def test_usage_timing_and_model_provenance_round_trip() -> None:
     assert ProviderUsage.model_validate_json(record.model_dump_json()) == record
     assert record.reported_model == "reported-synthetic-model"
     assert record.requested_model == "synthetic-model"
+
+
+def test_cross_field_validation_errors_are_content_free() -> None:
+    __tracebackhide__ = True
+    secret = f"synthetic-cross-field-{uuid4().hex}"
+    try:
+        supplied: dict[str, Any] = {
+            **identity().model_dump(),
+            **context().model_dump(),
+            "requested_model": secret,
+            "endpoint": "responses",
+            "usage_source": "openai.chat.usage",
+        }
+        for operation in (
+            lambda: ProviderUsage.model_validate(supplied),
+            lambda: ProviderUsage(**supplied),
+            lambda: TypeAdapter(ProviderUsage).validate_python(supplied),
+            lambda: ProviderUsage.model_validate_json(json.dumps(supplied)),
+        ):
+            try:
+                operation()
+            except ValidationError as error:
+                if any(
+                    secret in surface
+                    for surface in (
+                        str(error),
+                        repr(error),
+                        str(error.errors()),
+                        error.json(),
+                    )
+                ):
+                    raise RuntimeError("unsafe cross-field error") from None
+            else:
+                raise RuntimeError("invalid cross-field record accepted")
+    except Exception:
+        pytest.fail("Synthetic cross-field privacy check failed.", pytrace=False)

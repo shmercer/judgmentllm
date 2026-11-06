@@ -7,7 +7,9 @@ from collections.abc import Mapping
 from typing import Any, Literal, Self, cast
 
 from pydantic import (
+    BaseModel,
     ConfigDict,
+    GetCoreSchemaHandler,
     ModelWrapValidatorHandler,
     TypeAdapter,
     ValidationError,
@@ -15,7 +17,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
-from pydantic_core import PydanticCustomError
+from pydantic_core import CoreSchema, PydanticCustomError, core_schema
 
 from judgmentllm.models import ID, StrictModel
 
@@ -31,6 +33,22 @@ class EvidenceModel(StrictModel):
         frozen=True, hide_input_in_errors=True, revalidate_instances="always"
     )
     schema_version: Literal[1] = 1
+
+    @classmethod
+    def __get_pydantic_core_schema__(
+        cls, source: type[BaseModel], handler: GetCoreSchemaHandler, /
+    ) -> CoreSchema:
+        # Inherited model validators can sit inside a subclass's after validator.
+        # Guard the complete schema so cross-field failures are sanitized too,
+        # including direct constructors and TypeAdapter validation.
+        def safe(value: Any, validate: core_schema.ValidatorFunctionWrapHandler) -> Any:
+            try:
+                return validate(value)
+            except Exception:
+                pass
+            raise _invalid_evidence() from None
+
+        return core_schema.no_info_wrap_validator_function(safe, handler(source))
 
     @field_validator("schema_version", mode="before")
     @classmethod
