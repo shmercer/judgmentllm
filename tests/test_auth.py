@@ -7,9 +7,11 @@ import copy
 import json
 import os
 import pickle
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from dataclasses import FrozenInstanceError
-from typing import Any
+from functools import wraps
+from typing import Any, ParamSpec, TypeVar
+from uuid import uuid4
 
 import pytest
 from pydantic import TypeAdapter, ValidationError
@@ -23,6 +25,29 @@ from judgmentllm._auth import (  # pyright: ignore[reportPrivateUsage]
     _select_providers,
 )
 from judgmentllm.auth import CredentialStatus, credential_status
+
+_P = ParamSpec("_P")
+_T = TypeVar("_T")
+
+
+def _private_failure(function: Callable[_P, _T]) -> Callable[_P, _T]:
+    """A broken policy test must not expose credential-bearing traceback locals."""
+
+    @wraps(function)
+    def wrapped(*args: _P.args, **kwargs: _P.kwargs) -> _T:
+        __tracebackhide__ = True
+        try:
+            return function(*args, **kwargs)
+        except (Exception, pytest.fail.Exception):
+            pass
+        pytest.fail("Synthetic authentication policy check failed.", pytrace=False)
+
+    return wrapped
+
+
+def _synthetic_material() -> str:
+    return f"synthetic-{uuid4().hex}-α-🙂"
+
 
 PROVIDERS = (
     "openai",
@@ -52,15 +77,19 @@ def synthetic_environment(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
 
 def same_material(left: str, right: str) -> None:
     # Do not put secret-bearing operands into pytest assertion introspection.
+    __tracebackhide__ = True
     if left != right:
-        pytest.fail("Selected synthetic credential changed.")
+        pytest.fail("Selected synthetic credential changed.", pytrace=False)
 
 
 def assert_safe(value: object, material: str) -> None:
+    __tracebackhide__ = True
     leaked = material in str(value)
-    assert not leaked, "Synthetic credential leaked."
+    if leaked:
+        pytest.fail("Synthetic credential leaked.", pytrace=False)
 
 
+@_private_failure
 def test_registry_contract_and_registration_independence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -109,6 +138,7 @@ def test_registry_contract_and_registration_independence(
     assert judgmentllm.credential_status is credential_status
 
 
+@_private_failure
 def test_selection_order_duplicates_and_empty_no_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -157,6 +187,7 @@ def test_selection_order_duplicates_and_empty_no_environment(
         "set",
     ],
 )
+@_private_failure
 def test_invalid_selection_is_safe(selection: Any) -> None:
     with pytest.raises(ValueError, match="registered lowercase"):
         credential_status(providers=selection)
@@ -192,18 +223,19 @@ def test_invalid_selection_is_safe(selection: Any) -> None:
         "surrogate",
     ],
 )
+@_private_failure
 def test_api_key_policy_and_private_resolver_parity(
     source: str,
     provider: str,
     kind: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    material = "synthetic-preserved-key-α-🙂"
+    material = _synthetic_material()
     values = {
         "empty": "",
         "whitespace": " \t\n\u2003",
         "configured": material,
-        "unicode": "秘密-κλειδί-🙂",
+        "unicode": f"秘密-{uuid4().hex}-κλειδί-🙂",
         "leading": " " + material,
         "trailing": material + " ",
         "embedded": material + " space",
@@ -266,8 +298,9 @@ def test_api_key_policy_and_private_resolver_parity(
         "malformed_shadowed",
     ],
 )
+@_private_failure
 def test_gemini_precedence(case: str, monkeypatch: pytest.MonkeyPatch) -> None:
-    google, gemini = "synthetic-google-α", "synthetic-gemini-β"
+    google, gemini = _synthetic_material(), _synthetic_material()
     if case in {"google", "both", "identical", "malformed_shadowed"}:
         monkeypatch.setenv("GOOGLE_API_KEY", google)
     if case in {
@@ -308,11 +341,12 @@ def test_gemini_precedence(case: str, monkeypatch: pytest.MonkeyPatch) -> None:
         )
 
 
+@_private_failure
 def test_multiple_sources_do_not_mutate_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    for index, source in enumerate(ENV_SOURCES):
-        monkeypatch.setenv(source, f"synthetic-source-{index}")
+    for source in ENV_SOURCES:
+        monkeypatch.setenv(source, _synthetic_material())
     before = dict(os.environ)
     statuses = credential_status()
     assert tuple(status.status for status in statuses) == (
@@ -328,6 +362,7 @@ def test_multiple_sources_do_not_mutate_environment(
     assert unchanged, "Credential inspection mutated the environment."
 
 
+@_private_failure
 def test_non_api_markers_do_not_inspect_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -350,6 +385,7 @@ def test_non_api_markers_do_not_inspect_environment(
             marker._api_key()
 
 
+@_private_failure
 def test_unsupported_context_is_distinct_from_missing_sdk() -> None:
     status = _inspect_credentials("ollama", endpoint_scope="remote_api")
     assert status.status == "unsupported"
@@ -360,8 +396,9 @@ def test_unsupported_context_is_distinct_from_missing_sdk() -> None:
     assert credential_status(providers=("ollama",))[0].status == "not_required"
 
 
+@_private_failure
 def test_environment_exception_is_not_exposed(monkeypatch: pytest.MonkeyPatch) -> None:
-    material = "synthetic-accessor-exception-sentinel"
+    material = _synthetic_material()
 
     def failed(*args: object, **kwargs: object) -> str:
         raise RuntimeError(material)
@@ -378,10 +415,11 @@ def test_environment_exception_is_not_exposed(monkeypatch: pytest.MonkeyPatch) -
     assert_safe(status.model_dump_json(), material)
 
 
+@_private_failure
 def test_private_material_cannot_serialize_or_repr(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    material = "synthetic-wrapper-sentinel-α"
+    material = _synthetic_material()
     monkeypatch.setenv("OPENAI_API_KEY", material)
     resolved = _resolve_credentials("openai")
     same_material(resolved._api_key(), material)
@@ -394,6 +432,7 @@ def test_private_material_cannot_serialize_or_repr(
         assert_safe(error.value, material)
 
 
+@_private_failure
 def test_public_status_is_frozen_strict_and_safe_on_invalid_inputs() -> None:
     valid = credential_status(providers=("openai",))[0]
     assert valid.model_copy() == valid
@@ -401,7 +440,7 @@ def test_public_status_is_frozen_strict_and_safe_on_invalid_inputs() -> None:
     assert CredentialStatus.model_validate_json(valid.model_dump_json()) == valid
     with pytest.raises(ValidationError):
         valid.status = "configured"  # type: ignore[misc]
-    material = "synthetic-public-input-sentinel-α"
+    material = _synthetic_material()
     invalid_documents: list[dict[str, Any]] = []
     for field in (
         "provider",
@@ -464,6 +503,7 @@ def test_public_status_is_frozen_strict_and_safe_on_invalid_inputs() -> None:
 
 
 @pytest.mark.parametrize("provider", ["vertex", "ollama"])
+@_private_failure
 def test_public_non_api_status_rejects_unsupported(provider: str) -> None:
     status = credential_status(providers=(provider,))[0]
     data = status.model_dump()
@@ -476,6 +516,7 @@ def test_public_non_api_status_rejects_unsupported(provider: str) -> None:
         CredentialStatus.model_validate(data)
 
 
+@_private_failure
 def test_public_api_key_unsupported_state_is_allowlisted() -> None:
     data = credential_status(providers=("openai",))[0].model_dump()
     data.update(
@@ -484,8 +525,9 @@ def test_public_api_key_unsupported_state_is_allowlisted() -> None:
     assert CredentialStatus.model_validate(data).status == "unsupported"
 
 
+@_private_failure
 def test_all_model_owned_validation_paths_exclude_untrusted_input() -> None:
-    material = "synthetic-json-input-sentinel-α"
+    material = _synthetic_material()
     data = credential_status(providers=("openai",))[0].model_dump()
     data["source"] = material
     adapter = TypeAdapter(CredentialStatus)
@@ -513,6 +555,7 @@ def test_all_model_owned_validation_paths_exclude_untrusted_input() -> None:
         assert all("ctx" not in entry for entry in error.value.errors())
 
 
+@_private_failure
 def test_status_only_reads_registered_api_environment_names(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -528,9 +571,10 @@ def test_status_only_reads_registered_api_environment_names(
 
 
 @pytest.mark.parametrize("extra", ["allow", "ignore"])
+@_private_failure
 def test_model_configuration_overrides_cannot_admit_unknown_fields(extra: Any) -> None:
     data = credential_status(providers=("openai",))[0].model_dump()
-    material = "synthetic-extra-input-sentinel"
+    material = _synthetic_material()
     data["unknown"] = material
     with pytest.raises(ValidationError) as error:
         CredentialStatus.model_validate(data, extra=extra)
@@ -539,8 +583,9 @@ def test_model_configuration_overrides_cannot_admit_unknown_fields(extra: Any) -
 
 
 @pytest.mark.parametrize("operation", ["raw", "file", "copy"])
+@_private_failure
 def test_deprecated_unsafe_parsers_and_copy_are_rejected(operation: str) -> None:
-    material = "synthetic-deprecated-parser-sentinel"
+    material = _synthetic_material()
     valid = credential_status(providers=("openai",))[0]
     with pytest.raises(ValueError) as error:
         if operation == "raw":

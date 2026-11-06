@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import warnings
+from collections.abc import Callable
+from functools import wraps
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, ParamSpec, TypeVar, cast
 
 import pytest
 import typer
@@ -33,10 +35,38 @@ KEY_NAMES = (
     "TYPESAFE_API_KEY",
 )
 runner = CliRunner()
+_Parameters = ParamSpec("_Parameters")
+_Return = TypeVar("_Return")
+
+
+def private_failure(
+    operation: Callable[_Parameters, _Return],
+) -> Callable[_Parameters, _Return]:
+    """Keep nested parser/process errors and credential locals out of reports."""
+
+    @wraps(operation)
+    def guarded(*args: _Parameters.args, **kwargs: _Parameters.kwargs) -> _Return:
+        __tracebackhide__ = True
+        try:
+            # Raw warnings can otherwise bypass fixed failures through pytest's
+            # warning summary. Auth commands translate expected warnings safely.
+            with warnings.catch_warnings(record=True) as observed:
+                result = operation(*args, **kwargs)
+            if not observed:
+                return result
+        except (Exception, pytest.fail.Exception):
+            pass
+        pytest.fail(
+            "Offline authentication CLI check failed; private details suppressed.",
+            pytrace=False,
+        )
+
+    return guarded
 
 
 def exclude_secrets(text: str, values: tuple[str, ...]) -> None:
     """Fail with fixed text, never pytest's secret-bearing expression details."""
+    __tracebackhide__ = True
     fragments = tuple(
         part for value in values for part in (value, value[:12], value[-12:])
     )
@@ -55,6 +85,7 @@ def isolated_auth_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -
 
 
 def control(arguments: list[str], code: int = 0) -> tuple[dict[str, Any], str]:
+    __tracebackhide__ = True
     result = runner.invoke(
         cli.app,
         ["auth", *arguments, *([] if "--json" in arguments else ["--json"])],
@@ -91,6 +122,7 @@ def control(arguments: list[str], code: int = 0) -> tuple[dict[str, Any], str]:
 
 
 def report(envelope: dict[str, Any]) -> dict[str, Any]:
+    __tracebackhide__ = True
     assert envelope["command"] == "auth status"
     data = cast(dict[str, Any], envelope["data"])
     assert set(data) == {"providers", "required_providers", "requirements_met"}
@@ -106,6 +138,7 @@ def report(envelope: dict[str, Any]) -> dict[str, Any]:
     return data
 
 
+@private_failure
 def test_plain_status_table_has_every_provider_without_creating_files(
     tmp_path: Path,
 ) -> None:
@@ -121,6 +154,7 @@ def test_plain_status_table_has_every_provider_without_creating_files(
     assert set(tmp_path.rglob("*")) == before
 
 
+@private_failure
 def test_json_status_all_optional_missing_is_success(tmp_path: Path) -> None:
     before = set(tmp_path.rglob("*"))
     envelope, stderr = control(["status"])
@@ -173,6 +207,7 @@ def test_json_status_all_optional_missing_is_success(tmp_path: Path) -> None:
         ),
     ],
 )
+@private_failure
 def test_requirements_preserve_complete_rows_and_registry_order(
     monkeypatch: pytest.MonkeyPatch,
     requirements: list[str],
@@ -201,6 +236,7 @@ def test_requirements_preserve_complete_rows_and_registry_order(
         assert envelope["error"] is None and stderr == ""
 
 
+@private_failure
 def test_vertex_requirement_stays_unknown_despite_google_settings(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -238,6 +274,7 @@ def test_vertex_requirement_stays_unknown_despite_google_settings(
         "../openai",
     ],
 )
+@private_failure
 def test_invalid_requirements_are_safe_validation_errors(selection: str) -> None:
     envelope, _ = control(["status", "--require", selection], 2)
     assert envelope["error"]["category"] == "validation"
@@ -252,6 +289,7 @@ def test_invalid_requirements_are_safe_validation_errors(selection: str) -> None
         ["unknown-private"],
     ],
 )
+@private_failure
 def test_parser_errors_remain_one_safe_object(arguments: list[str]) -> None:
     envelope, stderr = control(arguments, 2)
     assert envelope["error"]["category"] == "usage"
@@ -262,6 +300,7 @@ def test_parser_errors_remain_one_safe_object(arguments: list[str]) -> None:
 @pytest.mark.parametrize(
     "arguments", [["--help"], ["status", "--help"], ["status", "--json", "--help"]]
 )
+@private_failure
 def test_json_help_does_not_inspect_credentials(
     monkeypatch: pytest.MonkeyPatch,
     arguments: list[str],
@@ -275,6 +314,7 @@ def test_json_help_does_not_inspect_credentials(
     assert "Usage:" in envelope["data"]["help"] and stderr == ""
 
 
+@private_failure
 def test_plain_unmet_requirements_keep_table() -> None:
     result = runner.invoke(cli.app, ["auth", "status", "--require", "openai"])
     assert result.exit_code == 2
@@ -285,6 +325,7 @@ def test_plain_unmet_requirements_keep_table() -> None:
 @pytest.mark.parametrize("interruption", [KeyboardInterrupt, typer.Abort])
 @pytest.mark.parametrize("parsing", [False, True])
 @pytest.mark.parametrize("machine", [False, True])
+@private_failure
 def test_handled_interruption_is_safe_and_returns_130(
     monkeypatch: pytest.MonkeyPatch,
     parsing: bool,
@@ -311,6 +352,7 @@ def test_handled_interruption_is_safe_and_returns_130(
 
 @pytest.mark.parametrize("error_type", [ValueError, OSError, RuntimeError])
 @pytest.mark.parametrize("machine", [False, True])
+@private_failure
 def test_exception_values_cannot_enter_outputs(
     monkeypatch: pytest.MonkeyPatch,
     error_type: type[Exception],
@@ -331,6 +373,7 @@ def test_exception_values_cannot_enter_outputs(
         assert json.loads(result.stdout)["status"] == "error"
 
 
+@private_failure
 def test_credential_values_never_enter_plain_json_or_warning_outputs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -360,6 +403,7 @@ def test_credential_values_never_enter_plain_json_or_warning_outputs(
     exclude_secrets(result.stdout + result.stderr, values)
 
 
+@private_failure
 def test_abort_in_existing_lifecycle_service_retains_error_semantics(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

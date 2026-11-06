@@ -11,12 +11,13 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
-from test_auth_cli import KEY_NAMES, PROVIDERS, exclude_secrets
+from test_auth_cli import KEY_NAMES, PROVIDERS, exclude_secrets, private_failure
 
 from judgmentllm.cli_controls import ControlEnvelope
 
 
 def executable() -> str:
+    __tracebackhide__ = True
     installed = Path(sys.executable).with_name(
         "judgmentllm.exe" if os.name == "nt" else "judgmentllm"
     )
@@ -41,6 +42,7 @@ def executable() -> str:
         (["--invalid", "PRIVATE-ARGUMENT"], 2, None),
     ],
 )
+@private_failure
 def test_installed_json_status_with_controlled_unicode_credentials(
     tmp_path: Path,
     arguments: list[str],
@@ -71,9 +73,13 @@ def test_installed_json_status_with_controlled_unicode_credentials(
         pytest.fail(
             "Installed auth command returned an unexpected exit code.", pytrace=False
         )
+    exclude_secrets(
+        result.stdout.decode("utf-8", errors="replace")
+        + result.stderr.decode("utf-8", errors="replace"),
+        values,
+    )
     assert result.stdout.isascii() and result.stderr.isascii()
     stdout, stderr = result.stdout.decode("ascii"), result.stderr.decode("ascii")
-    exclude_secrets(stdout + stderr, values)
     decoded, end = json.JSONDecoder().raw_decode(stdout)
     assert stdout[end:] in {"\n", "\r\n"}
     envelope = cast(dict[str, Any], decoded)
@@ -115,6 +121,7 @@ def test_installed_json_status_with_controlled_unicode_credentials(
     assert set(tmp_path.rglob("*")) == before
 
 
+@private_failure
 def test_installed_missing_requirement_and_help(tmp_path: Path) -> None:
     environment = {
         name: value

@@ -16,10 +16,11 @@ import webbrowser
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from types import ModuleType
-from typing import Literal
+from typing import Literal, Self
 from uuid import uuid4
 
 import pytest
+from test_auth_cli import private_failure
 from test_public_lifecycle import config
 from typer.testing import CliRunner
 
@@ -47,10 +48,26 @@ KEY_VARIABLES = (
 )
 
 
+class _SyntheticCredentials(tuple[str, ...]):
+    """Test-only values with safe fixture and traceback representations."""
+
+    def __new__(cls, values: tuple[str, ...]) -> Self:
+        return super().__new__(cls, values)
+
+    def __repr__(self) -> str:
+        return "<_SyntheticCredentials: values omitted>"
+
+    def __str__(self) -> str:
+        return repr(self)
+
+
 @pytest.fixture
-def synthetic_credentials(monkeypatch: pytest.MonkeyPatch) -> tuple[str, ...]:
+def synthetic_credentials(monkeypatch: pytest.MonkeyPatch) -> _SyntheticCredentials:
     """Replace every supported key; never inspect inherited credential values."""
-    values = tuple(f"synthetic-{uuid4().hex}-éλ" for _ in KEY_VARIABLES)
+    __tracebackhide__ = True
+    values = _SyntheticCredentials(
+        tuple(f"synthetic-{uuid4().hex}-éλ" for _ in KEY_VARIABLES)
+    )
     for variable, value in zip(KEY_VARIABLES, values, strict=True):
         monkeypatch.setenv(variable, value)
     return values
@@ -58,6 +75,7 @@ def synthetic_credentials(monkeypatch: pytest.MonkeyPatch) -> tuple[str, ...]:
 
 def assert_secret_free(content: str | bytes, values: tuple[str, ...]) -> None:
     """A failing privacy assertion must not echo either stream or the sentinel."""
+    __tracebackhide__ = True
     data = content.encode("utf-8") if isinstance(content, str) else content
     for value in values:
         # Independently distinctive fragments detect partial-value leakage too.
@@ -70,17 +88,20 @@ def assert_secret_free(content: str | bytes, values: tuple[str, ...]) -> None:
 
 
 def assert_files_secret_free(root: Path, values: tuple[str, ...]) -> None:
+    __tracebackhide__ = True
     for path in root.rglob("*"):
         if path.is_file():
             assert_secret_free(path.read_bytes(), values)
             assert_secret_free(str(path.relative_to(root)), values)
 
 
+@private_failure
 def test_public_private_and_cli_representations_exclude_secrets(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     synthetic_credentials: tuple[str, ...],
 ) -> None:
+    __tracebackhide__ = True
     monkeypatch.chdir(tmp_path)
     statuses = auth.credential_status()
     representations = [repr(statuses)]
@@ -118,9 +139,11 @@ def test_public_private_and_cli_representations_exclude_secrets(
         pytest.fail("Authentication status created an unexpected artifact")
 
 
+@private_failure
 def test_controlled_failures_never_embed_invalid_keys_or_provider_input(
     monkeypatch: pytest.MonkeyPatch, synthetic_credentials: tuple[str, ...]
 ) -> None:
+    __tracebackhide__ = True
     errors: list[str] = []
     with pytest.raises(ValueError) as selected:
         auth.credential_status(providers=(synthetic_credentials[0],))
@@ -144,11 +167,13 @@ def test_controlled_failures_never_embed_invalid_keys_or_provider_input(
         assert_secret_free(error, synthetic_credentials)
 
 
+@private_failure
 def test_status_isolated_from_io_discovery_sdk_and_runtime_boundaries(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     synthetic_credentials: tuple[str, ...],
 ) -> None:
+    __tracebackhide__ = True
     monkeypatch.chdir(tmp_path)
     adc = tmp_path / "inaccessible-adc.json"
     adc.write_text("Synthetic unreadable credential fixture", encoding="utf-8")
@@ -225,7 +250,7 @@ def test_status_isolated_from_io_discovery_sdk_and_runtime_boundaries(
                 ),
             ),
             (sqlite3, ("connect",)),
-            (subprocess, ("Popen",)),
+            (subprocess.Popen, ("__init__",)),
             (webbrowser, ("open", "open_new", "open_new_tab")),
         ):
             for name in names:
@@ -248,6 +273,7 @@ def test_status_isolated_from_io_discovery_sdk_and_runtime_boundaries(
 
 @pytest.mark.parametrize("version", [1, 2])
 @pytest.mark.parametrize("capture", ["full", "minimal"])
+@private_failure
 def test_mock_lifecycle_and_all_exports_never_resolve_or_persist_credentials(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -255,6 +281,7 @@ def test_mock_lifecycle_and_all_exports_never_resolve_or_persist_credentials(
     version: int,
     capture: Literal["full", "minimal"],
 ) -> None:
+    __tracebackhide__ = True
     spec, path = config(tmp_path, capture=capture, grouped=True)
     if version == 2:
         spec2 = RunSpecV2.model_validate({**spec.model_dump(), "schema_version": 2})
@@ -288,11 +315,13 @@ def test_mock_lifecycle_and_all_exports_never_resolve_or_persist_credentials(
     assert_files_secret_free(tmp_path, synthetic_credentials)
 
 
+@private_failure
 def test_r_gate_excludes_inherited_authentication_settings(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     synthetic_credentials: tuple[str, ...],
 ) -> None:
+    __tracebackhide__ = True
     script = Path(__file__).resolve().parents[1] / "scripts/cli_lifecycle_r_gate.py"
     specification = importlib.util.spec_from_file_location(
         "auth_privacy_r_gate", script
@@ -445,7 +474,7 @@ def _fresh_status_probe() -> None:
         ),
         (socket.socket, ("connect", "connect_ex", "sendto")),
         (sqlite3, ("connect",)),
-        (subprocess, ("Popen",)),
+        (subprocess.Popen, ("__init__",)),
         (webbrowser, ("open", "open_new", "open_new_tab")),
     ):
         for attribute in attributes:
@@ -495,10 +524,12 @@ def _fresh_status_probe() -> None:
     print("guarded fresh status passed")
 
 
+@private_failure
 def test_first_status_import_and_invocation_are_guarded_in_fresh_process(
     tmp_path: Path,
     synthetic_credentials: tuple[str, ...],
 ) -> None:
+    __tracebackhide__ = True
     source = inspect.getsource(_fresh_status_probe)
     result = subprocess.run(
         [sys.executable, "-B", "-I", "-c", source + "\n_fresh_status_probe()\n"],
@@ -515,3 +546,78 @@ def test_first_status_import_and_invocation_are_guarded_in_fresh_process(
         pytest.fail("Fresh offline authentication crossed a guarded boundary")
     if list(tmp_path.iterdir()):
         pytest.fail("Fresh offline authentication created a runtime artifact")
+
+
+@private_failure
+def test_privacy_failures_do_not_expose_fixture_values_or_hidden_helper_inputs(
+    tmp_path: Path,
+    synthetic_credentials: tuple[str, ...],
+) -> None:
+    __tracebackhide__ = True
+    # Run real pytest failures with long tracebacks and locals. The generated
+    # test source contains names only; the synthetic value travels via memory/env.
+    test_source = """
+import os
+import sys
+from pathlib import Path
+import pytest
+sys.path.insert(0, TEST_DIRECTORY)
+from test_auth_privacy import _SyntheticCredentials, assert_secret_free, assert_files_secret_free, private_failure
+
+@pytest.fixture
+def credentials():
+    return _SyntheticCredentials((os.environ["JUDGMENTLLM_PRIVACY_SELFTEST_KEY"],))
+
+def test_fixture_repr(credentials):
+    pytest.fail("deliberate safe fixture failure")
+
+def test_scanner_traceback(credentials):
+    assert_secret_free(credentials[0], credentials)
+
+def test_file_scanner_traceback(credentials, monkeypatch, tmp_path):
+    (tmp_path / "synthetic.txt").write_text("public fixture", encoding="utf-8")
+    monkeypatch.setattr(Path, "read_bytes", lambda self: credentials[0].encode("utf-8"))
+    assert_files_secret_free(tmp_path, credentials)
+
+@private_failure
+def test_nested_exception(credentials):
+    raise ValueError(credentials[0])
+
+@private_failure
+def test_warning(credentials):
+    import warnings
+    warnings.warn(credentials[0], UserWarning)
+""".replace("TEST_DIRECTORY", repr(str(Path(__file__).resolve().parent)))
+    script = tmp_path / "test_synthetic_failure.py"
+    script.write_text(test_source, encoding="utf-8")
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-B",
+            "-I",
+            "-m",
+            "pytest",
+            "--no-cov",
+            "-q",
+            "--tb=long",
+            "--showlocals",
+            "-p",
+            "no:cacheprovider",
+            str(script),
+        ],
+        cwd=tmp_path,
+        env={
+            **os.environ,
+            "JUDGMENTLLM_PRIVACY_SELFTEST_KEY": synthetic_credentials[0],
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONUTF8": "1",
+        },
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=30,
+        check=False,
+    )
+    assert_secret_free(result.stdout + result.stderr, synthetic_credentials)
+    if result.returncode != 1 or "5 failed" not in result.stdout:
+        pytest.fail("The privacy failure-output selftest did not exercise its failures")
