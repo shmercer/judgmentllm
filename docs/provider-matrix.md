@@ -26,7 +26,9 @@ The [unified assessment output design](assessment-output-design.md) is the
 normative extension. Its [provider evidence ledger](assessment-provider-evidence.md)
 distinguishes documented behavior, planned integration policy and pending
 qualification. Phases 1–3 implement neutral output contracts, v2 mock execution
-and offline authentication diagnostics; real integrations remain proposed.
+and offline authentication diagnostics. Phase 4A adds standalone strict evidence
+records and pure extractors; real integrations remain proposed. No endpoint/model
+acquires runtime support or live qualification from those records.
 
 - Shared credential resolution uses official SDK mechanisms: provider-specific
   API-key environment variables, Google ADC for Vertex, and no authentication
@@ -53,6 +55,15 @@ and offline authentication diagnostics; real integrations remain proposed.
 - Native Decisions/Jev assessment integration stays in Milestone 4. Managed
   bulk-live/native batch parity and recovery stay in Milestone 5; the CLI-first
   R wrapper exposes implemented services in Milestone 6.
+
+Phase 4A scoped descriptors supplement existing `GenerationCapabilities` evidence
+without registering native-schema support. Explicit unresolved model scope and
+nullable facts preserve unknown support. Documentation and synthetic fixtures
+cannot establish `live_qualified`; credential presence and SDK installation are
+never qualification provenance. Exact interfaces are in the
+[Python API](python-api.md#standalone-evidence-phase-4a-implemented). Durable
+capture is Phase 4B, native transport is 4C, real generative adapters are Phase 5,
+companion exports Phase 6 and authorized live qualification Phase 7 of Milestone 3.
 
 ### Required capability checks
 

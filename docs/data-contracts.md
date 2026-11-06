@@ -411,19 +411,50 @@ normalized judgments. Refusal, invalid received output, authoritative provider
 error, and definite invoked transport nonacceptance retain distinct evidence.
 
 
-## Run and evidence schema design (proposed, not implemented)
+## Provider evidence records (Milestone 3 Phase 4A)
 
-See the [consolidated assessment output design](assessment-output-design.md)
-for explicit version-2 RunSpec/renderer controls, unchanged normalized
-result schema 1, linked request/submission/observation usage and authorized
-reasoning records, streaming companion exports and R join/aggregation rules.
-Existing columns, frozen records, identities and missing-value semantics in
-this document remain implemented contracts. New sidecars require their own
-typed versions and deterministic offline Python/CLI-to-R acceptance; grouped
-requests cannot multiply token usage or duplicate reasoning by trait. Any
-internal persistence revision requires deliberate compatibility handling, not
-implicit mutation/migration of an existing registry. Credential diagnostics
-never add credential values or private identities to assessment evidence.
+`judgmentllm.evidence` supplies standalone strict, frozen public records with their
+own `schema_version: 1`. Unknown fields, incompatible semantics and coercions are
+rejected with fixed content-free validation diagnostics. Existing `ID` and
+`SHA256` types preserve identity compatibility and character IDs with leading
+zeros. These records are independent of RunSpec v1/v2, assessment results,
+receipts, SQLite and CLI control schemas; none of those changes in Phase 4A.
+
+| Record | Scope and contract |
+|---|---|
+| `EvidenceIdentity` | Existing run/request/attempt/submission IDs and nullable observation ID, supplied from trusted execution metadata. |
+| `ProviderUsage` | Reported facts for one physical submission, including nullable observation/remote/failure references, scoped provider/model/SDK metadata, clock-qualified timing, six nullable strict nonnegative token counters, source/semantics version, typed breakdown and separate reported/estimated cost. |
+| `ProviderObservationMetadata` | One established observation: requested rubric layout or null for pairwise, nullable safe emitted root/member key sequences, occurrence indices, known trait IDs, adherence/evidence enums and a safe unknown reason. |
+| `ReasoningEvidence`, `ReasoningAuthorization` | Observation-level documented block kind, field/type, ordinal, availability and nullable safe artifact/hash references; explicit retention decisions independent of assessment explanations and computation requests. |
+| `ScopedProviderEvidence`, `EvidenceProvenance` | Exact provider/endpoint/model or unresolved model scope, nullable SDK/API version, feature and provenance; separate implementation, fixture and live qualification facts. |
+
+No extractor creates a client, reads credentials, writes artifacts, aggregates a
+run or infers unreported counts/costs. `None` is unknown and differs from zero;
+missing totals are never calculated. Typed usage breakdowns retain original
+provider field paths and explicit inclusion/exclusion semantics. Detail counts
+must not be added to parent counts. Repeated retrieval of an observation is not
+another physical submission; distinct retries remain distinct submissions.
+
+Order extraction accepts the existing `OutputCommitmentV2` and exact emitted text
+with an explicit trustworthy source. It uses the existing duplicate-rejecting
+JSON decoder after byte/depth bounds; member occurrences are bounded too.
+Duplicate/malformed/truncated/oversized evidence produces safe unknown metadata.
+Only contract-authorized key names and trait IDs already in the contract can
+survive extraction; unsafe sequences become null and use `unsafe_key_names`.
+Array occurrence indices do not claim trait order. A verified mismatch is
+strictly diagnostic and never changes normalized validity or retry authority.
+
+Full capture alone does not authorize reasoning retention. Minimal capture cannot
+retain reasoning text. Explicit summary authorization covers documented summaries;
+provider-text authorization covers documented thinking blocks. Phase 4A represents
+these decisions without changing RunSpec or current execution capture.
+
+Exact callable interfaces and limits are in the
+[Python API](python-api.md#standalone-evidence-phase-4a-implemented). Durable
+attachment, receipts/recovery, redaction and evidence revision persistence remain
+Phase 4B; native translation/transport is 4C; real generative adapters Phase 5;
+companion exports and new R joins Phase 6; explicit live qualification Phase 7.
+Current canonical/R result schemas and all existing strict R gates remain intact.
 
 ## Offline credential status (Milestone 3 Phase 3)
 

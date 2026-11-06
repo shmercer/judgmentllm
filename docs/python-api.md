@@ -648,8 +648,9 @@ minimal capture; prompts, payloads and raw output remain unavailable.
 ## Milestone 3 credential diagnostics and future provider APIs
 
 The [assessment output design](assessment-output-design.md) is authoritative.
-Phase 3 implements credential diagnostics below. Provider evidence, live
-verification and other explicitly proposed APIs remain future work. Existing
+Phase 3 implements credential diagnostics below. Phase 4A implements standalone
+evidence interfaces; durable capture, live verification and explicitly proposed
+export APIs remain future work. Existing
 normalized results and RunSpec v1/v2 contracts remain the compatibility baseline.
 
 ### Credential diagnostics (Phase 3, implemented)
@@ -741,54 +742,175 @@ forced-choice output may omit `tie`; normalized `PairwiseResult.tie` remains fal
 while historical explicit `tie: false` inputs remain valid. Native decision/score
 contracts remain separate Milestone 4 work.
 
-Add typed request/observation usage and optional reasoning evidence records,
-linked through stable run/request/attempt/submission/observation identities.
-These records need versioned public schemas; they do not require a second
-assessment-result format or duplicated request totals in grouped trait rows.
-Existing nullable normalized usage columns remain readable and are not reused
-as a multiplication-prone source for new accounting; new real adapters leave
-those legacy result usage fields null. Missing usage remains null.
-Assessment explanations stay in result rows; provider-exposed summaries/thinking
-and raw evidence remain distinct observation-level records.
+### Standalone evidence (Phase 4A, implemented)
 
-Streaming companion usage and authorized reasoning exports use independent
-immutable artifacts, consistent evidence cuts and the same safe lifecycle export
-report conventions. Preserve all attempts, provider-native usage semantics,
-leading-zero character IDs, nulls and complete audit joins in deterministic R
-acceptance. Aggregation selects one authoritative usage revision per physical submission
-before joining assessment rows; it preserves separately billable retries and
-must not silently sum repeated retrievals, evidence revisions or overlapping
-nested usage components. See the authoritative design for fields and accounting rules.
+Import public interfaces from `judgmentllm.evidence`. Every evidence record is
+strict, frozen and independently versioned with `schema_version: 1`. Unknown
+fields, boolean token counters and incompatible semantic combinations fail with
+fixed safe validation errors; raw invalid values/keys are excluded from error
+strings, representations, `errors()` and JSON forms. `model_copy()` and
+`model_construct()` preserve validation. These APIs perform no I/O, credential
+inspection, SDK construction or provider submission and are not invoked by the
+current execution engine. Extension and privacy requirements are documented in
+[evidence privacy guidance](evidence-privacy.md).
 
-A proposed strict `ProviderObservationMetadata` sidecar has its own version 1
-and one row per provider observation, linked by existing run/request/attempt/
-submission/observation identities. It contains these order-audit fields:
+`EvidenceIdentity(run_id, request_uid, attempt_id, submission_id,
+observation_id=None)` uses the existing identity type. Supply these fields from
+trusted existing records, never from arbitrary model text. Observation order and
+reasoning require an established observation; usage permits no observation.
+There is no task/trait field on request-level usage or reasoning evidence.
 
-- `requested_order`: `together|scores_first|explanations_first|null`; pairwise is null.
-- `observed_key_order`: `tuple[str, ...] | None`, the original emitted root key order.
-- `member_key_orders`: a list of `{array, index, trait_id, keys}` records retaining
-  per-entry key order, including `together` score/explanation order. `index` is
-  zero-based, `trait_id` is nullable when it cannot be attributed safely, and
-  `keys` is a nullable ordered key list.
-- `order_adherence`: `adherent|mismatch|unknown`.
-- `order_evidence`: `raw_output_text|raw_tokens|reassembled_stream|unavailable`.
-- `unknown_reason`: nullable allowlisted diagnostic code.
+Usage interfaces:
 
-Unknown original order stays null/unknown; parsed-object reserialization is not
-emission evidence. Keep this metadata once per observation, without copying it
-into grouped trait results. Companion canonical JSONL/CSV and R-compatible audit
-exports retain it even when usage is null; JSON CSV cells preserve root/member
-key lists and explicit missing values remain unknown. Minimal capture retains
-only safely observable nonsensitive metadata under the authoritative retention
-policy. Public order metadata permits only allowlisted contract key names and
-known trait IDs: an unsafe unknown key makes its affected sequence null and
-`order_adherence: unknown`, with `unknown_reason: unsafe_key_names`. Unknown
-trait IDs become null, retaining stable indices and content-free diagnostic
-counts. This public rule also applies under full capture; inspecting any
-authorized original evidence separately remains subject to secret sanitization.
-An order mismatch remains diagnostic; it does not change score validity
-or authorize a new call. This metadata neither establishes internal reasoning
-order nor modifies normalized result schema 1.
+```python
+from judgmentllm.evidence import (
+    EvidenceIdentity,
+    UsageContext,
+    ReportedUsageInput,
+    extract_provider_usage,
+)
+
+identity = EvidenceIdentity(
+    run_id="001",
+    request_uid="request-001",
+    attempt_id="attempt-001",
+    submission_id="submission-001",
+    observation_id="observation-001",
+)
+context = UsageContext(
+    provider="mock",
+    endpoint="synthetic",
+    requested_model="synthetic-v1",
+    observation_kind="response",
+)
+usage = extract_provider_usage(
+    identity,
+    context,
+    ReportedUsageInput(usage_source="synthetic.reported_usage", input_tokens=0),
+)
+assert usage.input_tokens == 0 and usage.total_tokens is None
+```
+
+- `extract_provider_usage(identity, context, reported, *, estimated_cost=None)
+  -> ProviderUsage` copies explicit typed facts; `reported=None` means absent usage,
+  with null counters and unknown source. Repeated extraction never aggregates.
+- `extract_openai_chat_usage(identity, context, usage: OpenAIChatUsageInput | None)
+  -> ProviderUsage` accepts only scoped `openai` / `chat.completions` usage. Input
+  types `OpenAIInputTokenDetails` and `OpenAIOutputTokenDetails` preserve cached
+  prompt/reasoning completion counters as included in input/output respectively.
+- `extract_anthropic_messages_usage(identity, context,
+  usage: AnthropicMessagesUsageInput | None) -> ProviderUsage` scopes to
+  `anthropic` / `messages`. Input excludes separately reported cache reads/writes;
+  `AnthropicCacheCreationInput` retains 5-minute/1-hour write subdivisions.
+
+`UsageContext` contains requested/reported model, SDK version, observation and
+invocation kind, nullable remote/failure references, optional timezone-aware
+start/end timestamps and finite nonnegative duration with an explicit clock
+source. `ProviderUsage` additionally holds six nullable strict nonnegative integer
+counters, `usage_source`, `semantics_version=1`, a tuple of `UsageBreakdown`, and
+separate nullable `ReportedCost` / `EstimatedCost`. Breakdown fields, units,
+relationships and related counters are allowlisted and source-validated.
+Missing totals stay null; no nested counters are added and no totals are checked
+against an invented universal equation. Known included components cannot exceed
+a reported parent, and breakdown values must agree with their mapped counters.
+Unestablished source counters are rejected: OpenAI cache writes and Anthropic
+total/reasoning counts have no mapping in this phase. No real-provider cost mapping is enabled:
+`ReportedCost` currently admits only explicit synthetic reported-cost semantics.
+`EstimatedCost` requires an explicit amount/currency, pricing date/source and
+allowlisted assumptions and is never inferred from token counts. A definitive
+failure can have usage without a fabricated provider observation. Consumers must
+select a fact per physical submission before any grouped-trait join; durable
+selection/revision and aggregation services are deferred.
+
+Order extraction:
+
+```python
+extract_observation_metadata(
+    commitment: OutputCommitmentV2, *, identity: EvidenceIdentity,
+    output: str | bytes | None,
+    evidence_source: OrderEvidence,
+    unavailable_reason: OrderUnknownReason | None = None,
+) -> ProviderObservationMetadata
+```
+
+Pass exact original emitted assessment text, not an adapter dictionary or
+reserialized SDK object. `raw_tokens` / `reassembled_stream` mean the supplied
+text is a complete trustworthy decoding/reassembly. An unavailable source yields
+unknown; use `sdk_object_only` where applicable. The extractor reads committed
+root/member property sequences, reuses the existing duplicate-rejecting JSON
+decoder, and bounds input to 1,048,576 UTF-8 bytes, nesting to 64 and member
+occurrences to 4,096. Oversize/depth/member limits yield `incomplete_evidence`;
+malformed/truncated/duplicate-key JSON yields `malformed_output`, without exception
+text. It returns no response text and creates no file.
+
+`ProviderObservationMetadata` contains `requested_order` (null for pairwise),
+`observed_key_order`, `member_key_orders: tuple[ObservedMemberOrder, ...]`,
+`order_adherence`, `order_evidence` and `unknown_reason`. Each member has `array`,
+zero-based `index`, nullable known `trait_id` and nullable `keys`. Array indices
+locate occurrences; differing trait-array order is irrelevant. Inspect both root
+and member order for separated layouts and score-object order for `together`.
+Verified differences are `mismatch`, complete matches `adherent`, and unavailable
+or incomplete evidence `unknown`. Pairwise is `unknown` / `not_applicable`.
+Allowed unknown codes are `not_applicable`, `not_returned`, `malformed_output`,
+`incomplete_evidence`, `sdk_object_only` and `unsafe_key_names`.
+
+Only contract-authorized key names and known trait IDs survive extraction. Unsafe
+key sequences become null and force `unknown` / `unsafe_key_names`; unknown trait
+IDs become null. This applies to dumps/JSON under full and minimal policies.
+Mismatch is diagnostic: it neither invalidates a score nor authorizes retries.
+This service makes no internal-reasoning or provider enforcement claim.
+
+Reasoning interfaces:
+
+- `ReasoningAuthorization(capture="full"|"minimal", effort_requested=False,
+  summary_requested=False, retention="none"|"summary"|"provider_text")` keeps
+  computation, summary exposure and text retention separate. Minimal capture
+  with a non-none retention grant is invalid. Full alone grants nothing.
+- `authorize_reasoning(policy, kind) -> ReasoningRetentionDecision` returns
+  `retain_text`, `request_summary` and a fixed diagnostic. A summary grant covers
+  only documented `summary`; provider-text covers only `thinking_block`.
+  `other_documented` has no retention grant in this phase. Summary requests and
+  effort requests never authorize retention by themselves.
+- `extract_reasoning_metadata(identity, blocks: Iterable[ReasoningBlockMetadata],
+  *, authorization) -> Iterator[ReasoningEvidence]` validates strictly increasing
+  block ordinals incrementally. No text field is accepted. No blocks yields no
+  fabricated empty text/record; even authorized blocks are `not_retained` because
+  this phase writes no artifacts. Explicit redacted headers yield `redacted`.
+
+`ReasoningEvidence` holds observation identities, `kind`, allowlisted
+`provider_field`, `block_ordinal`, nullable `artifact`, nullable
+`source_bytes_sha256`, and `availability`:
+`retained|not_exposed|not_returned|not_retained|redacted`. A retained record needs
+`ReasoningArtifactReference(sha256, byte_length)` supplied by a future retention
+layer; references contain no paths or text. Original-byte hashes are supplied
+only when actually established. Provider field/kind combinations are validated.
+Assessment explanations remain in existing result rows, with no per-trait
+reasoning attribution and no missing-reasoning assessment failure.
+
+Scoped provenance:
+
+`ScopedProviderEvidence` composes optional existing `GenerationCapabilities` with
+provider/endpoint, exact or explicitly unresolved model scope, paired optional
+SDK package/version, nullable API version, feature
+`usage|property_order|reasoning|native_schema|generation`, nullable `supported`,
+tri-state `implemented`/`fixture_tested`/`live_qualified` and a consistent
+`stage: discovered|implemented|fixture_tested|live_qualified`.
+`EvidenceProvenance(kind, source_sha256, recorded_on)` records documentation,
+offline-fixture or independent-live origin without URLs, accounts or paths.
+Fixture success requires implementation and fixture provenance. Live qualification
+requires independent live provenance, exact model/SDK scope, fixture success and
+explicit feature support. Documentation or synthetic fixtures cannot claim it;
+no endpoint/model capability is registered or transport selected by these records.
+Composed generation facts must match scope and qualification flags exactly.
+
+Phase 4B will add authorized retention/redaction, receipt/recovery links and
+append-only evidence revisions through the
+[existing execution seams](persistence-contracts.md#phase-4b-evidence-integration-seams-deferred).
+Phase 4C will add native-schema translation and transport resolution. Real
+adapters (Phase 5), companion exports/R joins (Phase 6) and authorized live
+qualification (Phase 7) remain deferred. All current RunSpec, mock, result,
+receipt, persistence, CLI and R contracts are unchanged. These standalone APIs do
+not establish operational runtime evidence capture.
 
 ### Proposed evidence export services
 

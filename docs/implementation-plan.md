@@ -96,8 +96,8 @@ executed workloads, outstanding checks and later publication requirements.
 
 ## Milestone 3 - Assessment outputs, authentication and generative live adapters
 
-**Phases 1–3 implement provider-neutral contracts, explicit v2 mock execution,
-and shared credential resolution/offline diagnostics.**
+**Phases 1–3 and Phase 4A implement provider-neutral contracts, explicit v2 mock
+execution, credential diagnostics, and standalone offline evidence services.**
 Phase 1 introduced `contract_version=2`, ordered schemas, strict validation and
 contract-aware interpretation. Phase 2 activates these contracts through explicit
 `schema_version: 2` run configurations, shared rendering/preview, immutable
@@ -112,8 +112,10 @@ assessment request per planned group. Zero-exemplar built-ins omit the empty
 section; supplied exemplars remain complete, ordered and protected. The six
 custom prompt snapshots are exact renderer fixtures. The mock selects text for
 `auto`; explicit native enforcement fails preflight. Native translation, real
-adapters, live authentication, usage/reasoning capture and observation-order sidecars
-remain later phases. Phase 3 adds the fixed seven-provider registry, offline
+adapters, live authentication and durable usage/reasoning/order capture remain
+later phases. Phase 4A supplies independently versioned strict evidence contracts,
+bounded observable-order analysis, reported-usage extraction, reasoning retention
+authorization and feature-scoped provenance; execution does not call them yet. Phase 3 adds the fixed seven-provider registry, offline
 `credential_status()` and `auth status`, with repeated required-provider checks
 in the existing version-1 envelope. No SDK construction, ADC discovery, provider
 request, credential persistence or RunSpec authentication configuration is added.
@@ -148,12 +150,25 @@ updates its tests and user documentation and passes applicable R acceptance.
    no credential values or identities and never claim validity. Unsupported or
    unknowable cloud identity states remain explicit. Use SDK authentication;
    no credentials in RunSpec, immutable evidence, logs or exports.
-4. **Provider evidence and schema transport.** Add request/observation-level usage
-   and authorized optional reasoning evidence, strict native-schema translation,
-   scoped capabilities, controlled explicit textual fallback, sanitized errors
-   and exact nonsecret request/response commitments. Version affected public
-   schemas independently; do not migrate or rewrite historical runs implicitly.
-   Export usage separately from trait results, including unsuccessful attempts.
+4. **Provider evidence and schema transport, in three independently reviewed PRs.**
+   - **4A, implemented: evidence contracts and offline extraction.** Public evidence
+     records start at version 1. Pure functions preserve reported usage and unknowns,
+     inspect trustworthy original JSON property order with bounded safe parsing,
+     decide reasoning retention authorization, and describe scoped provenance.
+     No provider/SDK calls, evidence persistence, RunSpec activation, new export,
+     native translation or execution/protocol change is included. Existing R
+     exports and all seven strict gates remain unchanged and mandatory.
+   - **4B, deferred: durable evidence integration.** Bind usage/order/reasoning to
+     existing physical submission/observation identities before normalization;
+     filter unauthorized reasoning before capture; extend receipts/recovery and
+     append-only evidence revisions deliberately with genuine old-store tests.
+     Safe metadata must survive minimal capture, reopening and idempotent replay.
+     Preserve all unsuccessful submissions without grouped usage duplication.
+   - **4C, deferred: native translation and transport.** Add fixture-tested exact
+     endpoint projections, scoped mechanism selection and exact nonsecret transport
+     commitments. Retain the full local assessment contract and explicit text policy.
+   Version affected schemas independently; never migrate or rewrite historical
+   runs implicitly. Companion exports remain Phase 6 below.
 5. **Generative adapters, one provider/endpoint family per PR.** Implement OpenAI
    Responses/Chat, Anthropic Messages, Gemini Developer, Vertex Gemini, Together
    and local Ollama through maintained SDKs where suitable. Use the shared
