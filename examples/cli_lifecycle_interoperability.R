@@ -11,7 +11,7 @@ helper <- normalizePath(args[[4L]], winslash = "/", mustWork = TRUE)
 dir.create(root, recursive = TRUE, showWarnings = FALSE)
 setwd(root)
 sequence <- 0L
-invoke <- function(command, arguments, expected = 0L, json = TRUE) {
+invoke <- function(command, arguments, expected = 0L, json = TRUE, content = FALSE) {
   sequence <<- sequence + 1L
   out <- file.path(root, paste0("stdout-", sequence, ".json"))
   err <- file.path(root, paste0("stderr-", sequence, ".jsonl"))
@@ -33,7 +33,7 @@ invoke <- function(command, arguments, expected = 0L, json = TRUE) {
       stopifnot(diagnostic$schema_version == 1L, diagnostic$event %in% c("progress", "diagnostic"))
       stopifnot(is.character(diagnostic$category), is.character(diagnostic$message), "run_id" %in% names(diagnostic))
     }
-    stopifnot(!any(grepl("SOURCE_ONLY_SENTINEL|RAW_ONLY_SENTINEL|Authorized normalized explanation", c(lines, diagnostics))))
+    if (!content) stopifnot(!any(grepl("SOURCE_ONLY_SENTINEL|RAW_ONLY_SENTINEL|Authorized normalized explanation", c(lines, diagnostics))))
     for (path in value$artifacts) if (!is.null(path)) {
       stopifnot(grepl("^/|^[A-Za-z]:[/\\\\]", path), file.exists(path))
     }
@@ -46,7 +46,7 @@ setup_started <- proc.time()[["elapsed"]]
 fixture("create", root)
 setup_seconds <- proc.time()[["elapsed"]] - setup_started
 lifecycle_started <- proc.time()[["elapsed"]]
-cli <- function(arguments, expected = 0L) invoke(console, c(arguments, "--json"), expected)
+cli <- function(arguments, expected = 0L, content = FALSE) invoke(console, c(arguments, "--json"), expected, content = content)
 records <- function(path) lapply(readLines(path, encoding = "UTF-8"), jsonlite::fromJSON, simplifyVector = FALSE)
 audit <- function(path, missing) read.csv(path, colClasses = "character", na.strings = missing,
   check.names = FALSE, stringsAsFactors = FALSE, fileEncoding = "UTF-8", comment.char = "")
@@ -246,6 +246,112 @@ for (kind in c("independent", "grouped", "pairwise")) for (capture in c("full", 
   listed <- cli(c("runs", "list", "--store", store, "--limit", "1"))
   stopifnot(listed$status == "ok")
 }
+# Explicit v2 configurations execute through the same installed CLI and seventh gate.
+layout_scores <- list()
+for (name in c("together", "scores_first", "explanations_first", "scores_only", "partial_full", "partial_minimal", "winner", "tie")) {
+  directory <- file.path(root, paste0("v2-", name))
+  config <- file.path(directory, "config.json")
+  is_pairwise <- name %in% c("winner", "tie")
+  is_partial <- startsWith(name, "partial")
+  if (name == "together") {
+    stopifnot(cli(c("validate", "--config", config))$data$valid)
+    stopifnot(is.null(cli(c("plan", "--config", config))$error))
+    preview <- cli(c("templates", "preview", "--config", config, "--item-id", "001", "--trait", "001"), content = TRUE)
+    stopifnot(grepl("SOURCE_ONLY_SENTINEL", preview$data$text, fixed = TRUE))
+    stopifnot(preview$data$renderer_version == 2L, preview$data$output_commitment$selection$mechanism == "text")
+    plain_file <- file.path(root, "v2-preview.txt")
+    plain_error <- file.path(root, "v2-preview.stderr")
+    plain_status <- system2(console, vapply(c("templates", "preview", "--config", config, "--item-id", "001", "--trait", "001"), shQuote, character(1L)), stdout = plain_file, stderr = plain_error)
+    stopifnot(plain_status == 0L)
+    plain_bytes <- readBin(plain_file, "raw", n = file.info(plain_file)$size)
+    # Normalize only the console transport newline convention on Windows.
+    plain_text <- gsub("\r\n", "\n", rawToChar(plain_bytes), fixed = TRUE)
+    stopifnot(identical(enc2utf8(plain_text), enc2utf8(preview$data$text)))
+    stopifnot(!dir.exists(file.path(directory, "store")))
+  }
+  started <- cli(c("run", "--config", config, "--store", file.path(directory, "store"), settings(directory)), if (is_partial) 3L else 0L)
+  run <- list(run_id = started$run_id, store = file.path(directory, "store"))
+  stopifnot(cli(c("runs", "status", run_arguments(run)))$run_id == run$run_id)
+  before <- export(run)
+  before_bytes <- readBin(before$artifacts$export, "raw", n = file.info(before$artifacts$export)$size)
+  original <- records(before$artifacts$export)
+  if (is_partial) {
+    failed <- Filter(function(x) x$status != "complete", original)
+    good <- Filter(function(x) x$status == "complete", original)
+    stopifnot(length(original) == 6L, length(failed) == 2L, length(good) == 4L)
+    stopifnot(all(vapply(failed, function(x) x$trait_id == "003" && is.null(x$explanation) && is.null(x$primary_score), logical(1L))))
+    for (index in seq_along(failed)) {
+      retry <- c("resume", run_arguments(run), settings(directory, "valid.json"), "--retry-id", paste0("v2-failed-explanation-", index), "--retry-task", failed[[index]]$task_id)
+      retried <- cli(retry, if (index == length(failed)) 0L else 3L)
+    }
+    stopifnot(retried$run_status == "completed", cli(retry)$data$results == 8L)
+  }
+  canonical <- export(run)
+  derived <- export(run, "csv", "r")
+  rows <- records(canonical$artifacts$export)
+  imported <- audit(derived$artifacts$export, "NA")
+  stopifnot(nrow(imported) == length(rows), identical(rows[seq_along(original)], original))
+  stopifnot(all(imported$schema_version == "1"))
+  stopifnot(identical(imported$task_id, vapply(rows, function(x) x$task_id, character(1L))))
+  stopifnot(identical(imported$attempt_id, vapply(rows, function(x) x$attempt_id, character(1L))))
+  stopifnot(!anyDuplicated(paste(imported$task_id, imported$attempt_id, sep = "|")))
+  stopifnot(all(is.na(imported$input_tokens)), all(is.na(imported$output_tokens)))
+  for (index in seq_along(rows)) {
+    row <- rows[[index]]
+    for (field in c("status", "trait_id", "explanation", "primary_score", "prompt_path", "raw_response_path")) {
+      if (field %in% names(row)) scalar(row[[field]], imported[[field]][[index]])
+    }
+  }
+  if (is_pairwise) {
+    stopifnot(identical(imported$ID1, c("001", "002")), identical(imported$ID2, c("002", "001")))
+    stopifnot(all(imported$left_item_id == "001"), all(imported$right_item_id == "002"))
+    stopifnot(identical(vapply(rows, function(x) paste(unlist(x$presented_order), collapse = ":"), character(1L)), c("001:002", "002:001")))
+    stopifnot(all(is.na(imported$p_first)), all(is.na(imported$p_left)))
+    if (name == "winner") {
+      stopifnot(all(!as.logical(imported$tie)), all(!as.logical(imported$allow_ties)))
+      stopifnot(identical(imported$better_id, imported$ID1), all(as.numeric(imported$result) == 1))
+    } else {
+      stopifnot(all(as.logical(imported$tie)), all(as.logical(imported$allow_ties)))
+      stopifnot(all(is.na(imported$better_id)), all(as.numeric(imported$result) == 0.5))
+    }
+  } else {
+    stopifnot(all(imported$item_id %in% c("001", "002")))
+    for (index in seq_along(rows)) {
+      row <- rows[[index]]
+      coding <- jsonlite::fromJSON(imported$resolved_levels_json[[index]])
+      stopifnot(identical(coding$label, c("low", "middle", "high")), identical(coding$numeric_value, c(1, 3, 8)))
+      stopifnot(is.null(row$expected_value), is.null(row$probabilities), is.null(row$provider_expected_index))
+      if (row$status == "complete") {
+        stopifnot(row$category_label == "middle", row$primary_score == 3, row$primary_score_kind == "category_code")
+        if (name == "scores_only") stopifnot(is.null(row$explanation))
+        else stopifnot(row$explanation == paste0("Evidence for trait ", row$trait_id, "."))
+      }
+    }
+    if (name %in% c("together", "scores_first", "explanations_first")) {
+      ordering <- order(imported$item_id, imported$trait_id)
+      layout_scores[[name]] <- imported[ordering, c("item_id", "trait_id", "category_label", "primary_score", "explanation")]
+      rownames(layout_scores[[name]]) <- NULL
+    }
+  }
+  evidence <- fixture("inspect", directory)
+  assert_evidence(evidence, rows)
+  stopifnot(length(evidence$acceptances) == if (is_partial) 4L else 2L)
+  stopifnot(all(vapply(evidence$acceptances, function(x) x$acceptance_count, integer(1L)) == 1L))
+  if (is_partial) {
+    stopifnot(length(evidence$retry_operations) == 2L)
+    memberships <- table(vapply(evidence$attempt_tasks, function(x) x$attempt_id, character(1L)))
+    stopifnot(identical(sort(as.integer(memberships)), c(1L, 1L, 3L, 3L)))
+    historical <- cli(c("results", "export", run_arguments(run), "--high-water-mark", as.character(before$data$result_high_water_mark)))
+    stopifnot(historical$artifacts$export == before$artifacts$export)
+  }
+  stopifnot(identical(before_bytes, readBin(before$artifacts$export, "raw", n = length(before_bytes))))
+  if (name %in% c("explanations_first", "scores_only", "partial_minimal", "tie")) {
+    stopifnot(all(is.na(imported$prompt_path)), all(is.na(imported$raw_response_path)))
+  }
+  stopifnot(cli(c("resume", run_arguments(run), settings(directory, if (is_partial) "valid.json" else "fixture.json")))$run_status == "completed")
+  stopifnot(length(fixture("inspect", directory)$acceptances) == if (is_partial) 4L else 2L)
+}
+stopifnot(identical(layout_scores$together, layout_scores$scores_first), identical(layout_scores$together, layout_scores$explanations_first))
 # Accepted observations remain blocked without retrieval, then recover exactly once.
 directory <- file.path(root, "recovery-minimal")
 started <- cli(c("run", "--config", file.path(directory, "config.json"), "--store", file.path(directory, "store"), settings(directory), "--mock-no-retrieval"), 3L)

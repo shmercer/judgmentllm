@@ -11,7 +11,7 @@ from typing import cast
 
 from pydantic import field_serializer, field_validator, model_validator
 
-from judgmentllm.config import GenerationSpec, RunSpec
+from judgmentllm.config import GenerationSpec, RunSpecification
 from judgmentllm.generation import GenerationCapabilities
 from judgmentllm.io import _revalidate_record  # pyright: ignore[reportPrivateUsage]
 from judgmentllm.models import ID
@@ -88,7 +88,7 @@ class GenerationCommitment(ExecutionModel):
 
 
 def build_generation_commitment(
-    spec: RunSpec, *, capabilities: GenerationCapabilities | None = None
+    spec: RunSpecification, *, capabilities: GenerationCapabilities | None = None
 ) -> GenerationCommitment:
     """Validate and snapshot the generation section before sealing a manifest.
 
@@ -119,7 +119,7 @@ def build_generation_commitment(
 
 def validate_generation_compatibility(
     commitment: GenerationCommitment,
-    spec: RunSpec,
+    spec: RunSpecification,
     *,
     capabilities: GenerationCapabilities | None = None,
 ) -> ValidationReport:

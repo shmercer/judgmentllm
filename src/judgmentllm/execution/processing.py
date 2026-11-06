@@ -6,7 +6,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import cast
 
-from judgmentllm.config import RunSpec
+from judgmentllm.config import RunSpecification
 from judgmentllm.output_contracts import (
     AssessmentOutputContract,
     PairwiseOutputContract,
@@ -58,7 +58,7 @@ def member_dependency(dependency: RequestDependency, index: int) -> RequestDepen
 
 def _request_contract(
     contract: AssessmentOutputContract,
-    spec: RunSpec,
+    spec: RunSpecification,
     dependency: RequestDependency,
 ) -> AssessmentOutputContract:
     """Check explicit interpretation settings against the original request."""
@@ -67,6 +67,8 @@ def _request_contract(
         raise ValueError("output contract assessment kind must match the run")
     if contract.explanations != spec.execution.explanations:
         raise ValueError("output contract explanations must match the run")
+    if spec.schema_version == 2 and contract.output_order != spec.prompt.output_order:
+        raise ValueError("output contract layout must match the run")
     request = dependency.request
     if isinstance(contract, PairwiseOutputContract):
         if contract.allow_ties != spec.allow_ties:
@@ -128,7 +130,7 @@ def _index_members(
 
 def interpret(
     parsed: ParsedResponse | None,
-    spec: RunSpec,
+    spec: RunSpecification,
     dependency: RequestDependency,
     run_id: str,
     attempt_id: str,
@@ -275,7 +277,7 @@ def interpret(
 
 
 def unsuccessful(
-    spec: RunSpec,
+    spec: RunSpecification,
     dependency: RequestDependency,
     run_id: str,
     attempt_id: str,
@@ -329,7 +331,7 @@ def unsuccessful(
 
 def normalize(
     parsed: ParsedResponse,
-    spec: RunSpec,
+    spec: RunSpecification,
     dependency: RequestDependency,
     run_id: str,
     attempt_id: str,

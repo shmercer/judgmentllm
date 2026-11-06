@@ -42,7 +42,7 @@ export_run_results(run_id, *, store=None, format="jsonl", view="canonical",
                    na_string="NA", high_water_mark=None) -> ResultManifest
 ```
 
-`spec_or_path` accepts a `RunSpec`, string path or `Path`. Synchronous execution
+`spec_or_path` accepts a `RunSpec`, `RunSpecV2`, string path or `Path`. Synchronous execution
 wrappers reject calls inside an active event loop before doing any I/O, with
 instructions to call their async equivalent. Both execute in the calling process;
 no background service continues after that process exits. Cancellation of async
@@ -179,7 +179,7 @@ querying/exporting an incomplete run can succeed while reporting that state.
 
 `judgmentllm.models` exposes `ResponseItem`, `Level`, `ResolvedLevel`, `Trait`, `Rubric`, `Exemplar`, `PairwiseCriterion`, `PairTask`, and `validate_exemplars`. `Trait.numeric_values`, `resolved_levels`, and `coding_kind` expose resolved category coding.
 
-`judgmentllm.config` exposes `InputSpec`, `ExecutionSpec`, `GenerationSpec`, `PromptSpec`, `RunSpec`, `ConfigurationError`, `load_run_spec(path)`, `load_rubric(path)`, and `read_document(path)`. Loaders accept strings or `Path` objects. Every referenced path resolves against the configuration containing it. Direct Python construction uses loaded model instances; path shorthand is accepted through model validation for input references.
+`judgmentllm.config` exposes `InputSpec`, `ExecutionSpec`, `GenerationSpec`, `PromptSpec`, `PromptSpecV2`, `RunSpec`, `RunSpecV2`, `RunSpecification`, `ConfigurationError`, `load_run_spec(path)`, `load_rubric(path)`, and `read_document(path)`. Loaders accept strings or `Path` objects. Every referenced path resolves against the configuration containing it. Direct Python construction uses loaded model instances; path shorthand is accepted through model validation for input references.
 
 ```python
 from judgmentllm import load_run_spec
@@ -321,15 +321,70 @@ Scores and explanations match solely by trait ID, with duplicates invalidating
 that trait. Results retain original logical identities and existing error/status
 semantics; no retry, explanation follow-up, provider call or persistence occurs.
 
-`contract_version=2` versions these standalone semantics and is forbidden in
-model output; RunSpec and normalized results remain `schema_version=1`. The CLI, preview, renderer, immutable preparation,
-mock wire and executor submission path do not activate these contracts. Phase 2
-must integrate explicit RunSpec v2 and versioned rendering/ordered schema/request
-commitments together. Provider translation/adapters, authentication, usage and
-reasoning/order-evidence sidecars remain later work. The six approved
-[prompt examples](assessment-prompt-examples.md) remain design examples for that
-future renderer; `examples/export_r.py` exercises the implemented contract API
-offline through the established R export gate.
+`contract_version=2` versions output semantics independently of RunSpec.
+Phase 2 activates it through explicit `RunSpecV2` configurations and the existing
+lifecycle services. V1 remains the default and keeps its historical renderer,
+mock wire and persistence semantics. Normalized results remain schema version 1.
+The six approved [prompt examples](assessment-prompt-examples.md) are exact
+custom-template text-mode fixtures; the installed-CLI R lifecycle gate covers
+actual durable v2 execution and exports.
+
+## Explicit v2 configuration and execution
+
+`judgmentllm.RunSpecV2` is the public schema-version-2 model; `RunSpec` retains
+its version-1 validation behavior. `load_run_spec(path)` defaults an omitted
+version to v1 and dispatches explicit integer 1 or 2 to the corresponding model.
+Other versions and coerced versions are rejected. Public `RunSpecification` is the
+union of both models. `validate_run_spec(value)` and
+`validate_run_spec_json(text)` apply the same strict dispatch to loaded data,
+including revalidation of copied or mutated models. Referenced documents retain
+their own version-1 contracts. Callers may instantiate `RunSpecV2` with the same
+resolved inputs/rubric as `RunSpec`, adding a typed v2 prompt specification, or
+load a v2 YAML/JSON configuration:
+
+```python
+from judgmentllm import (
+    load_run_spec,
+    RunSpecV2,
+    preview_prompt,
+    run_live,
+    get_run,
+    export_run_results,
+)
+
+spec = load_run_spec("examples/v2/scores-first.json")
+assert isinstance(spec, RunSpecV2)
+preview = preview_prompt(spec, item_id="essay_001", trait_id="organization")
+assert preview.text
+summary = run_live(spec, store="/tmp/judgmentllm-v2-python")
+status = get_run(summary.run_id, store="/tmp/judgmentllm-v2-python")
+exported = export_run_results(
+    summary.run_id, store="/tmp/judgmentllm-v2-python", format="csv", view="r"
+)
+```
+
+`arun_live`, `resume_run`/`aresume_run`, validation, planning and immutable exports
+use the same path. Ordinary callers never need internal preparation/executor
+objects. See [runnable examples](../examples/v2/README.md) for all layouts,
+partial grouped results, explicit retries, forced-choice pairwise and R import.
+
+V2 `prompt.output_order` is `together` (default), `scores_first` or
+`explanations_first`; separated layouts require rubric explanations. Independent
+requests use one-trait array contracts. V2 `prompt.structured_output` is `auto`
+(default), `text` or `native`. The mock resolves auto to text and records native
+unavailability; text explicitly selects that presentation. Unsupported native
+fails preflight, with strict local contract validation always required.
+Reasoning settings remain reserved and rejected; assessment explanations are
+separate. Requested generation controls preserve existing omission semantics.
+
+Preview reports the exact rendered text/output contract and typed requested
+layout/resolved presentation metadata through the same renderer used by
+preparation. It makes no model call, requires no credentials and persists no run.
+Built-in v2 prompts omit zero-exemplar sections; custom templates may omit the
+exemplar placeholder only when no exemplars are selected. Supplied exemplars
+remain complete, ordered and protected. V1 templates retain historical bytes.
+Native provider translation, authentication and usage/reasoning/order-evidence
+sidecars remain later work.
 
 ## Structural plans and pair schedules
 
@@ -450,7 +505,7 @@ either exact-byte hash.
 
 Writers return record counts. Callers create output directories; errors may leave partial files. These utilities do not implement transactional persistence. Readers are lazy and raise `InputError` when an invalid record is encountered; consume the stream to validate the complete input. Duplicate detection retains identifiers, not complete records. CSV readers raise the process-wide stdlib field-size ceiling to the largest platform-supported value so large valid text and probability cells are not rejected by its default 128 KiB limit; the setting is never decreased. Nested CSV cells contain JSON, null is `\N`, and literal leading backslashes are escaped with one additional backslash. Empty strings remain empty cells.
 
-`preview_prompt(spec_or_config_path, *, item_id=None, trait_id=None, pair_uid=None, capabilities=None)` returns `RenderedPrompt(text, exemplar_ids, output_schema)`. Rubric preview requires an item ID; select a trait when there are multiple request groups. Selecting a trait in a grouped run renders its complete group. Pairwise preview requires its occurrence ID. No output is sent anywhere.
+`preview_prompt(spec_or_config_path, *, item_id=None, trait_id=None, pair_uid=None, capabilities=None)` returns historical `RenderedPrompt` for v1 or typed `RenderedPromptV2` for v2. Both include `text`, `exemplar_ids` and `output_schema`; v2 additionally includes `renderer_version` and the exact `output_commitment` with contract, selection and ordered schema evidence. Rubric preview requires an item ID; select a trait when there are multiple request groups. Selecting a trait in a grouped run renders its complete group. Pairwise preview requires its occurrence ID. No output is sent anywhere.
 
 See [prompt guidance](prompt-guidance.md) for `render_prompt`, template APIs, context, sandbox restrictions, and rendering limits. Run `uv run --offline --no-sync python examples/offline.py` for both preparation workflows.
 
@@ -639,17 +694,17 @@ requests require the separately authorized smoke workflow.
 
 ### Output, usage and reasoning boundaries
 
-New configuration capabilities opt into RunSpec schema version 2: proposed
-`PromptSpec.output_order` defaults to `together` and accepts `scores_first` and
-`explanations_first`; `PromptSpec.structured_output` defaults to `auto` and accepts
-`native` or `text`. Typed `GenerationSpec.reasoning` preserves omitted controls
-and separates reasoning effort/request from retention. `ExecutionSpec` continues
+Implemented output controls opt into RunSpec schema version 2:
+`PromptSpecV2.output_order` defaults to `together` and accepts `scores_first` and
+`explanations_first`; `PromptSpecV2.structured_output` defaults to `auto` and accepts
+`native` or `text`. Typed reasoning remains later work; Phase 2 rejects reasoning
+settings rather than ignoring them. `ExecutionSpec` continues
 to own grouping and assessment explanation requests; capture policy owns detailed
 evidence authorization. Do not add authentication secrets to these models.
 
-Phase 1 supplies the standalone generated schemas and local validators described
-above. Integrating them with versioned rendering/preparation remains Phase 2;
-the existing version-1 functions retain their historical contracts.
+Phase 1 supplies standalone generated schemas and local validators. Phase 2
+integrates them with versioned rendering, preparation and mock execution;
+existing version-1 behavior retains its historical contracts.
 Separated arrays join by `trait_id`, never position, and grouped interpretation
 continues to preserve valid siblings while recording every failed expected
 member. All layouts normalize to existing `RubricResult` fields. Generative

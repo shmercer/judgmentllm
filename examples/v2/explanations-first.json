@@ -1,0 +1,19 @@
+{
+  "schema_version": 2,
+  "task_kind": "rubric",
+  "input": "../responses.csv",
+  "rubric": "../rubric.yaml",
+  "provider": "mock",
+  "endpoint": "synthetic",
+  "model": "synthetic-v2",
+  "execution": {
+    "mode": "live",
+    "grouping": "grouped",
+    "explanations": true
+  },
+  "prompt": {
+    "output_order": "explanations_first",
+    "structured_output": "auto"
+  },
+  "capture": "minimal"
+}

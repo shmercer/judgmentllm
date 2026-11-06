@@ -19,11 +19,15 @@ from judgmentllm import __version__
 from judgmentllm.config import (
     InputSpec,
     RunSpec,
+    RunSpecification,
+    RunSpecV2,
     _load_run_spec,  # pyright: ignore[reportPrivateUsage]
     parse_document,
+    validate_run_spec_json,
 )
 from judgmentllm.io import _revalidate_record  # pyright: ignore[reportPrivateUsage]
 from judgmentllm.models import PairTask, ResponseItem
+from judgmentllm.output_commitments import resolve_schema_selection
 from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.generation import build_generation_commitment
 from judgmentllm.persistence.hashing import (
@@ -54,14 +58,18 @@ from judgmentllm.preparation.freezing import (
 from judgmentllm.preparation.index import ParsingContext, RecordLocator, read_record
 from judgmentllm.preparation.manifest import (
     CategoryCommitment,
+    ExecutableManifest,
     ExecutableRunManifest,
+    ExecutableRunManifestV2,
     ExemplarCommitment,
     FrozenSnapshotAuthorization,
     SourceDiscrepancy,
     TemplateCommitment,
+    TemplateCommitmentV2,
     TraitCommitment,
     assessment_digest,
     configuration_digest,
+    parse_executable_manifest,
 )
 from judgmentllm.preparation.records import index_digest  # pyright: ignore[reportPrivateUsage]
 from judgmentllm.preparation.session import PreparedRun as PreparedRun
@@ -95,11 +103,11 @@ def _read_record(
 
 def _manifest(
     builder: _Builder,
-    spec: RunSpec,
+    spec: RunSpecification,
     origin: Path | None,
     template: str | None,
     capabilities: CapabilityProfile | None,
-) -> ExecutableRunManifest:
+) -> ExecutableManifest:
     plan = plan_run(spec, capabilities=capabilities)
     raw = canonical_bytes(spec)
     identity = (
@@ -130,7 +138,13 @@ def _manifest(
             TraitCommitment(trait_id=c.trait_id, sha256=semantic_digest("criterion", c))
             for c in spec.criteria
         )
-    return ExecutableRunManifest(
+    manifest_type = (
+        ExecutableRunManifestV2 if spec.schema_version == 2 else ExecutableRunManifest
+    )
+    template_type = (
+        TemplateCommitmentV2 if spec.schema_version == 2 else TemplateCommitment
+    )
+    manifest_data: dict[str, object] = dict(
         run_id=builder.run_id,
         task_kind=spec.task_kind,
         capture=spec.capture,
@@ -149,7 +163,7 @@ def _manifest(
             )
             for e in spec.exemplars
         ),
-        template=TemplateCommitment(
+        template=template_type(
             sha256=semantic_digest("prompt-template", template),
             preset=spec.prompt.preset,
             advanced=spec.prompt.advanced,
@@ -169,10 +183,13 @@ def _manifest(
         else "unchanged_originals",
         package_version=__version__,
     )
+    if spec.schema_version == 2:
+        manifest_data["output_selection"] = resolve_schema_selection(spec, capabilities)
+    return manifest_type.model_validate(manifest_data)
 
 
 def prepare_run(
-    spec_or_path: RunSpec | str | Path,
+    spec_or_path: RunSpecification | str | Path,
     *,
     store: str | Path,
     run_id: str,
@@ -201,12 +218,14 @@ def prepare_run(
                 "run already exists; reopen verified preparation or use a new run"
             )
         origin = (
-            None if isinstance(spec_or_path, RunSpec) else Path(spec_or_path).resolve()
+            None
+            if isinstance(spec_or_path, (RunSpec, RunSpecV2))
+            else Path(spec_or_path).resolve()
         )
         initial: tuple[FileSignature, str] | None = None
         discovered: dict[str, tuple[FileSignature, str]] = {}
         if origin is None:
-            assert isinstance(spec_or_path, RunSpec)
+            assert isinstance(spec_or_path, (RunSpec, RunSpecV2))
             spec = _revalidate_record(spec_or_path)
         else:
             raw, sig, digest = _memory_source(origin)
@@ -335,7 +354,7 @@ def _compatible_package_version(producer: str, consumer: str) -> bool:
 
 def _load_manifest(
     repository: Repository, run_id: str, *, unsealed: bool
-) -> ExecutableRunManifest:
+) -> ExecutableManifest:
     directory = repository.run_directory(run_id)
     fixed = directory / "manifest.json"
     if fixed.is_symlink() or not fixed.is_file():
@@ -345,7 +364,7 @@ def _load_manifest(
     store = ArtifactStore(directory, create=False)
     try:
         raw = fixed.read_bytes()
-        manifest = ExecutableRunManifest.model_validate_json(raw)
+        manifest = parse_executable_manifest(raw)
     except (ValueError, OSError):
         raise PreparationError("published manifest is invalid or incomplete") from None
     if manifest.run_id != run_id or canonical_bytes(manifest) != raw:
@@ -371,7 +390,7 @@ def _load_manifest(
     return manifest
 
 
-def _verify_metadata(repository: Repository, manifest: ExecutableRunManifest) -> None:
+def _verify_metadata(repository: Repository, manifest: ExecutableManifest) -> None:
     rows = tuple(repository.iter_sources(manifest.run_id))
     if len(rows) != len(manifest.sources):
         raise PreparationError("source set differs from manifest")
@@ -402,12 +421,14 @@ def _verify_metadata(repository: Repository, manifest: ExecutableRunManifest) ->
 
 def _restore_context(
     repository: Repository,
-    manifest: ExecutableRunManifest,
-    supplied: RunSpec | None,
-) -> tuple[RunSpec, str | None]:
+    manifest: ExecutableManifest,
+    supplied: RunSpecification | None,
+) -> tuple[RunSpecification, str | None]:
     store = ArtifactStore(repository.run_directory(manifest.run_id))
     if manifest.capture == "full":
-        frozen = RunSpec.model_validate_json(store.read(manifest.specification))
+        frozen = validate_run_spec_json(
+            store.read(manifest.specification).decode("utf-8")
+        )
         spec = _revalidate_record(supplied) if supplied is not None else frozen
     elif manifest.configuration_location is not None:
         by_location = {s.original_location: s for s in manifest.sources}
@@ -470,7 +491,7 @@ def _restore_context(
 
 
 def _source_discrepancies(
-    manifest: ExecutableRunManifest,
+    manifest: ExecutableManifest,
 ) -> tuple[SourceDiscrepancy, ...]:
     discrepancies: list[SourceDiscrepancy] = []
     for source in manifest.sources:
@@ -496,7 +517,7 @@ def open_prepared_run(
     run_id: str,
     *,
     store: str | Path,
-    spec: RunSpec | None = None,
+    spec: RunSpecification | None = None,
     capabilities: CapabilityProfile | None = None,
     use_frozen_snapshot: bool = False,
     owner_token: str | None = None,
@@ -636,7 +657,7 @@ class InputValidationReport(ExecutionModel):
 
 
 def validate_inputs(
-    spec_or_path: RunSpec | str | Path,
+    spec_or_path: RunSpecification | str | Path,
     *,
     capabilities: CapabilityProfile | None = None,
     exhaustive_rendering: bool = False,

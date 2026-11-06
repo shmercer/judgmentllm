@@ -6,8 +6,8 @@ from typing import Annotated, Literal
 import typer
 
 from judgmentllm import __version__
-from judgmentllm.cli_controls import LifecycleGroup, perform, progress
-from judgmentllm.config import load_run_spec
+from judgmentllm.cli_controls import LifecycleGroup, diagnostic, perform, progress
+from judgmentllm.config import RunSpecV2, load_run_spec
 from judgmentllm.lifecycle import (
     LifecycleError,
     MockExecutionOptions,
@@ -23,7 +23,7 @@ from judgmentllm.lifecycle import (
 )
 from judgmentllm.planning import validate_run
 from judgmentllm.preview import preview_prompt
-from judgmentllm.prompts import init_template, list_templates
+from judgmentllm.prompts import RenderedAssessmentPrompt, init_template, list_templates
 
 app = typer.Typer(
     name="judgmentllm",
@@ -86,8 +86,33 @@ def templates_preview(
     pair_uid: Annotated[
         str | None, typer.Option(help="Scheduled pair occurrence ID.")
     ] = None,
+    json_output: Annotated[
+        bool,
+        typer.Option(
+            "--json",
+            help="Emit one version-1 control object with exact prompt metadata.",
+        ),
+    ] = False,
 ) -> None:
     """Print one complete prompt locally; no credentials or provider calls."""
+    if json_output:
+
+        def operation() -> RenderedAssessmentPrompt:
+            spec = load_run_spec(config)
+            rendered = preview_prompt(
+                spec, item_id=item_id, trait_id=trait_id, pair_uid=pair_uid
+            )
+            for issue in validate_run(spec).issues:
+                if issue.severity == "warning":
+                    diagnostic(
+                        issue.code,
+                        "Review the prompt preflight diagnostics; no provider qualification was inferred.",
+                    )
+            return rendered
+
+        perform(operation)
+        return
+    spec = None
     try:
         spec = load_run_spec(config)
         rendered = preview_prompt(
@@ -96,9 +121,14 @@ def templates_preview(
         for issue in validate_run(spec).issues:
             if issue.severity == "warning":
                 typer.echo(f"Warning [{issue.code}]: {issue.message}", err=True)
-        typer.echo(rendered.text)
+        typer.echo(rendered.text, nl=not isinstance(spec, RunSpecV2))
     except (ValueError, OSError) as error:
-        typer.echo(f"Error: {error}", err=True)
+        message = (
+            "Invalid configuration or prompt selection."
+            if spec is None or isinstance(spec, RunSpecV2)
+            else str(error)
+        )
+        typer.echo(f"Error: {message}", err=True)
         raise typer.Exit(2) from error
 
 
@@ -207,6 +237,7 @@ def run_command(
     )
 
 
+@runs_app.command("resume")
 @app.command("resume")
 def resume_command(
     run: RunOption,

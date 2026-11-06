@@ -96,29 +96,30 @@ executed workloads, outstanding checks and later publication requirements.
 
 ## Milestone 3 - Assessment outputs, authentication and generative live adapters
 
-**Phase 1 provider-neutral contracts are implemented; later phases remain planned.**
-The authoritative [assessment output design](assessment-output-design.md)
-consolidates output layouts, templates, generated schemas, authentication,
-provider evidence, usage/reasoning retention and qualification. Phase 1 adds
-standalone typed contracts with `contract_version=2`, deterministic ordered
-JSON Schema generation, strict whole-output validation, explicit contract-based
-member interpretation, and existing-result normalization. The three rubric
-layouts and generative winner-only/legacy-false/tie-enabled pairwise forms are
-available through the [Python contract API](python-api.md#standalone-assessment-output-contracts-milestone-3-phase-1).
-The existing export R gate also checks Python-generated Phase 1 results;
-all seven strict gates and the seven-configuration/49-execution policy remain.
+**Phases 1–2 implement provider-neutral contracts and explicit v2 mock execution.**
+Phase 1 introduced `contract_version=2`, ordered schemas, strict validation and
+contract-aware interpretation. Phase 2 activates these contracts through explicit
+`schema_version: 2` run configurations, shared rendering/preview, immutable
+request commitments and the existing durable offline mock lifecycle. Existing
+v1 configurations, templates, mock payloads, manifests and normalized results
+retain their historical identities. Referenced documents and CLI envelopes
+remain independently versioned at 1.
 
-The contract version is separate from document `schema_version`: RunSpec,
-normalized results, prompts, mock wire protocol and durable artifacts remain
-version 1. No new layout is accepted by the CLI, renderer, preparation or executor
-submission path. Phase 2 must introduce explicit RunSpec v2 configuration,
-rendering/preview and immutable ordered-schema/request commitments together
-before enabling these contracts in durable execution. Existing grouped atomic
-persistence and recovery remain covered by historical execution tests; the new
-contract interpretation entry point itself performs no persistence or submission.
-Provider translation/adapters, authentication and usage/reasoning/order-evidence
-sidecars remain later work. Exact-head qualification is reported separately;
-implemented code alone is not qualification evidence.
+RunSpec v2 adds `prompt.output_order` and `prompt.structured_output`. All three
+rubric layouts and winner-only forced-choice pairwise output execute in one
+assessment request per planned group. Zero-exemplar built-ins omit the empty
+section; supplied exemplars remain complete, ordered and protected. The six
+custom prompt snapshots are exact renderer fixtures. The mock selects text for
+`auto`; explicit native enforcement fails preflight. Native translation, real
+adapters, authentication, usage/reasoning capture and observation-order sidecars
+remain later phases.
+
+Phase 2 extends the existing installed-CLI R lifecycle gate with actual v2
+execution, durable export and R import; the original six gates and historical
+fixtures remain. Acceptance requires all seven local configurations and all
+49 strict R/jsonlite executions, branch coverage ≥90% only on Linux/Python 3.11,
+and all five hosted configurations at the exact final PR head. Implementation
+status does not substitute for retained qualification evidence.
 
 Continue through the following small, independently reviewable PRs; each PR
 updates its tests and user documentation and passes applicable R acceptance.
@@ -132,7 +133,7 @@ updates its tests and user documentation and passes applicable R acceptance.
    Normalization uses existing `RubricResult`; forced-choice `winner_id` alone
    retains normalized `tie: false` and historical explicit-false compatibility.
    Activation is limited to the explicit standalone Python contract boundary.
-2. **Templates and examples.** Extend the sandboxed renderer/output instructions
+2. **Versioned configuration, templates and durable mock execution (Phase 2).** Extend the sandboxed renderer/output instructions
    for all layouts. Omit empty exemplar sections, allow custom templates without
    an exemplar placeholder when none are selected, and preserve exact inclusion
    and order when supplied. Ship the six editable/rendered examples in the

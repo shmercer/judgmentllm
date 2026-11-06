@@ -416,7 +416,8 @@ def test_generation_and_current_capability_incompatibility_blocks_work(
 
 def test_direct_python_spec_has_no_invented_configuration_file(tmp_path: Path) -> None:
     configuration = _sources(tmp_path / "inputs", "minimal")
-    spec: RunSpec = load_run_spec(configuration)
+    spec = load_run_spec(configuration)
+    assert isinstance(spec, RunSpec)
     with prep.prepare_run(spec, store=tmp_path / "runtime", run_id="001") as prepared:
         assert prepared.manifest.configuration_origin == "python"
         assert prepared.manifest.configuration_location is None

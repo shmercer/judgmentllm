@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "scenario": {
+    "members": {
+      "evidence": {
+        "outcome": "missing_explanation"
+      }
+    }
+  }
+}

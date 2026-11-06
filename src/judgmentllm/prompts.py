@@ -18,7 +18,7 @@ from typing import Literal, cast
 
 from jinja2 import StrictUndefined, Template, TemplateError, meta, nodes
 from jinja2.sandbox import SandboxedEnvironment
-from pydantic import Field, JsonValue
+from pydantic import Field, JsonValue, field_validator, model_validator
 
 from judgmentllm.models import (
     Exemplar,
@@ -30,6 +30,12 @@ from judgmentllm.models import (
     Trait,
     VersionedModel,
     validate_exemplars,
+)
+from judgmentllm.output_commitments import OutputCommitmentV2, ordered_json_bytes
+from judgmentllm.output_contracts import (
+    PairwiseOutputContract,
+    RubricOutputContract,
+    generate_output_schema,
 )
 
 
@@ -62,6 +68,35 @@ class RenderedPrompt(VersionedModel):
     output_schema: dict[str, JsonValue]
 
 
+class RenderedPromptV2(StrictModel):
+    """Exact v2 preview/request content, including ordered contract evidence."""
+
+    schema_version: Literal[2] = 2
+    renderer_version: Literal[2] = 2
+    text: str
+    exemplar_ids: list[str]
+    output_schema: dict[str, JsonValue]
+    output_commitment: OutputCommitmentV2
+
+    @field_validator("schema_version", "renderer_version", mode="before")
+    @classmethod
+    def strict_version(cls, value: object) -> object:
+        if type(value) is not int or value != 2:
+            raise ValueError("rendered prompt versions must be integer 2")
+        return value
+
+    @model_validator(mode="after")
+    def committed_schema(self) -> RenderedPromptV2:
+        if ordered_json_bytes(
+            self.output_schema
+        ) != self.output_commitment.schema_text.encode("utf-8"):
+            raise ValueError("rendered output schema differs from its exact commitment")
+        return self
+
+
+RenderedAssessmentPrompt = RenderedPrompt | RenderedPromptV2
+
+
 _PRESETS = {
     "rubric_scores_only": "Ordinal rubric categories without explanations.",
     "rubric_scores_with_explanations": "Ordinal rubric categories and explanations.",
@@ -77,7 +112,7 @@ def list_templates() -> list[TemplateInfo]:
     ]
 
 
-def get_template(preset: str) -> str:
+def get_template(preset: str, *, renderer_version: Literal[1, 2] = 1) -> str:
     """Read an installed text preset without requiring a source checkout."""
     if preset not in _PRESETS:
         raise PromptError(
@@ -85,7 +120,9 @@ def get_template(preset: str) -> str:
         )
     return (
         files("judgmentllm")
-        .joinpath("templates", f"{preset}.txt")
+        .joinpath(
+            "templates", *(["v2"] if renderer_version == 2 else []), f"{preset}.txt"
+        )
         .read_text(encoding="utf-8")
     )
 
@@ -232,7 +269,13 @@ def _protect(contents: Sequence[tuple[str, str, str]], namespace: str) -> list[_
     return blocks
 
 
-def _verify_and_unwrap(text: str, blocks: Sequence[_Block], namespace: str) -> str:
+def _verify_and_unwrap(
+    text: str,
+    blocks: Sequence[_Block],
+    namespace: str,
+    *,
+    renderer_version: Literal[1, 2] = 1,
+) -> str:
     pattern = re.compile(rf"<<JUDGMENTLLM_{namespace}_(BEGIN|END)_(\d+)>>")
     matches = list(pattern.finditer(text))
     seen: list[int] = []
@@ -267,6 +310,10 @@ def _verify_and_unwrap(text: str, blocks: Sequence[_Block], namespace: str) -> s
     if actual_exemplars != expected_exemplars:
         raise PromptError("Prompt must preserve the complete selected exemplar order.")
     # Internal markers are validation machinery, not text for providers.
+    if renderer_version == 2:
+        for block in blocks:
+            text = text.replace(block.wrapped, block.content, 1)
+        return text
     return pattern.sub("", text)
 
 
@@ -371,6 +418,8 @@ def _prompt_source(
     explanations: bool,
     allow_ties: bool,
     limits: RenderLimits,
+    renderer_version: Literal[1, 2] = 1,
+    exemplar_count: int = 0,
 ) -> str:
     if preset is not None and template is not None:
         raise PromptError("Choose a prompt preset or custom template, not both.")
@@ -393,7 +442,9 @@ def _prompt_source(
             and (chosen == "rubric_scores_with_explanations") != explanations
         ):
             raise PromptError("Rubric preset must match the explanations setting.")
-        source = get_template(chosen)
+        source = get_template(chosen, renderer_version=renderer_version)
+        if renderer_version == 2 and exemplar_count == 0:
+            source = source.replace("Reference exemplars:\n{{ exemplars }}\n\n", "")
     else:
         source = template
     if len(source.encode("utf-8")) > limits.max_source_bytes:
@@ -468,6 +519,7 @@ def validate_prompt_template(
     explanations: bool,
     allow_ties: bool,
     limits: RenderLimits,
+    renderer_version: Literal[1, 2] = 1,
 ) -> None:
     """Internal preflight: compile static contracts without evaluating content."""
     source = _prompt_source(
@@ -477,6 +529,8 @@ def validate_prompt_template(
         explanations=explanations,
         allow_ties=allow_ties,
         limits=limits,
+        renderer_version=renderer_version,
+        exemplar_count=len(exemplar_ids),
     )
     # Only context names and actual list sizes enter static AST validation.
     # Empty slots are never rendered, interpreted as records, or retained.
@@ -496,6 +550,44 @@ def validate_prompt_template(
     _compile_prompt_template(source, context, advanced=advanced, limits=limits)
 
 
+def _output_instructions_v2(commitment: OutputCommitmentV2) -> str:
+    contract = commitment.contract
+    prefix = "Return only a JSON object matching this schema. "
+    if isinstance(contract, RubricOutputContract):
+        text = (
+            prefix
+            + "Include every requested trait exactly once. Preserve category labels exactly. "
+        )
+        if not contract.explanations:
+            text += "Do not include explanations."
+        elif contract.output_order == "together":
+            text += "In scores, put each category_label before its explanation. Explanations must be nonblank."
+        elif contract.output_order == "scores_first":
+            text += "Emit the scores key before the explanations key. Return all scores first, then all explanations. Match both arrays by trait_id; explanations must be nonblank."
+        else:
+            text += "Emit the explanations key before the scores key. Return all explanations first, then all scores. Match both arrays by trait_id; explanations must be nonblank."
+    else:
+        first, second = contract.pair.presented_order
+        if contract.allow_ties:
+            text = (
+                prefix
+                + f"A tie requires winner_id=null and tie=true. Otherwise winner_id must be exactly {first} or {second} and tie=false. "
+            )
+            text += (
+                "Include a nonblank explanation."
+                if contract.explanations
+                else "Do not include explanation."
+            )
+        else:
+            text = prefix + f"winner_id must be exactly {first} or {second}. "
+            text += (
+                "Return only winner_id and a nonblank explanation; do not include tie."
+                if contract.explanations
+                else "Return only winner_id; do not include tie or explanation."
+            )
+    return text + "\n" + commitment.schema_text
+
+
 def render_prompt(
     *,
     rubric: Rubric | None = None,
@@ -512,7 +604,9 @@ def render_prompt(
     template: str | None = None,
     advanced: bool = False,
     limits: RenderLimits | None = None,
-) -> RenderedPrompt:
+    renderer_version: Literal[1, 2] = 1,
+    output_commitment: OutputCommitmentV2 | None = None,
+) -> RenderedAssessmentPrompt:
     """Render one offline assessment request without credentials or provider calls.
 
     ``traits`` selects an explicit group in its requested order. All supplied
@@ -521,6 +615,14 @@ def render_prompt(
     Advanced loops use ``entry['block']`` on ``traits``/``exemplar_items`` lists.
     """
     limits = limits or RenderLimits()
+    if type(renderer_version) is not int or renderer_version not in (1, 2):
+        raise PromptError("Unsupported renderer version.")
+    if (renderer_version == 2) != (output_commitment is not None):
+        raise PromptError("Version-2 rendering requires its exact output commitment.")
+    if output_commitment is not None:
+        from judgmentllm.io import _revalidate_record  # pyright: ignore[reportPrivateUsage]
+
+        output_commitment = _revalidate_record(output_commitment)
     if preset is not None and template is not None:
         raise PromptError("Choose a prompt preset or custom template, not both.")
     if pair is not None:
@@ -610,6 +712,8 @@ def render_prompt(
         explanations=explanations,
         allow_ties=allow_ties,
         limits=limits,
+        renderer_version=renderer_version,
+        exemplar_count=len(exemplars),
     )
     output_instructions = (
         (
@@ -622,6 +726,24 @@ def render_prompt(
         + "\n"
         + json.dumps(schema, ensure_ascii=False, sort_keys=True)
     )
+    if output_commitment is not None:
+        expected = (
+            PairwiseOutputContract(
+                pair=pair, explanations=explanations, allow_ties=allow_ties
+            )
+            if pair is not None
+            else RubricOutputContract(
+                traits=tuple(selected),
+                explanations=explanations,
+                output_order=output_commitment.contract.output_order,
+            )
+        )
+        if expected != output_commitment.contract:
+            raise PromptError(
+                "Output commitment does not match rendered assessment membership or settings."
+            )
+        schema = generate_output_schema(output_commitment.contract)
+        output_instructions = _output_instructions_v2(output_commitment)
     contents = (
         criteria
         + [
@@ -650,8 +772,18 @@ def render_prompt(
         raise
     except (TemplateError, RecursionError, TypeError, ValueError) as exc:
         raise PromptError(f"Cannot render prompt template: {exc}") from exc
+    text = _verify_and_unwrap(
+        "".join(rendered), blocks, namespace, renderer_version=renderer_version
+    )
+    if output_commitment is not None:
+        return RenderedPromptV2(
+            text=text,
+            exemplar_ids=[exemplar.exemplar_id for exemplar in exemplars],
+            output_schema=schema,
+            output_commitment=output_commitment,
+        )
     return RenderedPrompt(
-        text=_verify_and_unwrap("".join(rendered), blocks, namespace),
+        text=text,
         exemplar_ids=[exemplar.exemplar_id for exemplar in exemplars],
         output_schema=schema,
     )

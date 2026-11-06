@@ -11,7 +11,7 @@ from typing import BinaryIO, Literal, cast
 
 from judgmentllm.config import (
     InputSpec,
-    RunSpec,
+    RunSpecification,
     parse_document,
 )
 from judgmentllm.models import PairTask, ResponseItem
@@ -313,7 +313,7 @@ class SourceBuilder:
 
     def validate_rendering(
         self,
-        spec: RunSpec,
+        spec: RunSpecification,
         template: str | None,
         capabilities: CapabilityProfile | None,
         *,
@@ -343,13 +343,14 @@ class SourceBuilder:
 
     def _validate_representatives(
         self,
-        spec: RunSpec,
+        spec: RunSpecification,
         template: str | None,
         capabilities: CapabilityProfile | None,
     ) -> None:
         plan = plan_run(spec, capabilities=capabilities)
         for group in plan.trait_groups:
             validate_prompt_template(
+                renderer_version=spec.schema_version,
                 kind=spec.task_kind,
                 trait_ids=group,
                 exemplar_ids=plan.exemplar_ids,

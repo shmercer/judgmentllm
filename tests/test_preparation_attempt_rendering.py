@@ -16,7 +16,7 @@ from judgmentllm.persistence.models import RequestRecord, TaskRecord
 from judgmentllm.planning import PlannedRequest
 from judgmentllm.preparation import PreparedRun, RequestDependency, prepare_run, session
 from judgmentllm.preparation.freezing import PreparationError
-from judgmentllm.prompts import RenderedPrompt
+from judgmentllm.prompts import RenderedAssessmentPrompt
 
 
 def seal_request(prepared: PreparedRun, dependency: RequestDependency) -> None:
@@ -51,7 +51,7 @@ def counted_renders(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, ...]]:
         template: str | None,
         request: PlannedRequest,
         lookup: Callable[[Literal["response", "pair"], str], ResponseItem | PairTask],
-    ) -> RenderedPrompt:
+    ) -> RenderedAssessmentPrompt:
         rendered.append(tuple(task.task_id for task in request.tasks))
         return original(spec, template, request, lookup)
 

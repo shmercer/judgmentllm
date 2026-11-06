@@ -8,14 +8,14 @@ from typing import Literal
 import pytest
 from test_execution import setup
 
-from judgmentllm.config import GenerationSpec, RunSpec
+from judgmentllm.config import GenerationSpec, RunSpecification
 from judgmentllm.execution import execute_run, recover_run
 from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.receipts import read_acknowledgment
 from judgmentllm.persistence.repository import Repository
 from judgmentllm.planning import CapabilityProfile
 from judgmentllm.preparation import RequestDependency, prepare_run
-from judgmentllm.prompts import RenderedPrompt
+from judgmentllm.prompts import RenderedAssessmentPrompt
 from judgmentllm.providers import (
     MockAdapter,
     PreparedRequest,
@@ -44,7 +44,10 @@ async def test_adapter_envelope_must_match_frozen_selected_work(
 
     class ChangedEnvelope(MockAdapter):
         def prepare(
-            self, spec: RunSpec, dependency: RequestDependency, rendered: RenderedPrompt
+            self,
+            spec: RunSpecification,
+            dependency: RequestDependency,
+            rendered: RenderedAssessmentPrompt,
         ) -> PreparedRequest:
             prepared = super().prepare(spec, dependency, rendered)
             return prepared.model_copy(update={field: value})
@@ -153,7 +156,7 @@ async def test_new_generation_restriction_blocks_before_submission_without_resea
     class RestrictedLater(MockAdapter):
         restricted = False
 
-        def capabilities(self, spec: RunSpec) -> CapabilityProfile:
+        def capabilities(self, spec: RunSpecification) -> CapabilityProfile:
             profile = super().capabilities(spec)
             if self.restricted:
                 assert profile.generation is not None

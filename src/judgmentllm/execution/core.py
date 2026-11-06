@@ -15,7 +15,7 @@ from typing import ParamSpec, TypeVar
 
 from pydantic import Field
 
-from judgmentllm.config import RunSpec
+from judgmentllm.config import RunSpecification
 from judgmentllm.execution.retry import DEFAULT_RETRY_POLICY, RetryPolicy
 from judgmentllm.execution.session import ExecutionSession as _Session
 from judgmentllm.execution.session import ExecutionWork as _Work
@@ -54,7 +54,7 @@ async def execute_run(
     *,
     store: str | Path,
     adapter: ProviderAdapter,
-    spec: RunSpec | None = None,
+    spec: RunSpecification | None = None,
     use_frozen_snapshot: bool = False,
     fault: Fault | None = None,
     retry_policy: RetryPolicy = DEFAULT_RETRY_POLICY,
@@ -234,7 +234,7 @@ async def recover_run(
     *,
     store: str | Path,
     adapter: ProviderAdapter,
-    spec: RunSpec | None = None,
+    spec: RunSpecification | None = None,
     use_frozen_snapshot: bool = False,
     fault: Fault | None = None,
     retry_policy: RetryPolicy = DEFAULT_RETRY_POLICY,

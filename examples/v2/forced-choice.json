@@ -1,0 +1,18 @@
+{
+  "schema_version": 2,
+  "task_kind": "pairwise",
+  "input": "../responses.csv",
+  "criteria": "../criteria.yaml",
+  "pairs": "../pairs.jsonl",
+  "provider": "mock",
+  "endpoint": "synthetic",
+  "model": "synthetic-v2",
+  "execution": {
+    "mode": "live",
+    "explanations": true
+  },
+  "prompt": {
+    "structured_output": "text"
+  },
+  "capture": "minimal"
+}

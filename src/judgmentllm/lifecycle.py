@@ -25,7 +25,15 @@ from judgmentllm._lifecycle_store import (
     require_store,
     resolve_run,
 )
-from judgmentllm.config import ConfigurationError, RunSpec, load_run_spec, parse_json
+from judgmentllm.config import (
+    ConfigurationError,
+    RunSpec,
+    RunSpecification,
+    RunSpecV2,
+    load_run_spec,
+    parse_json,
+    validate_run_spec,
+)
 from judgmentllm.execution import execute_run, recover_run
 from judgmentllm.execution.exports import export_run
 from judgmentllm.execution.retry import authorize_subset_retry
@@ -45,6 +53,7 @@ from judgmentllm.lifecycle_models import (
     RunSummary,
 )
 from judgmentllm.models import VersionedModel
+from judgmentllm.output_commitments import resolve_schema_selection
 from judgmentllm.persistence.models import (
     IntegrityError,
     NotFoundError,
@@ -70,10 +79,10 @@ class _MockFixture(VersionedModel):
     scenarios: dict[str, MockScenario] = Field(default_factory=dict)
 
 
-def _checked_spec(spec_or_path: RunSpec | str | Path) -> RunSpec:
+def _checked_spec(spec_or_path: RunSpecification | str | Path) -> RunSpecification:
     return (
-        RunSpec.model_validate(dict(spec_or_path))
-        if isinstance(spec_or_path, RunSpec)
+        validate_run_spec(spec_or_path)
+        if isinstance(spec_or_path, (RunSpec, RunSpecV2))
         else load_run_spec(spec_or_path)
     )
 
@@ -168,8 +177,18 @@ def _mock_adapter(
     return adapter
 
 
+def _require_presentation(spec: RunSpecification) -> None:
+    """Reject unavailable v2 mechanisms before creating a runtime store."""
+    if isinstance(spec, RunSpecV2):
+        try:
+            resolve_schema_selection(spec)
+        except PreflightError as error:
+            # Selection diagnostics contain only fixed configuration/capability text.
+            raise LifecycleError("unsupported_capability", str(error)) from None
+
+
 def _profile(
-    spec: RunSpec, capabilities: CapabilityProfile | None
+    spec: RunSpecification, capabilities: CapabilityProfile | None
 ) -> CapabilityProfile | None:
     profile = (
         CapabilityProfile.model_validate(dict(capabilities))
@@ -180,6 +199,11 @@ def _profile(
         profile = profile or MockAdapter.capabilities_for(
             spec.provider, spec.endpoint, spec.model
         )
+        if (
+            isinstance(spec, RunSpecV2)
+            and not validate_run(spec, capabilities=profile).valid
+        ):
+            return profile
         try:
             MockAdapter.validate_configuration(spec, capabilities=profile)
         except ProviderError:
@@ -190,7 +214,7 @@ def _profile(
 
 
 def validate_inputs(
-    spec_or_path: RunSpec | str | Path,
+    spec_or_path: RunSpecification | str | Path,
     *,
     capabilities: CapabilityProfile | None = None,
     exhaustive_rendering: bool = False,
@@ -231,6 +255,9 @@ def validate_inputs(
                     issues=issues[:100],
                     total_issues=len(issues),
                     truncated=len(issues) > 100,
+                    output_selection=resolve_schema_selection(spec, profile)
+                    if isinstance(spec, RunSpecV2)
+                    else None,
                 )
     except LifecycleError as error:
         if error.category not in {"validation", "unsupported_capability"}:
@@ -254,7 +281,7 @@ def validate_inputs(
 
 
 def estimate_run(
-    spec_or_path: RunSpec | str | Path,
+    spec_or_path: RunSpecification | str | Path,
     *,
     capabilities: CapabilityProfile | None = None,
 ) -> ExecutionPlan:
@@ -264,6 +291,7 @@ def estimate_run(
         tempfile.TemporaryDirectory(prefix="judgmentllm-plan-") as temporary,
     ):
         spec = _checked_spec(spec_or_path)
+        _require_presentation(spec)
         profile = _profile(spec, capabilities)
         with prepare_run(
             spec_or_path,
@@ -293,6 +321,9 @@ def estimate_run(
                 cache_policy=spec.execution.cache_policy or "auto",
                 cache_report="uncached" if mock else "unknown",
                 pricing="not_applicable" if mock else "unknown",
+                output_selection=resolve_schema_selection(spec, profile)
+                if isinstance(spec, RunSpecV2)
+                else None,
             )
 
 
@@ -323,7 +354,7 @@ def _summary(
 
 
 async def arun_live(
-    spec_or_path: RunSpec | str | Path,
+    spec_or_path: RunSpecification | str | Path,
     *,
     store: str | Path | None = None,
     progress: Progress | None = None,
@@ -332,6 +363,7 @@ async def arun_live(
     """Execute in this process until drained; cancellation preserves durable work."""
     with _errors():
         spec = _checked_spec(spec_or_path)
+        _require_presentation(spec)
         root = discover_store(store, spec)
         adapter = _mock_adapter(spec.provider, spec.endpoint, root, mock, resume=False)
         try:
@@ -375,7 +407,7 @@ async def arun_live(
 
 
 def _prepare(
-    spec_or_path: RunSpec | str | Path,
+    spec_or_path: RunSpecification | str | Path,
     root: Path,
     run_id: str,
     profile: CapabilityProfile,
@@ -396,7 +428,7 @@ def _no_event_loop(operation: str) -> None:
 
 
 def run_live(
-    spec_or_path: RunSpec | str | Path,
+    spec_or_path: RunSpecification | str | Path,
     *,
     store: str | Path | None = None,
     progress: Progress | None = None,
@@ -413,7 +445,7 @@ async def aresume_run(
     run_id: str | Path,
     *,
     store: str | Path | None = None,
-    spec: RunSpec | None = None,
+    spec: RunSpecification | None = None,
     use_frozen_snapshot: bool = False,
     retry: RetrySelection | None = None,
     progress: Progress | None = None,
@@ -477,7 +509,7 @@ def resume_run(
     run_id: str | Path,
     *,
     store: str | Path | None = None,
-    spec: RunSpec | None = None,
+    spec: RunSpecification | None = None,
     use_frozen_snapshot: bool = False,
     retry: RetrySelection | None = None,
     progress: Progress | None = None,

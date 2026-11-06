@@ -9,7 +9,7 @@ from typing import Literal
 
 from pydantic import Field
 
-from judgmentllm.config import RunSpec
+from judgmentllm.config import RunSpecification, RunSpecV2, validate_run_spec
 from judgmentllm.generation import GenerationCapabilities
 from judgmentllm.io import _revalidate_record, read_pairs, read_responses  # pyright: ignore[reportPrivateUsage]
 from judgmentllm.models import PairTask, ResponseItem, StrictModel, VersionedModel
@@ -65,7 +65,7 @@ class PreflightError(ValueError):
 
 
 def validate_generation(
-    spec: RunSpec, *, capabilities: GenerationCapabilities | None = None
+    spec: RunSpecification, *, capabilities: GenerationCapabilities | None = None
 ) -> ValidationReport:
     """Check explicit controls only; this is not complete submission preflight.
 
@@ -185,7 +185,7 @@ class PlannedRequest(VersionedModel):
 
 
 def _groups(
-    spec: RunSpec, capabilities: CapabilityProfile
+    spec: RunSpecification, capabilities: CapabilityProfile
 ) -> tuple[tuple[str, ...], ...]:
     if spec.task_kind == "pairwise":
         return tuple((criterion.trait_id,) for criterion in spec.criteria)
@@ -235,9 +235,21 @@ def _groups(
 
 
 def validate_run(
-    spec: RunSpec, *, capabilities: CapabilityProfile | None = None
+    spec: RunSpecification, *, capabilities: CapabilityProfile | None = None
 ) -> ValidationReport:
     """Validate known compatibility, preserving unknowns as explicit diagnostics."""
+    if isinstance(spec, RunSpecV2):
+        spec = validate_run_spec(spec)
+    if (
+        capabilities is None
+        and isinstance(spec, RunSpecV2)
+        and (spec.provider, spec.endpoint) == ("mock", "synthetic")
+    ):
+        from judgmentllm.providers.mock import MockAdapter
+
+        capabilities = MockAdapter.capabilities_for(
+            spec.provider, spec.endpoint, spec.model
+        )
     profile = capabilities or CapabilityProfile()
     issues: list[ValidationIssue] = []
 
@@ -338,12 +350,31 @@ def validate_run(
                                 severity="warning",
                             )
                         )
+    if isinstance(spec, RunSpecV2):
+        from judgmentllm.output_commitments import resolve_schema_selection
+
+        try:
+            selection = resolve_schema_selection(spec, profile)
+        except PreflightError as error:
+            issue(
+                "unsupported_schema_mechanism", "prompt.structured_output", str(error)
+            )
+        else:
+            if selection.policy == "auto":
+                issues.append(
+                    ValidationIssue(
+                        code=selection.reason,
+                        field="prompt.structured_output",
+                        message="Native schema enforcement is unavailable; textual schema presentation was selected before request commitment.",
+                        severity="warning",
+                    )
+                )
     issues.extend(validate_generation(spec, capabilities=profile.generation).issues)
     return ValidationReport(issues=tuple(issues))
 
 
 def plan_run(
-    spec: RunSpec, *, capabilities: CapabilityProfile | None = None
+    spec: RunSpecification, *, capabilities: CapabilityProfile | None = None
 ) -> RunPlan:
     """Return structural trait groups without reading/materializing response files."""
     report = validate_run(spec, capabilities=capabilities)
@@ -362,7 +393,7 @@ def plan_run(
 
 
 def iter_tasks(
-    spec: RunSpec, records: Iterable[ResponseItem | PairTask] | None = None
+    spec: RunSpecification, records: Iterable[ResponseItem | PairTask] | None = None
 ) -> Iterator[AssessmentTask]:
     """Stream logical tasks; retain IDs only for duplicate detection."""
     if records is None:
@@ -405,7 +436,7 @@ def iter_tasks(
 
 
 def iter_requests(
-    spec: RunSpec,
+    spec: RunSpecification,
     records: Iterable[ResponseItem | PairTask] | None = None,
     *,
     capabilities: CapabilityProfile | None = None,
@@ -433,7 +464,9 @@ def iter_requests(
         yield from _requests_for_record(spec, record, plan, fingerprint)
 
 
-def request_context_fingerprint(spec: RunSpec, *, template_text: str | None) -> str:
+def request_context_fingerprint(
+    spec: RunSpecification, *, template_text: str | None
+) -> str:
     """Commit the established request context without reopening template files."""
     context_parts: list[object] = [
         spec.rubric.model_dump(mode="json")
@@ -454,11 +487,21 @@ def request_context_fingerprint(spec: RunSpec, *, template_text: str | None) -> 
     if spec.generation is not None:
         # Leave every legacy context argument unchanged for unspecified controls.
         context_parts.append({"generation": spec.generation.model_dump(mode="json")})
+    if isinstance(spec, RunSpecV2):
+        context_parts.append(
+            {
+                "run_spec_version": 2,
+                "renderer_version": 2,
+                "output_contract_version": 2,
+                "output_order": spec.prompt.output_order,
+                "structured_output": spec.prompt.structured_output,
+            }
+        )
     return stable_id("context", *context_parts)
 
 
 def plan_record(
-    spec: RunSpec,
+    spec: RunSpecification,
     record: ResponseItem | PairTask,
     *,
     template_text: str | None = None,
@@ -476,7 +519,7 @@ def plan_record(
 
 
 def _requests_for_record(
-    spec: RunSpec,
+    spec: RunSpecification,
     record: ResponseItem | PairTask,
     plan: RunPlan,
     fingerprint: str,

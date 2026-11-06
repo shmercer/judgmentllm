@@ -20,6 +20,31 @@ These operations require no credentials and make no provider requests.
 
 Successful operations exit 0. Invalid arguments, configuration, files, selections, templates, or known capabilities exit 2. Preview prints prompt text to stdout and capability warnings to stderr; it does not require credentials or make requests. All commands reuse the documented Python functions. See [prompt guidance](prompt-guidance.md) for syntax and safeguards.
 
+## Explicit v2 configuration
+
+Existing `validate`, `plan`, `templates preview`, `run`, status, resume and export
+commands accept explicit `schema_version: 2` configurations through the shared
+Python services. Omitted version and explicit 1 remain v1; existing presets never
+upgrade a configuration. V2 adds `prompt.output_order` (`together`,
+`scores_first`, `explanations_first`) and `prompt.structured_output` (`auto`,
+`text`, `native`). Separated layouts require rubric explanations; pairwise
+permits only the default layout. Grouped requests still make one assessment call.
+
+The current mock resolves auto to text with native unavailability recorded;
+text explicitly selects textual schema instructions. Native fails preflight:
+no provider-native translator or real model scoring is available. Requested
+layout, exact generated contract/schema and resolved mechanism are reflected in
+preview metadata and immutable request commitments. The CLI control envelope
+and normalized exports remain schema version 1. Reserved reasoning, arbitrary
+schema/JSON pass-through and incompatible controls are rejected.
+
+`templates preview --json` returns one version-1 control envelope containing the
+actual prompt and typed rendering metadata. Plain preview prints the same prompt
+text. Preview is an explicit local content display: it requires no credentials,
+contacts no provider and creates no run/submission. See the installed-package
+[synthetic v2 examples](../examples/v2/README.md) for preview, all layouts,
+partial results/retries, winner-only pairwise, export and base-R import.
+
 ## Implemented Milestone 2 lifecycle commands
 
 The installed `judgmentllm` executable calls the same public services as Python.
@@ -38,8 +63,8 @@ with capability unknowns retained. Real adapters arrive in later milestones.
 | `runs status --run RUN` | Durable inspection without provider calls or original assessment sources; optional `--store`. |
 | `results export --run RUN` | Immutable all-attempt export; optional `--store`, `--format jsonl\|csv`, `--view canonical\|r`, `--na-string` (default `NA`), and `--high-water-mark`. |
 
-Each lifecycle command accepts `--json`. Ordinary help, version, and template
-commands retain their text behavior. Lifecycle `--help --json` returns help text
+Each lifecycle command accepts `--json`. Template preview also supports the
+version-1 JSON envelope; other template commands retain their text behavior. Lifecycle `--help --json` returns help text
 inside a control response without executing the operation. All operations are
 noninteractive; no authentication browser or confirmation prompt is started.
 
@@ -391,13 +416,13 @@ reconstructed order. Join through the existing identity bridge, without adding f
 Control stdout contains only bounded export metadata. An order mismatch remains
 diagnostic, without invalidating scores or enabling retry.
 
-Output layout is configured through proposed schema-version-2
+Output layout is configured through implemented schema-version-2
 `prompt.output_order: together|scores_first|explanations_first` (`together`
 default), independent of `execution.grouping`. Each group makes one call.
-Scores-only runs reject a nondefault explanation layout. Proposed
+Scores-only runs reject a nondefault explanation layout. Implemented
 `prompt.structured_output: auto|native|text` defaults to `auto`; selected native
-schema transport/fallback and scoped evidence are frozen with the request.
-Reasoning controls belong under typed `generation.reasoning`, separate from
+schema presentation is frozen with the request; provider-native transport remains
+later work. Future reasoning controls belong under typed `generation.reasoning`, separate from
 assessment explanations and `capture: full|minimal`. Credentials never belong
 in RunSpec. Version-1 configurations and historical normalized result schema 1
 remain readable without rewriting their identities or artifacts.

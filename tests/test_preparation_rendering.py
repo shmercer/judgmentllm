@@ -20,7 +20,7 @@ from judgmentllm.preparation import (
     validate_inputs,
 )
 from judgmentllm.preparation.freezing import PreparationError
-from judgmentllm.prompts import RenderedPrompt, get_template, render_prompt
+from judgmentllm.prompts import RenderedAssessmentPrompt, get_template, render_prompt
 
 
 def specification(
@@ -93,7 +93,7 @@ def count_renders(monkeypatch: pytest.MonkeyPatch) -> list[PlannedRequest]:
         template: str | None,
         request: PlannedRequest,
         lookup: Callable[[Literal["response", "pair"], str], ResponseItem | PairTask],
-    ) -> RenderedPrompt:
+    ) -> RenderedAssessmentPrompt:
         requests.append(request)
         return original(spec, template, request, lookup)
 

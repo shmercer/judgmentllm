@@ -2,23 +2,24 @@
 
 **Design:** 0.5 (2026-11-02). **Implementation status:** Milestone 1 provides schema-version-1 contracts, synthetic normalization, structural planning, input/output, and offline prompt tools. Milestone 2 has durable persistence, generation configuration, and complete provider-free immutable source preparation with indexed access and independent-process reopening. Subphase 4 adds grouped outcomes, retry/cancellation and immutable exports; Subphase 5 exposes the shared public Python lifecycle and versioned CLI. Subphase 6 is merged in PR #11; its final implementation head `db198aeb0a6387e6a3030c584c34bdd0b41e890f` has retained local and hosted qualification evidence, with the historical six-configuration scope described below. Execution is limited to the deterministic mock provider; real adapters remain later milestones. The sections below describe the full approved direction; [data contracts](data-contracts.md) and [Python API](python-api.md) describe the implemented subset.
 
-## Milestone 3 consolidation and Phase 1 contracts
+## Milestone 3 output contracts and offline activation
 
-The [assessment output design](assessment-output-design.md) defines the proposed
-next milestone: three single-call rubric layouts independent of grouping,
-editable templates and optional exemplars, native structured-output translation,
-winner-only generative forced choice, shared secure authentication with offline
-status and opt-in verification, request-level usage and explicitly authorized
-reasoning evidence. Its [prompt examples](assessment-prompt-examples.md) and
-[provider evidence](assessment-provider-evidence.md) separate design from SDK
-documentation and live qualification. New controls use an explicit future RunSpec
-version 2; implemented version-1 contracts, mock execution and normalized results
-remain unchanged by the new standalone Phase 1 contract API. Phase 1 now implements
-provider-neutral schemas, strict validation and detached member interpretation;
-RunSpec v2 rendering/preparation and lifecycle activation remain Phase 2. See the
-[Python contract API](python-api.md#standalone-assessment-output-contracts-milestone-3-phase-1).
-Small M3 PRs implement the remaining design;
-native decisions remain M4, bulk/batch parity M5 and thin CLI-first R exposure M6.
+The [assessment output design](assessment-output-design.md) defines the complete
+milestone, with implemented and deferred capabilities identified separately.
+Phase 1 provides provider-neutral output contracts, ordered schemas, strict
+validation and detached member interpretation. Phase 2 integrates these through
+explicit RunSpec v2 configuration, shared rendering/preview, immutable request
+commitments and the existing durable offline mock lifecycle. All three rubric
+layouts and winner-only generative forced choice are available in this path.
+Version-1 configurations, templates, frozen artifacts and normalized results keep
+their established contracts.
+
+Mock v2 uses complete textual schemas with strict local validation; its `auto`
+policy records text selection because native enforcement is unavailable. Real
+provider adapters, native schema translation, authentication, provider evidence,
+usage/reasoning capture and live qualification remain later work. See the
+[Python API](python-api.md) and [prompt examples](assessment-prompt-examples.md).
+Implementation status does not substitute for exact-head qualification evidence.
 
 ## 1. Goals
 

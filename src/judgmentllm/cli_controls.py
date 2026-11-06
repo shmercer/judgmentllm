@@ -73,12 +73,15 @@ _USAGE = {"usage", "validation", "unsupported_capability", "not_found"}
 
 
 def _command_name(args: Sequence[str]) -> str:
+    if list(args[:2]) == ["templates", "preview"]:
+        return "templates preview"
     if not args or args[0] not in _LIFECYCLE:
         return "unknown"
     if args[0] in {"runs", "results"}:
         if len(args) > 1 and (args[0], args[1]) in {
             ("runs", "list"),
             ("runs", "status"),
+            ("runs", "resume"),
             ("results", "export"),
         }:
             return " ".join(args[:2])
@@ -366,7 +369,9 @@ class LifecycleGroup(TyperGroup):
     ) -> Any:
         arguments = list(sys.argv[1:] if args is None else args)
         machine = "--json" in arguments
-        lifecycle = bool(arguments and arguments[0] in _LIFECYCLE)
+        lifecycle = bool(arguments and arguments[0] in _LIFECYCLE) or (
+            machine and arguments[:2] == ["templates", "preview"]
+        )
         if not lifecycle and not (
             machine and (not arguments or arguments[0] != "templates")
         ):

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sqlite3
 from contextlib import closing
 from pathlib import Path
@@ -149,6 +150,71 @@ def create(root: Path) -> None:
                     "scenario": {**scenario, "members": {}, "delay_seconds": 0},
                 },
             )
+
+    create_v2(root)
+
+
+def create_v2(root: Path) -> None:
+    """Extend the existing installed-console fixture with explicit v2 runs."""
+    cases = (
+        ("together", "grouped", "full", "together", True),
+        ("scores_first", "grouped", "full", "scores_first", True),
+        ("explanations_first", "grouped", "minimal", "explanations_first", True),
+        ("scores_only", "independent", "minimal", "together", False),
+        ("partial_full", "grouped", "full", "scores_first", True),
+        ("partial_minimal", "grouped", "minimal", "explanations_first", True),
+        ("winner", "pairwise", "full", "together", True),
+        ("tie", "pairwise", "minimal", "together", True),
+    )
+    for name, kind, capture, order, explanations in cases:
+        original = root / f"{kind}-{capture}"
+        directory = root / f"v2-{name}"
+        directory.mkdir(exist_ok=False)
+        for filename in ("responses.jsonl", "pairs.jsonl"):
+            source = original / filename
+            if source.exists():
+                shutil.copyfile(source, directory / filename)
+        spec = json.loads((original / "config.json").read_text(encoding="utf-8"))
+        spec.update(
+            schema_version=2,
+            model="synthetic-v2",
+            output_path=str((directory / "store").resolve()),
+            prompt={
+                "output_order": order,
+                "structured_output": "auto" if name == "together" else "text",
+            },
+            allow_ties=name == "tie",
+        )
+        spec["execution"]["explanations"] = explanations
+        if name == "tie":
+            (directory / "tie-prompt.txt").write_text(
+                "Compare the responses using the criterion; a tie is permitted.\n\n"
+                "{{ criterion }}\n\n{{ output_instructions }}\n\n"
+                "{{ first_response }}\n\n{{ second_response }}\n",
+                encoding="utf-8",
+            )
+            spec["prompt"]["file"] = "tie-prompt.txt"
+        document(directory / "config.json", spec)
+        scenario: dict[str, Any] = {
+            "category_index": 1,
+            "explanation": "Authorized normalized explanation.",
+            "raw_marker": "RAW_ONLY_SENTINEL",
+            "winner": "tie" if name == "tie" else "first",
+        }
+        if kind == "grouped":
+            scenario.update(
+                reverse_members=True,
+                members={
+                    key: {"explanation": f"Evidence for trait {key}."}
+                    for key in ("001", "002", "003")
+                },
+            )
+        document(directory / "valid.json", {"schema_version": 1, "scenario": scenario})
+        if name.startswith("partial"):
+            scenario["members"]["003"]["outcome"] = "missing_explanation"
+        document(
+            directory / "fixture.json", {"schema_version": 1, "scenario": scenario}
+        )
 
 
 def read_store(directory: Path) -> dict[str, Any]:
