@@ -720,3 +720,34 @@ def test_revision_preserves_existing_content_metadata(
         repo.append_usage_revision(revision, owner_token=owner.owner.token)
     assert repo.get_artifact("r", artifact.sha256) == existing
     assert repo.authoritative_usage("r", "s") == revision.usage
+
+
+def test_revision_pages_seek_submission_range_without_sorting(
+    prepared: tuple[Repository, EvidenceReceipt],
+) -> None:
+    repo, receipt = prepared
+    with ExecutorOwnership(repo, "r") as owner:
+        assert owner.owner is not None
+        repo.record_evidence(receipt, owner_token=owner.owner.token)
+    statements: list[str] = []
+    repo.connection.set_trace_callback(statements.append)
+    try:
+        assert len(list(repo.usage_revision_history("r", "s", page_size=1))) == 1
+    finally:
+        repo.connection.set_trace_callback(None)
+    # Inspect the actual page statements issued by the repository, including
+    # the exhausted next page. Neither may scan unrelated submissions or sort
+    # an entire submission history before applying the page limit.
+    pages = [
+        sql for sql in statements if sql.startswith("SELECT * FROM usage_revisions ")
+    ]
+    assert len(pages) == 2
+    for sql in pages:
+        plan = [row[3] for row in repo.connection.execute("EXPLAIN QUERY PLAN " + sql)]
+        assert len(plan) == 1
+        assert "SEARCH usage_revisions USING INDEX" in plan[0]
+        assert (
+            "run_id=? AND submission_id=? AND revision_seq>? AND revision_seq<?"
+            in plan[0]
+        )
+        assert "TEMP B-TREE" not in plan[0]

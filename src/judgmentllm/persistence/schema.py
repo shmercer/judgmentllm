@@ -685,6 +685,9 @@ _STATEMENTS = (
     *_EVIDENCE_TABLES,
     "CREATE UNIQUE INDEX idx_observations_evidence_link ON observations (run_id, observation_id, submission_id)",
     _index("usage_revisions", "run_revision", "run_id, revision_seq"),
+    _index(
+        "usage_revisions", "submission_revision", "run_id, submission_id, revision_seq"
+    ),
     _index("evidence_receipts", "ordered", "run_id, submission_id"),
     *_EVIDENCE_TRIGGERS,
 )

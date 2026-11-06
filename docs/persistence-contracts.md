@@ -543,7 +543,9 @@ idempotent replay after interruption. No trait-level usage records are created.
 
 Internal repository readers retrieve submission/observation evidence, iterate a
 run with bounded indexed keyset pages, return revision audit history and select
-authoritative usage at a revision high-water mark. `ReadOnlyRepository` shares
+authoritative usage at a revision high-water mark. Submission history seeks use
+`(run_id, submission_id, revision_seq)` to bound both identity and revision range
+without sorting the full history. `ReadOnlyRepository` shares
 these readers without creating application files. Safe metadata remains available
 under minimal capture independently of response bodies. Missing assessment text
 still requires authoritative retrieval or remains unresolved; evidence recovery
