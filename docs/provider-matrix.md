@@ -20,20 +20,21 @@ On 2026-11-02, the [official OpenAI Decisions guide](https://developers.openai.c
 
 TypeSafe's [official Score guide](https://docs.typesafe.ai/primitives/score#request-structure), checked separately on the same date, documents a maximum of 10 score criteria and recommends at least two. This independently supports the upper bound; it does not establish that the API enforces the same lower bound as OpenAI Decisions. The [System One API reference](https://docs.typesafe.ai/api/system-one) identifies the endpoint as `/v1/systemone`. No request was sent and no Jev adapter or model was live-qualified. Milestone 1 does not embed the Jev bound: callers can supply the independently documented `CapabilityProfile(max_levels=10)` until endpoint-specific adapter validation is implemented. Other providers do not inherit either endpoint's limits.
 
-### Proposed Milestone 3 output and authentication contracts
+### Milestone 3 output and authentication contracts
 
 The [unified assessment output design](assessment-output-design.md) is the
-normative proposed extension. Its [provider evidence ledger](assessment-provider-evidence.md)
+normative extension. Its [provider evidence ledger](assessment-provider-evidence.md)
 distinguishes documented behavior, planned integration policy and pending
-qualification. None of these additions is implemented by the design PR.
+qualification. Phases 1–3 implement neutral output contracts, v2 mock execution
+and offline authentication diagnostics; real integrations remain proposed.
 
 - Shared credential resolution uses official SDK mechanisms: provider-specific
   API-key environment variables, Google ADC for Vertex, and no authentication
   for ordinary local Ollama. The ledger records actual source names, precedence
   and SDK alternate-source constraints. Offline status never initializes ADC,
   refreshes tokens, contacts metadata or checks daemon connectivity.
-- `auth status` is mandatory Milestone 3 work. Separate opt-in `auth verify`
-  implementations use documented protected non-generative operations where
+- `auth status` and its Python API are implemented in Phase 3. Separate opt-in `auth verify`
+  implementations remain deferred and will use documented protected non-generative operations where
   available; authentication acceptance does not qualify an assessment model.
 - Native structured outputs are preferred where compatible. Generated schemas
   and local validators remain provider-neutral; each adapter reports the native

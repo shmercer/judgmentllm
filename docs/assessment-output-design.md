@@ -1,7 +1,7 @@
 # Milestone 3 assessment outputs, provider evidence, and authentication
 
-**Status: Phases 1–2 implemented for provider-neutral contracts and offline mock execution;
-provider integrations remain proposed.** This authoritative Milestone 3 design
+**Status: Phases 1–3 implemented for provider-neutral contracts, offline mock execution,
+and shared credential resolution/offline status; provider integrations remain proposed.** This authoritative Milestone 3 design
 was originally prepared on 2026-11-05. The working contracts are described in
 [data contracts](data-contracts.md), [persistence contracts](persistence-contracts.md)
 and the [Python API](python-api.md). The [six prompt examples](assessment-prompt-examples.md)
@@ -29,7 +29,8 @@ recovery. No database migration or historical artifact rewrite is implied.
 
 For the mock, `auto` resolves explicitly to text with native unavailability
 recorded; `text` selects that presentation directly; `native` is unsupported.
-No native translator, real adapter/authentication, usage/reasoning retention or
+Phase 3 adds shared credential resolution and offline diagnostics.
+No native translator, real adapter/live authentication, usage/reasoning retention or
 observed-order metadata sidecar is implemented. Requested visible ordering
 makes no claim about a model's internal reasoning or observed adherence.
 The installed-CLI R gate exercises actual v2 runs and exports alongside the
@@ -533,7 +534,7 @@ ADC discovery, metadata endpoints or token refresh.
 | `openai` (Chat/Responses/Decisions) | `OPENAI_API_KEY`, api_key | configured/missing | Documented models-list read candidate; endpoint/model access unproven |
 | `anthropic` | `ANTHROPIC_API_KEY`, api_key | configured/missing | Authenticated models-list where SDK/permission verified |
 | `gemini` | `GOOGLE_API_KEY` before `GEMINI_API_KEY`, api_key | configured/missing | Models-list candidate, must prove authentication is checked |
-| `vertex` | Google ADC, application_default_credentials | unknown without safe sufficient evidence; no discovery | No generic harmless auth-only operation established; unsupported initially |
+| `vertex` | Google ADC, application_default_credentials | always unknown offline; no discovery | No generic harmless auth-only operation established; unsupported initially |
 | `together` | `TOGETHER_API_KEY`, api_key | configured/missing | Documented v3 `whoami()`; discard private identity response |
 | `ollama` local | none, none | not_required | Connectivity via local documented read; does not verify authentication |
 | `typesafe` (Jev) | `TYPESAFE_API_KEY`, api_key | configured/missing | Documented models-list candidate, independent of M4 assessment work |
@@ -545,7 +546,7 @@ documents model discovery; verify its protected read and rejection mapping with
 the locked SDK before exposing the check.
 All other source/precedence/verification claims, citations and SDK differences
 are recorded in the [provider evidence register](assessment-provider-evidence.md).
-Provider IDs are proposed registration names, not evidence that adapters exist.
+Provider IDs are fixed registration names, not evidence that adapters exist.
 Anthropic's broader SDK identity mechanisms are outside the initial API-key
 registration; fail closed without its key instead of invoking an undocumented
 fallback. Ollama cloud/remote authentication is outside ordinary local scope.
@@ -563,7 +564,7 @@ request URLs containing keys, credential-bearing response echoes or debug header
 
 ## 9. Offline auth status and explicit verify
 
-Proposed Python API (not yet importable):
+Implemented Phase 3 Python API:
 
 ```python
 from judgmentllm.auth import credential_status
@@ -578,6 +579,15 @@ frozen strict `CredentialStatus`: `provider`, `auth_type`, nullable `source`,
 `status` (`configured/missing/unknown/not_required/unsupported`), nullable
 allowlisted `diagnostic_code`. Stable registration order; requested filtering
 preserves that order, rejects unknown IDs, and deduplicates repeated IDs.
+An explicit empty filter returns `()` without environment inspection; `None`
+selects all seven providers. Missing or malformed API keys have `source: null`.
+Configured sources must belong to their registered provider; cross-field
+validation rejects contradictory records. Diagnostic codes are `missing_api_key`,
+`malformed_api_key`, `credential_source_unavailable`, `offline_identity_unknown` and
+`unsupported_authentication_context` (or null). Malformed includes whitespace
+and control characters; accepted keys are never normalized. A malformed nonblank
+preferred Gemini key blocks fallback. Validation errors contain fixed diagnostics
+and exclude raw inputs/context, including their structured error forms.
 Transient inspection of documented process environment values is permitted.
 No credential-file reads, SDK/authentication initialization, refresh, metadata
 call, browser or daemon probe is permitted.
@@ -589,7 +599,6 @@ only a plausible source was present, never valid/verified.
 judgmentllm auth status
 judgmentllm auth status --json
 judgmentllm auth status --require openai,anthropic --json
-judgmentllm auth verify --provider openai --json
 ```
 
 Status human columns are Provider, Credential source, Status; show explicit
@@ -610,7 +619,8 @@ Offline Python callers make required-provider decisions from these same enums;
 the future R wrapper parses `data.providers` and checks process exit separately.
 No auth diagnostic is copied into assessment manifests/exports.
 
-`auth verify` is **always explicitly invoked**, never part of status, plan,
+`auth verify` is **not implemented in Phase 3**. In the later integration phase it is
+**always explicitly invoked**, never part of status, plan,
 validate, resume or smoke preflight. Use at most one suitable authenticated,
 non-generative read; no automatic pagination/retries. Candidate operations in
 the evidence register need fixture tests proving unauthenticated/rejected keys

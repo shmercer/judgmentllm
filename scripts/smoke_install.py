@@ -20,6 +20,31 @@ from pathlib import Path
 
 from click import unstyle
 
+AUTH_ENVIRONMENT = frozenset(
+    {
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "GOOGLE_API_KEY",
+        "GEMINI_API_KEY",
+        "TOGETHER_API_KEY",
+        "TYPESAFE_API_KEY",
+        "GOOGLE_APPLICATION_CREDENTIALS",
+        "GOOGLE_CLOUD_PROJECT",
+        "GOOGLE_CLOUD_LOCATION",
+        "CLOUDSDK_CONFIG",
+    }
+)
+
+
+def offline_environment() -> dict[str, str]:
+    """Keep developer authentication settings outside clean-install smokes."""
+    return {
+        key: value
+        for key, value in os.environ.items()
+        if key.upper() not in AUTH_ENVIRONMENT
+    }
+
+
 VERIFY_INSTALLED = """
 import importlib.metadata as metadata
 import importlib.resources as resources
@@ -27,6 +52,10 @@ from pathlib import Path
 import sys
 
 import judgmentllm
+from judgmentllm.auth import credential_status
+assert [status.provider for status in credential_status()] == [
+    "openai", "anthropic", "gemini", "vertex", "together", "ollama", "typesafe"]
+assert credential_status(providers=()) == ()
 from judgmentllm import Rubric, ResponseItem, render_prompt, normalize_rubric_result
 from judgmentllm.prompts import get_template, list_templates
 import json
@@ -197,7 +226,7 @@ def run(command: list[str], *, cwd: Path, offline: bool = True) -> str:
         command,
         cwd=cwd,
         env={
-            **os.environ,
+            **offline_environment(),
             "UV_OFFLINE": "1" if offline else "0",
             "NO_COLOR": "1",
             "TERM": "dumb",
@@ -213,6 +242,84 @@ def run(command: list[str], *, cwd: Path, offline: bool = True) -> str:
             f"{result.stdout}{result.stderr}"
         )
     return result.stdout
+
+
+def verify_auth_console(console: Path, *, cwd: Path) -> None:
+    """Check installed auth JSON and exits without retaining synthetic values."""
+    expected_order = [
+        "openai",
+        "anthropic",
+        "gemini",
+        "vertex",
+        "together",
+        "ollama",
+        "typesafe",
+    ]
+    synthetic = "SyntheticInstalledOfflineCredential-éλ"
+
+    def require(condition: bool) -> None:
+        if not condition:
+            raise AssertionError("Installed offline authentication smoke failed")
+
+    for required, configured, expected_exit in (
+        ([], False, 0),
+        (["openai"], False, 2),
+        (["vertex"], False, 2),
+        (["ollama"], False, 0),
+        (["ollama,openai", "openai"], True, 0),
+    ):
+        environment = {**offline_environment(), "NO_COLOR": "1", "PYTHONUTF8": "1"}
+        if configured:
+            environment["OPENAI_API_KEY"] = synthetic
+        arguments = [str(console), "auth", "status", "--json"]
+        for provider in required:
+            arguments.extend(("--require", provider))
+        result = subprocess.run(
+            arguments,
+            cwd=cwd,
+            env=environment,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            timeout=30,
+            check=False,
+        )
+        require(result.returncode == expected_exit)
+        require(synthetic not in result.stdout + result.stderr)
+        try:
+            value = json.loads(result.stdout)
+        except (ValueError, TypeError):
+            raise AssertionError(
+                "Installed auth status did not emit one JSON object"
+            ) from None
+        require(
+            set(value)
+            == {
+                "schema_version",
+                "command",
+                "status",
+                "run_id",
+                "run_status",
+                "artifacts",
+                "data",
+                "error",
+            }
+        )
+        require(value["schema_version"] == 1 and value["command"] == "auth status")
+        require(
+            value["run_id"] is None
+            and value["run_status"] is None
+            and value["artifacts"] == {}
+        )
+        data = value["data"]
+        require([status["provider"] for status in data["providers"]] == expected_order)
+        require(data["requirements_met"] == (expected_exit == 0))
+        require(value["status"] == ("error" if expected_exit else "ok"))
+        if expected_exit:
+            require(value["error"]["category"] == "validation")
+        if configured:
+            require(data["required_providers"] == ["openai", "ollama"])
+            require(data["providers"][0]["status"] == "configured")
 
 
 def smoke_install(
@@ -281,6 +388,7 @@ def smoke_install(
     )
     if "Synthetic installation response." not in preview:
         raise RuntimeError("Installed offline preview failed")
+    verify_auth_console(console, cwd=directory)
     # Exercise the installed public lifecycle from independent console processes.
     validated = json.loads(
         run(

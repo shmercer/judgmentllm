@@ -228,6 +228,11 @@ source scales, and all integrity/durability assertions are preserved.
 
 The seventh `cli-lifecycle` gate runs the installed console through base R,
 with stdout/stderr captured separately and process status checked independently.
+Phase 3 extends this same gate with synthetic offline authentication status,
+required-provider exit metadata and stable provider ordering. The wrapper strips
+inherited authentication variables before the R process; fixtures generate only
+synthetic values and fixed-message failures. No provider request or SDK client
+is part of qualification.
 Its wrapper is `scripts/cli_lifecycle_r_gate.py`; the first six gates retain their
 existing generation/persist/export phases. Supplemental process fault tests stay
 in pytest rather than expanding the R fixture into another fault matrix.

@@ -192,3 +192,24 @@ section 13 of the design. M3 lands in small coherent PRs; M4 native endpoints
 reuse auth/evidence, M5 adds durable bulk/batch parity, M6 exposes implemented
 features through the thin CLI-first R wrapper. No second R engine or HTTP
 requirement is introduced.
+
+
+## Milestone 3 Phase 3 offline credential boundary (2026-11-06)
+
+- One immutable seven-provider authentication registry and one source-selection
+  routine serve public diagnostics and future private SDK construction. No
+  SDK, credential-file, metadata, network or `.env` discovery occurs here.
+- API-key presence is distinct from verification. Blank sources are missing;
+  selected whitespace/control-bearing values fail without normalization or
+  fallback. Missing/rejected sources are null. Empty explicit filters inspect
+  nothing; omitted filters inspect all registrations in stable order.
+- Strict frozen status records enforce cross-field consistency. Validation and
+  resolver errors are content-free, including structured Pydantic errors.
+  Private key handles are nonserializable and have safe representations. Python
+  private interfaces constrain intended usage; they are not a security boundary
+  against arbitrary code already running in the same process.
+- Vertex ADC stays unknown; local Ollama stays not_required without connectivity
+  claims. Provider/model availability and qualification remain independent.
+- Reuse CLI envelope version 1 and extend the existing installed-CLI R gate.
+  Require the established seven local lanes, 49 strict R executions and five
+  hosted configurations on the final head. Auth verification remains deferred.

@@ -6,7 +6,16 @@ from typing import Annotated, Literal
 import typer
 
 from judgmentllm import __version__
-from judgmentllm.cli_controls import LifecycleGroup, diagnostic, perform, progress
+from judgmentllm._auth import _select_providers  # pyright: ignore[reportPrivateUsage]
+from judgmentllm.auth import credential_status
+from judgmentllm.cli_controls import (
+    LifecycleGroup,
+    _AuthStatusReport,  # pyright: ignore[reportPrivateUsage]
+    diagnostic,
+    perform,
+    present_auth_status,
+    progress,
+)
 from judgmentllm.config import RunSpecV2, load_run_spec
 from judgmentllm.lifecycle import (
     LifecycleError,
@@ -139,6 +148,8 @@ runs_app = typer.Typer(help="Inspect durable local runs without contacting provi
 results_app = typer.Typer(help="Publish immutable all-attempt result exports.")
 app.add_typer(runs_app, name="runs")
 app.add_typer(results_app, name="results")
+auth_app = typer.Typer(help="Inspect credential configuration strictly offline.")
+app.add_typer(auth_app, name="auth")
 
 ConfigOption = Annotated[
     Path, typer.Option("--config", help="YAML/JSON run configuration.")
@@ -172,6 +183,37 @@ MockNoReconciliationOption = Annotated[
         help="Disable authoritative mock submission reconciliation.",
     ),
 ]
+
+
+@auth_app.command("status")
+def auth_status(
+    require: Annotated[
+        list[str] | None,
+        typer.Option(
+            "--require",
+            help="Required provider IDs; repeat or use comma-separated lowercase IDs.",
+        ),
+    ] = None,
+    json_output: JsonOption = False,
+) -> None:
+    """Inspect documented credential sources without verifying credentials or model access."""
+
+    def operation() -> _AuthStatusReport:
+        required = _select_providers(
+            tuple(member for value in (require or ()) for member in value.split(","))
+        )
+        statuses = credential_status()
+        return _AuthStatusReport(
+            providers=statuses,
+            required_providers=required,
+            requirements_met=all(
+                row.status in {"configured", "not_required"}
+                for row in statuses
+                if row.provider in required
+            ),
+        )
+
+    perform(operation, present=present_auth_status)
 
 
 def _mock(
