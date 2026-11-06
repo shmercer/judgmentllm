@@ -62,6 +62,21 @@ class DurableEvidence:
                 adapter=session.adapter,
             )
 
+    def register_response(self, artifact: ArtifactIdentity) -> None:
+        """Shared content keeps its original registry metadata and capture policy.
+
+        The response receipt independently commits its permitted body identity.
+        Byte verification precedes the transaction through prepare_evidence_commit.
+        """
+        row = self.repository.connection.execute(
+            "SELECT byte_length FROM artifacts WHERE run_id=? AND sha256=?",
+            (self.session.run_id, artifact.sha256),
+        ).fetchone()
+        if row is None:
+            self.repository._register_artifact(self.session.run_id, artifact)  # pyright: ignore[reportPrivateUsage]
+        elif row["byte_length"] != artifact.byte_length:
+            raise IntegrityError("shared response artifact length conflicts")
+
     def identity(
         self, work: ExecutionWork, observation_id: str | None
     ) -> EvidenceIdentity:
@@ -117,7 +132,7 @@ class DurableEvidence:
         publish_receipt(self.store, response)
         verified = self.repository.prepare_evidence_commit(evidence)
         with self.session.transaction():
-            self.repository._register_artifact(self.session.run_id, response.raw)  # pyright: ignore[reportPrivateUsage]
+            self.register_response(response.raw)
             prior = self.repository.get_observation_for_submission(
                 self.session.run_id, work.submission_id
             )

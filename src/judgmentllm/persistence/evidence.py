@@ -523,7 +523,7 @@ def record_evidence(
             return
         artifact = verified.artifacts[0]
         for artifact_identity in verified.artifacts:
-            repository._register_artifact(identity.run_id, artifact_identity)  # pyright: ignore[reportPrivateUsage]
+            _register_verified_artifact(repository, identity.run_id, artifact_identity)
         repository.connection.execute(
             "INSERT INTO evidence_receipts VALUES (?,?,?,?,?,?)",
             (
@@ -867,7 +867,7 @@ def append_usage_revision(
         if replay:
             return
         artifact = _metadata_identity(revision)
-        repository._register_artifact(identity.run_id, artifact)  # pyright: ignore[reportPrivateUsage]
+        _register_verified_artifact(repository, identity.run_id, artifact)
         repository.connection.execute(
             "INSERT INTO usage_revisions(run_id,submission_id,revision_id,revision_number,source,source_version,usage_json,usage_sha256,receipt_sha256) VALUES (?,?,?,?,?,?,?,?,?)",
             (
@@ -902,3 +902,25 @@ def _metadata_identity(record: EvidenceModel) -> ArtifactIdentity:
 def _page_size(page_size: int) -> None:
     if type(page_size) is not int or not 1 <= page_size <= 10000:
         raise ValueError("page size must be between 1 and 10000")
+
+
+def _register_verified_artifact(
+    repository: Repository, run_id: str, artifact: ArtifactIdentity
+) -> None:
+    """Share verified bytes while preserving the first registered metadata.
+
+    Immutable receipts retain their independent permitted paths and media types.
+    The registry's existing content identity must never be rewritten when those
+    same bytes also serve as another artifact, including an empty export.
+    """
+    row = repository.connection.execute(
+        "SELECT byte_length FROM artifacts WHERE run_id=? AND sha256=?",
+        (run_id, artifact.sha256),
+    ).fetchone()
+    if row is not None:
+        if row["byte_length"] != artifact.byte_length:
+            raise IntegrityError(
+                "verified artifact length conflicts with registered identity"
+            )
+        return
+    repository._register_artifact(run_id, artifact)  # pyright: ignore[reportPrivateUsage]

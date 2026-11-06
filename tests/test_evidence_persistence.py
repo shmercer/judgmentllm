@@ -41,6 +41,7 @@ from judgmentllm.persistence.hashing import (
     semantic_digest,
 )
 from judgmentllm.persistence.models import (
+    ArtifactIdentity,
     ArtifactIntegrityError,
     AttemptRecord,
     IntegrityError,
@@ -658,3 +659,63 @@ def test_verified_commit_cannot_attach_another_receipt(
                 changed, owner_token=owner.owner.token, prepared=verified
             )
     assert repo.get_evidence_for_submission("r", "s") is None
+
+
+@pytest.mark.parametrize("prepared", ["thinking"], indirect=True)
+def test_evidence_preserves_existing_content_metadata_across_roles(
+    prepared: tuple[Repository, EvidenceReceipt],
+) -> None:
+    repo, receipt = prepared
+    store = ArtifactStore(repo.run_directory("r"))
+    receipt_bytes = canonical_bytes(receipt)
+    receipt_artifact = store.put(receipt_bytes, "application/json")
+    reasoning = receipt.reasoning[0].artifact
+    assert reasoning is not None
+    existing_receipt = ArtifactIdentity(
+        sha256=receipt_artifact.sha256,
+        byte_length=receipt_artifact.byte_length,
+        media_type="application/x-existing-role",
+        relative_path=receipt_artifact.relative_path,
+    )
+    existing_reasoning = ArtifactIdentity(
+        sha256=reasoning.sha256,
+        byte_length=reasoning.byte_length,
+        media_type="application/x-existing-role",
+        relative_path=f"objects/{reasoning.sha256[:2]}/{reasoning.sha256}",
+    )
+    repo.register_artifact("r", existing_receipt)
+    repo.register_artifact("r", existing_reasoning)
+    verified = repo.prepare_evidence_commit(receipt)
+    with ExecutorOwnership(repo, "r") as owner:
+        assert owner.owner is not None
+        repo.record_evidence(receipt, owner_token=owner.owner.token, prepared=verified)
+        repo.record_evidence(receipt, owner_token=owner.owner.token, prepared=verified)
+    assert repo.get_artifact("r", receipt_artifact.sha256) == existing_receipt
+    assert repo.get_artifact("r", reasoning.sha256) == existing_reasoning
+    assert repo.get_evidence_for_observation("r", "o") == receipt
+
+
+def test_revision_preserves_existing_content_metadata(
+    prepared: tuple[Repository, EvidenceReceipt],
+) -> None:
+    repo, receipt = prepared
+    revision = UsageRevision(
+        usage=receipt.usage.model_copy(update={"output_tokens": 12}),
+        revision_id="cross-role-correction",
+        revision_number=1,
+        source="synthetic.authoritative",
+    )
+    artifact = publish_usage_revision(ArtifactStore(repo.run_directory("r")), revision)
+    existing = ArtifactIdentity(
+        sha256=artifact.sha256,
+        byte_length=artifact.byte_length,
+        media_type="application/x-existing-role",
+        relative_path=artifact.relative_path,
+    )
+    repo.register_artifact("r", existing)
+    with ExecutorOwnership(repo, "r") as owner:
+        assert owner.owner is not None
+        repo.record_evidence(receipt, owner_token=owner.owner.token)
+        repo.append_usage_revision(revision, owner_token=owner.owner.token)
+    assert repo.get_artifact("r", artifact.sha256) == existing
+    assert repo.authoritative_usage("r", "s") == revision.usage

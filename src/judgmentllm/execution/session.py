@@ -761,7 +761,7 @@ class ExecutionSession:
                 self.run_id, work.submission_id
             )
             if prior is None:
-                self.repository._register_artifact(self.run_id, raw)  # pyright: ignore[reportPrivateUsage]
+                self.evidence.register_response(raw)
                 self.repository.record_observation(observation)
             elif prior != observation:
                 raise IntegrityError("observation conflicts with recorded evidence")
