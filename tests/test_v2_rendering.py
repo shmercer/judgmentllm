@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import json
+import os
 import re
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any, Literal
 
@@ -596,3 +599,38 @@ def test_rendered_v2_metadata_rejects_schema_or_version_substitution(
         data[mutation] = 2.0
     with pytest.raises(ValidationError):
         RenderedPromptV2.model_validate(data)
+
+
+def test_installed_v2_preview_preserves_utf8_and_control_bytes(tmp_path: Path) -> None:
+    spec = example_spec(tmp_path)
+    spec.input.path.write_text(
+        ResponseItem(
+            item_id="essay_001", text="Full café 漢字 \x1b[31mreference\x1b[0m."
+        ).model_dump_json()
+        + "\n",
+        encoding="utf-8",
+    )
+    config = tmp_path / "run.json"
+    config.write_text(spec.model_dump_json(), encoding="utf-8")
+    expected = render(spec).text.encode("utf-8")
+    executable = Path(sys.executable).with_name(
+        "judgmentllm.exe" if os.name == "nt" else "judgmentllm"
+    )
+    completed = subprocess.run(
+        [
+            str(executable),
+            "templates",
+            "preview",
+            "--config",
+            str(config),
+            "--item-id",
+            "essay_001",
+        ],
+        check=True,
+        capture_output=True,
+        timeout=30,
+        env={**os.environ, "PYTHONIOENCODING": "cp1252"},
+    )
+    assert completed.stdout == expected
+    assert b"\x1b[31m" in completed.stdout
+    assert b"\r\n" not in completed.stdout

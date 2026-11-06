@@ -264,9 +264,8 @@ for (name in c("together", "scores_first", "explanations_first", "scores_only", 
     plain_status <- system2(console, vapply(c("templates", "preview", "--config", config, "--item-id", "001", "--trait", "001"), shQuote, character(1L)), stdout = plain_file, stderr = plain_error)
     stopifnot(plain_status == 0L)
     plain_bytes <- readBin(plain_file, "raw", n = file.info(plain_file)$size)
-    # Normalize only the console transport newline convention on Windows.
-    plain_text <- gsub("\r\n", "\n", rawToChar(plain_bytes), fixed = TRUE)
-    stopifnot(identical(enc2utf8(plain_text), enc2utf8(preview$data$text)))
+    # V2 stdout preserves the exact committed UTF-8 prompt bytes on every OS.
+    stopifnot(identical(plain_bytes, charToRaw(enc2utf8(preview$data$text))))
     stopifnot(!dir.exists(file.path(directory, "store")))
   }
   started <- cli(c("run", "--config", config, "--store", file.path(directory, "store"), settings(directory)), if (is_partial) 3L else 0L)

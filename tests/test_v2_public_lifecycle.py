@@ -108,8 +108,15 @@ def test_public_execution_preserves_contract_privacy_and_replay(
     order: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def no_network(*args: object, **kwargs: object) -> None:
-        raise AssertionError("offline execution must not open a network connection")
+    original_connect = socket.socket.connect
+
+    def no_network(connection: socket.socket, address: tuple[str, int]) -> None:
+        # Windows asyncio creates its wakeup socketpair using IPv4 loopback.
+        # Permit that local IPC while prohibiting external provider connections.
+        if os.name == "nt" and address[0] == "127.0.0.1":
+            original_connect(connection, address)
+            return
+        raise AssertionError("offline execution must not open an external connection")
 
     monkeypatch.setattr(socket.socket, "connect", no_network)
     source = configuration(tmp_path / "input", capture=capture, order=order)

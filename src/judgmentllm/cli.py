@@ -121,7 +121,10 @@ def templates_preview(
         for issue in validate_run(spec).issues:
             if issue.severity == "warning":
                 typer.echo(f"Warning [{issue.code}]: {issue.message}", err=True)
-        typer.echo(rendered.text, nl=not isinstance(spec, RunSpecV2))
+        if isinstance(spec, RunSpecV2):
+            typer.echo(rendered.text.encode("utf-8"), nl=False)
+        else:
+            typer.echo(rendered.text)
     except (ValueError, OSError) as error:
         message = (
             "Invalid configuration or prompt selection."
