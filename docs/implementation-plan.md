@@ -96,7 +96,8 @@ executed workloads, outstanding checks and later publication requirements.
 
 ## Milestone 3 - Assessment outputs, authentication and generative live adapters
 
-**Phases 1–2 implement provider-neutral contracts and explicit v2 mock execution.**
+**Phases 1–3 implement provider-neutral contracts, explicit v2 mock execution,
+and shared credential resolution/offline diagnostics.**
 Phase 1 introduced `contract_version=2`, ordered schemas, strict validation and
 contract-aware interpretation. Phase 2 activates these contracts through explicit
 `schema_version: 2` run configurations, shared rendering/preview, immutable
@@ -111,8 +112,11 @@ assessment request per planned group. Zero-exemplar built-ins omit the empty
 section; supplied exemplars remain complete, ordered and protected. The six
 custom prompt snapshots are exact renderer fixtures. The mock selects text for
 `auto`; explicit native enforcement fails preflight. Native translation, real
-adapters, authentication, usage/reasoning capture and observation-order sidecars
-remain later phases.
+adapters, live authentication, usage/reasoning capture and observation-order sidecars
+remain later phases. Phase 3 adds the fixed seven-provider registry, offline
+`credential_status()` and `auth status`, with repeated required-provider checks
+in the existing version-1 envelope. No SDK construction, ADC discovery, provider
+request, credential persistence or RunSpec authentication configuration is added.
 
 Phase 2 extends the existing installed-CLI R lifecycle gate with actual v2
 execution, durable export and R import; the original six gates and historical
@@ -138,7 +142,7 @@ updates its tests and user documentation and passes applicable R acceptance.
    an exemplar placeholder when none are selected, and preserve exact inclusion
    and order when supplied. Ship the six editable/rendered examples in the
    [prompt example design](assessment-prompt-examples.md); no two-stage calls.
-3. **Shared credentials and offline diagnostics.** Add the typed credential
+3. **Shared credentials and offline diagnostics (Phase 3, implemented).** Add the typed credential
    resolver reused by adapters; mandatory `auth status`, its Python API,
    versioned JSON response and `--require` checks. Status must be offline, reveal
    no credential values or identities and never claim validity. Unsupported or

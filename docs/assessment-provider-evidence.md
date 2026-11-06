@@ -11,7 +11,7 @@ OpenAI-specific evidence is recorded in the authoritative design.
 
 ## Authentication sources and offline limits
 
-The following is the **proposed JudgmentLLM resolver policy**, not a claim that
+The following is the **implemented Phase 3 JudgmentLLM resolver policy**, not a claim that
 the underlying SDK supports only these sources. API-key resolution examines
 process environment variables only. It may inspect values transiently in memory
 to distinguish absent, empty, whitespace-only and nonblank settings; that does
@@ -22,14 +22,23 @@ after resolution succeeds, avoiding undocumented fallthrough when it is missing.
 Provider-required key syntax checks may reject unusable values with sanitized
 diagnostics; `configured` establishes presence, never validity.
 
-| Provider ID | Proposed source / type | Offline status rule | Official evidence and constraints |
+| Provider ID | Registered source / type | Offline status rule | Official evidence and constraints |
 |---|---|---|---|
+| `openai` | `OPENAI_API_KEY` / `api_key` | Nonblank key without whitespace/control characters: configured; otherwise missing | The [official SDK](https://github.com/openai/openai-python) accepts an explicit key. Chat, Responses and Decisions share this source. No SDK is constructed by status. |
 | `anthropic` | `ANTHROPIC_API_KEY` / `api_key` | Nonblank key: configured; otherwise missing | [SDK 2.3.0 client](https://github.com/anthropics/anthropic-sdk-python/blob/v2.3.0/src/anthropic/_client.py) accepts an explicit key. Its default chain additionally considers `ANTHROPIC_AUTH_TOKEN`, profiles and federation; these are outside the initial resolver policy. Explicit key resolution prevents diagnostics/execution disagreement. |
 | `gemini` | `GOOGLE_API_KEY`, then `GEMINI_API_KEY` / `api_key` | Select the SDK-precedence source; configured or missing | [Google Gen AI SDK](https://googleapis.github.io/python-genai/) documents both names and precedence of `GOOGLE_API_KEY`. Document shadowed sources by name only. A blank higher-priority variable is treated as absent consistently by diagnostics and execution. |
 | `vertex` | `google_adc` / `application_default_credentials` | Unknown by default; no discovery, file opening, metadata request or refresh in status | [ADC search order](https://docs.cloud.google.com/docs/authentication/application-default-credentials) is `GOOGLE_APPLICATION_CREDENTIALS`, local gcloud ADC, then attached service account via metadata. An environment path alone does not prove usable ADC. Execution uses the official ADC chain, including supported federation/cloud identities. |
 | `together` | `TOGETHER_API_KEY` / `api_key` | Configured or missing | [Together authentication](https://docs.together.ai/docs/api-keys-authentication) and [quickstart](https://docs.together.ai/docs/quickstart) document the environment source; constructor `api_key` overrides it. The [SDK client](https://github.com/togethercomputer/together-py/blob/main/src/together/_client.py) can also consult Colab secrets; initial JudgmentLLM resolution deliberately does not. |
 | `ollama` | `local_service` / `none` | `not_required` for ordinary local operation, without probing the daemon | [Local authentication](https://docs.ollama.com/api/authentication) requires no authentication at localhost:11434. Cloud inference, private models and remote authenticated proxies are separate capabilities and cannot inherit this status. |
 | `typesafe` | `TYPESAFE_API_KEY` / `api_key` | Configured or missing | [SDK quickstart](https://docs.typesafe.ai/sdk/python) establishes the actual name. [Client reference](https://docs.typesafe.ai/sdk/python/api/clients/sync) specifies explicit-option precedence and key validation. No invented Jev-specific key variable. Assessment execution remains Milestone 4. |
+
+Registration order is `openai`, `anthropic`, `gemini`, `vertex`, `together`,
+`ollama`, `typesafe`. Missing and malformed keys expose a null source and a fixed
+diagnostic. Whitespace-only values are missing; selected nonblank values with
+whitespace/control characters are rejected without normalization or fallback.
+No SDK availability check influences these results. The private adapter-facing
+handle preserves selected strings in memory, hides its representation and rejects
+serialization; ADC is only a deferred marker, and local no-auth is distinct.
 
 No `.env` loading is introduced. SDK recommendations to use python-dotenv do not
 constitute SDK automatic loading or JudgmentLLM authorization to open `.env`.

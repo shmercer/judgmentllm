@@ -1,6 +1,6 @@
 # JudgmentLLM
 
-**Milestone 2, Subphase 6 — mock execution and scale qualification tooling. Development version 0.1.0a3.**
+**Milestone 3, Phase 3 — offline credential diagnostics alongside versioned mock execution. Development version 0.1.0a3.**
 
 Milestone 2 adds an [internal preparation foundation](docs/persistence-contracts.md)
 for SQLite state, immutable source snapshots, indexed input access, complete run
@@ -34,6 +34,25 @@ uv run --offline --no-sync python examples/offline.py
 ```
 
 All bundled inputs are synthetic. Preview makes no network requests and needs no credentials. Example provider/model fields declare future intent; they do not establish provider support. The initial dependency installation may download packages. Use `uv sync --locked --no-dev` for core-only installation.
+
+## Offline credential status
+
+```bash
+judgmentllm auth status --json
+judgmentllm auth status \
+  --require openai,anthropic \
+  --json
+```
+
+Status inspects only documented process-environment API-key sources. It never
+contacts providers, initializes SDK clients, reads credential files or creates a
+run/store. Configured means present, without authentication or model-access
+verification. Vertex ADC remains unknown; ordinary local Ollama needs no
+credential and is not probed. Required providers must be configured or not
+required: unmet requirements exit 2 while retaining all status rows. See the
+[Python API](docs/python-api.md#credential-diagnostics-phase-3-implemented) and
+[CLI specification](docs/cli-spec.md#offline-authentication-status-phase-3-implemented).
+`auth verify` remains unimplemented.
 
 ## Offline execution lifecycle
 

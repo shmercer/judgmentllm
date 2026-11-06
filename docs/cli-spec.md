@@ -244,19 +244,22 @@ Unresolved work may export zero rows; inspect `incomplete_source` and submission
 certainty rather than manufacturing a score. Exit 3 indicates retained partial
 work; historical failures remain after an authorized retry succeeds.
 
-## Proposed Milestone 3 commands and configuration (not implemented)
+## Milestone 3 authentication and future commands
 
 The authoritative [assessment output design](assessment-output-design.md)
-defines these additions. None of these commands or configuration fields is
-accepted by the Milestone 2 implementation. Existing commands and version-1
-control envelopes above retain their implemented meanings.
+defines these additions. Phase 3 implements offline authentication status.
+Live verification and other proposed provider commands remain unimplemented.
+Existing commands and version-1 control envelopes retain their meanings.
 
-### Offline authentication status
+### Offline authentication status (Phase 3, implemented)
 
 ```bash
 judgmentllm auth status
 judgmentllm auth status --json
-judgmentllm auth status --require openai,anthropic --json
+judgmentllm auth status \
+  --require openai,anthropic \
+  --json
+judgmentllm auth status --require openai,anthropic --require gemini --json
 ```
 
 The Python credential-status service and adapters share one resolver. Status
@@ -275,7 +278,12 @@ JSON reuses the version-1 control envelope. Command-specific data contains
 `provider`, `auth_type`, `source`, `status` and nullable `diagnostic_code`;
 identifiers and codes are nonsensitive allowlisted values, never arbitrary SDK
 messages, usernames, account IDs, credential paths or secrets. Sources are
-logical names such as `OPENAI_API_KEY` or `google_adc`; unknown source is null.
+logical names such as `OPENAI_API_KEY` or `google_adc`. Missing or malformed
+API keys have a null source. The human table may show expected variable names.
+Rows always follow `openai`, `anthropic`, `gemini`, `vertex`, `together`, `ollama`,
+`typesafe`, including when requirements select only a subset. Missing or unknown
+optional credentials do not fail an ordinary query. See the [Python API](python-api.md#credential-diagnostics-phase-3-implemented)
+for source precedence, blank/control-character policy and fixed diagnostic codes.
 
 ```json
 {"schema_version":1,"command":"auth status","status":"ok","run_id":null,"run_status":null,"artifacts":{},"data":{"providers":[{"provider":"openai","auth_type":"api_key","source":"OPENAI_API_KEY","status":"configured","diagnostic_code":null},{"provider":"vertex","auth_type":"application_default_credentials","source":"google_adc","status":"unknown","diagnostic_code":"offline_identity_unknown"}],"required_providers":[],"requirements_met":true},"error":null}
@@ -286,13 +294,15 @@ unsupported. A required provider satisfies the check only with `configured` or
 `not_required`. An unmet requirement returns the same typed data with
 `requirements_met: false`, envelope `status: error`, `error.category: validation`
 and exit 2. Unknown provider IDs and malformed/empty `--require` members are
-usage/validation errors (exit 2). Repeated `--require` comma lists are unioned
+usage/validation errors (exit 2); surrounding whitespace is not normalized. Repeated `--require` comma lists are unioned
 and deduplicated; they do not change registry ordering. Do not add a new process
 exit code. Status
 creates no run, store or authentication artifacts and emits no credential
-values, substrings or fingerprints.
+values, substrings or fingerprints. Handled interruption exits 130. JSON help
+uses the existing version-1 envelope with `data.help`. Neither status command
+tests authentication success, model access, SDK availability or daemon health.
 
-### Explicit live authentication verification
+### Explicit live authentication verification (proposed, not implemented)
 
 ```bash
 judgmentllm auth verify --provider openai --json

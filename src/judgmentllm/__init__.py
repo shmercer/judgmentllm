@@ -2,6 +2,7 @@
 
 __version__ = "0.1.0a3"
 
+from judgmentllm.auth import CredentialStatus, credential_status
 from judgmentllm.config import (
     GenerationSpec,
     PromptSpecV2,
@@ -51,6 +52,8 @@ from judgmentllm.results import (
 
 __all__ = [
     "__version__",
+    "CredentialStatus",
+    "credential_status",
     "ResponseItem",
     "Level",
     "Trait",

@@ -383,7 +383,7 @@ preparation. It makes no model call, requires no credentials and persists no run
 Built-in v2 prompts omit zero-exemplar sections; custom templates may omit the
 exemplar placeholder only when no exemplars are selected. Supplied exemplars
 remain complete, ordered and protected. V1 templates retain historical bytes.
-Native provider translation, authentication and usage/reasoning/order-evidence
+Native provider translation, live authentication and usage/reasoning/order-evidence
 sidecars remain later work.
 
 ## Structural plans and pair schedules
@@ -645,16 +645,14 @@ Export does not require an adapter and never generates missing judgments.
 state `partial`. Authorized normalized explanations remain exportable under
 minimal capture; prompts, payloads and raw output remain unavailable.
 
-## Proposed Milestone 3 API additions (not implemented)
+## Milestone 3 credential diagnostics and future provider APIs
 
-The [assessment output design](assessment-output-design.md) is the authoritative
-proposal. The signatures and models in this section remain design contracts for
-future small implementation PRs; the credential/evidence imports below are not
-implemented. Phase 1's working standalone output APIs are documented above.
-Existing normalized results, schema-version-1 configuration and mock execution
-remain the compatibility baseline.
+The [assessment output design](assessment-output-design.md) is authoritative.
+Phase 3 implements credential diagnostics below. Provider evidence, live
+verification and other explicitly proposed APIs remain future work. Existing
+normalized results and RunSpec v1/v2 contracts remain the compatibility baseline.
 
-### Credential diagnostics
+### Credential diagnostics (Phase 3, implemented)
 
 ```python
 from judgmentllm.auth import CredentialStatus, credential_status
@@ -669,17 +667,48 @@ openai_status = credential_status(providers=("openai",))
 `credential_status(*, providers=None) -> tuple[CredentialStatus, ...]` is a
 synchronous offline service. Omitted selection returns the documented provider
 registry in stable order; an explicit provider filter retains that registry
-order, rejects unknown IDs and deduplicates repeated IDs. Return frozen strict models matching existing public
+order, rejects unknown/malformed IDs without echoing them and deduplicates repeated
+IDs. Scalar strings and nonstring members are rejected. An explicitly empty
+sequence returns `()` without inspecting any credential source; it differs from
+`None`. These names are also exported from `judgmentllm`. Return frozen strict models matching existing public
 control-model conventions, with `provider`, `auth_type`, nullable `source`,
 `status` and nullable `diagnostic_code`. Status values are `configured`, `missing`,
 `unknown`, `not_required`, `unsupported`; diagnostics use allowlisted codes.
+Cross-field validation binds the provider, authentication type, selected source,
+status and code: a configured API-key source must belong to that provider;
+missing/rejected keys have a null source. Vertex is always
+`application_default_credentials/google_adc/unknown/offline_identity_unknown`;
+ordinary local Ollama is `none/local_service/not_required` with a null code.
+
+Absent, empty and whitespace-only keys produce `missing_api_key`. Nonblank keys
+containing Unicode whitespace, control/format characters or surrogates produce
+`malformed_api_key`; no value is normalized. Gemini selects
+`GOOGLE_API_KEY` before `GEMINI_API_KEY`, skipping blanks but never falling back
+after a malformed nonblank preferred value. `configured` has a null code. Unavailable environment inspection uses the fixed `credential_source_unavailable`
+code. The
+remaining allowlisted code, `unsupported_authentication_context`, describes a
+known unavailable context, never an absent SDK. No initial default provider
+reports unsupported.
+
+`CredentialStatus` constructor, class-owned parsing/validation, copy, and frozen
+assignment failures use fixed messages and exclude input values and validator
+context from rendered and structured Pydantic errors. Third-party parsers retain
+their own error contracts: for example, malformed JSON decoded by an external
+`TypeAdapter` fails before model validation. Credential material is never passed
+to those parsers by the resolver or status service. Deprecated `parse_raw`,
+`parse_file` and `copy` methods reject with a fixed error; use
+`model_validate_json` and validated `model_copy` instead. No status parser reads
+credential files.
 Never return secret values, substrings, hashes, identity/account names, arbitrary
 file paths or unsanitized SDK messages. The CLI wraps these same records under
 version-1 `data.providers`; `--require` is a CLI policy check over status records,
 not another credential resolver.
 
-The shared internal resolver keeps secret material transient and delegates to
-SDK authentication in actual adapters. Its offline inspection path cannot
+The shared internal resolver keeps secret material transient in a private,
+nonserializable handle with safe representation. Future adapters must explicitly
+request that handle and pass the unchanged selected key to the SDK; no client
+is constructed here. ADC returns a deferred SDK-authentication marker and local
+Ollama a distinct no-auth marker. Its offline inspection path cannot
 refresh tokens, contact metadata/provider endpoints, load arbitrary credential
 files or implicitly load `.env` files. Google cloud identities can remain
 `unknown`. A configured source is not authenticated; local Ollama requiring no
@@ -687,7 +716,7 @@ ordinary authentication is not evidence of daemon connectivity.
 
 Provider-specific live verification and smoke services must share that resolver
 and the safe `LifecycleError` boundary. Their thin CLI contracts are documented
-in [CLI design](cli-spec.md#proposed-milestone-3-commands-and-configuration-not-implemented).
+in [CLI design](cli-spec.md#milestone-3-authentication-and-future-commands).
 Explicit authentication verification is never called by status or planning.
 No suitable non-generative operation means verification unsupported; model
 requests require the separately authorized smoke workflow.

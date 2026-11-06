@@ -25,6 +25,24 @@ def main() -> None:
         parser.error("Required installed judgmentllm executable is unavailable")
     root = Path(__file__).resolve().parents[1]
     started = time.monotonic()
+    # Never forward developer authentication settings to retained R/CLI evidence.
+    # Windows environment keys are case insensitive; use the same comparison here.
+    excluded = {
+        "OPENAI_API_KEY",
+        "ANTHROPIC_API_KEY",
+        "GOOGLE_API_KEY",
+        "GEMINI_API_KEY",
+        "TOGETHER_API_KEY",
+        "TYPESAFE_API_KEY",
+        "GOOGLE_APPLICATION_CREDENTIALS",
+        "GOOGLE_CLOUD_PROJECT",
+        "GOOGLE_CLOUD_LOCATION",
+        "CLOUDSDK_CONFIG",
+    }
+    environment = {
+        key: value for key, value in os.environ.items() if key.upper() not in excluded
+    }
+    environment["JUDGMENTLLM_R_STRICT"] = "1"
     completed = subprocess.run(
         [
             rscript,
@@ -35,7 +53,7 @@ def main() -> None:
             sys.executable,
             str(root / "scripts/cli_lifecycle_fixture.py"),
         ],
-        env={**os.environ, "JUDGMENTLLM_R_STRICT": "1"},
+        env=environment,
         timeout=180,
         check=False,
     )

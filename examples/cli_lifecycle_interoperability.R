@@ -20,7 +20,7 @@ invoke <- function(command, arguments, expected = 0L, json = TRUE, content = FAL
   lines <- readLines(out, encoding = "UTF-8", warn = FALSE)
   diagnostics <- readLines(err, encoding = "UTF-8", warn = FALSE)
   assert_exit <- function() {
-    if (!status %in% expected) stop("Unexpected process exit ", status, ": ", paste(diagnostics, collapse = "\n"))
+    if (!status %in% expected) stop("Unexpected installed CLI process exit")
   }
   if (!json) { assert_exit(); return(invisible(status)) }
   stopifnot(length(lines) == 1L)
@@ -47,6 +47,62 @@ fixture("create", root)
 setup_seconds <- proc.time()[["elapsed"]] - setup_started
 lifecycle_started <- proc.time()[["elapsed"]]
 cli <- function(arguments, expected = 0L, content = FALSE) invoke(console, c(arguments, "--json"), expected, content = content)
+# Offline auth diagnostics use only controlled synthetic process environments.
+# Fixed failure messages never echo a returned field or credential into gate logs.
+auth_acceptance <- function() {
+  variables <- c("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY",
+    "TOGETHER_API_KEY", "TYPESAFE_API_KEY", "GOOGLE_APPLICATION_CREDENTIALS")
+  previous <- Sys.getenv(variables, unset = NA_character_)
+  on.exit({
+    Sys.unsetenv(variables)
+    present <- !is.na(previous)
+    if (any(present)) do.call(Sys.setenv, as.list(previous[present]))
+  }, add = TRUE)
+  Sys.unsetenv(variables)
+  check <- function(condition) if (!isTRUE(condition)) stop("Offline authentication acceptance failed")
+  order <- c("openai", "anthropic", "gemini", "vertex", "together", "ollama", "typesafe")
+  row <- function(value, provider) {
+    found <- Filter(function(x) identical(x$provider, provider), value$data$providers)
+    check(length(found) == 1L)
+    found[[1L]]
+  }
+  inspect <- function(arguments = character(), expected = 0L) {
+    value <- tryCatch(cli(c("auth", "status", arguments), expected),
+      error = function(e) stop("Offline authentication invocation failed", call. = FALSE))
+    check(identical(value$command, "auth status"))
+    check(is.null(value$run_id) && is.null(value$run_status) && length(value$artifacts) == 0L)
+    check(identical(names(value$data), c("providers", "required_providers", "requirements_met")))
+    check(identical(vapply(value$data$providers, function(x) x$provider, character(1L)), order))
+    check(all(vapply(value$data$providers, function(x)
+      identical(names(x), c("provider", "auth_type", "source", "status", "diagnostic_code")), logical(1L))))
+    value
+  }
+  missing <- inspect(c("--require", "openai"), 2L)
+  check(identical(missing$status, "error") && identical(missing$error$category, "validation"))
+  check(!missing$data$requirements_met && identical(unlist(missing$data$required_providers), "openai"))
+  check(identical(row(missing, "openai")$status, "missing") && is.null(row(missing, "openai")$source))
+  check(identical(row(missing, "vertex")$status, "unknown") && identical(row(missing, "vertex")$source, "google_adc"))
+  check(identical(row(missing, "ollama")$status, "not_required"))
+  Sys.setenv(OPENAI_API_KEY = "SyntheticOfflineRConfiguredCredential")
+  configured <- inspect(c("--require", "ollama,openai", "--require", "openai"))
+  check(identical(configured$status, "ok") && is.null(configured$error) && configured$data$requirements_met)
+  check(identical(unlist(configured$data$required_providers), c("openai", "ollama")))
+  check(identical(row(configured, "openai")$status, "configured"))
+  check(identical(row(configured, "openai")$source, "OPENAI_API_KEY") && is.null(row(configured, "openai")$diagnostic_code))
+  Sys.setenv(OPENAI_API_KEY = " SyntheticOfflineRMalformedCredential")
+  malformed <- inspect(c("--require", "openai"), 2L)
+  check(identical(row(malformed, "openai")$status, "missing") && is.null(row(malformed, "openai")$source))
+  check(identical(row(malformed, "openai")$diagnostic_code, "malformed_api_key"))
+  Sys.setenv(GOOGLE_APPLICATION_CREDENTIALS = "synthetic-unreadable-adc-path")
+  vertex <- inspect(c("--require", "vertex"), 2L)
+  check(!vertex$data$requirements_met && identical(row(vertex, "vertex")$status, "unknown"))
+  check(identical(row(vertex, "vertex")$diagnostic_code, "offline_identity_unknown"))
+  ordinary <- inspect()
+  check(ordinary$data$requirements_met && length(ordinary$data$required_providers) == 0L)
+  safe <- jsonlite::toJSON(list(missing, configured, malformed, vertex, ordinary), auto_unbox = TRUE)
+  check(!grepl("SyntheticOfflineRConfiguredCredential|SyntheticOfflineRMalformedCredential|synthetic-unreadable-adc-path", safe))
+}
+auth_acceptance()
 records <- function(path) lapply(readLines(path, encoding = "UTF-8"), jsonlite::fromJSON, simplifyVector = FALSE)
 audit <- function(path, missing) read.csv(path, colClasses = "character", na.strings = missing,
   check.names = FALSE, stringsAsFactors = FALSE, fileEncoding = "UTF-8", comment.char = "")

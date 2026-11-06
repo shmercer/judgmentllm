@@ -9,19 +9,25 @@ from collections.abc import Callable, Sequence
 from contextlib import ExitStack
 from contextvars import ContextVar
 from dataclasses import dataclass
-from typing import Any, Literal, TextIO, cast
+from typing import Any, Literal, TextIO, TypeVar, cast
 
 import typer
 from pydantic import BaseModel, ConfigDict, JsonValue
 from typer import _click  # pyright: ignore[reportPrivateUsage]
 from typer.core import TyperCommand, TyperGroup
 
+from judgmentllm._auth import (
+    _BY_PROVIDER,  # pyright: ignore[reportPrivateUsage]
+    ProviderId,
+)
+from judgmentllm.auth import CredentialStatus
 from judgmentllm.lifecycle import LifecycleError, ProgressEvent, get_run
 from judgmentllm.lifecycle_models import ErrorCategory
 from judgmentllm.models import StrictModel, VersionedModel
 from judgmentllm.persistence.models import RunState
 
 CommandOutcome = Literal["ok", "partial", "error"]
+_Model = TypeVar("_Model", bound=BaseModel)
 
 
 class ControlError(StrictModel):
@@ -48,6 +54,16 @@ class ControlEnvelope(VersionedModel):
     error: ControlError | None = None
 
 
+class _AuthStatusReport(StrictModel):
+    """Private CLI presentation record; credential material is never accepted."""
+
+    model_config = ConfigDict(frozen=True)
+
+    providers: tuple[CredentialStatus, ...]
+    required_providers: tuple[ProviderId, ...]
+    requirements_met: bool
+
+
 class Diagnostic(VersionedModel):
     """Content-free JSONL stderr record; no arbitrary exception serialization."""
 
@@ -68,7 +84,7 @@ class Invocation:
 
 
 _invocation: ContextVar[Invocation | None] = ContextVar("lifecycle_cli", default=None)
-_LIFECYCLE = {"validate", "plan", "run", "resume", "runs", "results"}
+_LIFECYCLE = {"validate", "plan", "run", "resume", "runs", "results", "auth"}
 _USAGE = {"usage", "validation", "unsupported_capability", "not_found"}
 
 
@@ -77,8 +93,9 @@ def _command_name(args: Sequence[str]) -> str:
         return "templates preview"
     if not args or args[0] not in _LIFECYCLE:
         return "unknown"
-    if args[0] in {"runs", "results"}:
+    if args[0] in {"runs", "results", "auth"}:
         if len(args) > 1 and (args[0], args[1]) in {
+            ("auth", "status"),
             ("runs", "list"),
             ("runs", "status"),
             ("runs", "resume"),
@@ -134,7 +151,12 @@ def progress(event: ProgressEvent) -> None:
     diagnostic(event.stage, messages[event.stage], progress=True)
 
 
-def _emit(envelope: ControlEnvelope, code: int) -> None:
+def _emit(
+    envelope: ControlEnvelope,
+    code: int,
+    *,
+    human: Callable[[], None] | None = None,
+) -> None:
     invocation = _current()
     if invocation.machine:
         typer.echo(
@@ -144,6 +166,8 @@ def _emit(envelope: ControlEnvelope, code: int) -> None:
                 separators=(",", ":"),
             )
         )
+    elif human is not None:
+        human()
     else:
         typer.echo(f"{envelope.command}: {envelope.status}")
         if envelope.run_id is not None:
@@ -200,11 +224,54 @@ def fail(
     )
 
 
+def _interruption_message() -> str:
+    if _current().command.startswith("auth"):
+        return "Offline authentication status inspection was interrupted."
+    return "Operation interrupted; inspect the durable run before resuming."
+
+
+def _unexpected_message() -> str:
+    if _current().command.startswith("auth"):
+        return "Offline authentication status inspection failed unexpectedly."
+    return "The operation failed unexpectedly; durable run evidence was retained."
+
+
+def present_auth_status(report: _AuthStatusReport) -> None:
+    """Render one offline report through the established control envelope."""
+    error = None
+    if not report.requirements_met:
+        error = ControlError(
+            category="validation",
+            message="One or more required providers lack an offline credential configuration.",
+            retryable=False,
+        )
+        diagnostic(error.category, error.message)
+
+    def human() -> None:
+        typer.echo(f"{'Provider':<12} {'Credential source':<24} Status")
+        for row in report.providers:
+            source = row.source or "/".join(_BY_PROVIDER[row.provider].sources)
+            typer.echo(f"{row.provider:<12} {source:<24} {row.status}")
+
+    _emit(
+        ControlEnvelope(
+            command="auth status",
+            status="ok" if report.requirements_met else "error",
+            artifacts={},
+            data=cast(dict[str, JsonValue], report.model_dump(mode="json")),
+            error=error,
+        ),
+        0 if report.requirements_met else 2,
+        human=human,
+    )
+
+
 def perform(
-    operation: Callable[[], BaseModel],
+    operation: Callable[[], _Model],
     *,
     processing: bool = False,
     validation: bool = False,
+    present: Callable[[_Model], None] | None = None,
 ) -> None:
     """Call one public service and present its typed outcome without interpretation of judgments."""
     invocation = _current()
@@ -247,21 +314,35 @@ def perform(
     except KeyboardInterrupt:
         fail(
             "interrupted",
-            "Operation interrupted; inspect the durable run before resuming.",
+            _interruption_message(),
             code=130,
         )
+        return
+    except typer.Abort:
+        if invocation.command == "auth status":
+            fail("interrupted", _interruption_message(), code=130)
+        else:
+            fail("internal", _unexpected_message())
         return
     except ValueError:
         fail("validation", "Invalid configuration, selection, or local resource.")
         return
     except OSError:
-        fail("execution", "The local execution storage operation failed.")
+        fail(
+            "execution",
+            "Offline authentication status inspection failed."
+            if invocation.command.startswith("auth")
+            else "The local execution storage operation failed.",
+        )
         return
     except Exception:
         fail(
             "internal",
-            "The operation failed unexpectedly; durable run evidence was retained.",
+            _unexpected_message(),
         )
+        return
+    if present is not None:
+        present(result)
         return
     run_id, state, artifacts, data = _parts(result)
     invocation = _current()
@@ -414,7 +495,7 @@ class LifecycleGroup(TyperGroup):
                 try:
                     fail(
                         "interrupted",
-                        "Operation interrupted; inspect the durable run before resuming.",
+                        _interruption_message(),
                         code=130,
                     )
                 except typer.Exit as error:
@@ -425,7 +506,7 @@ class LifecycleGroup(TyperGroup):
                 try:
                     fail(
                         "internal",
-                        "The operation failed unexpectedly; durable run evidence was retained.",
+                        _unexpected_message(),
                     )
                 except typer.Exit as error:
                     code = error.exit_code

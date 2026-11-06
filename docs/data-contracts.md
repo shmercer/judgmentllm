@@ -424,3 +424,12 @@ requests cannot multiply token usage or duplicate reasoning by trait. Any
 internal persistence revision requires deliberate compatibility handling, not
 implicit mutation/migration of an existing registry. Credential diagnostics
 never add credential values or private identities to assessment evidence.
+
+## Offline credential status (Milestone 3 Phase 3)
+
+`CredentialStatus` is a separate frozen diagnostic record, not run configuration
+or assessment evidence. Its five fields and cross-field constraints are
+documented in the [Python API](python-api.md#credential-diagnostics-phase-3-implemented).
+The CLI uses the existing version-1 control envelope. No RunSpec v1/v2, result,
+manifest, database or export schema changes accompany authentication diagnostics;
+no credential values or status snapshots enter those contracts.
