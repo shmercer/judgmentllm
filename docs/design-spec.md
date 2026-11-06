@@ -16,8 +16,10 @@ their established contracts.
 
 Mock v2 uses complete textual schemas with strict local validation; its `auto`
 policy records text selection because native enforcement is unavailable. Real
-provider adapters, native schema translation, live authentication, provider evidence,
-usage/reasoning capture and live qualification remain later work. See the
+provider adapters, native schema translation, live authentication, durable usage/reasoning capture and live qualification
+remain later work. Phase 4A adds standalone strict version-1 provider evidence
+records and pure usage/order/reasoning extraction and authorization services;
+these services are not yet called or persisted by execution. See the
 [Python API](python-api.md) and [prompt examples](assessment-prompt-examples.md).
 Phase 3 implements a shared authentication registry and strictly offline
 `credential_status()` / `auth status`, without SDK construction or provider calls.

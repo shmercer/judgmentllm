@@ -45,6 +45,14 @@ contacts no provider and creates no run/submission. See the installed-package
 [synthetic v2 examples](../examples/v2/README.md) for preview, all layouts,
 partial results/retries, winner-only pairwise, export and base-R import.
 
+## Phase 4A evidence boundary
+
+Phase 4A exposes standalone Python evidence records and offline extraction only.
+It adds no CLI commands or control fields and does not persist evidence during
+`run` or `resume`. Proposed `usage export` / `reasoning export` remain Phase 6;
+reasoning settings remain rejected by current RunSpec validation. The existing
+version-1 CLI envelope and assessment export formats remain unchanged.
+
 ## Implemented Milestone 2 lifecycle commands
 
 The installed `judgmentllm` executable calls the same public services as Python.

@@ -1,6 +1,7 @@
 # Milestone 3 provider evidence ledger
 
-**Reviewed 2026-11-05. Documentation research only; no provider request or live qualification.**
+**Documentation reviewed 2026-11-05; Phase 4A offline interfaces added 2026-11-06.
+No provider request or live qualification.**
 This supports the normative [assessment output design](assessment-output-design.md).
 It records provider documentation, planned integration policy and remaining
 qualification separately. Documentation is mutable: implementation PRs must pin
@@ -8,6 +9,40 @@ SDK versions and preserve the exact endpoint/model/feature evidence exercised.
 The baseline lock contains Anthropic 2.3.0, google-genai 2.34.0, Together 3.0.0,
 Ollama 0.6.3 and typesafe-sdk 0.7.5. Installation establishes no capability.
 OpenAI-specific evidence is recorded in the authoritative design.
+
+## Phase 4A implementation scope
+
+`judgmentllm.evidence` now implements version-1 strict evidence records and pure,
+deterministic extraction over explicitly supplied synthetic inputs. This is
+model/extractor implementation, not operational runtime evidence capture or
+provider qualification. No SDK client, authentication resolution or provider call
+is involved. The existing mock protocol and execution path remain unchanged.
+
+Usage interpretation is deliberately limited to typed, allowlisted source fields.
+`openai.chat.usage` maps Chat prompt/completion/total counters; cached prompt and
+reasoning completion details are included in input/output respectively.
+`anthropic.messages.usage` preserves uncached input separately from cache reads
+and cache creation; its 5-minute/1-hour creation fields subdivide cache writes.
+No missing total is derived and no nested counts are added. Other provider
+mappings remain unknown/deferred until their exact source semantics are pinned.
+Only synthetic reported-cost semantics are modeled currently; caller-supplied
+estimates are a distinct record with pricing date, source and assumptions.
+
+Observable-order extraction takes an existing `OutputCommitmentV2`, existing
+identities, original emitted assessment text and an explicit evidence source.
+It reuses the contract and duplicate-rejecting decoder, bounds inspection, and
+never exports arbitrary output keys or unknown trait IDs. SDK objects alone are
+unknown. Reasoning services decide authorization and safe availability metadata;
+they do not retain text or send effort/exposure controls. Scoped descriptors keep
+documentation/fixture provenance separate from independent live qualification.
+See the [exact public API](python-api.md#standalone-evidence-phase-4a-implemented).
+
+Phase 4B must integrate receipt-safe retention/redaction and revisions. Phase 4C
+must translate native schemas and resolve actual transport support. Phase 5 adds
+real generative adapters, including the Vertex authorization-key follow-up below;
+Phase 6 adds companion exports/R joins; Phase 7 adds explicitly authorized live
+qualification. The documentation-only SDK converter probe below remains design
+research and does not register endpoint/model support.
 
 ## Authentication sources and offline limits
 

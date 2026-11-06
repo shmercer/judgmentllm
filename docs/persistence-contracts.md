@@ -499,3 +499,39 @@ requests cannot multiply token usage or duplicate reasoning by trait. Any
 internal persistence revision requires deliberate compatibility handling, not
 implicit mutation/migration of an existing registry. Credential diagnostics
 never add credential values or private identities to assessment evidence.
+
+
+## Phase 4B evidence integration seams (deferred)
+
+Milestone 3 Phase 4A adds standalone `judgmentllm.evidence` records/extractors;
+none is written by current execution. Persistence models, schema version 1,
+SQLite objects and receipt formats remain unchanged. The following future seams
+identify required work, not operational retention guarantees:
+
+- `ExecutionSession.process()` currently retains/hashes `ProviderResponse.raw`
+  before publishing `ResponseReceipt` and committing `ObservationRecord`. Phase
+  4B must extract safe facts and apply authorized reasoning filtering before any
+  retained body, temporary artifact or receipt publication. A redacted derivative
+  needs distinct original/retained commitments; it cannot claim exact raw bytes.
+- `ProviderResponse.raw` is transport-envelope evidence, whereas
+  `ParsedResponse.output` is a reconstructed dictionary. Later adapter extraction
+  must identify the original emitted assessment text or trustworthy token stream;
+  dictionary reserialization cannot establish observable property order.
+- Evidence must be committed with a deliberately versioned receipt before the
+  observation transaction and reused on replay. Current minimal receipts cannot
+  recover raw bodies; safe usage/order/reasoning availability metadata must be
+  recoverable independently without another charge or duplicate evidence row.
+- Existing submission/attempt/request membership supplies joins. Usage belongs to
+  a physical submission, reasoning/order to an observation; grouped results must
+  reference these facts without copying totals into each trait. Definitive
+  `FailureEvidence` supports usage without fabricating an observation. A new
+  physical retry keeps distinct identities; retrieval of one observation is not
+  another invocation.
+- Authoritative later usage updates require append-only revisions and explicit
+  source/version selection. Evidence high-water cuts and bounded iterators belong
+  to this revision design, with companion publication/export added in Phase 6.
+
+Use existing repository validation, transaction and artifact operations rather
+than a second persistence engine. Any required schema/receipt revision must be
+explicit, narrow and tested against genuine alpha2/alpha3 stores; no implicit
+migration or historical rewrite is authorized by Phase 4A.
