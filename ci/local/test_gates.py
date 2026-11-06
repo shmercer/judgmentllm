@@ -492,6 +492,10 @@ def test_smoke_installer_preserves_default_and_explicit_offline(
     smoke = importlib.util.module_from_spec(specification)
     specification.loader.exec_module(smoke)
     installations: list[bool] = []
+    auth_checks: list[tuple[Path, Path]] = []
+
+    def verify_auth(console: Path, *, cwd: Path) -> None:
+        auth_checks.append((console, cwd))
 
     def execute(command: list[str], **kwargs: Any) -> str:
         if "install" in command:
@@ -517,6 +521,7 @@ def test_smoke_installer_preserves_default_and_explicit_offline(
         return "rubric_scores_only Synthetic installation response."
 
     monkeypatch.setattr(smoke, "run", execute)
+    monkeypatch.setattr(smoke, "verify_auth_console", verify_auth)
     smoke.smoke_install(
         "uv",
         tmp_path / "package.whl",
@@ -525,3 +530,134 @@ def test_smoke_installer_preserves_default_and_explicit_offline(
         offline=offline,
     )
     assert installations == [offline]
+    binaries = tmp_path / "venv" / ("Scripts" if sys.platform == "win32" else "bin")
+    console = binaries / (
+        "judgmentllm.exe" if sys.platform == "win32" else "judgmentllm"
+    )
+    assert auth_checks == [(console, tmp_path)]
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "none",
+        "extra_json",
+        "wrong_exit",
+        "wrong_order",
+        "stdout_secret",
+        "stderr_secret",
+    ],
+)
+def test_installed_auth_smoke_validates_process_results_without_exposing_values(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fault: str
+) -> None:
+    path = Path(__file__).resolve().parents[2] / "scripts/smoke_install.py"
+    specification = importlib.util.spec_from_file_location(
+        "local_ci_auth_smoke_test", path
+    )
+    assert specification is not None and specification.loader is not None
+    smoke = importlib.util.module_from_spec(specification)
+    specification.loader.exec_module(smoke)
+    monkeypatch.setenv("OPENAI_API_KEY", "SyntheticInheritedAuthMustBeExcluded")
+    monkeypatch.setenv("openai_api_key", "SyntheticInheritedAuthMustBeExcluded")
+    monkeypatch.setenv(
+        "GOOGLE_APPLICATION_CREDENTIALS", "SyntheticInheritedADCExcluded"
+    )
+    calls: list[list[str]] = []
+    order = [
+        "openai",
+        "anthropic",
+        "gemini",
+        "vertex",
+        "together",
+        "ollama",
+        "typesafe",
+    ]
+
+    def execute(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        calls.append(command)
+        environment = kwargs["env"]
+        if any(
+            name.upper() in smoke.AUTH_ENVIRONMENT and name != "OPENAI_API_KEY"
+            for name in environment
+        ):
+            pytest.fail("Auth smoke forwarded an inherited authentication setting")
+        configured = "OPENAI_API_KEY" in environment
+        if (
+            configured
+            and environment["OPENAI_API_KEY"] == "SyntheticInheritedAuthMustBeExcluded"
+        ):
+            pytest.fail("Auth smoke forwarded an inherited API key")
+        if kwargs["cwd"] != tmp_path or kwargs["timeout"] != 30:
+            pytest.fail("Auth smoke lost its isolated working directory or timeout")
+        if not kwargs["capture_output"] or kwargs["encoding"] != "utf-8":
+            pytest.fail("Auth smoke lost its controlled UTF-8 output capture")
+        required = [
+            command[index + 1]
+            for index, part in enumerate(command)
+            if part == "--require"
+        ]
+        satisfied = not required or required == ["ollama"] or configured
+        value: dict[str, Any] = {
+            "schema_version": 1,
+            "command": "auth status",
+            "status": "ok" if satisfied else "error",
+            "run_id": None,
+            "run_status": None,
+            "artifacts": {},
+            "data": {
+                "providers": [
+                    {
+                        "provider": name,
+                        "status": "configured" if configured else "missing",
+                    }
+                    for name in order
+                ],
+                "required_providers": ["openai", "ollama"] if configured else required,
+                "requirements_met": satisfied,
+            },
+            "error": None if satisfied else {"category": "validation"},
+        }
+        if fault == "wrong_order":
+            value["data"]["providers"].reverse()
+        stdout = json.dumps(value)
+        stderr = ""
+        if fault == "extra_json":
+            stdout += "\n{}"
+        elif fault == "stdout_secret":
+            stdout += "SyntheticInstalledOfflineCredential-éλ"
+        elif fault == "stderr_secret":
+            stderr = "SyntheticInstalledOfflineCredential-éλ"
+        code = (
+            (2 if satisfied else 0)
+            if fault == "wrong_exit"
+            else (0 if satisfied else 2)
+        )
+        return subprocess.CompletedProcess(command, code, stdout=stdout, stderr=stderr)
+
+    monkeypatch.setattr(smoke.subprocess, "run", execute)
+    console = tmp_path / "synthetic-console"
+    if fault == "none":
+        smoke.verify_auth_console(console, cwd=tmp_path)
+        assert calls == [
+            [str(console), "auth", "status", "--json"],
+            [str(console), "auth", "status", "--json", "--require", "openai"],
+            [str(console), "auth", "status", "--json", "--require", "vertex"],
+            [str(console), "auth", "status", "--json", "--require", "ollama"],
+            [
+                str(console),
+                "auth",
+                "status",
+                "--json",
+                "--require",
+                "ollama,openai",
+                "--require",
+                "openai",
+            ],
+        ]
+    else:
+        with pytest.raises(AssertionError, match="Installed.*auth") as failure:
+            smoke.verify_auth_console(console, cwd=tmp_path)
+        if "SyntheticInstalledOfflineCredential" in str(failure.value):
+            pytest.fail("Auth smoke failure exposed credential material")
+        assert len(calls) == 1
