@@ -11,7 +11,7 @@ import pytest
 from pydantic import ValidationError
 from test_v2_public_lifecycle import configuration
 
-from judgmentllm.config import RunSpecV2, load_run_spec
+from judgmentllm.config import RunSpec, RunSpecV2, load_run_spec
 from judgmentllm.execution import execute_run
 from judgmentllm.execution.retry import authorize_subset_retry
 from judgmentllm.output_commitments import (
@@ -31,7 +31,7 @@ from judgmentllm.preparation.manifest import (
     ExecutableRunManifestV2,
     parse_executable_manifest,
 )
-from judgmentllm.prompts import RenderedPromptV2
+from judgmentllm.prompts import RenderedPrompt, RenderedPromptV2
 from judgmentllm.providers import (
     MockAdapter,
     MockMemberScenario,
@@ -520,3 +520,55 @@ def test_direct_builder_and_payload_reject_substituted_commitments(
             data[field] = value
             with pytest.raises(ValueError):
                 MockPayloadV2.model_validate(data)
+
+
+@pytest.mark.parametrize("run_version", [1, 2])
+def test_adapter_rejects_cross_version_renderers(
+    tmp_path: Path, run_version: int
+) -> None:
+    spec, store, ledger = setup(tmp_path)
+    adapter = MockAdapter(ledger)
+    with open_prepared_run("001", store=store, spec=spec) as prepared:
+        dependency = next(prepared.iter_request_dependencies())
+        rendered = prepared.render(dependency)
+        assert isinstance(rendered, RenderedPromptV2)
+        if run_version == 1:
+            document = spec.model_dump()
+            document["schema_version"] = 1
+            document["prompt"].pop("output_order")
+            document["prompt"].pop("structured_output")
+            legacy = RunSpec.model_validate(document)
+            with pytest.raises(ProviderError):
+                adapter.prepare(legacy, dependency, rendered)
+        else:
+            legacy_rendered = RenderedPrompt(
+                text=rendered.text,
+                exemplar_ids=rendered.exemplar_ids,
+                output_schema=rendered.output_schema,
+            )
+            with pytest.raises(ProviderError):
+                adapter.prepare(spec, dependency, legacy_rendered)
+    assert adapter.submit_calls == 0
+    assert adapter.ledger.acceptance_count() == 0
+
+
+def test_duplicate_member_corruption_rejects_absent_member_objects(
+    tmp_path: Path,
+) -> None:
+    spec, store, ledger = setup(tmp_path)
+    adapter = MockAdapter(
+        ledger,
+        scenario=MockScenario(
+            wire_corruption="duplicate_member_key",
+            members={
+                "01": MockMemberScenario(outcome="missing"),
+                "02": MockMemberScenario(outcome="missing"),
+            },
+        ),
+    )
+    with open_prepared_run("001", store=store, spec=spec) as prepared:
+        dependency = next(prepared.iter_request_dependencies())
+        with pytest.raises(ProviderError):
+            adapter.prepare(spec, dependency, prepared.render(dependency))
+    assert adapter.submit_calls == 0
+    assert adapter.ledger.acceptance_count() == 0

@@ -359,6 +359,8 @@ class MockAdapter:
                 _revalidate_record(dependency),
                 _revalidate_record(rendered),
             )
+            if (spec.schema_version == 2) != isinstance(rendered, RenderedPromptV2):
+                raise ValueError("renderer version differs from the RunSpec version")
             request = dependency.request
             scenario = self._scenario(request.request_uid)
             if (
@@ -390,6 +392,18 @@ class MockAdapter:
                     and spec.task_kind != "rubric"
                 ):
                     raise ValueError("rubric corruption requires a rubric request")
+                if (
+                    scenario.wire_corruption == "duplicate_member_key"
+                    and not scenario.unexpected_members
+                    and all(
+                        scenario.members.get(trait_id, MockMemberScenario()).outcome
+                        == "missing"
+                        for trait_id in request.trait_ids
+                    )
+                ):
+                    raise ValueError(
+                        "duplicate member key corruption requires an emitted member object"
+                    )
                 if scenario.wire_corruption == "missing_explanations" and not separated:
                     raise ValueError(
                         "missing explanation array requires separated output"
