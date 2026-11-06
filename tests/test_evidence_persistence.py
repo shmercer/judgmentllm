@@ -6,6 +6,7 @@ import sqlite3
 import subprocess
 import sys
 from collections.abc import Iterator
+from contextlib import closing
 from pathlib import Path
 
 import pytest
@@ -383,7 +384,7 @@ def test_bounded_iteration_rejects_invalid_pages(
 
 def test_true_schema_one_store_is_never_migrated(tmp_path: Path) -> None:
     database = tmp_path / "registry.sqlite3"
-    with sqlite3.connect(database, isolation_level=None) as connection:
+    with closing(sqlite3.connect(database, isolation_level=None)) as connection:
         for statement in _LEGACY_STATEMENTS:
             connection.execute(statement)
         connection.execute(
@@ -403,7 +404,7 @@ def test_true_schema_one_store_is_never_migrated(tmp_path: Path) -> None:
             ).fetchone()
             is None
         )
-    with sqlite3.connect(database, isolation_level=None) as connection:
+    with closing(sqlite3.connect(database, isolation_level=None)) as connection:
         connection.execute("PRAGMA user_version=3")
         with pytest.raises(SchemaVersionError):
             initialize(connection)
