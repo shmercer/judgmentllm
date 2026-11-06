@@ -16,7 +16,12 @@ from judgmentllm.config import RunSpec
 from judgmentllm.execution import execute_run, recover_run
 from judgmentllm.persistence.repository import Repository
 from judgmentllm.preparation import prepare_run
-from judgmentllm.providers import MockAdapter, MockScenario
+from judgmentllm.providers import (
+    MockAdapter,
+    MockScenario,
+    PreparedRequest,
+    ProviderAcknowledgment,
+)
 from judgmentllm.results import PairwiseResult, RubricResult
 
 
@@ -452,12 +457,33 @@ async def test_logical_order_preserved_when_completions_reorder(tmp_path: Path) 
         requests = [
             dependency.request for dependency in prepared.iter_request_dependencies()
         ]
-    adapter = MockAdapter(
-        ledger, scenarios={requests[0].request_uid: MockScenario(delay_seconds=0.2)}
-    )
+    second_committed = asyncio.Event()
+    loop = asyncio.get_running_loop()
+
+    class ReorderedAdapter(MockAdapter):
+        async def submit(
+            self,
+            prepared: PreparedRequest,
+            *,
+            submission_id: str,
+            correlation_id: str,
+        ) -> ProviderAcknowledgment:
+            if prepared.request_uid == requests[0].request_uid:
+                await second_committed.wait()
+            return await super().submit(
+                prepared, submission_id=submission_id, correlation_id=correlation_id
+            )
+
+    def observe(stage: str, request_uid: str) -> None:
+        if stage == "after_result" and request_uid == requests[1].request_uid:
+            # Durable result callbacks run on the executor's I/O thread.
+            loop.call_soon_threadsafe(second_committed.set)
+
+    adapter = ReorderedAdapter(ledger)
     report = await asyncio.wait_for(
-        execute_run("001", store=store, adapter=adapter, spec=spec), 20
+        execute_run("001", store=store, adapter=adapter, spec=spec, fault=observe), 20
     )
+    assert second_committed.is_set()
     assert report.worker_count == 3 and report.request_queue_high_water <= 6
     assert report.result_queue_high_water <= 3
     with Repository(store) as repository:
