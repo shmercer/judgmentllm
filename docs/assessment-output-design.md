@@ -1,45 +1,39 @@
 # Milestone 3 assessment outputs, provider evidence, and authentication
 
-**Status: Phase 1 standalone output contracts implemented; later integrations
-remain proposed.** This is the authoritative consolidated Milestone 3 design,
-originally prepared on 2026-11-05 from `origin/main` at `d6ab99f` after Subphase 6
-merged in PR #11. Phase 1 adds typed provider-neutral output contracts, ordered
-schema generation, strict whole-response validators and explicit contract-based
-member interpretation. It preserves the Milestone 2 package version, installed
-CLI, renderer, mock wire protocol, persistence and normalized-result schemas.
-[Data contracts](data-contracts.md), [persistence contracts](persistence-contracts.md),
-and [Python API](python-api.md) remain the descriptions of working behavior.
-The [six complete prompt examples](assessment-prompt-examples.md) and
-[provider evidence register](assessment-provider-evidence.md) are supporting
-appendices; this document resolves cross-cutting policy. Design examples and
-documentation evidence do not establish live provider qualification.
+**Status: Phases 1–2 implemented for provider-neutral contracts and offline mock execution;
+provider integrations remain proposed.** This authoritative Milestone 3 design
+was originally prepared on 2026-11-05. The working contracts are described in
+[data contracts](data-contracts.md), [persistence contracts](persistence-contracts.md)
+and the [Python API](python-api.md). The [six prompt examples](assessment-prompt-examples.md)
+are exact text-rendering fixtures. Design and fixture evidence do not establish
+live provider qualification.
 
-## Implemented Phase 1 and activation boundary
+## Implemented activation boundary
 
-`judgmentllm.output_contracts` now provides `RubricOutputContract`,
-`PairwiseOutputContract`, `generate_output_schema`, `serialize_output_schema`,
-`decode_assessment_output`, `validate_rubric_contract_output`, and
-`validate_pairwise_contract_output`. The standalone `contract_version=2` is
-independent of document `schema_version` and forbidden in model output; no
-version-2 RunSpec is accepted.
-The three rubric layouts, whole-group checks, trait-ID joins/member salvage and
-winner-only/legacy-false/tie-enabled comparative contracts normalize to existing
-version-1 results. Raw JSON decoding rejects duplicate keys; already-decoded SDK
-objects cannot establish that original keys were unique. Internal
-`execution.processing.interpret(..., contract=...)` exposes testable interpretation
-without changing its default v1 behavior or enabling submission.
+`judgmentllm.output_contracts` supplies `RubricOutputContract`,
+`PairwiseOutputContract`, ordered schema generation/serialization and strict
+whole-response validation. `contract_version=2` is independent of RunSpec and
+normalized-result versions. Explicit `RunSpecV2` activates the shared renderer,
+preview, immutable preparation and durable mock execution. Omitted or explicit
+version 1 keeps the historical `RunSpec` behavior, prompt bytes and wire protocol.
+Referenced documents and normalized results stay version 1.
 
-Phase 2 must jointly implement versioned RunSpec v2, renderer/preview support,
-and exact immutable prompt/schema/request commitments before the new layouts
-can reach durable execution. The installed CLI cannot select them today.
-The six prompt examples remain authoritative future renderer examples; no
-presets, exemplars or prompt bytes change in Phase 1. Provider-native translation,
-real adapters/authentication and usage/reasoning/order-evidence sidecars remain
-later work. Existing atomic grouped-execution/recovery tests remain required;
-Phase 1's explicit contract path itself has no durable transaction integration.
-The established exports R gate now verifies actual Python-generated contract
-results alongside unchanged historical fixtures. Qualification requires the
-separate exact-head local/hosted evidence described in the implementation plan.
+All layouts use one call per group; separated scores/explanations join by trait
+ID. Incomplete explanations fail their members while valid siblings persist
+atomically. Forced-choice v2 wire output contains `winner_id` and an explanation
+when requested; tie-enabled output retains an explicit consistent tie/winner pair.
+Strict original JSON decoding precedes contract interpretation. Preview makes
+no submission and persists no run. Ordered schema bytes, contract, resolved
+mechanism, prompt and payload are committed before submission and verified on
+recovery. No database migration or historical artifact rewrite is implied.
+
+For the mock, `auto` resolves explicitly to text with native unavailability
+recorded; `text` selects that presentation directly; `native` is unsupported.
+No native translator, real adapter/authentication, usage/reasoning retention or
+observed-order metadata sidecar is implemented. Requested visible ordering
+makes no claim about a model's internal reasoning or observed adherence.
+The installed-CLI R gate exercises actual v2 runs and exports alongside the
+retained v1 fixtures. Exact-head local and hosted qualification remains required.
 
 ## 1. Baseline and extension boundaries
 
@@ -67,7 +61,7 @@ work stays in Milestone 4. Batch/bulk orchestration stays in Milestone 5.
 
 ## 2. Typed configuration and immutable identity
 
-Illustrative **future version-2 configuration fragment**, combined with the
+Implemented **version-2 configuration fragment**, combined with the
 usual input/rubric/provider/model fields:
 
 ```yaml
@@ -79,19 +73,15 @@ prompt:
   output_order: scores_first
   structured_output: auto
   file: templates/my_scoring_prompt.j2
-generation:
-  reasoning:
-    effort: medium
-    capture: summary
 capture: full
 ```
 
 | Owner | Addition/default | Validation and commitment |
 |---|---|---|
 | `ExecutionSpec` | No new ordering or auth field | Existing `grouping=independent`, `explanations=false`, fixed/auto rules remain |
-| `PromptSpec` | `output_order: together/scores_first/explanations_first`, default `together` | Rubric-only meaningful control; nondefault requires explanations and a generative endpoint |
-| `PromptSpec` | `structured_output: auto/native/text`, default `auto` for v2 | `native` requires compatible documented schema mechanism; `text` explicitly selects textual enforcement plus local validation |
-| `GenerationSpec` | Optional `reasoning: ReasoningSpec`; omitted/null/empty = unset | No default effort; optional `effort: low/medium/high`; `capture: none/summary/provider_text`, default `none`; only non-null requested members committed |
+| `PromptSpecV2` | `output_order: together/scores_first/explanations_first`, default `together` | Rubric-only meaningful control; nondefault requires explanations and a generative endpoint |
+| `PromptSpecV2` | `structured_output: auto/native/text`, default `auto` for v2 | `native` requires compatible documented schema mechanism; `text` explicitly selects textual enforcement plus local validation |
+| `GenerationSpec` | Existing sparse controls only in Phase 2 | `reasoning` remains reserved and is rejected; later typed reasoning must preserve omission and separate request from retention |
 | Adapter-owned typed controls | Provider-specific reasoning budgets/modes/efforts where necessary | Separate registered typed models, no generic dict; reject overlap/conflict with neutral effort; add only with adapter evidence/tests |
 | Top-level capture | Existing `full/minimal`, default `full` | Retention ceiling; requesting summary/provider_text explicitly authorizes retaining that type, and requires `full` |
 | Capability models | Output mechanism/subset/order; reasoning request/exposure types; usage semantics; auth and verify operation | Scoped provider/endpoint/model/SDK evidence, nullable unknowns; no credentials |

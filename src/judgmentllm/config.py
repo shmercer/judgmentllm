@@ -9,10 +9,11 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Hashable
 from pathlib import Path
-from typing import Literal, cast
+from typing import Generic, Literal, TypeVar, cast
 
 import yaml
 from pydantic import (
+    BaseModel,
     ConfigDict,
     Field,
     ValidationError,
@@ -133,8 +134,21 @@ class PromptSpec(StrictModel):
         return self
 
 
-class RunSpec(VersionedModel):
-    """Resolved provider-neutral assessment specification, schema version 1."""
+class PromptSpecV2(PromptSpec):
+    """Version-2 output presentation; assessment explanations are not reasoning."""
+
+    output_order: Literal["together", "scores_first", "explanations_first"] = "together"
+    structured_output: Literal["auto", "native", "text"] = "auto"
+
+
+_Version = TypeVar("_Version", bound=int)
+_Prompt = TypeVar("_Prompt", bound=PromptSpec)
+
+
+class _RunSpecFields(StrictModel, Generic[_Version, _Prompt]):
+    """Shared assessment fields and validation, independent of root version."""
+
+    schema_version: _Version
 
     task_kind: Literal["rubric", "pairwise"]
     input: InputSpec
@@ -151,7 +165,7 @@ class RunSpec(VersionedModel):
         default=None, exclude_if=lambda value: value is None
     )
     execution: ExecutionSpec = Field(default_factory=ExecutionSpec)
-    prompt: PromptSpec = Field(default_factory=PromptSpec)
+    prompt: _Prompt
     normalization: NormalizationOptions = Field(default_factory=NormalizationOptions)
     capture: Literal["full", "minimal"] = "full"
     seed: int | None = None
@@ -195,7 +209,7 @@ class RunSpec(VersionedModel):
         return value
 
     @model_validator(mode="after")
-    def validate_assessment(self) -> RunSpec:
+    def validate_assessment(self) -> _RunSpecFields[_Version, _Prompt]:
         if self.task_kind == "rubric":
             if self.rubric is None:
                 raise ValueError("task_kind: rubric requires rubric")
@@ -243,6 +257,99 @@ class RunSpec(VersionedModel):
             if preset == "pairwise_forced_choice" and self.allow_ties:
                 raise ValueError("allow_ties requires a custom prompt.file")
         return self
+
+
+class RunSpec(_RunSpecFields[Literal[1], PromptSpec], VersionedModel):
+    """Resolved provider-neutral assessment specification, schema version 1."""
+
+    schema_version: Literal[1] = 1
+    prompt: PromptSpec = Field(default_factory=PromptSpec)
+
+
+class RunSpecV2(_RunSpecFields[Literal[2], PromptSpecV2]):
+    """Explicit version-2 run configuration using the shared assessment workflow.
+
+    Constructing this class opts in to v2. Root document loaders dispatch only
+    on an explicitly supplied integer ``schema_version: 2``. Referenced
+    assessment documents and normalized outputs retain their own versions.
+    """
+
+    schema_version: Literal[2] = 2
+    prompt: PromptSpecV2 = Field(default_factory=PromptSpecV2)
+
+    @field_validator("schema_version", mode="before")
+    @classmethod
+    def _version(cls, value: object) -> object:
+        if type(value) is not int or value != 2:
+            raise ValueError("schema_version must be the supported integer 2")
+        return value
+
+    @model_validator(mode="after")
+    def validate_output_settings(self) -> RunSpecV2:
+        if self.prompt.output_order != "together":
+            if self.task_kind == "pairwise":
+                raise ValueError(
+                    "pairwise assessments require prompt.output_order: together"
+                )
+            if not self.execution.explanations:
+                raise ValueError(
+                    "nondefault output order requires execution.explanations: true"
+                )
+        return self
+
+
+RunSpecification = RunSpec | RunSpecV2
+
+
+def _spec_snapshot(value: object) -> object:
+    """Retain all current fields, including invalid model_copy injections."""
+    if isinstance(value, BaseModel):
+        return {key: _spec_snapshot(item) for key, item in value}
+    if isinstance(value, list):
+        return [_spec_snapshot(item) for item in cast(list[object], value)]
+    if isinstance(value, tuple):
+        return tuple(_spec_snapshot(item) for item in cast(tuple[object, ...], value))
+    if isinstance(value, dict):
+        return {
+            key: _spec_snapshot(item)
+            for key, item in cast(dict[object, object], value).items()
+        }
+    return value
+
+
+def validate_run_spec(value: object) -> RunSpecification:
+    """Dispatch strict root run versions and revalidate mutable model snapshots.
+
+    Omitted versions select v1. Strings, floats, booleans, and unsupported
+    versions fail rather than coerce or migrate. Existing models are detached
+    and rejected if validation would repair their current contents.
+    """
+    if isinstance(value, (RunSpec, RunSpecV2)):
+        expected_version = 2 if isinstance(value, RunSpecV2) else 1
+        if (
+            type(value.schema_version) is not int
+            or value.schema_version != expected_version
+        ):
+            raise ConfigurationError(
+                "run specification version differs from its typed model"
+            )
+    snapshot = _spec_snapshot(value)
+    if not isinstance(snapshot, dict):
+        raise ConfigurationError("run specification must be an object")
+    data = cast(dict[str, object], snapshot)
+    version = data.get("schema_version", 1)
+    if type(version) is not int or version not in (1, 2):
+        raise ConfigurationError("schema_version must be the supported integer 1 or 2")
+    model = RunSpecV2 if version == 2 else RunSpec
+    checked = model.model_validate(data)
+    if isinstance(value, (RunSpec, RunSpecV2)) and _spec_snapshot(checked) != snapshot:
+        raise ConfigurationError("run specification would change during validation")
+    return checked
+
+
+def validate_run_spec_json(text: str) -> RunSpecification:
+    """Decode strict JSON, then dispatch without resolving filesystem references."""
+    return validate_run_spec(parse_json(text))
 
 
 class _ExemplarDocument(VersionedModel):
@@ -364,7 +471,7 @@ def load_rubric(path: str | Path) -> Rubric:
         raise ConfigurationError(f"{source}: {_validation_message(exc)}") from exc
 
 
-def load_run_spec(path: str | Path) -> RunSpec:
+def load_run_spec(path: str | Path) -> RunSpecification:
     """Load run configuration and resolve references against containing files.
 
     Referenced criteria/exemplar YAML or JSON documents contain schema_version
@@ -376,7 +483,7 @@ def load_run_spec(path: str | Path) -> RunSpec:
 
 def _load_run_spec(
     path: str | Path, *, document_reader: Callable[[Path], object]
-) -> RunSpec:
+) -> RunSpecification:
     """Resolve a run using a caller-owned, verified document reader.
 
     The reader receives original resolved paths, allowing source preparation to
@@ -433,6 +540,8 @@ def _load_run_spec(
         output = data.get("output_path", "run-data")
         if isinstance(output, (str, Path)):
             data["output_path"] = _relative_path(output, source)
-        return RunSpec.model_validate(data)
+        return validate_run_spec(data)
     except ValidationError as exc:
         raise ConfigurationError(f"{source}: {_validation_message(exc)}") from exc
+    except ConfigurationError as exc:
+        raise ConfigurationError(f"{source}: {exc}") from exc

@@ -177,7 +177,7 @@ def test_v1_run_documents_reject_future_activation_controls(
 @pytest.mark.parametrize(
     "changes",
     [
-        {"schema_version": 2},
+        {"schema_version": 3},
         {"prompt": {"output_order": "scores_first"}},
         {"output_contract": {"contract_version": 2}},
     ],

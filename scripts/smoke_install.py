@@ -131,6 +131,26 @@ for output_format, output_view in (("jsonl","canonical"),("csv","canonical"),("c
     exported = export_run("001", store="group-registry", format=output_format, view=output_view)
     assert exported.row_count == 3 and Path(exported.artifact_path).is_file()
 
+# Public v2 config, shared exact preview, durable mock execution and R export.
+from judgmentllm import RunSpecV2, preview_prompt, run_live, export_run_results
+v2_document = json.loads(json.dumps(group_document))
+v2_document.update(schema_version=2,
+    execution={"grouping":"grouped", "concurrency":1, "explanations":True},
+    prompt={"output_order":"explanations_first", "structured_output":"auto"})
+Path("v2-run.json").write_text(json.dumps(v2_document), encoding="utf-8")
+v2_spec = load_run_spec("v2-run.json")
+assert isinstance(v2_spec, RunSpecV2)
+v2_preview = preview_prompt(v2_spec, item_id="synthetic", trait_id="quality")
+assert v2_preview.renderer_version == 2
+assert list(v2_preview.output_schema["properties"]) == ["explanations", "scores"]
+assert "Reference exemplars:" not in v2_preview.text
+assert not Path("v2-registry").exists()
+v2_summary = run_live("v2-run.json", store="v2-registry")
+assert v2_summary.completed_tasks == 2 and v2_summary.results == 2
+v2_export = export_run_results(v2_summary.run_id, store="v2-registry",
+    format="csv", view="r")
+assert v2_export.row_count == 2 and Path(v2_export.files[0].path).is_file()
+
 # Exercise installed registry, immutable artifacts, and local OS ownership.
 from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.hashing import bytes_digest, semantic_digest

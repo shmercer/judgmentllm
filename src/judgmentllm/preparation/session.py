@@ -7,14 +7,15 @@ from contextlib import ExitStack
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, BinaryIO, Literal
+from typing import BinaryIO, Literal
 
 from judgmentllm._verification import ExactToken, exact_token
 from judgmentllm.config import (
-    RunSpec,
+    RunSpecification,
 )
 from judgmentllm.io import _revalidate_record  # pyright: ignore[reportPrivateUsage]
 from judgmentllm.models import PairTask, ResponseItem
+from judgmentllm.output_commitments import SchemaSelectionV2, validate_schema_selection
 from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.generation import (
     validate_generation_compatibility,
@@ -47,7 +48,8 @@ from judgmentllm.preparation.index import (
     read_record,
 )
 from judgmentllm.preparation.manifest import (
-    ExecutableRunManifest,
+    ExecutableManifest,
+    ExecutableRunManifestV2,
     configuration_digest,
 )
 from judgmentllm.preparation.records import (  # pyright: ignore[reportPrivateUsage]
@@ -56,7 +58,7 @@ from judgmentllm.preparation.records import (  # pyright: ignore[reportPrivateUs
     record_digest,
     record_locator,
 )
-from judgmentllm.prompts import RenderedPrompt, render_prompt
+from judgmentllm.prompts import RenderedAssessmentPrompt
 
 
 class RequestDependency(ExecutionModel):
@@ -73,8 +75,8 @@ class RequestDependency(ExecutionModel):
 class _VerifiedContext:
     """One detached assessment context; no student records or rendered text."""
 
-    spec: RunSpec
-    manifest: ExecutableRunManifest
+    spec: RunSpecification
+    manifest: ExecutableManifest
     template: str | None
     plan: RunPlan
     fingerprint: str
@@ -83,7 +85,7 @@ class _VerifiedContext:
 
 
 def _request_dependency(
-    manifest: ExecutableRunManifest,
+    manifest: ExecutableManifest,
     request: PlannedRequest,
     record: ResponseItem | PairTask,
     left: ResponseItem | None = None,
@@ -112,46 +114,15 @@ def _request_dependency(
 
 
 def _render_request(
-    spec: RunSpec,
+    spec: RunSpecification,
     template: str | None,
     request: PlannedRequest,
     lookup: Callable[[Literal["response", "pair"], str], ResponseItem | PairTask],
-) -> RenderedPrompt:
-    options: dict[str, Any] = dict(
-        explanations=spec.execution.explanations,
-        allow_ties=spec.allow_ties,
-        preset=spec.prompt.preset,
-        template=template,
-        advanced=spec.prompt.advanced,
-        limits=spec.prompt.limits,
-        exemplars=spec.exemplars,
-    )
-    if request.pair is not None:
-        pair = lookup("pair", request.pair.pair_uid)
-        assert isinstance(pair, PairTask)
-        left, right = (
-            lookup("response", pair.left_item_id),
-            lookup("response", pair.right_item_id),
-        )
-        assert isinstance(left, ResponseItem) and isinstance(right, ResponseItem)
-        criterion = next(c for c in spec.criteria if c.trait_id == pair.trait_id)
-        return render_prompt(
-            pair=pair, left=left, right=right, criterion=criterion, **options
-        )
-    assert request.response is not None and spec.rubric is not None
-    response = lookup("response", request.response.item_id)
-    assert isinstance(response, ResponseItem)
-    return render_prompt(
-        rubric=spec.rubric,
-        traits=[
-            t
-            for trait_id in request.trait_ids
-            for t in spec.rubric.traits
-            if t.trait_id == trait_id
-        ],
-        response=response,
-        **options,
-    )
+    selection: SchemaSelectionV2 | None = None,
+) -> RenderedAssessmentPrompt:
+    from judgmentllm.request_rendering import render_request
+
+    return render_request(spec, template, request, lookup, selection=selection)
 
 
 class PreparedRun:
@@ -160,8 +131,8 @@ class PreparedRun:
     def __init__(
         self,
         repository: Repository,
-        manifest: ExecutableRunManifest,
-        spec: RunSpec,
+        manifest: ExecutableManifest,
+        spec: RunSpecification,
         template: str | None,
         capabilities: CapabilityProfile | None,
         *,
@@ -338,6 +309,10 @@ class PreparedRun:
         if bytes_digest(canonical_bytes(manifest)) != self._sealed_manifest_sha256:
             raise PreparationError("manifest context was mutated after verification")
         current = _revalidate_record(spec)
+        if isinstance(manifest, ExecutableRunManifestV2):
+            validate_schema_selection(
+                current, manifest.output_selection, current_capabilities
+            )
         if configuration_digest(current) != manifest.configuration_sha256:
             raise PreparationError("configuration differs from the immutable manifest")
         profile = (
@@ -397,14 +372,22 @@ class PreparedRun:
                 record, group, context.plan.exemplar_ids, context.fingerprint
             )
 
-    def _render_verified_request(self, request: PlannedRequest) -> RenderedPrompt:
+    def _render_verified_request(
+        self, request: PlannedRequest
+    ) -> RenderedAssessmentPrompt:
         context = self._context
-        rendered = _render_request(
-            context.spec if context is not None else self.spec,
-            context.template if context is not None else self.template,
-            request,
-            self._get,
-        )
+        spec = context.spec if context is not None else self.spec
+        template = context.template if context is not None else self.template
+        if isinstance(self.manifest, ExecutableRunManifestV2):
+            rendered = _render_request(
+                spec,
+                template,
+                request,
+                self._get,
+                selection=self.manifest.output_selection,
+            )
+        else:
+            rendered = _render_request(spec, template, request, self._get)
         if context is not None:
             self.verify_compatibility(capabilities=self.capabilities)
             if self._context is not context:
@@ -511,7 +494,7 @@ class PreparedRun:
                 return dependency
         raise PreparationError("parent request is absent from verified plan")
 
-    def render_attempt(self, dependency: RequestDependency) -> RenderedPrompt:
+    def render_attempt(self, dependency: RequestDependency) -> RenderedAssessmentPrompt:
         """Render an exact ordered subset while retaining its parent identity."""
         selected = tuple(t.task_id for t in dependency.request.tasks)
         if selected == self.repository.request_task_ids(
@@ -549,7 +532,7 @@ class PreparedRun:
             raise PreparationError("attempt membership differs from its parent")
         return self._render_verified_request(dependency.request)
 
-    def render(self, dependency: RequestDependency) -> RenderedPrompt:
+    def render(self, dependency: RequestDependency) -> RenderedAssessmentPrompt:
         """Render with the established renderer; never retain text in minimal mode."""
         self.verify_compatibility(capabilities=self.capabilities)
         try:

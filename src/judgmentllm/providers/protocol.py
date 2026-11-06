@@ -4,15 +4,16 @@ from __future__ import annotations
 
 from typing import Literal, Protocol
 
-from pydantic import JsonValue, model_validator
+from pydantic import JsonValue, field_validator, model_validator
 
-from judgmentllm.config import GenerationSpec, RunSpec
+from judgmentllm.config import GenerationSpec, RunSpecification
 from judgmentllm.models import ID
+from judgmentllm.output_commitments import OutputCommitmentV2
 from judgmentllm.persistence.hashing import bytes_digest
 from judgmentllm.persistence.models import SHA256, ExecutionModel
 from judgmentllm.planning import CapabilityProfile
 from judgmentllm.preparation.session import RequestDependency
-from judgmentllm.prompts import RenderedPrompt
+from judgmentllm.prompts import RenderedAssessmentPrompt
 from judgmentllm.results import CategoryProbability
 
 
@@ -80,6 +81,20 @@ class PreparedRequest(ExecutionModel):
         return self
 
 
+class PreparedRequestV2(PreparedRequest):
+    """In-memory v2 representation; its commitment is bound in adapter bytes."""
+
+    preparation_version: Literal[2] = 2
+    output_commitment: OutputCommitmentV2
+
+    @field_validator("preparation_version", mode="before")
+    @classmethod
+    def strict_preparation_version(cls, value: object) -> object:
+        if type(value) is not int or value != 2:
+            raise ValueError("preparation_version must be integer 2")
+        return value
+
+
 class ProviderAcknowledgment(ExecutionModel):
     remote_id: ID
     observation_key: ID
@@ -120,12 +135,15 @@ class ProviderAdapter(Protocol):
         self, provider: str, endpoint: str, model: str
     ) -> CapabilityProfile: ...
 
-    def capabilities(self, spec: RunSpec) -> CapabilityProfile: ...
+    def capabilities(self, spec: RunSpecification) -> CapabilityProfile: ...
 
-    def validate(self, spec: RunSpec) -> None: ...
+    def validate(self, spec: RunSpecification) -> None: ...
 
     def prepare(
-        self, spec: RunSpec, dependency: RequestDependency, rendered: RenderedPrompt
+        self,
+        spec: RunSpecification,
+        dependency: RequestDependency,
+        rendered: RenderedAssessmentPrompt,
     ) -> PreparedRequest: ...
 
     async def submit(
@@ -140,4 +158,6 @@ class ProviderAdapter(Protocol):
         self, prepared: PreparedRequest, *, submission_id: str, correlation_id: str
     ) -> ProviderResponse: ...
 
-    def parse(self, response: ProviderResponse) -> ParsedResponse: ...
+    def parse(
+        self, response: ProviderResponse, *, strict_output: bool = False
+    ) -> ParsedResponse: ...

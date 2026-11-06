@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import cast
 
-from judgmentllm.config import RunSpec
+from judgmentllm.config import RunSpecification
 from judgmentllm.execution.processing import Result, interpret, unsuccessful
 from judgmentllm.execution.retry import (
     DEFAULT_RETRY_POLICY,
@@ -21,6 +21,7 @@ from judgmentllm.execution.retry import (
     automatic_retry_id,
     prepare_subset_retry,
 )
+from judgmentllm.output_commitments import validate_output_commitment
 from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.hashing import (
     bytes_digest,
@@ -51,6 +52,7 @@ from judgmentllm.planning import stable_id
 from judgmentllm.preparation import PreparedRun, RequestDependency, open_prepared_run
 from judgmentllm.providers import (
     PreparedRequest,
+    PreparedRequestV2,
     ProviderAcknowledgment,
     ProviderAdapter,
     ProviderResponse,
@@ -74,7 +76,7 @@ class ExecutionSession:
         run_id: str,
         store: str | Path,
         adapter: ProviderAdapter,
-        spec: RunSpec | None,
+        spec: RunSpecification | None,
         use_frozen_snapshot: bool,
         fault: Fault | None,
     ) -> None:
@@ -742,7 +744,11 @@ class ExecutionSession:
         self.checkpoint("after_observation", work.prepared.request_uid)
         self.checkpoint("before_parsing", work.prepared.request_uid)
         try:
-            parsed = self.adapter.parse(response)
+            parsed = (
+                self.adapter.parse(response, strict_output=True)
+                if isinstance(work.prepared, PreparedRequestV2)
+                else self.adapter.parse(response)
+            )
         except ValueError:
             if response.kind != "response":
                 raise IntegrityError(
@@ -750,12 +756,31 @@ class ExecutionSession:
                 ) from None
             parsed = None
         self.checkpoint("before_validation", work.prepared.request_uid)
+        contract = None
+        if self.spec.schema_version == 2:
+            if not isinstance(work.prepared, PreparedRequestV2):
+                raise IntegrityError(
+                    "v2 execution requires a committed output contract"
+                )
+            commitment = validate_output_commitment(
+                work.prepared.output_commitment, self.spec, work.dependency.request
+            )
+            # Verify the same detached representation still produces the committed bytes.
+            current = self.adapter.prepare(
+                self.spec,
+                work.dependency,
+                self.prepared.render_attempt(work.dependency),
+            )
+            if current != work.prepared:
+                raise IntegrityError("output commitment changed before interpretation")
+            contract = commitment.contract
         interpreted = interpret(
             parsed,
             self.spec,
             work.dependency,
             self.run_id,
             work.attempt_id,
+            contract=contract,
             member_checkpoint=lambda: self.checkpoint(
                 "during_member_validation", work.prepared.request_uid
             ),

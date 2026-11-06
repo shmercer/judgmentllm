@@ -46,9 +46,34 @@ probability mappings.
 
 This extends one of the seven strict gates; all seven local configurations still
 run all 49 gate executions. Missing R/jsonlite or failed assertions remain
-blocking in required acceptance. RunSpec v2 rendering/preparation, real provider
-adapters and usage/reasoning/order-evidence sidecars remain later phases; these
-fixtures do not advertise new layouts through the installed CLI.
+blocking in required acceptance. Phase 2 v2 rendering/preparation and mock execution now extend the existing
+installed-CLI lifecycle gate described below. Real provider adapters and
+usage/reasoning/order-evidence sidecars remain later work.
+
+## Milestone 3 Phase 2 installed-CLI acceptance
+
+The seventh gate (`scripts/cli_lifecycle_r_gate.py` and
+`examples/cli_lifecycle_interoperability.R`) executes actual explicit v2
+configurations using the installed `judgmentllm` console, then reopens durable
+results and immutable exports through independent processes. The fixture helper
+writes synthetic sources/scenarios and reads evidence; it does not score or
+construct normalized outputs. The original v1 fixtures and assertions remain.
+
+R checks equivalent normalized categorical scores/explanations for all three
+layouts, trait-ID explanation joins after reordered wire arrays, scores without
+explanations, incomplete-explanation failures and valid sibling salvage,
+nonuniform category mappings, absent fabricated expectations/probabilities,
+character IDs with leading zeros, winner-only `tie=false`, allowed ties and
+original/presented reversal orientation. Explicit failed-member retries retain
+every prior attempt and immutable old exports. Acceptance evidence verifies one
+accepted request per original group and no explanation-stage request.
+
+The gate covers full and minimal capture and uses the same strict jsonlite,
+installed-console and timeout requirements. All seven local configurations still
+run all seven gates (49 executions); missing dependencies or failed assertions
+remain blocking. No second R assessment engine, R wrapper package or HTTP server
+is introduced. Runnable installed-package commands and a base-R importer are in
+[examples/v2](../examples/v2/README.md).
 
 ## Approved R architecture and delivery boundaries
 

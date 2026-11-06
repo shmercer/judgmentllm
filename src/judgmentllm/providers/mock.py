@@ -12,12 +12,23 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Literal, cast
 
-from pydantic import Field, JsonValue
+from pydantic import Field, JsonValue, model_validator
 
-from judgmentllm.config import GenerationSpec, RunSpec
+from judgmentllm.config import GenerationSpec, RunSpecification
 from judgmentllm.generation import GenerationCapabilities, GenerationParameterCapability
 from judgmentllm.io import _revalidate_record  # pyright: ignore[reportPrivateUsage]
 from judgmentllm.models import ID
+from judgmentllm.output_commitments import (
+    OutputCommitmentV2,
+    ordered_json_bytes,
+    resolve_schema_selection,
+    validate_output_commitment,
+)
+from judgmentllm.output_contracts import (
+    RubricOutputContract,
+    decode_assessment_output,
+    generate_output_schema,
+)
 from judgmentllm.persistence.hashing import (
     bytes_digest,
     canonical_bytes,
@@ -26,7 +37,7 @@ from judgmentllm.persistence.hashing import (
 from judgmentllm.persistence.models import SHA256, ExecutionModel
 from judgmentllm.planning import CapabilityProfile, stable_id, validate_run
 from judgmentllm.preparation.session import RequestDependency
-from judgmentllm.prompts import RenderedPrompt
+from judgmentllm.prompts import RenderedAssessmentPrompt, RenderedPromptV2
 from judgmentllm.providers.ledger import (
     AcceptanceRecord,
     MockAcceptanceLedger,
@@ -35,6 +46,7 @@ from judgmentllm.providers.ledger import (
 from judgmentllm.providers.protocol import (
     ParsedResponse,
     PreparedRequest,
+    PreparedRequestV2,
     ProviderAcknowledgment,
     ProviderError,
     ProviderIntegrityError,
@@ -59,6 +71,7 @@ class MockMemberScenario(ExecutionModel):
         "malformed",
         "missing_explanation",
         "invalid_explanation",
+        "duplicate_explanation",
     ] = "valid"
     category_index: int | None = Field(default=None, ge=0)
     probabilities: bool | None = None
@@ -68,6 +81,19 @@ class MockMemberScenario(ExecutionModel):
 class MockScenario(ExecutionModel):
     """Explicit synthetic outcomes; text-bearing values are never ledger fields."""
 
+    wire_corruption: (
+        Literal[
+            "invalid_json",
+            "duplicate_root_key",
+            "duplicate_member_key",
+            "duplicate_protocol",
+            "missing_protocol",
+            "unexpected_root",
+            "missing_scores",
+            "missing_explanations",
+        ]
+        | None
+    ) = Field(default=None, exclude_if=lambda value: value is None)
     outcome: Literal[
         "valid", "invalid", "refusal", "provider_error", "confirmed_cancellation"
     ] = "valid"
@@ -133,6 +159,50 @@ class MockPayload(ExecutionModel):
     )
 
 
+class MockPayloadV2(MockPayload):
+    """Explicit wire revision binding neutral contracts and ordered schema text."""
+
+    protocol: Literal["judgmentllm-mock-v2"] = "judgmentllm-mock-v2"  # pyright: ignore[reportIncompatibleVariableOverride]
+    output_commitment: OutputCommitmentV2
+
+    @model_validator(mode="after")
+    def bound_contract(self) -> MockPayloadV2:
+        contract = self.output_commitment.contract
+        if (
+            self.output_schema != generate_output_schema(contract)
+            or self.task_kind != contract.task_kind
+            or self.explanations != contract.explanations
+        ):
+            raise ValueError(
+                "mock payload schema/settings differ from its output commitment"
+            )
+        if isinstance(contract, RubricOutputContract):
+            expected = tuple(
+                (trait.trait_id, tuple(level.label for level in trait.levels))
+                for trait in contract.traits
+            )
+            actual = tuple(
+                (member.trait_id, member.category_labels) for member in self.members
+            )
+            if self.allow_ties or actual != expected:
+                raise ValueError(
+                    "mock rubric membership differs from its output commitment"
+                )
+        else:
+            if (
+                self.allow_ties != contract.allow_ties
+                or len(self.members) != 1
+                or self.members[0].trait_id != contract.pair.trait_id
+                or self.members[0].original_order != tuple(contract.pair.original_order)
+                or self.members[0].presented_order
+                != tuple(contract.pair.presented_order)
+            ):
+                raise ValueError(
+                    "mock pair presentation differs from its output commitment"
+                )
+        return self
+
+
 class MockResponseEnvelope(ExecutionModel):
     synthetic: Literal[True] = True
     observation_key: ID
@@ -150,6 +220,10 @@ class MockResponseEnvelope(ExecutionModel):
     p_right: float | None = None
     p_tie: float | None = None
     raw_marker: str | None = None
+
+
+class MockResponseEnvelopeV2(MockResponseEnvelope):
+    protocol: Literal["judgmentllm-mock-v2"] = "judgmentllm-mock-v2"
 
 
 def _fixture_digest(scenario: MockScenario) -> str:
@@ -232,15 +306,15 @@ class MockAdapter:
             ),
         )
 
-    def capabilities(self, spec: RunSpec) -> CapabilityProfile:
+    def capabilities(self, spec: RunSpecification) -> CapabilityProfile:
         return self.capabilities_for(spec.provider, spec.endpoint, spec.model)
 
-    def validate(self, spec: RunSpec) -> None:
+    def validate(self, spec: RunSpecification) -> None:
         self.validate_configuration(spec, capabilities=self.capabilities(spec))
 
     @staticmethod
     def validate_configuration(
-        spec: RunSpec, *, capabilities: CapabilityProfile | None = None
+        spec: RunSpecification, *, capabilities: CapabilityProfile | None = None
     ) -> None:
         """Pure mock preflight, shared with provider-free public validation."""
         try:
@@ -256,6 +330,8 @@ class MockAdapter:
                 or spec.execution.tier is not None
             ):
                 raise ValueError("unsupported cache or tier")
+            if spec.schema_version == 2:
+                resolve_schema_selection(spec, profile)
             # Unknown support is never permission to discard an explicit value.
             if spec.generation is not None:
                 generation_profile = profile.generation
@@ -271,7 +347,10 @@ class MockAdapter:
         return _revalidate_record(self.scenarios.get(request_uid, self.scenario))
 
     def prepare(
-        self, spec: RunSpec, dependency: RequestDependency, rendered: RenderedPrompt
+        self,
+        spec: RunSpecification,
+        dependency: RequestDependency,
+        rendered: RenderedAssessmentPrompt,
     ) -> PreparedRequest:
         self.validate(spec)
         try:
@@ -280,6 +359,8 @@ class MockAdapter:
                 _revalidate_record(dependency),
                 _revalidate_record(rendered),
             )
+            if (spec.schema_version == 2) != isinstance(rendered, RenderedPromptV2):
+                raise ValueError("renderer version differs from the RunSpec version")
             request = dependency.request
             scenario = self._scenario(request.request_uid)
             if (
@@ -288,6 +369,55 @@ class MockAdapter:
                 and not spec.allow_ties
             ):
                 raise ValueError("fixture tie is not permitted")
+            if spec.schema_version == 1 and (
+                scenario.wire_corruption is not None
+                or any(
+                    member.outcome == "duplicate_explanation"
+                    for member in scenario.members.values()
+                )
+            ):
+                raise ValueError("v2 corruption fixtures require RunSpec v2")
+            if spec.schema_version == 2:
+                separated = (
+                    spec.task_kind == "rubric"
+                    and spec.prompt.output_order != "together"
+                )
+                if scenario.wire_corruption is not None and scenario.outcome != "valid":
+                    raise ValueError(
+                        "wire corruption requires a valid synthetic response"
+                    )
+                if (
+                    scenario.wire_corruption
+                    in {"duplicate_member_key", "missing_scores"}
+                    and spec.task_kind != "rubric"
+                ):
+                    raise ValueError("rubric corruption requires a rubric request")
+                if (
+                    scenario.wire_corruption == "duplicate_member_key"
+                    and not scenario.unexpected_members
+                    and all(
+                        scenario.members.get(trait_id, MockMemberScenario()).outcome
+                        == "missing"
+                        for trait_id in request.trait_ids
+                    )
+                ):
+                    raise ValueError(
+                        "duplicate member key corruption requires an emitted member object"
+                    )
+                if scenario.wire_corruption == "missing_explanations" and not separated:
+                    raise ValueError(
+                        "missing explanation array requires separated output"
+                    )
+                if (
+                    any(
+                        member.outcome == "duplicate_explanation"
+                        for member in scenario.members.values()
+                    )
+                    and not separated
+                ):
+                    raise ValueError(
+                        "duplicate explanation entries require separated output"
+                    )
             members: list[MockMember] = []
             for task in request.tasks:
                 if spec.task_kind == "rubric":
@@ -324,7 +454,18 @@ class MockAdapter:
                             presented_order=tuple(request.pair.presented_order),
                         )
                     )
-            payload = MockPayload(
+            commitment = None
+            if spec.schema_version == 2:
+                commitment = (
+                    rendered.output_commitment
+                    if isinstance(rendered, RenderedPromptV2)
+                    else None
+                )
+                if commitment is None:
+                    raise ValueError("v2 rendering requires an output commitment")
+                commitment = validate_output_commitment(commitment, spec, request)
+            payload_type = MockPayloadV2 if commitment is not None else MockPayload
+            payload_data: dict[str, object] = dict(
                 service_identity=self.ledger.identity,
                 model=spec.model,
                 request_uid=request.request_uid,
@@ -340,8 +481,14 @@ class MockAdapter:
                 generation=spec.generation,
                 payload_marker=scenario.payload_marker,
             )
+            if commitment is not None:
+                payload_data["output_commitment"] = commitment
+            payload = payload_type.model_validate(payload_data)
             wire = canonical_bytes(payload)
-            return PreparedRequest(
+            prepared_type = (
+                PreparedRequestV2 if commitment is not None else PreparedRequest
+            )
+            prepared_data: dict[str, object] = dict(
                 request_uid=request.request_uid,
                 task_ids=tuple(task.task_id for task in request.tasks),
                 dependency_sha256=dependency.dependency_sha256,
@@ -353,13 +500,26 @@ class MockAdapter:
                 generation=spec.generation,
                 payload=wire,
             )
+            if commitment is not None:
+                prepared_data["output_commitment"] = commitment
+            return prepared_type.model_validate(prepared_data)
         except (ValueError, StopIteration):
             raise ProviderError("mock request could not be prepared") from None
 
     def _payload(self, prepared: PreparedRequest) -> tuple[MockPayload, MockScenario]:
         try:
             prepared = _revalidate_record(prepared)
-            payload = MockPayload.model_validate_json(prepared.payload)
+            payload = (
+                MockPayloadV2
+                if isinstance(prepared, PreparedRequestV2)
+                else MockPayload
+            ).model_validate_json(prepared.payload)
+            if isinstance(prepared, PreparedRequestV2) and (
+                not isinstance(payload, MockPayloadV2)
+                or canonical_bytes(payload.output_commitment)
+                != canonical_bytes(prepared.output_commitment)
+            ):
+                raise ValueError("mock output commitment differs from payload")
             scenario = self._scenario(prepared.request_uid)
             if (
                 canonical_bytes(payload) != prepared.payload
@@ -495,6 +655,77 @@ class MockAdapter:
                     fields.update(
                         p_left=0.75 if left else 0.25, p_right=0.25 if left else 0.75
                     )
+        if isinstance(payload, MockPayloadV2):
+            output_value = fields.get("output")
+            if isinstance(output_value, dict):
+                v2_output = cast(dict[str, JsonValue], output_value)
+                if (
+                    payload.task_kind == "rubric"
+                    and payload.output_commitment.contract.output_order != "together"
+                    and "scores" in v2_output
+                ):
+                    v2_explanations: list[JsonValue] = []
+                    v2_scores = v2_output["scores"]
+                    assert isinstance(v2_scores, list)
+                    for score_value in v2_scores:
+                        if (
+                            isinstance(score_value, dict)
+                            and "explanation" in score_value
+                        ):
+                            entry: dict[str, JsonValue] = {
+                                "trait_id": score_value["trait_id"],
+                                "text": score_value.pop("explanation"),
+                            }
+                            v2_explanations.append(entry)
+                            recipe = scenario.members.get(str(score_value["trait_id"]))
+                            if (
+                                recipe is not None
+                                and recipe.outcome == "duplicate_explanation"
+                            ):
+                                v2_explanations.append(dict(entry))
+                    fields["output"] = (
+                        {"scores": v2_scores, "explanations": v2_explanations}
+                        if payload.output_commitment.contract.output_order
+                        == "scores_first"
+                        else {"explanations": v2_explanations, "scores": v2_scores}
+                    )
+                elif payload.task_kind == "pairwise" and not payload.allow_ties:
+                    v2_output.pop("tie", None)
+            envelope_v2 = MockResponseEnvelopeV2.model_validate(fields)
+            decoded: dict[str, JsonValue] = envelope_v2.model_dump(mode="json")
+            raw = ordered_json_bytes(decoded)
+            if scenario.wire_corruption is not None and envelope_v2.kind == "response":
+                corrupt_output = decoded.get("output")
+                if scenario.wire_corruption == "invalid_json":
+                    raw = b"{synthetic-invalid-json"
+                elif scenario.wire_corruption == "duplicate_root_key":
+                    raw = raw.replace(b'"output":', b'"output":{},"output":', 1)
+                elif scenario.wire_corruption == "duplicate_protocol":
+                    raw = raw.replace(
+                        b'"protocol":',
+                        b'"protocol":"judgmentllm-mock-v1","protocol":',
+                        1,
+                    )
+                elif scenario.wire_corruption == "missing_protocol":
+                    decoded.pop("protocol", None)
+                    raw = ordered_json_bytes(decoded)
+                elif scenario.wire_corruption == "duplicate_member_key":
+                    raw = raw.replace(
+                        b'"trait_id":',
+                        b'"trait_id":"synthetic-duplicate","trait_id":',
+                        1,
+                    )
+                elif isinstance(corrupt_output, dict):
+                    if scenario.wire_corruption == "unexpected_root":
+                        corrupt_output["synthetic_unexpected"] = True
+                    elif scenario.wire_corruption == "missing_scores":
+                        corrupt_output.pop("scores", None)
+                    elif scenario.wire_corruption == "missing_explanations":
+                        corrupt_output.pop("explanations", None)
+                    raw = ordered_json_bytes(decoded)
+            return ProviderResponse(
+                observation_key=observation_key, kind=envelope_v2.kind, raw=raw
+            )
         envelope = MockResponseEnvelope.model_validate(fields)
         return ProviderResponse(
             observation_key=observation_key,
@@ -681,10 +912,22 @@ class MockAdapter:
         _checkpoint("after_retrieval", submission_id)
         return response
 
-    def parse(self, response: ProviderResponse) -> ParsedResponse:
+    def parse(
+        self, response: ProviderResponse, *, strict_output: bool = False
+    ) -> ParsedResponse:
         try:
             response = _revalidate_record(response)
-            envelope = MockResponseEnvelope.model_validate_json(response.raw)
+            if strict_output:
+                decoded = decode_assessment_output(response.raw)
+                if (
+                    not isinstance(decoded, dict)
+                    or cast(dict[str, object], decoded).get("protocol")
+                    != "judgmentllm-mock-v2"
+                ):
+                    raise ValueError("v2 response requires its explicit protocol")
+                envelope = MockResponseEnvelopeV2.model_validate(decoded)
+            else:
+                envelope = MockResponseEnvelope.model_validate_json(response.raw)
         except ValueError:
             raise ValueError("mock response envelope is invalid") from None
         if (envelope.observation_key, envelope.kind) != (
@@ -696,6 +939,12 @@ class MockAdapter:
             )
         return ParsedResponse.model_validate(
             envelope.model_dump(
-                exclude={"schema_version", "synthetic", "observation_key", "raw_marker"}
+                exclude={
+                    "schema_version",
+                    "synthetic",
+                    "observation_key",
+                    "raw_marker",
+                    "protocol",
+                }
             )
         )

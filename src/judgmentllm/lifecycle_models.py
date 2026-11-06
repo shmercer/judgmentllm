@@ -9,6 +9,7 @@ from typing import Annotated, Literal
 from pydantic import ConfigDict, Field, model_validator
 
 from judgmentllm.models import ID, StrictModel
+from judgmentllm.output_commitments import SchemaSelectionV2
 from judgmentllm.persistence.models import ExecutionModel, RunState
 from judgmentllm.planning import CapabilityProfile, ValidationIssue
 
@@ -96,6 +97,9 @@ class InputValidationReport(ExecutionModel):
     issues: tuple[ValidationIssue, ...] = ()
     total_issues: Count = 0
     truncated: bool = False
+    output_selection: SchemaSelectionV2 | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 class ExecutionPlan(ExecutionModel):
@@ -115,6 +119,9 @@ class ExecutionPlan(ExecutionModel):
     estimated_output_tokens: Count | None = None
     estimated_cost: float | None = Field(default=None, ge=0)
     pricing: Literal["not_applicable", "unknown"]
+    output_selection: SchemaSelectionV2 | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 class ArtifactPaths(PublicModel):
@@ -177,6 +184,9 @@ class RunStatus(ExecutionModel):
     recovery_required: bool
     usage: UsageSummary = Field(default_factory=UsageSummary)
     artifacts: ArtifactPaths
+    output_selection: SchemaSelectionV2 | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 class RunSummary(RunStatus):

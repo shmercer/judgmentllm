@@ -18,7 +18,7 @@ from test_execution import setup
 from test_preparation_attempt_rendering import seal_request
 from test_preparation_rendering import specification
 
-from judgmentllm.config import GenerationSpec, RunSpec
+from judgmentllm.config import GenerationSpec, RunSpec, RunSpecification
 from judgmentllm.execution import execute_run, recover_run
 from judgmentllm.models import Exemplar, PairTask, ResponseItem
 from judgmentllm.persistence.hashing import canonical_bytes
@@ -37,7 +37,7 @@ from judgmentllm.preparation.session import (
     RequestDependency,
     _request_dependency,  # pyright: ignore[reportPrivateUsage]
 )
-from judgmentllm.prompts import RenderedPrompt, render_prompt
+from judgmentllm.prompts import RenderedAssessmentPrompt, render_prompt
 from judgmentllm.providers import MockAdapter, PreparedRequest
 
 
@@ -62,7 +62,7 @@ def guarded_spec(directory: Path) -> RunSpec:
 
 def render_current_rubric(
     prepared: PreparedRun, dependency: RequestDependency
-) -> RenderedPrompt:
+) -> RenderedAssessmentPrompt:
     current = prepared.spec
     assert current.rubric is not None
     return render_prompt(
@@ -246,15 +246,15 @@ def test_cache_refresh_cannot_borrow_validation_from_transient_public_values(
         rejected_generation = GenerationSpec(temperature=0.5)
         if change == "configuration":
             prepared.spec.generation = rejected_generation
-            public: RunSpec | CapabilityProfile = prepared.spec
+            public: RunSpecification | CapabilityProfile = prepared.spec
         else:
             capabilities.grouped = False
             public = capabilities
         original_validate = session._revalidate_record  # pyright: ignore[reportPrivateUsage]
 
         def transient_validation(
-            value: RunSpec | CapabilityProfile,
-        ) -> RunSpec | CapabilityProfile:
+            value: RunSpecification | CapabilityProfile,
+        ) -> RunSpecification | CapabilityProfile:
             if value is not public:
                 return original_validate(value)
             if change == "configuration":
@@ -630,7 +630,10 @@ async def test_changed_adapter_rendering_after_claim_cannot_reuse_prepared_bytes
         changed = False
 
         def prepare(
-            self, spec: RunSpec, dependency: RequestDependency, rendered: RenderedPrompt
+            self,
+            spec: RunSpecification,
+            dependency: RequestDependency,
+            rendered: RenderedAssessmentPrompt,
         ) -> PreparedRequest:
             if self.changed:
                 rendered = rendered.model_copy(update={"text": rendered.text + "!"})
@@ -664,7 +667,10 @@ async def test_adapter_mutation_during_preparation_cannot_change_commitments(
         changed = False
 
         def prepare(
-            self, spec: RunSpec, dependency: RequestDependency, rendered: RenderedPrompt
+            self,
+            spec: RunSpecification,
+            dependency: RequestDependency,
+            rendered: RenderedAssessmentPrompt,
         ) -> PreparedRequest:
             if change == "rendered_text":
                 rendered.text += " ADAPTER_CHANGED_PROMPT"
@@ -719,9 +725,9 @@ async def test_configuration_mutated_after_preparation_is_rejected_at_claim(
             spec.input.path.write_text(first, encoding="utf-8")
 
     class CapturingAdapter(MockAdapter):
-        active_spec: RunSpec | None = None
+        active_spec: RunSpecification | None = None
 
-        def validate(self, spec: RunSpec) -> None:
+        def validate(self, spec: RunSpecification) -> None:
             super().validate(spec)
             self.active_spec = spec
 

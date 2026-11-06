@@ -15,7 +15,7 @@ from typing import Literal, cast
 
 from pydantic import Field
 
-from judgmentllm.config import RunSpec
+from judgmentllm.config import RunSpecification
 from judgmentllm.persistence.hashing import (
     bytes_digest,
     canonical_bytes,
@@ -484,7 +484,7 @@ def authorize_subset_retry(
     adapter: ProviderAdapter,
     task_ids: Sequence[str],
     operation_id: str,
-    spec: RunSpec | None = None,
+    spec: RunSpecification | None = None,
     allow_completed: bool = False,
     policy: RetryPolicy = DEFAULT_RETRY_POLICY,
     use_frozen_snapshot: bool = False,

@@ -131,9 +131,10 @@ def test_cli_previews_and_errors() -> None:
 
 
 def test_invalid_advanced_template_has_actionable_cli_error(tmp_path: Path) -> None:
-    from judgmentllm.config import PromptSpec, load_run_spec
+    from judgmentllm.config import PromptSpec, RunSpec, load_run_spec
 
     spec = load_run_spec(Path(__file__).resolve().parents[1] / "examples" / "run.yaml")
+    assert isinstance(spec, RunSpec)
     source = tmp_path / "invalid.j2"
     source.write_text(
         "{{ rubric }} {{ exemplars }} {{ response|upper(1) }} {{ output_instructions }}"

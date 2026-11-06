@@ -114,7 +114,7 @@ def child(root: Path, phase: str) -> object:
     from judgmentllm.execution.retry import authorize_subset_retry
     from judgmentllm.persistence.repository import Repository
     from judgmentllm.preparation import RequestDependency, prepare_run
-    from judgmentllm.prompts import RenderedPrompt
+    from judgmentllm.prompts import RenderedAssessmentPrompt
     from judgmentllm.providers import (
         MockAdapter,
         MockMemberScenario,
@@ -145,7 +145,7 @@ def child(root: Path, phase: str) -> object:
                 self,
                 spec: Any,
                 dependency: RequestDependency,
-                rendered: RenderedPrompt,
+                rendered: RenderedAssessmentPrompt,
             ) -> PreparedRequest:
                 result = super().prepare(spec, dependency, rendered)
                 self.payloads[result.payload_sha256] = base64.b64encode(

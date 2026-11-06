@@ -2,7 +2,17 @@
 
 __version__ = "0.1.0a3"
 
-from judgmentllm.config import GenerationSpec, RunSpec, load_rubric, load_run_spec
+from judgmentllm.config import (
+    GenerationSpec,
+    PromptSpecV2,
+    RunSpec,
+    RunSpecification,
+    RunSpecV2,
+    load_rubric,
+    load_run_spec,
+    validate_run_spec,
+    validate_run_spec_json,
+)
 from judgmentllm.generation import GenerationCapabilities, GenerationParameterCapability
 from judgmentllm.models import (
     Exemplar,
@@ -22,7 +32,12 @@ from judgmentllm.planning import (
     validate_run,
 )
 from judgmentllm.preview import preview_prompt
-from judgmentllm.prompts import RenderLimits, render_prompt
+from judgmentllm.prompts import (
+    RenderedPrompt,
+    RenderedPromptV2,
+    RenderLimits,
+    render_prompt,
+)
 from judgmentllm.r_exports import export_pairwise_r_csv, export_rubric_r_csv
 from judgmentllm.results import (
     NormalizationOptions,
@@ -44,6 +59,13 @@ __all__ = [
     "PairTask",
     "PairwiseCriterion",
     "RunSpec",
+    "RunSpecV2",
+    "RunSpecification",
+    "PromptSpecV2",
+    "RenderedPrompt",
+    "RenderedPromptV2",
+    "validate_run_spec",
+    "validate_run_spec_json",
     "GenerationSpec",
     "GenerationCapabilities",
     "GenerationParameterCapability",

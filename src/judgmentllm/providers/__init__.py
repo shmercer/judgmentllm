@@ -14,6 +14,7 @@ from judgmentllm.providers.mock import (
 from judgmentllm.providers.protocol import (
     ParsedResponse,
     PreparedRequest,
+    PreparedRequestV2,
     ProviderAcknowledgment,
     ProviderAdapter,
     ProviderError,
@@ -36,6 +37,7 @@ __all__ = [
     "ObservationRecipe",
     "ParsedResponse",
     "PreparedRequest",
+    "PreparedRequestV2",
     "ProviderAcknowledgment",
     "ProviderAdapter",
     "ProviderError",

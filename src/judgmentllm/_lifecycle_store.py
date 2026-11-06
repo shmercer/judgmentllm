@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import cast
 
-from judgmentllm.config import RunSpec, parse_json
+from judgmentllm.config import RunSpecification, parse_json
 from judgmentllm.lifecycle_models import (
     ArtifactPaths,
     LifecycleError,
@@ -20,6 +20,7 @@ from judgmentllm.persistence.models import NotFoundError
 from judgmentllm.persistence.ownership import executor_is_active
 from judgmentllm.persistence.repository import ReadOnlyRepository, Repository
 from judgmentllm.preparation import _load_manifest  # pyright: ignore[reportPrivateUsage]
+from judgmentllm.preparation.manifest import ExecutableRunManifestV2
 
 
 class _Cursor(VersionedModel):
@@ -28,7 +29,9 @@ class _Cursor(VersionedModel):
     run_id: str
 
 
-def discover_store(store: str | Path | None, spec: RunSpec | None = None) -> Path:
+def discover_store(
+    store: str | Path | None, spec: RunSpecification | None = None
+) -> Path:
     """Explicit argument, environment, configuration, then the local default."""
     if store is not None:
         return Path(store).resolve()
@@ -76,7 +79,7 @@ def _directory_id(directory: Path, root: Path) -> str:
 def resolve_run(
     run_id: str | Path,
     store: str | Path | None,
-    spec: RunSpec | None = None,
+    spec: RunSpecification | None = None,
 ) -> tuple[str, Path]:
     # Existing IDs are arbitrary stable strings, including path-like strings.
     # With an explicit store, an exact registry identity takes precedence.
@@ -271,4 +274,7 @@ def inspect_run(repository: Repository, run_id: str) -> RunStatus:
             or (active is False and run.state in {"created", "submitted", "running"})
         ),
         artifacts=ArtifactPaths(**paths),
+        output_selection=manifest.output_selection
+        if isinstance(manifest, ExecutableRunManifestV2)
+        else None,
     )

@@ -1,16 +1,12 @@
 # Milestone 3 prompt templates and rendered examples
 
-**Status:** proposed documentation snapshots, 2026-11-05. These are companion
-examples for the authoritative [assessment output design](assessment-output-design.md).
-They do not change installed templates or demonstrate implemented Milestone 3
-execution. The Milestone 2 renderer already supports the placeholders and
-sandbox syntax used here. Output-order controls, conditional omission in built-in
-templates, winner-only forced-choice contracts, and native schema translation
-are proposed additions. Current schema-version-1 configuration rejects the new fields.
-All examples describe the proposed opt-in `schema_version: 2` renderer path;
-version-1 installed templates, previews, identities and frozen runs retain their
-existing behavior. For the exact inline instructions below, select proposed
-`prompt.structured_output: text` and set `prompt.file` to the copied template.
+**Status:** authoritative exact text-mode rendering fixtures for Milestone 3 Phase 2,
+2026-11-05. These examples use the explicit `schema_version: 2` renderer path.
+Version-1 installed templates, prompt bytes, previews and frozen runs retain their
+historical behavior. Select `prompt.structured_output: text` and set `prompt.file`
+to the copied custom template to obtain the fully rendered examples below.
+The installed v2 mock lifecycle is synthetic; native schema translation and real
+provider scoring remain unavailable.
 
 All six examples use synthetic assessment data and **zero exemplars**. There is
 no reference-example heading or empty placeholder. Each complete custom template
@@ -20,17 +16,16 @@ file does not enable advanced mode. When exemplars are supplied, use the optiona
 section below, or include `{{ exemplars }}` exactly once in a simple template.
 
 The complete generated schema is shown inside `{{ output_instructions }}` for
-`prompt.structured_output: text`. It is the proposed provider-neutral contract,
-not arbitrary user-authored JSON or an endpoint request body. An adapter may
-translate its JSON Schema subset for native enforcement, while mandatory local
+`prompt.structured_output: text`. It is the generated provider-neutral contract,
+not arbitrary user-authored JSON or an endpoint request body. A later adapter may
+translate its JSON Schema subset for native enforcement; mandatory local
 validation checks exact trait membership, per-trait labels, duplicates, and
 score/explanation correspondence. A JSON Schema array length alone cannot ensure
 one entry per requested trait. All explanation strings must also be nonblank.
 
 The order of `properties` in these displayed schemas is intentional. The
-Milestone 2 renderer currently sorts schema keys for textual display; the
-proposed ordered contract serializer must preserve requested display order
-without changing global canonical hashing. Even this visible order cannot
+v1 renderer retains sorted textual schema keys. The v2 contract serializer
+preserves requested display order without changing global canonical hashing. Even this visible order cannot
 establish a model's internal reasoning order. Exact emitted order is a separate
 provider-observation property, inspected from original generated text before
 canonicalization or reserialization. Inspect both the top-level keys and each
@@ -40,9 +35,8 @@ inspection of retained original evidence; minimal capture retains only the
 nontext observation metadata and hashes. If original generated text is unavailable
 at observation time, record the relevant order as unknown rather than infer it
 from an SDK's object representation.
-Persist the observed root and member key sequences once per provider observation
-in the linked output-order evidence record described in the authoritative design;
-do not duplicate this record across grouped per-trait assessment results.
+Durable observation-order sidecars belong to a later phase. Phase 2 commits
+requested root/member property ordering and never fabricates observed adherence.
 
 Each rubric example uses one grouped request for two traits. The same layout
 works with independent single-trait requests or deterministically planned auto
@@ -51,8 +45,7 @@ The listed model responses are illustrative valid outcomes, not live results.
 
 ## 1. Scores only
 
-Existing scores-only shape; the generated text here is the proposed clarified
-wording. Set `execution.explanations: false` and omit `prompt.output_order` (or
+The v2 scores-only contract uses the clarified generated instructions below. Set `execution.explanations: false` and omit `prompt.output_order` (or
 explicitly use `together`). `scores_first` and `explanations_first` must fail
 preflight when explanations are disabled.
 
@@ -458,12 +451,15 @@ reference examples.
 
 ## Native schema presentation
 
-These six inline examples are the explicit `text` presentation. Under proposed
+These six inline examples are the explicit `text` presentation. Under
 `prompt.structured_output: auto` (default), a compatible evidenced native schema
 mechanism is preferred. `native` requires it and fails preflight if unsupported
 or unknown. Selecting `auto` may choose text with a clear preflight diagnostic;
 no retry may silently change presentation after submission or an API rejection.
 Schema and presentation choice enter immutable request preparation.
+
+The remainder of this subsection specifies later provider-native integration;
+Phase 2 implements no native translator or observed-order sidecar.
 
 When the complete translated schema is already attached to the native endpoint
 request and its documented practice permits omitting the textual schema copy,
@@ -513,11 +509,11 @@ existing member-level salvage only for unambiguously complete valid members.
 Unknown entries remain validation failures and original evidence, never new
 traits. Request-wide ambiguity must not be resolved by guessing positions.
 
-The proposed forced-choice generation contract asks only for `winner_id`.
+The v2 forced-choice generation contract asks only for `winner_id`.
 Normalization supplies `tie: false` in the existing `PairwiseResult`. Historical
 forced-choice responses explicitly containing `tie: false` remain readable
 through the compatibility path; contradictory `tie: true` fails forced choice.
-New native requests use the narrower winner-only schema. Ties-enabled requests
+V2 mock requests use the narrower winner-only schema. Native translation remains later work. Ties-enabled requests
 retain explicit `winner_id` and `tie` for tied and untied outcomes. Original and
 presented item orientations, reversal metadata, repetitions, and any genuinely
 reported probabilities retain their existing semantics.

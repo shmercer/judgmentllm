@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, cast
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
-from judgmentllm.config import ExecutionSpec, InputSpec, RunSpec
+from judgmentllm.config import ExecutionSpec, InputSpec, RunSpecification
 from judgmentllm.models import ID
+from judgmentllm.output_commitments import SchemaSelectionV2
 from judgmentllm.persistence.generation import GenerationCommitment
 from judgmentllm.persistence.hashing import semantic_digest
 from judgmentllm.persistence.models import SHA256, ArtifactIdentity, ExecutionModel
@@ -167,11 +168,11 @@ class FrozenSnapshotAuthorization(ExecutionModel):
     occurred_at: str
 
 
-def configuration_digest(spec: RunSpec) -> str:
+def configuration_digest(spec: RunSpecification) -> str:
     return semantic_digest("run-configuration", spec)
 
 
-def assessment_digest(spec: RunSpec) -> str:
+def assessment_digest(spec: RunSpecification) -> str:
     return semantic_digest(
         "assessment-context",
         {
@@ -180,3 +181,57 @@ def assessment_digest(spec: RunSpec) -> str:
             "exemplars": [e.model_dump(mode="json") for e in spec.exemplars],
         },
     )
+
+
+class TemplateCommitmentV2(TemplateCommitment):
+    """Explicit v2 renderer identity; historical templates retain version 1."""
+
+    renderer_version: Literal[2] = 2  # pyright: ignore[reportIncompatibleVariableOverride]
+
+    @field_validator("renderer_version", mode="before")
+    @classmethod
+    def strict_renderer_version(cls, value: object) -> object:
+        if type(value) is not int or value != 2:
+            raise ValueError("renderer_version must be integer 2")
+        return value
+
+
+class ExecutableRunManifestV2(ExecutableRunManifest):
+    """V2 run commitments, using the unchanged registry and source contracts."""
+
+    schema_version: Literal[2] = 2  # pyright: ignore[reportIncompatibleVariableOverride]
+    run_spec_version: Literal[2] = 2
+    output_contract_version: Literal[2] = 2
+    request_identity_version: Literal[2] = 2  # pyright: ignore[reportIncompatibleVariableOverride]
+    template: TemplateCommitmentV2  # pyright: ignore[reportIncompatibleVariableOverride]
+    output_selection: SchemaSelectionV2
+
+    @field_validator(
+        "schema_version",
+        "run_spec_version",
+        "output_contract_version",
+        "request_identity_version",
+        mode="before",
+    )
+    @classmethod
+    def _version(cls, value: object) -> object:
+        if type(value) is not int or value != 2:
+            raise ValueError("schema_version must be the supported integer 2")
+        return value
+
+
+ExecutableManifest = ExecutableRunManifest | ExecutableRunManifestV2
+
+
+def parse_executable_manifest(raw: bytes) -> ExecutableManifest:
+    import json
+
+    value: object = json.loads(raw)
+    version = (
+        cast(dict[str, object], value).get("schema_version", 1)
+        if isinstance(value, dict)
+        else None
+    )
+    if type(version) is int and version == 2:
+        return ExecutableRunManifestV2.model_validate_json(raw)
+    return ExecutableRunManifest.model_validate_json(raw)

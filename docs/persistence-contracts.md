@@ -462,10 +462,34 @@ semantics described above. See [Python services](python-api.md) and
 [CLI controls](cli-spec.md).
 
 
+## Phase 2 versioned request commitments
+
+An explicit v2 run uses versioned manifest/request commitment semantics while
+v1 parsing, hashes, replay and verification remain unchanged. The SQLite registry
+is reused without implicit migration. Before submission, the immutable request
+commits the RunSpec/output-contract/renderer versions, exact ordered membership
+and trait definitions, explanation/tie flags, requested layout and structured
+output policy, resolved mechanism and selection diagnostic.
+
+The ordered schema representation is retained with its digest and requested root
+and member property-order sequences. It is distinct from sorted canonical
+semantic hashing: `scores_first` and `explanations_first` cannot collapse to the
+same presentation identity. Exact rendered prompt and mock payload bytes/digests,
+requested generation settings, exemplar IDs/order, configuration/source hashes
+and dependency identities remain bound to the same attempt.
+
+Recovery reuses the original committed contract and text mechanism; changed
+capabilities never silently change a prepared request. Contract, source, schema,
+prompt or payload mismatches fail before another provider request. Full/minimal
+capture policies and original source-integrity requirements remain enforced.
+Minimal durable commitments retain bounded hashes/identifiers rather than
+assessment source text. No credentials or credential-status evidence is recorded.
+Observed key-order sidecars, usage and reasoning records remain later work.
+
 ## Provider evidence extension boundary (proposed, not implemented)
 
 See the [consolidated assessment output design](assessment-output-design.md)
-for explicit future version-2 RunSpec/renderer controls, unchanged normalized
+for explicit version-2 RunSpec/renderer controls, unchanged normalized
 result schema 1, linked request/submission/observation usage and authorized
 reasoning records, streaming companion exports and R join/aggregation rules.
 Existing columns, frozen records, identities and missing-value semantics in

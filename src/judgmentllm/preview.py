@@ -4,28 +4,38 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from judgmentllm.config import RunSpec, load_run_spec
+from judgmentllm.config import (
+    RunSpec,
+    RunSpecification,
+    RunSpecV2,
+    load_run_spec,
+    validate_run_spec,
+)
 from judgmentllm.io import read_pairs, read_responses
-from judgmentllm.models import ResponseItem
-from judgmentllm.planning import CapabilityProfile, plan_run
-from judgmentllm.prompts import RenderedPrompt, render_prompt
+from judgmentllm.models import PairTask, ResponseItem
+from judgmentllm.planning import CapabilityProfile, plan_record, plan_run
+from judgmentllm.prompts import RenderedAssessmentPrompt
+from judgmentllm.request_rendering import render_request
 
 
 def preview_prompt(
-    spec: RunSpec | str | Path,
+    spec: RunSpecification | str | Path,
     *,
     item_id: str | None = None,
     trait_id: str | None = None,
     pair_uid: str | None = None,
     capabilities: CapabilityProfile | None = None,
-) -> RenderedPrompt:
+) -> RenderedAssessmentPrompt:
     """Render one planned request without credentials, networking, or execution.
 
     For grouped rubric requests, selecting a trait previews its entire fixed
     group. Pairwise input is scanned while retaining only the two required texts.
     """
-    if not isinstance(spec, RunSpec):
-        spec = load_run_spec(spec)
+    spec = (
+        validate_run_spec(spec)
+        if isinstance(spec, (RunSpec, RunSpecV2))
+        else load_run_spec(spec)
+    )
     plan = plan_run(spec, capabilities=capabilities)
     template = (
         spec.prompt.file.read_text(encoding="utf-8") if spec.prompt.file else None
@@ -42,20 +52,16 @@ def preview_prompt(
         if group is None:
             raise ValueError("select a known trait_id to preview its request group")
         responses = _responses(spec, {item_id})
-        traits = [
-            next(trait for trait in spec.rubric.traits if trait.trait_id == identifier)
-            for identifier in group
-        ]
-        return render_prompt(
-            rubric=spec.rubric,
-            traits=traits,
-            response=responses[item_id],
-            exemplars=spec.exemplars,
-            explanations=spec.execution.explanations,
-            preset=spec.prompt.preset,
-            template=template,
-            advanced=spec.prompt.advanced,
-            limits=spec.prompt.limits,
+        response = responses[item_id]
+        request = next(
+            request
+            for request in plan_record(
+                spec, response, template_text=template, capabilities=capabilities
+            )
+            if request.trait_ids == group
+        )
+        return render_request(
+            spec, template, request, lambda kind, identifier: responses[identifier]
         )
     if pair_uid is None or item_id is not None or trait_id is not None:
         raise ValueError(
@@ -79,22 +85,17 @@ def preview_prompt(
     if criterion is None:
         raise ValueError(f"Unknown pair criterion {pair.trait_id!r}")
     responses = _responses(spec, {pair.left_item_id, pair.right_item_id})
-    return render_prompt(
-        pair=pair,
-        left=responses[pair.left_item_id],
-        right=responses[pair.right_item_id],
-        criterion=criterion,
-        exemplars=spec.exemplars,
-        explanations=spec.execution.explanations,
-        allow_ties=spec.allow_ties,
-        preset=spec.prompt.preset,
-        template=template,
-        advanced=spec.prompt.advanced,
-        limits=spec.prompt.limits,
+    request = next(
+        plan_record(spec, pair, template_text=template, capabilities=capabilities)
     )
 
+    def lookup(kind: str, identifier: str) -> ResponseItem | PairTask:
+        return pair if kind == "pair" else responses[identifier]
 
-def _responses(spec: RunSpec, needed: set[str]) -> dict[str, ResponseItem]:
+    return render_request(spec, template, request, lookup)
+
+
+def _responses(spec: RunSpecification, needed: set[str]) -> dict[str, ResponseItem]:
     found: dict[str, ResponseItem] = {}
     for response in read_responses(spec.input):
         if response.item_id in needed:

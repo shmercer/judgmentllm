@@ -1,6 +1,6 @@
 # Data contracts and scoring semantics
 
-**Implemented schema version 1, with Milestone 2 mock execution and lifecycle.** Assessment models live in
+**Implemented RunSpec versions 1 and 2; document and normalized-result schemas remain version 1.** Assessment models live in
 `judgmentllm.models`, run configuration in `judgmentllm.config`, and normalized
 outputs in `judgmentllm.results`. Public lifecycle services execute synthetic
 assessments through the mock provider. Real provider integrations remain later milestones. The internal
@@ -11,6 +11,30 @@ separate from canonical assessment exports. Milestone 3 Phase 1 adds a separate
 standalone assessment-output contract boundary described below; document and
 normalized-result schemas remain version 1.
 
+## Explicit RunSpec v2
+
+`RunSpec` remains the public version-1 model. `RunSpecV2` opts into the new
+renderer and output contracts; `load_run_spec()` dispatches strictly on an integer
+root `schema_version`, defaulting omission to 1. Version 2 is never inferred from
+a preset. V1 rejects v2-only prompt fields. The shared `VersionedModel` still
+accepts only 1 for rubric, exemplar, criteria, response and result documents.
+
+V2 retains existing input, grouping, explanation, generation, capture and template
+controls. `prompt.output_order` defaults to `together`; `scores_first` and
+`explanations_first` require rubric explanations. Pairwise permits only
+`together`. `prompt.structured_output` defaults to `auto` and accepts `text` or
+`native`. The mock selects text for auto and records native unavailability;
+explicit native fails preflight. Strict capability rules remain enforced.
+Unknown settings, arbitrary provider JSON/schema and reserved reasoning controls
+are rejected. Existing generation controls retain sparse serialization.
+
+Each v2 request has an exact `contract_version=2` contract for selected ordered
+traits/categories or the presented pair and tie policy. Its immutable commitment
+includes renderer version, requested layout/policy, resolved schema presentation,
+ordered schema bytes/digest, requested property orders, prompt/payload digests
+and source/dependency identities. Resume verifies these original commitments.
+V2 wire layouts normalize to existing version-1 results and exports.
+
 ## Validation and serialization
 
 Models reject unknown fields, implicit scalar conversions, booleans in numeric
@@ -18,7 +42,7 @@ fields, and nonfinite numbers, including numbers nested in metadata. Metadata
 is an opaque JSON object. IDs are nonempty strings with no surrounding whitespace
 or ASCII control characters; IDs and text are never silently trimmed.
 
-Root input documents, response/exemplar/pair records, and normalized results
+Referenced input documents, response/exemplar/pair records, and normalized results
 include `schema_version: 1`. Omission defaults to version 1; an explicitly supplied
 version must be the integer `1`, excluding `true`, `1.0`, and `"1"`. Nested models
 such as traits and levels belong to their containing document's schema version.
@@ -142,16 +166,14 @@ probabilities and original/presented orientations use existing result semantics.
 Generative categorical selection without probabilities remains `category_code`,
 with no fabricated expected score, probability distribution or modal category.
 
-This is an offline Python boundary, not an enabled RunSpec v2 lifecycle. Phase 2
-must add versioned configuration, rendering/preview and immutable request/schema
-commitments before submission can use it. The installed CLI, legacy prompts,
-mock protocol, persistence schema and exports keep their v1 behavior. Real
-provider adapters/translation and usage/reasoning/order-evidence persistence are
-separate later deliverables. See the [Python API](python-api.md#standalone-assessment-output-contracts-milestone-3-phase-1).
+Phase 2 binds this contract-aware boundary to explicit RunSpec v2, shared
+rendering/preview and immutable schema/request commitments before mock
+submission. V1 retains its original behavior. Real provider adapters/translation
+and usage/reasoning/order-evidence persistence remain later deliverables.
 
 ## Run configuration
 
-`load_run_spec(path) -> RunSpec` loads safe YAML/JSON, rejects duplicate keys,
+`load_run_spec(path) -> RunSpec | RunSpecV2` loads safe YAML/JSON, rejects duplicate keys,
 and resolves references against their containing configuration file.
 `load_rubric(path) -> Rubric` loads an individual rubric. Direct Pydantic model
 validation never opens files.
@@ -392,7 +414,7 @@ error, and definite invoked transport nonacceptance retain distinct evidence.
 ## Run and evidence schema design (proposed, not implemented)
 
 See the [consolidated assessment output design](assessment-output-design.md)
-for explicit future version-2 RunSpec/renderer controls, unchanged normalized
+for explicit version-2 RunSpec/renderer controls, unchanged normalized
 result schema 1, linked request/submission/observation usage and authorized
 reasoning records, streaming companion exports and R join/aggregation rules.
 Existing columns, frozen records, identities and missing-value semantics in
