@@ -38,6 +38,7 @@ from judgmentllm.persistence.models import (
     TaskRecord,
 )
 from judgmentllm.persistence.repository import Repository
+from judgmentllm.persistence.schema import SCHEMA_VERSION
 from judgmentllm.r_exports import export_pairwise_r_csv, export_rubric_r_csv
 from judgmentllm.results import (
     PairwiseResult,
@@ -244,7 +245,10 @@ def test_initialize_reopen_durability_pragmas_and_summary(registry: Repository) 
     assert registry.connection.execute("PRAGMA foreign_keys").fetchone()[0] == 1
     assert registry.connection.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
     assert registry.connection.execute("PRAGMA synchronous").fetchone()[0] == 2
-    assert registry.connection.execute("PRAGMA user_version").fetchone()[0] == 1
+    assert (
+        registry.connection.execute("PRAGMA user_version").fetchone()[0]
+        == SCHEMA_VERSION
+    )
     with Repository(registry.root) as reopened:
         assert reopened.get_run("run") == registry.get_run("run")
         assert reopened.summary("run").tasks == 0
@@ -552,6 +556,7 @@ def test_process_death_rolls_back_uncommitted_records(registry: Repository) -> N
     program = """
 import os, sys
 from judgmentllm.persistence.repository import Repository
+from judgmentllm.persistence.schema import SCHEMA_VERSION
 from judgmentllm.persistence.models import TaskRecord
 repository = Repository(sys.argv[1])
 with repository.transaction():
