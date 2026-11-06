@@ -33,6 +33,11 @@ and offline authentication diagnostics; real integrations remain proposed.
   for ordinary local Ollama. The ledger records actual source names, precedence
   and SDK alternate-source constraints. Offline status never initializes ADC,
   refreshes tokens, contacts metadata or checks daemon connectivity.
+  **Planned Vertex adapter follow-up:** support a separately selected Google Cloud
+  authorization API key where the Agent Platform endpoint qualifies, alongside
+  (not instead of) ADC. This is not implemented by Phase 3; a stored `vertex`
+  keyring entry is not automatically used. See the
+  [provider evidence](assessment-provider-evidence.md#planned-vertex-authorization-key-route).
 - `auth status` and its Python API are implemented in Phase 3. Separate opt-in `auth verify`
   implementations remain deferred and will use documented protected non-generative operations where
   available; authentication acceptance does not qualify an assessment model.
