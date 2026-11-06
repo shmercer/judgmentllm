@@ -708,7 +708,7 @@ def usage_revision_history(
     last = 0
     while True:
         rows = repository.connection.execute(
-            "SELECT * FROM usage_revisions WHERE run_id=? AND submission_id=? AND revision_seq>? AND revision_seq<=? ORDER BY revision_seq LIMIT ?",
+            "SELECT * FROM usage_revisions INDEXED BY idx_usage_revisions_submission_revision WHERE run_id=? AND submission_id=? AND revision_seq>? AND revision_seq<=? ORDER BY revision_seq LIMIT ?",
             (run_id, submission_id, last, high, page_size),
         ).fetchall()
         if not rows:

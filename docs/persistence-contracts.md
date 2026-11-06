@@ -545,7 +545,9 @@ Internal repository readers retrieve submission/observation evidence, iterate a
 run with bounded indexed keyset pages, return revision audit history and select
 authoritative usage at a revision high-water mark. Submission history seeks use
 `(run_id, submission_id, revision_seq)` to bound both identity and revision range
-without sorting the full history. `ReadOnlyRepository` shares
+without sorting the full history. The reader explicitly requires this verified
+index so SQLite planner differences cannot choose a run-wide scan.
+`ReadOnlyRepository` shares
 these readers without creating application files. Safe metadata remains available
 under minimal capture independently of response bodies. Missing assessment text
 still requires authoritative retrieval or remains unresolved; evidence recovery
