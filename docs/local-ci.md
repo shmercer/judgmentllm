@@ -26,7 +26,9 @@ and optional Windows/Python 3.11 run the full suite with explicit `--no-cov`.
 Only the primary job uploads coverage.xml (including failed-job evidence when
 available) and invokes the existing optional Codecov integration. The default
 pytest branch coverage settings and blocking 90% threshold remain unchanged.
-Hosted jobs have a 30-minute timeout, with a runtime target under 20 minutes.
+Hosted jobs have a 50-minute timeout, as explicitly authorized during Phase 4C3
+review; the routine runtime target remains under 20 minutes. This job ceiling is
+separate from the native preparation child's 90-second deadline.
 The resource fixtures retain their separate 180-second deadline and existing
 memory and workload limits.
 
@@ -457,7 +459,7 @@ supplement those gates without replacing or relabeling them. Coverage stays only
 on Linux/3.11; all other lanes explicitly disable it. Commit the candidate before
 `grid.py --mode prepare` and `--mode check`; source changes after qualification
 require a new complete exact-head run. Preserve VM locks, graceful shutdown,
-180-second fixtures, memory limits, hosted 30-minute timeout, original retained
+180-second fixtures, memory limits, hosted 50-minute timeout, original retained
 compatibility stores and complete failed-attempt evidence.
 
 The native preparation memory fixture initializes only fixed, content-free

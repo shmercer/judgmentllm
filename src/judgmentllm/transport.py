@@ -7,12 +7,23 @@ No SDK, authentication discovery, or provider client is imported here.
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Callable
-from dataclasses import dataclass
+from copy import deepcopy
+from dataclasses import dataclass, is_dataclass, replace
+from datetime import date
+from types import FunctionType
 from typing import Literal, Self, cast
 
-from pydantic import Field, ModelWrapValidatorHandler, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    Field,
+    ModelWrapValidatorHandler,
+    field_validator,
+    model_validator,
+)
 
+from judgmentllm._verification import ExactToken, exact_token
 from judgmentllm.config import NativeTransportMechanism, RunSpecV3, validate_run_spec
 from judgmentllm.evidence.scope import ScopedProviderEvidence
 from judgmentllm.models import ID, PairTask, ResponseItem
@@ -158,6 +169,122 @@ def transport_context_digest(context: TransportContext) -> str:
         )
     except (ValueError, TypeError, AttributeError, RecursionError):
         raise TransportIntegrityError() from None
+
+
+def _effective_context(context: TransportContext) -> TransportContext:
+    """Own every catalog whose metadata enters the context commitment."""
+    if type(context) is not TransportContext or set(vars(context)) != set(
+        TransportContext.__dataclass_fields__
+    ):
+        raise TransportIntegrityError()
+    return replace(
+        context,
+        openai_catalog=context.openai_catalog or _DEFAULT_CATALOG,
+        provider_catalog=context.provider_catalog or _DEFAULT_CATALOG_V2,
+    )
+
+
+def _preparation_token(
+    value: object, active: set[int] | None = None
+) -> ExactToken | None:
+    """Exact transient guard, including dates in native provenance.
+
+    This token lives for one physical preparation call. It is never retained in
+    a prepared request or session, and unsupported values keep the full path.
+    """
+    if type(value) is date:
+        return (date, value.isoformat())
+    kind = type(value)
+    if kind is FunctionType:
+        function = cast(FunctionType, value)
+        if (
+            type(function.__module__) is not str
+            or type(function.__qualname__) is not str
+            or function.__closure__ is not None
+        ):
+            return None
+        metadata = exact_token(
+            (function.__defaults__, function.__kwdefaults__, function.__dict__)
+        )
+        if metadata is None:
+            return None
+        return (
+            kind,
+            function,
+            function.__module__,
+            function.__qualname__,
+            id(function.__code__),
+            function.__code__,
+            metadata,
+        )
+    model = (
+        isinstance(value, BaseModel)
+        and kind.__module__.startswith("judgmentllm.")
+        and getattr(sys.modules.get(kind.__module__), kind.__name__, None) is kind
+    )
+    record = (
+        is_dataclass(value)
+        and kind.__module__.startswith("judgmentllm.")
+        and getattr(sys.modules.get(kind.__module__), kind.__name__, None) is kind
+    )
+    if not model and not record and kind not in (dict, list, tuple):
+        return exact_token(value)
+    active = set() if active is None else active
+    identity = id(value)
+    if identity in active:
+        raise ValueError("cyclic current preparation cannot be verified")
+    active.add(identity)
+    try:
+        if model:
+            entries = tuple(cast(BaseModel, value))
+        elif record:
+            entries = tuple(vars(value).items())
+        elif kind is dict:
+            entries = tuple(cast(dict[object, object], value).items())
+        else:
+            children = tuple(
+                _preparation_token(item, active)
+                for item in cast(list[object] | tuple[object, ...], value)
+            )
+            return None if any(item is None for item in children) else (kind, children)
+        pairs = tuple(
+            (_preparation_token(key, active), _preparation_token(item, active))
+            for key, item in entries
+        )
+        if any(key is None or item is None for key, item in pairs):
+            return None
+        return (kind, pairs)
+    finally:
+        active.remove(identity)
+
+
+def _translator_snapshot(context: TransportContext) -> tuple[tuple[object, ...], ...]:
+    translators = (
+        project_openai_schema,
+        project_native_schema_v2,
+        *(
+            i.translate
+            for i in (context.openai_catalog or _DEFAULT_CATALOG).implementations
+        ),
+    )
+    return tuple(
+        (
+            translator,
+            getattr(translator, "__module__", None),
+            getattr(translator, "__qualname__", None),
+            getattr(translator, "__code__", None),
+        )
+        for translator in translators
+    )
+
+
+def _same_translators(
+    before: tuple[tuple[object, ...], ...], after: tuple[tuple[object, ...], ...]
+) -> bool:
+    return len(before) == len(after) and all(
+        first[0] is second[0] and first[1:3] == second[1:3] and first[3] is second[3]
+        for first, second in zip(before, after, strict=True)
+    )
 
 
 class _TransportModel(NativeModel):
@@ -553,6 +680,23 @@ def build_output_commitment_v3(
     inherited_commitment: TransportCommitmentV1 | None = None,
 ) -> OutputCommitmentV3:
     """Select a fresh request, or inherit the parent's exact family and route."""
+    return _build_output_commitment_v3(
+        spec,
+        request,
+        context,
+        transport_context_digest(context),
+        inherited_commitment=inherited_commitment,
+    )
+
+
+def _build_output_commitment_v3(
+    spec: RunSpecV3,
+    request: PlannedRequest,
+    context: TransportContext,
+    context_sha256: str,
+    *,
+    inherited_commitment: TransportCommitmentV1 | None = None,
+) -> OutputCommitmentV3:
     try:
         _validate_context(spec, context)
         contract = _contract(spec, request)
@@ -564,7 +708,7 @@ def build_output_commitment_v3(
                 parent.selection.policy != spec.prompt.structured_output
                 or parent.configuration_sha256
                 != semantic_digest("run-configuration", spec)
-                or parent.context_sha256 != transport_context_digest(context)
+                or parent.context_sha256 != context_sha256
                 or parent.requested_mechanism != mechanism
             ):
                 raise TransportIntegrityError()
@@ -646,7 +790,7 @@ def build_output_commitment_v3(
             else "projected_native"
             if context.scope.provider in {"together", "ollama"}
             else "omit",
-            context_sha256=transport_context_digest(context),
+            context_sha256=context_sha256,
         )
     except (ValueError, TypeError, AttributeError, RecursionError):
         raise TransportIntegrityError() from None
@@ -942,10 +1086,27 @@ def prepare_transport_request(
     An inherited attempt also requires its independently verified parent receipt;
     a child's checksum cannot establish the originally committed family.
     """
-    from judgmentllm.native_prompts import render_request_v3
+    from judgmentllm.native_prompts import _render_text_v3, render_request_v3
 
     try:
         _validate_context(spec, context)
+        live_context = context
+        context = _effective_context(context)
+        live_inputs = (spec, dependency, identity, context)
+        input_token = _preparation_token(live_inputs)
+        translators = _translator_snapshot(context)
+        if input_token is not None:
+            # All work uses one detached metadata/input snapshot. A callback
+            # mutating and restoring caller-owned objects cannot influence a
+            # decision while remaining invisible to the final live-value guard.
+            spec, dependency, identity, context = deepcopy(
+                (spec, dependency, identity, context)
+            )
+            if input_token != _preparation_token(
+                (spec, dependency, identity, context)
+            ) or not _same_translators(translators, _translator_snapshot(context)):
+                raise TransportIntegrityError()
+        context_sha256 = transport_context_digest(context)
         if (
             not context.trusted_synthetic
             or identity.request_uid != dependency.request.request_uid
@@ -957,7 +1118,7 @@ def prepare_transport_request(
                 parent.identity.run_id != identity.run_id
                 or parent.identity.request_uid != identity.request_uid
                 or parent.identity.attempt_id == identity.attempt_id
-                or parent.context_sha256 != transport_context_digest(context)
+                or parent.context_sha256 != context_sha256
                 or parent.configuration_sha256
                 != semantic_digest("run-configuration", spec)
                 or parent.requested_mechanism != spec.prompt.native_mechanism
@@ -981,10 +1142,7 @@ def prepare_transport_request(
                 or frozen.identity.request_uid != parent.identity.request_uid
             ):
                 raise TransportIntegrityError()
-            if (
-                frozen.identity != identity
-                or frozen.context_sha256 != transport_context_digest(context)
-            ):
+            if frozen.identity != identity or frozen.context_sha256 != context_sha256:
                 raise TransportIntegrityError()
             if committed_output is None:
                 contract = _contract(spec, dependency.request)
@@ -1016,12 +1174,14 @@ def prepare_transport_request(
                     else "projected_native"
                     if context.scope.provider in {"together", "ollama"}
                     else "omit",
-                    context_sha256=transport_context_digest(context),
+                    context_sha256=context_sha256,
                 )
             else:
-                output = OutputCommitmentV3.model_validate(dict(committed_output))
+                output = OutputCommitmentV3.model_validate(
+                    deepcopy(dict(committed_output))
+                )
             if (
-                output.context_sha256 != transport_context_digest(context)
+                output.context_sha256 != context_sha256
                 or output.contract != _contract(spec, dependency.request)
                 or output.selection.requested_mechanism != spec.prompt.native_mechanism
                 or output.selection.policy != spec.prompt.structured_output
@@ -1040,9 +1200,30 @@ def prepare_transport_request(
                     catalog=context.provider_catalog or _DEFAULT_CATALOG_V2,
                 )
         else:
-            output = build_output_commitment_v3(
-                spec, dependency.request, context, inherited_commitment=parent
+            output = (
+                build_output_commitment_v3(
+                    spec, dependency.request, context, inherited_commitment=parent
+                )
+                if input_token is None
+                else _build_output_commitment_v3(
+                    spec,
+                    dependency.request,
+                    context,
+                    context_sha256,
+                    inherited_commitment=parent,
+                )
             )
+        # The constructor above fully validated these same values. Reuse only a
+        # detached primitive snapshot for the plan hash within this call; the
+        # public prepared-request validator independently validates current output
+        # against this original hash and exact ordered payload before return.
+        output_token = _preparation_token(output) if input_token is not None else None
+        output_snapshot = output.model_dump(mode="json")
+        output_sha256 = (
+            semantic_digest("output-commitment-v3", output_snapshot)
+            if output_token is not None
+            else output.commitment_sha256
+        )
         if lookup is None:
             record = dependency.request.response
             if record is None:
@@ -1056,8 +1237,12 @@ def prepare_transport_request(
                 return record
 
             lookup = only_response
-        rendered = render_request_v3(spec, template, dependency.request, lookup, output)
-        prompt = rendered.text.encode("utf-8")
+        rendered_text = (
+            render_request_v3(spec, template, dependency.request, lookup, output).text
+            if input_token is None
+            else _render_text_v3(spec, template, dependency.request, lookup, output)
+        )
+        prompt = rendered_text.encode("utf-8")
         membership = semantic_digest(
             "attempt-membership", [task.task_id for task in dependency.request.tasks]
         )
@@ -1066,9 +1251,9 @@ def prepare_transport_request(
             configuration_sha256=semantic_digest("run-configuration", spec),
             dependency_sha256=dependency.dependency_sha256,
             membership_sha256=membership,
-            output_commitment_sha256=output.commitment_sha256,
+            output_commitment_sha256=output_sha256,
             prompt_sha256=bytes_digest(prompt),
-            context_sha256=transport_context_digest(context),
+            context_sha256=context_sha256,
             parent_commitment_sha256=output.selection.parent_commitment_sha256,
         )
         payload_object: dict[str, object] = {
@@ -1080,8 +1265,8 @@ def prepare_transport_request(
             "model": spec.model,
             "request_uid": dependency.request.request_uid,
             "tasks": dependency.request.tasks,
-            "prompt": rendered.text,
-            "output_commitment": output,
+            "prompt": rendered_text,
+            "output_commitment": output_snapshot,
             "transport_plan": plan,
             "format_fragment": None
             if output.projection is None
@@ -1100,7 +1285,7 @@ def prepare_transport_request(
         receipt = _receipt(plan, output, prompt, payload)
         if frozen is not None and receipt != frozen:
             raise TransportIntegrityError()
-        return PreparedRequestV3(
+        prepared = PreparedRequestV3(
             request_uid=dependency.request.request_uid,
             task_ids=tuple(task.task_id for task in dependency.request.tasks),
             dependency_sha256=dependency.dependency_sha256,
@@ -1115,8 +1300,32 @@ def prepare_transport_request(
             output_commitment=output,
             transport_plan=plan,
             transport_commitment=receipt,
-            rendered_text=rendered.text,
+            rendered_text=rendered_text,
         )
+        if (
+            (
+                input_token is None
+                and context_sha256 != transport_context_digest(live_context)
+            )
+            or not _same_translators(translators, _translator_snapshot(live_context))
+            or not _same_translators(translators, _translator_snapshot(context))
+            or (
+                input_token is not None
+                and (
+                    input_token
+                    != _preparation_token(
+                        (*live_inputs[:3], _effective_context(live_context))
+                    )
+                    or input_token
+                    != _preparation_token((spec, dependency, identity, context))
+                )
+            )
+            # Guard the original raw object, too: a newly validated replacement
+            # cannot authorize normalization of a changed literal such as 3.0.
+            or (output_token is not None and output_token != _preparation_token(output))
+        ):
+            raise TransportIntegrityError()
+        return prepared
     except (
         ValueError,
         TypeError,

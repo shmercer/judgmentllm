@@ -120,9 +120,44 @@ def render_request_v3(
     lookup: Callable[[Literal["response", "pair"], str], ResponseItem | PairTask],
     output_commitment: OutputCommitmentV3,
 ) -> RenderedPromptV3:
-    """Render exact membership through the established sandbox/protection engine."""
+    """Validate and render exact membership through the protected prompt engine."""
     try:
         output = OutputCommitmentV3.model_validate(dict(output_commitment))
+        text = _render_text_v3(spec, template, request, lookup, output)
+        return RenderedPromptV3(
+            text=text,
+            exemplar_ids=tuple(e.exemplar_id for e in spec.exemplars),
+            output_schema=generate_output_schema(output.contract),
+            output_commitment=output,
+        )
+    except (
+        ValueError,
+        TypeError,
+        KeyError,
+        StopIteration,
+        AttributeError,
+        TemplateError,
+        RecursionError,
+    ):
+        raise PromptError(
+            "Native prompt does not satisfy the committed rendering contract."
+        ) from None
+
+
+def _render_text_v3(
+    spec: RunSpecV3,
+    template: str | None,
+    request: PlannedRequest,
+    lookup: Callable[[Literal["response", "pair"], str], ResponseItem | PairTask],
+    output: OutputCommitmentV3,
+) -> str:
+    """Render a detached, fully validated output through all protection checks.
+
+    The physical builder and public renderer own validation of their supplied
+    output. This helper retains no content and always checks assessment membership,
+    exemplars, template limits, sandbox operations and protected blocks.
+    """
+    try:
         contract = output.contract
         if request.pair is not None:
             pair = lookup("pair", request.pair.pair_uid)
@@ -231,14 +266,8 @@ def render_request_v3(
             if size > spec.prompt.limits.max_output_bytes:
                 raise PromptError("Prompt exceeds the output size rendering safeguard.")
             chunks.append(chunk)
-        text = _verify_and_unwrap(
+        return _verify_and_unwrap(
             "".join(chunks), blocks, namespace, renderer_version=2
-        )
-        return RenderedPromptV3(
-            text=text,
-            exemplar_ids=tuple(e.exemplar_id for e in spec.exemplars),
-            output_schema=generate_output_schema(contract),
-            output_commitment=output,
         )
     except (
         ValueError,

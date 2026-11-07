@@ -19,8 +19,13 @@ from judgmentllm.native_prompts import render_request_v3
 from judgmentllm.output_contracts import (
     AssessmentOutputContract,
     PairwiseOutputContract,
+    RubricOutputContract,
 )
-from judgmentllm.persistence.hashing import canonical_bytes
+from judgmentllm.persistence.hashing import (
+    bytes_digest,
+    canonical_bytes,
+    semantic_digest,
+)
 from judgmentllm.planning import CapabilityProfile, PlannedRequest, plan_record
 from judgmentllm.preparation.session import RequestDependency
 from judgmentllm.prompts import PromptError
@@ -309,3 +314,67 @@ def test_openai_recovery_rejects_rehashed_support_facts(
     forged = TransportDecisionV1.model_validate_json(json.dumps(changed))
     with pytest.raises(ValueError):
         _verify_openai(forged, output.contract, context)
+
+
+@pytest.mark.parametrize("mechanism", (MECHANISMS[0], MECHANISMS[2]))
+@pytest.mark.parametrize(
+    "change",
+    ("unknown", "version", "category", "trait_order", "schema", "projection"),
+)
+def test_public_renderer_still_revalidates_before_private_text_rendering(
+    mechanism: str, change: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spec, request, responses, template = fixture_request(
+        mechanism, cases()["grouped_scores"]
+    )
+    output = build_output_commitment_v3(spec, request, context_for(mechanism))
+    canary = "synthetic-private-renderer-tamper-canary"
+    if change == "unknown":
+        vars(output)[canary] = canary
+    elif change == "version":
+        vars(output)["renderer_version"] = 3.0
+    elif change in {"category", "trait_order"}:
+        assert isinstance(output.contract, RubricOutputContract)
+        if change == "category":
+            output.contract.traits[0].levels[0].label = canary
+        else:
+            vars(output.contract)["traits"] = output.contract.traits[::-1]
+    elif change == "schema":
+        raw = (output.schema_text + " ").encode("utf-8")
+        vars(output)["schema_text"] = raw.decode("utf-8")
+        vars(output)["schema_sha256"] = bytes_digest(raw)
+    else:
+        projection = output.projection
+        assert projection is not None
+        raw = (projection.native_schema_text + " ").encode("utf-8")
+        vars(projection)["native_schema_text"] = raw.decode("utf-8")
+        vars(projection)["native_schema_sha256"] = bytes_digest(raw)
+        values = projection.model_dump(mode="json", exclude={"projection_sha256"})
+        identity = (
+            bytes_digest(canonical_bytes(values))
+            if projection.projection_version == 1
+            else semantic_digest("native-schema-projection-v2", values)
+        )
+        vars(projection)["projection_sha256"] = identity
+        decision = (
+            output.selection.openai_decision or output.selection.provider_decision
+        )
+        assert decision is not None
+        vars(decision)["projection_sha256"] = identity
+        values = decision.model_dump(mode="json", exclude={"decision_sha256"})
+        vars(decision)["decision_sha256"] = semantic_digest(
+            "native-transport-decision-v1"
+            if output.selection.openai_decision is not None
+            else "native-transport-decision-v2",
+            values,
+        )
+
+    def forbidden(*args: Any, **kwargs: Any) -> str:
+        raise AssertionError("public renderer bypassed output validation")
+
+    monkeypatch.setattr("judgmentllm.native_prompts._render_text_v3", forbidden)
+    with pytest.raises(PromptError) as failure:
+        render_request_v3(
+            spec, template, request, lambda kind, ident: responses[ident], output
+        )
+    assert canary not in str(failure.value)

@@ -471,7 +471,9 @@ and strict capability matrices, full/minimal integrity/privacy/recovery, genuine
 alpha2/alpha3 compatibility, native Python-to-R checks, seven local configurations,
 49 existing strict R gates, 70 resource measurements, primary branch-aware coverage
 at least 90%, mandatory SDK probes and all five hosted jobs at the final head.
-No gate/limit/180-second fixture deadline or hosted timeout may be relaxed.
+The hosted job ceiling is 50 minutes following the explicit Phase 4C3 review
+request. All resource limits, the native 90-second child deadline and existing
+180-second fixture deadlines remain unchanged.
 
 Keep qualification evidence outside Dropbox and preserve failed attempts. The
 standalone historical fixture corpus must remain byte-identical. Production

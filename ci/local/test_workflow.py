@@ -78,9 +78,9 @@ def test_matrix_contract(
 
 def test_full_job_quality_r_and_resource_gates_are_preserved() -> None:
     job = workflow()["jobs"]["baseline"]
-    # Thirty minutes is the hosted ceiling; the runtime target stays under twenty.
+    # Fifty minutes is the approved hosted ceiling; the target stays under twenty.
     # The resource fixtures below retain their independent 180-second deadline.
-    assert job["timeout-minutes"] == "30"
+    assert job["timeout-minutes"] == "50"
     assert job["strategy"]["fail-fast"] == "false"
     steps = job["steps"]
     assert len({step["name"] for step in steps}) == len(steps)
