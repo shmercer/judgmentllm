@@ -2,10 +2,12 @@
 
 **Rule:** Implement one milestone per small pull request or coherent series of PRs, with the acceptance conditions below. After each milestone, revise `docs/design-spec.md` if evidence requires a change. Do not quietly scope out accepted features; record deferrals explicitly. Milestone 7 (FastAPI) is a **committed, late-stage deliverable** after Milestones 0-6. The FastAPI dependency remains optional for users; early library/CLI prereleases do not need to wait for the HTTP interface.
 
+**First public PyPI alpha:** Treat [alpha-release readiness](alpha-release-readiness.md) as a **parallel, independently gated workstream**. Start user-facing documentation, package usability and secure release preparation now, but **do not publish until all intended Milestone 3 generative and Milestone 4 native live provider/endpoint families are implemented and specifically live-qualified**. Milestones 5 (batch/bulk-live), 6 (generated catalog/thin R wrapper) and 7 (FastAPI) are later commitments, not prerequisites for the first Python library/CLI alpha. Existing R/export, safety and regression gates continue to apply.
+
 ## Milestone 0 - Repository and engineering baseline
 
 - Create public GitHub repo `shmercer/judgmentllm` (target), MIT, `main` branch, issue templates optional.
-- Confirm or reserve PyPI distribution name before release (availability not independently verified).
+- Confirm PyPI distribution-name availability and ownership before release (not independently verified; a pending Trusted Publisher does not reserve the name).
 - Add Python src layout, `pyproject.toml` using Hatchling, `uv` for dev, optional provider extras + `[all]`, CLI entry point and a minimal typed package import.
 - Add CI across Linux, Windows, macOS with Python 3.11 and current stable Python; Ruff, Pyright, pytest, package build; generate coverage and upload to Codecov after app connection.
 - Add offline synthetic tests and install/import/`--help` smoke tests.
@@ -262,6 +264,52 @@ conduct paid calls as part of this design task.
 Endpoint-specific offline tests prove inapplicable generative settings fail
 locally and are never silently ignored.
 
+## First PyPI alpha - parallel release-readiness workstream
+
+**Sequence and scope:** Track the full checklist in the
+[alpha-release readiness plan](alpha-release-readiness.md). Work may begin in
+small documentation, UX and publishing-infrastructure PRs now. **Publication
+follows** exact-head acceptance of Milestones 3 and 4 for all intended live
+provider/endpoint families, plus independent alpha gates; it need not await
+the batch, R-wrapper/catalog or HTTP milestones. An existing `0.1.0aN`
+development version or passing offline fixture is not evidence of a
+publicly usable alpha.
+
+- **Understandable entry points:** Reorganize the README/PyPI long description
+  around what can actually be done; include a "Start here" hub, no-cost
+  synthetic first run, install-by-pip guidance, complete beginner rubric and
+  pairwise tutorials, annotated outputs and troubleshooting. Keep technical
+  contract notes and milestone histories available separately.
+- **Complete real-provider onboarding:** Provide an accurate dated matrix and
+  practical instructions for credentials, extras, endpoint/model selection,
+  authorized billable operations, local Ollama, Vertex versus Gemini Developer,
+  native Decisions/Jev limitations, usage/cost uncertainty and privacy.
+  Mark offline mocks versus implemented and specifically live-qualified
+  features; do not imply batch or unsupported feature parity.
+- **Usable installed package:** Verify wheel and sdist installs *outside the
+  checkout* on supported OS/Python configurations. Check optional dependency
+  isolation, package resources, CLI help/errors, public Python examples,
+  metadata/typing/license, filenames/links and complete synthetic walkthroughs.
+- **Safe publishing:** Prepare guarded GitHub Actions Trusted Publishing
+  (production disabled until explicitly approved), version/tag/metadata
+  consistency, build-once artifact verification, TestPyPI or controlled
+  dry-run checks, PEP 440 alpha version policy, SHA-256/provenance, release
+  notes, name availability and post-upload installation verification.
+- **No weakened gates:** Preserve branch-aware coverage, exact-head hosted/local
+  verification, existing resource requirements where applicable, R/jsonlite
+  checks, historical-store compatibility, sanitized evidence and manual,
+  opt-in synthetic live qualification for every intended endpoint family.
+
+**Alpha acceptance:** A reviewer unfamiliar with the codebase can follow the
+published installation and first-run guides without a source checkout or
+custom Python code. Each advertised provider/endpoint has documented,
+nonsecret, dated live evidence for the required rubric/pairwise workflows
+within its actual capabilities; required synthetic offline CI and R contracts
+still pass. A human approves the *specific* verified release artifacts before
+production upload. The exact criteria, documentation map, phased PR sequence,
+and release go/no-go evidence are in
+[alpha-release readiness](alpha-release-readiness.md).
+
 ## Milestone 5 - Native batches, managed bulk-live and caching
 
 - Add native batch adapters for supported providers: OpenAI generative, Anthropic, Gemini Developer, Vertex Gemini, Together (subject to live qualification).
@@ -279,6 +327,12 @@ and omission semantics, including after recovery and collection.
 
 ## Milestone 6 - Catalog, R bridge, docs and prerelease qualification
 
+This milestone **extends** the beginner documentation, live qualifications
+and publishing foundation already required for the first Python/CLI alpha.
+It must not delay the earlier alpha solely for the generated catalog, thin
+`rubricLLM` wrapper, native-batch documentation or FastAPI.
+See [alpha-release readiness](alpha-release-readiness.md).
+
 - Implement generated `models.json` and `docs/model-support.md` with dated sources/qualifications; GitHub Action opens reviewable PR for catalog changes.
 - Deliver a functional thin `rubricLLM` R package (provisional name) around the versioned CLI control contract using `processx`, with documented executable/virtual-environment discovery and configuration. Reuse Python services; do not implement a second scoring, normalization, or persistence engine in R.
 - Expose the implemented validation, planning, prompt preview, rubric scoring, pairwise judging, run/status/resume, batch submission/status/collection/cancellation, and result-export operations through that wrapper. Provide installation and first-run documentation with actual synthetic end-to-end examples and clear diagnostics for missing executables/environments.
@@ -286,9 +340,9 @@ and omission semantics, including after recovery and collection.
 - Supply generation controls through the same RunSpec used by Python and CLI. Test wrapper serialization of absent and explicit values, capability diagnostics and frozen-generation resume compatibility; do not add R-side provider defaults or arbitrary request bodies.
 - Verify the actual `pairwiseLLM` source/version in required R integration tests. Demonstrate explicit successful-attempt selection, binary winner preparation for `build_bt_data()`, supported `object1`/`object2`/numeric-`result` workflows including deliberate tie handling, and rubric/probability import. Keep JudgmentLLM's audit IDs/provenance authoritative when conversion helpers generate their own occurrence IDs or timestamps.
 - Evaluate `reticulate` as an optional secondary enhancement, implementing it only when justified by a demonstrated need; CLI/`processx` operation must not depend on `reticulate`, a resident Python process, or HTTP.
-- Document install, authentication, cost estimation, privacy, resumption, exemplar scaling, scores vs probability expectations, and per-provider constraints.
-- Conduct manual and prerelease provider qualification using limited-budget fixtures and a verification record.
-- Evaluate PyPI Trusted Publishing, distribution testing and SemVer release process.
+- Maintain and extend alpha install/authentication/cost/privacy/resumption/exemplar/score documentation to new batch, R wrapper and catalog workflows, with the same beginner/technical separation.
+- Extend recorded Milestone 3/4 single-run live qualification to new batch and R-facing features using authorized, limited-budget fixtures and an exact-scope verification record.
+- Maintain and improve the earlier PyPI Trusted Publishing, distribution checks, PEP 440 version/tag and release maintenance process; do not defer the first Python alpha to this milestone.
 
 **Acceptance:** Users can install the thin `rubricLLM` package and complete documented first-run validation, preview, rubric, pairwise, status/resume, batch, and export workflows through `processx` against installed JudgmentLLM and offline mocks, without writing custom templates. Executable/environment discovery and documented control JSON/stdout/stderr/exit behavior are tested. Actual `pairwiseLLM` integration is installed, version-recorded, and exercised end to end in required R CI; ties, failures, repeated judgments, multiple attempts, leading-zero IDs, score kinds, full probabilities, and generated-versus-original provenance remain explicit. The published catalog distinguishes discovered/implemented/fixture-tested/live-qualified; Python, CLI and R workflows produce compatible normalized synthetic results; all CI passes; live qualifications remain separately opt-in and report exact version/date and costs.
 
@@ -337,6 +391,8 @@ Apply stage-specific questions where relevant; the required baseline for the est
 - Are IDs, ordering, scores, probabilities, attempts, and provenance preserved?
 - Does the required R interoperability CI check pass?
 - Are any new R interoperability requirements or limitations documented?
+- Do installed-package README, beginner guidance, examples and `--help` accurately reflect the features implemented in this PR, including mock/live and billable boundaries?
+- Does the change affect alpha release scope, optional extras, provider qualification evidence or compatibility/version requirements recorded in [alpha-release readiness](alpha-release-readiness.md)?
 
 ### Phase 4B acceptance evidence
 
