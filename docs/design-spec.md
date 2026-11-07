@@ -15,8 +15,9 @@ Version-1 configurations, templates, frozen artifacts and normalized results kee
 their established contracts.
 
 Mock v2 uses complete textual schemas with strict local validation; its `auto`
-policy records text selection because native enforcement is unavailable. Real
-provider adapters, native schema translation, live authentication and live
+policy records text selection because native enforcement is unavailable. Phase
+4C1 adds standalone offline OpenAI schema projections and scoped decisions; durable
+native integration, real provider adapters, live authentication and live
 qualification remain later work. Phase 4A adds standalone strict version-1 provider
 evidence records and pure usage/order/reasoning extraction and authorization
 services. Phase 4B integrates these before response retention using registry schema

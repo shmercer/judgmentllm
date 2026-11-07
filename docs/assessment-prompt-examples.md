@@ -5,8 +5,9 @@
 Version-1 installed templates, prompt bytes, previews and frozen runs retain their
 historical behavior. Select `prompt.structured_output: text` and set `prompt.file`
 to the copied custom template to obtain the fully rendered examples below.
-The installed v2 mock lifecycle is synthetic; native schema translation and real
-provider scoring remain unavailable.
+The installed v2 mock lifecycle is synthetic. Phase 4C1 adds standalone offline
+native projections; native prompt integration and real provider scoring remain
+unavailable.
 
 All six examples use synthetic assessment data and **zero exemplars**. There is
 no reference-example heading or empty placeholder. Each complete custom template

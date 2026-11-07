@@ -108,3 +108,31 @@ authorization decisions and validated records are never cached. Every payload
 still passes strict field validation, full cross-field checks and safe error
 sanitization. This removes repeated schema compilation without relaxing capture
 policy, persistence verification or interoperability deadlines.
+
+
+## Phase 4C1 projection privacy
+
+Native projection and selection are pure in-memory operations with no credential,
+SDK/client, network or file discovery. Exact schema content necessarily includes
+requested IDs and category labels; unrelated rubric descriptions, assessment text
+and metadata are excluded. Sensitive schema/source/order fields are excluded from
+representations. Fixed diagnostics and bounded provenance retain only approved
+codes, scope/version identifiers, counts and hashes; projection content must not
+be copied into logs or minimal-capture/qualification summaries.
+
+Fresh-process tests install admission guards before imports, forbid SDK imports,
+client/credential discovery, sockets/DNS and filesystem mutation, and prove the
+guards detect prohibited operations. Secret canaries arrive by pipe, stay out of
+fixture files, and are suppressed from failed pytest diagnostics. Constructor,
+copying and structured validation failures remain content-free. Standalone
+candidate projections are not persisted by any historical lifecycle operation.
+
+
+The native-record JSON boundary performs strict duplicate-key preflight over the
+entire original document, including nested objects and array members. Mutable
+`bytearray` input is captured once so preflight and validation cannot consume
+different documents; input subclasses are rejected. Duplicate
+key names and values never enter error text or structured error details, even
+when the final value is legitimate. Fresh-process canary tests exercise this
+boundary under the same SDK/network/credential/filesystem admission guards.
+The shared historical evidence JSON boundary is unchanged.

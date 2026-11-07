@@ -287,3 +287,67 @@ capture is implemented. Native translation, adapter construction/model access,
 companion exports and live qualification remain deferred. The Vertex
 [authorization-key requirement](#planned-vertex-authorization-key-route) remains
 mandatory for the later adapter work.
+
+
+## Phase 4C1 OpenAI projection matrix
+
+These are standalone offline translations, not executable adapters or evidence
+that any real model accepts a request. The locked OpenAI **3.42.1** static SDK
+contracts are inspected without importing the SDK or constructing a client.
+Checked-in synthetic fixtures retain exact ordered schema/format fragments and
+bounded nonsecret provenance. No record is labeled `live_qualified`.
+
+| Mechanism / endpoint | Exact strict format fragment | Translation status | Model acceptance |
+|---|---|---|---|
+| Responses / `responses` | `text.format = {type: json_schema, name, strict: true, schema}` | Conservative projection implemented and offline fixture-tested | Unknown for real models |
+| Chat Completions / `chat.completions` | `response_format = {type: json_schema, json_schema: {name, strict: true, schema}}` | Conservative projection implemented and offline fixture-tested | Unknown for real models |
+
+The fixed schema name is `judgmentllm_assessment_v1`, within the documented
+64-character ASCII letter/digit/underscore/hyphen syntax. See the official
+[Responses reference](https://developers.openai.com/api/reference/resources/responses/methods/create),
+[Chat reference](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create)
+and [Structured Outputs guide](https://developers.openai.com/api/docs/guides/structured-outputs).
+
+| Canonical constraint | Conservative native coverage | Local requirement |
+|---|---|---|
+| Object structure, all required fields, closure | Preserved throughout | Full validation remains mandatory |
+| Trait constants and exact categories | Typed singleton enum; exact category enum per branch | Exact requested trait/category validity |
+| Disjoint rubric `oneOf` alternatives | Equivalent nested `anyOf`; branch order preserved | One result per requested trait; completeness/uniqueness |
+| Array `minItems` / `maxItems` | Omitted, with fixed recorded reason | Exact cardinality and membership |
+| Explanation `minLength` | Omitted, with fixed recorded reason | Required nonblank explanation |
+| Forced-choice winner | Typed exact presented-ID enum | Original/presented identity retained |
+| Tie-enabled root `oneOf` | Reviewed omission; nullable exact winner enum and required boolean tie retained | Null winner iff tie |
+| Score/explanation arrays | Closed typed members and exact permitted IDs | Complete unique ID join |
+
+The root remains an object; it is never rewritten to root `anyOf`. Unsupported
+schema constructs are rejected rather than filtered generically. Every local-only
+constraint is part of the immutable projection identity. Later profiles enabling
+additional constraints must use a new version/identity; historical projections
+cannot change in place.
+
+### Documented general limits versus model-specific unknowns
+
+The current Structured Outputs guide documents these schema-level ceilings:
+
+| General documented ceiling | Limit |
+|---|---|
+| Total declared object properties | 5,000 |
+| Nesting levels | 10 |
+| Combined property/definition names and enum/const string characters | 120,000 |
+| Enum values across all enums | 1,000 |
+| String characters in one enum containing more than 250 values | 15,000 |
+
+Offline tests cover equality and excess at each boundary, including the
+250/251-value conditional boundary and Unicode character accounting. These
+ceilings describe documented schema eligibility, not measured model acceptance.
+The bounded implementation rejects excess with structured codes and never
+truncates membership or category labels. An implementation safety budget is
+separate from a provider claim.
+
+Model-specific restrictions remain unknown unless exact trusted evidence
+establishes them. Documentation distinguishes fine-tuned feature restrictions;
+SDK presence and passing general limits cannot establish that an arbitrary model
+supports an endpoint or every keyword. The conservative profile always leaves
+array bounds and explanation lengths local-only, including for models that might
+support them. Synthetic exact-scope fixture profiles test positive selection;
+the default registry does not qualify real models.

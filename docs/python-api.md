@@ -917,7 +917,7 @@ New stores use registry schema 2; genuine historical schema-1 stores are opened
 without migration or fabricated evidence. Historical acknowledgment/response
 receipt formats, RunSpec v1/v2, mock protocol bytes, normalized results, CLI
 envelope v1 and canonical/R assessment exports remain unchanged.
-Phase 4C native-schema translation, Phase 5 real adapters, Phase 6 companion
+Phase 4C2 additional translators and 4C3 durable integration, Phase 5 real adapters, Phase 6 companion
 exports/R joins and Phase 7 authorized live qualification remain deferred.
 
 ### Proposed evidence export services
@@ -1018,3 +1018,34 @@ and fixed initial revision identity/source fields. Rebinding that digest to a
 different existing registered artifact fails safely even when foreign keys are
 valid, including recovery of already committed results. No public reasoning
 reader or companion export is introduced in this phase.
+
+
+## Internal native-schema foundations (Phase 4C1)
+
+`judgmentllm.native_schema`, `judgmentllm.providers.openai_schema` and
+`judgmentllm.native_selection` are internal standalone modules. Their version-1
+projection/decision records accept existing typed assessment contracts and exact
+nonsecret scope; no arbitrary schema or provider request body is public input.
+They are not top-level package exports and are not integrated into any public
+lifecycle operation, CLI, prompt renderer or durable manifest.
+
+The pure OpenAI projector returns deterministic ordered native schema/format
+fragments or structured incompatibility. Responses and Chat have separate wrapper
+structures. Strict immutable records verify exact bytes/digests, source identity,
+requested order, scoped implementation/profile provenance and the native/local
+constraint partition. Validation errors remain content-free.
+
+The standalone resolver keeps supported/unsupported/unknown model evidence
+separate from registered implementation and trusted fixture scope. A descriptive
+`ScopedProviderEvidence` record cannot activate translation by itself. Synthetic
+fixtures exercise positive selection; no real model is qualified. Decision
+verification validates the pinned choice without fallback or reselection.
+
+The conservative profile preserves required closed typed objects, exact categories
+and winner IDs, maps disjoint rubric alternatives, and leaves array bounds,
+explanation lengths and relational checks explicitly local-only. Existing local
+assessment validators remain authoritative. Later expansion requires versioned
+profiles without changing historical identities. See the
+[projection matrix](assessment-provider-evidence.md#phase-4c1-openai-projection-matrix).
+`SchemaSelectionV2` and `OutputCommitmentV2` remain text-only; native execution
+activation is deferred to 4C3 and subsequent adapter work.

@@ -579,3 +579,13 @@ observation/evidence transaction, evidence replay, grouped result commit and fin
 run status. The [integration design](phase-4b-integration-design.md) records the
 pre-implementation seam review. Native translation, real provider adapters,
 companion exports and live qualification remain deferred.
+
+
+## Phase 4C1 historical persistence boundary
+
+Native projection/selection records are standalone in-memory candidates. This
+phase changes no registry, manifest, receipt, recovery or prepared-payload schema.
+Historical `SchemaSelectionV2` and `OutputCommitmentV2` serialization remains
+text-only and sealed request identities are unchanged. Ordered native schema and
+format-fragment commitments will enter durable preparation deliberately in 4C3;
+no implicit migration or historical rewrite occurs in 4C1.

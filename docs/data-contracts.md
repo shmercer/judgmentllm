@@ -486,3 +486,31 @@ Complete reported Anthropic 5-minute/1-hour cache-write subdivisions cannot sum
 to more than their reported parent. Partial subdivisions and absent parents stay
 valid unknown/partial facts; equality and missing totals are never manufactured.
 `synthetic.reported_cost` cannot accompany a real-provider usage identity.
+
+
+## Internal native-projection contracts (Phase 4C1)
+
+Standalone internal version-1 projection and transport-decision records do not
+change RunSpec v1/v2, normalized results, exports, schema-selection v2 or durable
+output commitments. They retain exact ordered schema and format-fragment text,
+byte hashes, immutable assessment identity/settings, scope/profile versions,
+requested property orders and explicit native/local constraint records. The
+semantic projection/decision digest is separate from ordered byte identity and
+from existing request identities. Required identifiers/category labels exist in
+memory but are not diagnostic or minimal-capture evidence.
+
+The [OpenAI projection matrix](assessment-provider-evidence.md#phase-4c1-openai-projection-matrix)
+documents the conservative subset and general schema limits. Every accepted
+assessment still passes the complete existing canonical validators. No new
+user-authored JSON-schema parameter, arbitrary payload setting, result column,
+R export or persistence migration is introduced. Durable integration is 4C3.
+
+
+Native-record `model_validate_json()` rejects duplicate object keys at every
+JSON depth before Pydantic can apply last-key-wins decoding. A duplicate is
+invalid even when its final occurrence matches the expected value and all
+projection/decision digests would otherwise match. This applies to projection,
+decision, native scope and private profile JSON entry points. Both passes consume the same immutable JSON: exact built-in `str`/`bytes`, or
+one snapshot of built-in `bytearray`. Input subclasses are unsupported. JSON-mode
+validation preserves date/tuple parsing, Unicode and exact version tokens. Errors are content-free. Historical `EvidenceModel` parsing and existing
+serialized representations/identities remain unchanged.
