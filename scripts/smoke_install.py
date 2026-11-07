@@ -180,6 +180,34 @@ v2_export = export_run_results(v2_summary.run_id, store="v2-registry",
     format="csv", view="r")
 assert v2_export.row_count == 2 and Path(v2_export.files[0].path).is_file()
 
+# Durable evidence is one submission fact for this two-trait group. It does not
+# add assessment columns or fabricate missing usage, including after reopening.
+import csv
+from judgmentllm import resume_run
+from judgmentllm.persistence.repository import ReadOnlyRepository
+v2_r_path = Path(v2_export.files[0].path)
+v2_r_bytes = v2_r_path.read_bytes()
+with Path("rubric_r.csv").open(encoding="utf-8", newline="") as stream:
+    original_r_columns = next(csv.reader(stream))
+with v2_r_path.open(encoding="utf-8", newline="") as stream:
+    assert next(csv.reader(stream)) == original_r_columns
+with ReadOnlyRepository("v2-registry") as registry:
+    assert registry.evidence_supported
+    evidence_before = tuple(registry.iter_evidence(v2_summary.run_id, page_size=1))
+    assert len(evidence_before) == 1
+    assert evidence_before[0].order.order_adherence == "adherent"
+    assert evidence_before[0].usage.input_tokens is None
+    assert evidence_before[0].usage.reported_cost is None
+    results = tuple(registry.iter_results(v2_summary.run_id))
+    assert len(results) == 2
+    assert all(row.attempt_id == evidence_before[0].identity.attempt_id for row in results)
+    assert all(row.input_tokens is None and row.output_tokens is None for row in results)
+assert resume_run(v2_summary.run_id, store="v2-registry").results == 2
+with ReadOnlyRepository("v2-registry") as registry:
+    assert tuple(registry.iter_evidence(v2_summary.run_id, page_size=1)) == evidence_before
+assert Path(export_run_results(v2_summary.run_id, store="v2-registry",
+    format="csv", view="r").files[0].path).read_bytes() == v2_r_bytes
+
 # Exercise installed registry, immutable artifacts, and local OS ownership.
 from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.hashing import bytes_digest, semantic_digest

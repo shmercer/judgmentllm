@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import cast
 
 from judgmentllm.config import RunSpecification
+from judgmentllm.evidence import ReportedUsageInput
+from judgmentllm.execution.durable_evidence import DurableEvidence
 from judgmentllm.execution.processing import Result, interpret, unsuccessful
 from judgmentllm.execution.retry import (
     DEFAULT_RETRY_POLICY,
@@ -22,7 +24,6 @@ from judgmentllm.execution.retry import (
     prepare_subset_retry,
 )
 from judgmentllm.output_commitments import validate_output_commitment
-from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.hashing import (
     bytes_digest,
     semantic_digest,
@@ -43,7 +44,6 @@ from judgmentllm.persistence.receipts import (
     AcknowledgmentReceipt,
     ResponseReceipt,
     publish_acknowledgment,
-    publish_receipt,
     read_acknowledgment,
     read_receipt,
 )
@@ -102,6 +102,7 @@ class ExecutionSession:
             )
             self.repository = self.prepared.repository
             self.spec = self.prepared.spec
+            self.evidence = DurableEvidence(self)
             adapter.validate(self.spec)
             self.ordinal = self.repository.get_execution_checkpoint(run_id)
             self.dependencies: Iterator[RequestDependency] = (
@@ -381,6 +382,19 @@ class ExecutionSession:
                 )
             acknowledgment.verify_submission(submission)
             receipt.verify_submission(submission)
+            if self.repository.evidence_supported:
+                evidence = self.repository.get_evidence_for_submission(
+                    self.run_id, submission.submission_id
+                )
+                if (
+                    evidence is None
+                    or evidence.authorization != self.evidence.authorization
+                    or evidence.authorization_sha256
+                    != self.evidence.authorization_sha256
+                ):
+                    raise IntegrityError(
+                        "committed observation lacks matching evidence"
+                    )
             if (
                 receipt.observation() != observation
                 or acknowledgment.observation_key != observation.observation_key
@@ -388,6 +402,12 @@ class ExecutionSession:
                 raise IntegrityError(
                     "committed observation conflicts with receipt evidence"
                 )
+        if observation is None and self.repository.evidence_supported:
+            evidence = self.repository.get_evidence_for_submission(
+                self.run_id, submission.submission_id
+            )
+            if evidence is None or evidence.identity.observation_id is not None:
+                raise IntegrityError("committed failure lacks evidence")
         results = self.repository.get_results_for_attempt(
             self.run_id, attempt.attempt_id
         )
@@ -520,7 +540,25 @@ class ExecutionSession:
         invoked: bool,
         transient: bool = False,
         retry_after: float | None = None,
+        usage: ReportedUsageInput | None = None,
     ) -> None:
+        evidence = (
+            self.evidence.failure(
+                work, usage, transient=transient, retry_after=retry_after
+            )
+            if invoked
+            else None
+        )
+        if evidence is not None:
+            transient, retry_after = (
+                evidence.failure_transient,
+                evidence.failure_retry_after,
+            )
+        verified = (
+            self.repository.prepare_evidence_commit(evidence)
+            if evidence is not None
+            else None
+        )
         with self.transaction():
             self.repository.transition(
                 "submission", self.run_id, work.submission_id, "confirmed_not_submitted"
@@ -537,6 +575,10 @@ class ExecutionSession:
                         kind="transport_not_submitted",
                     )
                 )
+                if evidence is not None:
+                    self.repository.record_evidence(
+                        evidence, owner_token=self.token, prepared=verified
+                    )
                 results: list[Result] = []
                 from judgmentllm.execution.retry import subset_dependency
 
@@ -637,7 +679,13 @@ class ExecutionSession:
 
     def saved_response(self, work: ExecutionWork) -> ProviderResponse | None:
         assert self.prepared is not None
+        evidence = self.evidence.restore(work)
+        if evidence is not None and evidence.identity.observation_id is None:
+            self.not_submitted(work, invoked=True)
+            return None
         receipt = read_receipt(self.prepared.store, work.submission_id)
+        if evidence is not None and evidence.response_retention == "omitted":
+            return None
         if receipt is None:
             return None
         self.verify_receipt(work, receipt)
@@ -648,6 +696,11 @@ class ExecutionSession:
             observation_key=receipt.observation_key,
             kind=receipt.kind,
             raw=self.prepared.store.read(receipt.raw),
+        )
+
+    def has_results(self, work: ExecutionWork) -> bool:
+        return bool(
+            self.repository.get_results_for_attempt(self.run_id, work.attempt_id)
         )
 
     def verify_receipt(self, work: ExecutionWork, receipt: ResponseReceipt) -> None:
@@ -687,34 +740,12 @@ class ExecutionSession:
         assert self.prepared is not None
         self.verify_observation_key(work, response.observation_key)
         self.checkpoint("after_response", work.prepared.request_uid)
-        raw = (
-            self.prepared.store.put(response.raw, "application/json")
-            if self.spec.capture == "full"
-            else ArtifactStore.hash_only(
-                bytes_digest(response.raw), len(response.raw), "application/json"
-            )
+        raw, receipt, evidence = self.evidence.prepare(work, response)
+        verified = (
+            self.repository.prepare_evidence_commit(evidence)
+            if evidence is not None
+            else None
         )
-        existing = read_receipt(self.prepared.store, work.submission_id)
-        receipt = ResponseReceipt(
-            run_id=self.run_id,
-            attempt_id=work.attempt_id,
-            submission_id=work.submission_id,
-            correlation_id=work.correlation_id,
-            payload_sha256=work.prepared.payload_sha256,
-            observation_id=stable_id(
-                "observation", work.submission_id, response.observation_key
-            ),
-            observation_key=response.observation_key,
-            kind=response.kind,
-            raw=raw,
-            capture=self.spec.capture,
-            received_at=existing.received_at if existing else utc_now(),
-        )
-        self.verify_receipt(work, receipt)
-        if existing is not None and existing != receipt:
-            raise IntegrityError("received observation conflicts with durable receipt")
-        publish_receipt(self.prepared.store, receipt)
-        self.checkpoint("after_receipt", work.prepared.request_uid)
         observation = ObservationRecord(
             run_id=self.run_id,
             attempt_id=work.attempt_id,
@@ -730,10 +761,17 @@ class ExecutionSession:
                 self.run_id, work.submission_id
             )
             if prior is None:
-                self.repository._register_artifact(self.run_id, raw)  # pyright: ignore[reportPrivateUsage]
+                self.evidence.register_response(raw)
                 self.repository.record_observation(observation)
             elif prior != observation:
                 raise IntegrityError("observation conflicts with recorded evidence")
+            if evidence is not None:
+                self.repository.record_evidence(
+                    evidence, owner_token=self.token, prepared=verified
+                )
+                self.checkpoint(
+                    "during_evidence_transaction", work.prepared.request_uid
+                )
             if self.repository.get_attempt(self.run_id, work.attempt_id).state not in {
                 "response_saved",
                 "normalized",
@@ -741,6 +779,7 @@ class ExecutionSession:
                 self.repository.transition(
                     "attempt", self.run_id, work.attempt_id, "response_saved"
                 )
+        self.checkpoint("after_evidence_commit", work.prepared.request_uid)
         self.checkpoint("after_observation", work.prepared.request_uid)
         self.checkpoint("before_parsing", work.prepared.request_uid)
         try:
@@ -786,7 +825,14 @@ class ExecutionSession:
             ),
         )
         results = tuple(
-            self.provenance(result, work, raw.relative_path)
+            self.provenance(
+                result,
+                work,
+                None
+                if raw.byte_length == 0
+                or (evidence is not None and evidence.response_retention == "omitted")
+                else raw.relative_path,
+            )
             for result in interpreted.results
         )
         self.checkpoint("after_normalization", work.prepared.request_uid)
@@ -820,6 +866,7 @@ class ExecutionSession:
         return type(result).model_validate(data)
 
     def finish(self) -> ExecutionSummary:
+        self.checkpoint("before_final_status")
         with self.transaction():
             summary = self.repository.summary(self.run_id)
             if summary.state == "running":

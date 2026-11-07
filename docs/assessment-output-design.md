@@ -1,8 +1,8 @@
 # Milestone 3 assessment outputs, provider evidence, and authentication
 
-**Status: Phases 1–3 and Phase 4A implemented for provider-neutral contracts,
-offline mock execution, credential diagnostics, and standalone evidence extraction.
-Durable evidence integration and provider integrations remain proposed.** This authoritative Milestone 3 design
+**Status: Phases 1–3 and 4A/4B implement provider-neutral contracts, offline mock
+execution, credential diagnostics and durable synthetic evidence integration.
+Real-provider integrations and qualification remain deferred.** This authoritative Milestone 3 design
 was originally prepared on 2026-11-05. The working contracts are described in
 [data contracts](data-contracts.md), [persistence contracts](persistence-contracts.md)
 and the [Python API](python-api.md). The [six prompt examples](assessment-prompt-examples.md)
@@ -34,9 +34,11 @@ Phase 3 adds shared credential resolution and offline diagnostics.
 Phase 4A adds independently callable `judgmentllm.evidence` contracts and pure
 offline extractors for usage, observable property order and reasoning decisions,
 plus scoped evidence provenance. Every new record starts at `schema_version: 1`.
-These services neither attach evidence to execution nor persist sidecars.
-No native translator, real adapter/live authentication or reasoning retention is
-implemented. Requested visible ordering makes no claim about a model's internal
+Phase 4B invokes these services before response retention and persists safe
+metadata using registry schema 2 and separate version-1 companion receipts.
+Ordinary execution retains no provider reasoning; explicit immutable synthetic
+fixture grants can retain permitted text in protected artifacts. No native
+translator, real adapter or live authentication is implemented. Requested visible ordering makes no claim about a model's internal
 reasoning; the standalone extractor reports only trustworthy emitted key order.
 The installed-CLI R gate exercises actual v2 runs and exports alongside the
 retained v1 fixtures. Exact-head local and hosted qualification remains required.
@@ -214,7 +216,7 @@ all identities and selected/modal distinctions. No new normalized rubric format.
 | Scores/explanations appear first | No conclusion about internal model reasoning order |
 
 Phase 4A implements a strict, version-1 `ProviderObservationMetadata` record and
-a pure emitted-order extractor. Phase 4B will persist it once per established
+a pure emitted-order extractor. Phase 4B persists it once per established
 provider observation, linked by existing `run_id`, `request_uid`,
 `attempt_id`, `submission_id` and `observation_id`. This is a companion provenance
 record, not a field copied into every trait result. Its order fields are:
@@ -240,8 +242,8 @@ reserialized provider objects. Refusal/no output, incomplete/unparseable evidenc
 and unavailable original text can therefore be unknown while usage is known.
 
 The standalone Phase 4A extractor inspects original output transiently and
-returns only safe metadata. Phase 4B must inspect it before discarding it under
-minimal capture and persist safe order metadata under both capture modes with the
+returns only safe metadata. Phase 4B inspects it before discarding it under
+minimal capture and persists safe order metadata under both capture modes with the
 observation/receipt. That metadata must survive reopening and replay without
 requiring retained body bytes. Export only allowlisted contract key names and known trait IDs;
 unexpected model-generated names may themselves contain sensitive text. Use
@@ -250,7 +252,7 @@ null for an unsafe sequence/ID, content-free unexpected-member counts, and
 evidence remains separately subject to secret sanitization and retention policy.
 Do not reconstruct previously unavailable order later from a normalized result.
 
-The future Phase 4B observation/receipt commitment must include this metadata before normalization;
+The Phase 4B observation/receipt commitment includes this metadata before normalization;
 replay verifies the same identity/content and cannot insert a second copy. Example
 canonical provenance row (synthetic mismatch, no raw text or usage duplication):
 
@@ -416,8 +418,8 @@ Do not duplicate usage or reasoning per grouped trait.
 
 ### Request usage
 
-Phase 4A implements the strict `ProviderUsage` public record version 1. Durable
-attachment and revision selection remain Phase 4B. One logical record per
+Phase 4A implements the strict `ProviderUsage` public record version 1. Phase 4B
+provides durable attachment and explicit append-only revision selection. One logical record per
 physical submission, includes:
 
 - `run_id`, `request_uid`, `attempt_id`, `submission_id`; nullable `observation_id`,
@@ -465,10 +467,12 @@ the same fact, never independent additive usage.
 
 ### Reasoning retention
 
-Phase 4A implements metadata and pure authorization/extraction decisions only.
-It does not add `ReasoningSpec` to RunSpec, activate effort/exposure request
-controls, write text artifacts, or alter current full/minimal execution capture.
-The following retention rules govern the later Phase 4B integration.
+Phase 4A implements metadata and pure authorization/extraction decisions. Phase
+4B applies these before durable response capture. Neither adds `ReasoningSpec`
+to RunSpec or activates effort/exposure request controls. Ordinary v1/v2 execution
+uses retention none; positive grants are internal immutable synthetic-fixture
+commitments. The following retention rules govern this integration and the
+future public configuration.
 
 | Text | Scope and treatment |
 |---|---|
@@ -492,7 +496,8 @@ A non-none capture setting is explicit authorization for that type and requires
 full capture; reject it with minimal. Full alone does **not** authorize retaining
 provider reasoning. Suppress exposure controls where possible when capture=none.
 If reasoning arrives anyway, discard it from retained response evidence and
-persist only a marked sanitized derivative, original hash and retention reason.
+persist only a marked sanitized derivative and retention reason. An original hash
+is permitted only when the adapter establishes a credential-free original boundary.
 Never label reserialized/redacted bytes as original. If exact raw capture cannot
 be separated from unauthorized sensitive blocks, do not retain original bytes.
 SDK debug logs, exception strings, crash dumps and temporary files must obey the
@@ -502,10 +507,12 @@ never print reasoning text to control stdout or routine diagnostics.
 
 ### Persistence version boundaries
 
-Phase 4A changes no persistence model, receipt version, SQLite schema/table,
-RunSpec v1/v2, mock protocol, CLI envelope or normalized assessment schema.
-Independent evidence records do not constitute durable capture. See the
-[Phase 4B integration seams](persistence-contracts.md#phase-4b-evidence-integration-seams-deferred).
+Phase 4A's standalone records remain version 1. Phase 4B creates registry schema
+2 for new stores and version-1 companion evidence/revision receipts without
+changing historical acknowledgment/response receipt bytes, RunSpec v1/v2, mock
+protocols, CLI envelope or normalized assessment schemas. Historical schema-1
+stores remain unchanged and readable with unavailable evidence. See the
+[Phase 4B persistence boundary](persistence-contracts.md#phase-4b-durable-evidence-integration).
 
 Keep existing manifests, results, receipt proofs and append-only identities.
 New v2 run manifests/renderer identities and provider evidence records require
@@ -840,3 +847,27 @@ claiming those features supported, not writing credential-free adapters with
 explicit unsupported diagnostics. No unresolved decision requires paid requests
 or expanding scope. The original design PR stopped at documentation; Phase 1's
 subsequent implementation boundary is documented at the top of this document.
+
+## Phase 4B durable integration status
+
+Phase 4B integrates the standalone contracts through execution, separate
+version-1 companion receipts and registry schema 2. Safe extraction and reasoning
+filtering precede response retention. Usage is submission-owned and revised only
+through explicit append-only authoritative revisions; order/reasoning metadata is
+observation-owned and immutable. Grouped trait results retain their existing
+schema and reference evidence through established attempt/submission links.
+Full/minimal recovery verifies receipts and artifact content; unavailable bodies
+do not authorize a new submission. Historical schema-1 runs retain existing
+execution/inspection/export compatibility without migration or fabricated facts.
+
+[Persistence contracts](persistence-contracts.md#phase-4b-durable-evidence-integration)
+and [privacy guidance](evidence-privacy.md#phase-4b-pre-retention-boundary) define
+publication ordering, immutable fixture-only positive grants, safe derivatives,
+read-only readers, revision snapshots and tamper failures. Synthetic usage/cost
+and observable order establish neither actual billing nor provider qualification.
+The complete Anthropic cache-write subdivision sum is checked against a reported
+parent without requiring equality. Actual execution/recovery acceptance and
+exact-head qualification evidence are recorded separately; implementation alone
+does not qualify a release. Phase 4C transport, Phase 5 real adapters, Phase 6
+companion exports and Phase 7 live qualification remain deferred. The future
+Vertex adapter still requires a distinct authorization-key route alongside ADC.

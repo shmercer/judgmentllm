@@ -484,7 +484,7 @@ prompt or payload mismatches fail before another provider request. Full/minimal
 capture policies and original source-integrity requirements remain enforced.
 Minimal durable commitments retain bounded hashes/identifiers rather than
 assessment source text. No credentials or credential-status evidence is recorded.
-Observed key-order sidecars, usage and reasoning records remain later work.
+Phase 4B adds observed-order metadata, submission usage and authorized reasoning through separate versioned companion receipts described below.
 
 ## Provider evidence extension boundary (proposed, not implemented)
 
@@ -501,37 +501,81 @@ implicit mutation/migration of an existing registry. Credential diagnostics
 never add credential values or private identities to assessment evidence.
 
 
-## Phase 4B evidence integration seams (deferred)
+## Phase 4B durable evidence integration
 
-Milestone 3 Phase 4A adds standalone `judgmentllm.evidence` records/extractors;
-none is written by current execution. Persistence models, schema version 1,
-SQLite objects and receipt formats remain unchanged. The following future seams
-identify required work, not operational retention guarantees:
+New stores use internal registry schema **2**, with append-only evidence receipts,
+submission usage revisions, observation order and reasoning metadata tables. The
+schema-1 statements/checksum remain exact. Opening a historical store verifies it
+without migration, new tables, receipt changes or evidence backfill. Its original
+execution/resume/retry/export behavior remains supported; evidence inspection
+returns unavailable. New evidence insertion requires a schema-2 store and reports
+a safe diagnostic for a historical store. New observations requiring redaction or
+body omission also require schema 2, since legacy receipts cannot label those
+derivatives; ordinary exact-safe mock execution and existing receipt replay remain
+supported. Assessment/result schemas remain 1.
 
-- `ExecutionSession.process()` currently retains/hashes `ProviderResponse.raw`
-  before publishing `ResponseReceipt` and committing `ObservationRecord`. Phase
-  4B must extract safe facts and apply authorized reasoning filtering before any
-  retained body, temporary artifact or receipt publication. A redacted derivative
-  needs distinct original/retained commitments; it cannot claim exact raw bytes.
-- `ProviderResponse.raw` is transport-envelope evidence, whereas
-  `ParsedResponse.output` is a reconstructed dictionary. Later adapter extraction
-  must identify the original emitted assessment text or trustworthy token stream;
-  dictionary reserialization cannot establish observable property order.
-- Evidence must be committed with a deliberately versioned receipt before the
-  observation transaction and reused on replay. Current minimal receipts cannot
-  recover raw bodies; safe usage/order/reasoning availability metadata must be
-  recoverable independently without another charge or duplicate evidence row.
-- Existing submission/attempt/request membership supplies joins. Usage belongs to
-  a physical submission, reasoning/order to an observation; grouped results must
-  reference these facts without copying totals into each trait. Definitive
-  `FailureEvidence` supports usage without fabricating an observation. A new
-  physical retry keeps distinct identities; retrieval of one observation is not
-  another invocation.
-- Authoritative later usage updates require append-only revisions and explicit
-  source/version selection. Evidence high-water cuts and bounded iterators belong
-  to this revision design, with companion publication/export added in Phase 6.
+`EvidenceReceipt` version 1 is a separate companion under `evidence/`. It commits
+physical run/request/attempt/submission/observation identity, payload hash,
+acknowledgment hash and remote/key relationship, historical response receipt and
+its hash, typed usage/order/reasoning facts, authorization commitment, capture
+policy, and distinct original/retained identities. It contains no response body,
+reasoning text, arbitrary provider dictionary or unrecognized output key.
 
-Use existing repository validation, transaction and artifact operations rather
-than a second persistence engine. Any required schema/receipt revision must be
-explicit, narrow and tested against genuine alpha2/alpha3 stores; no implicit
-migration or historical rewrite is authorized by Phase 4A.
+One I/O thread still owns registry, artifacts and receipts. Execution verifies
+acceptance first, prepares safe evidence and filters the response **before** body
+publication, publishes permitted content, publishes the companion, publishes the
+unchanged historical response receipt, and commits observation plus linked
+metadata in one short owned transaction. Interpretation/result commit follows.
+The companion embeds safe response-receipt metadata so recovery can repair a
+missing historical receipt after interruption without retrieving the provider.
+Exact matching replay verifies every immutable identity/digest; conflicting replay
+fails. Receipt/artifact verification also runs for completed observations.
+For an observation marked `response_retention="omitted"`, both the retained
+identity and embedded response receipt identify exactly zero bytes with the
+SHA-256 of empty bytes. Full capture retains the empty sentinel; minimal capture
+keeps its hash-only identity. Nonempty retained content cannot be labeled omitted.
+Definitive-failure evidence without an observation instead has no retained
+response identity or response receipt.
+
+Usage initial facts belong to physical submissions, including invoked definitive
+failures without an observation. An unaccepted attempt is not evidence of billing.
+Retries have separate submission IDs. Unknown counters/costs stay null. Usage
+revision 0 is initial; explicit authoritative revisions have consecutive
+per-submission revision numbers, stable revision IDs, allowlisted source/version,
+content digests and a global monotonic sequence. Selection at a high-water mark
+chooses the last revision; revisions and overlapping counters are never summed.
+Published revision receipts precede owned database insertion, permitting exact
+idempotent replay after interruption. No trait-level usage records are created.
+The initial row fixes `revision_id="initial"`, `revision_number=0`,
+`source="initial"` and `source_version=1`. Its `receipt_sha256` must equal the
+exact original companion receipt digest, as well as its usage JSON and digest
+matching that receipt. A foreign key to another registered artifact is
+insufficient. Submission/observation readers and public recovery of completed
+results verify these bindings before accepting the initial usage fact.
+
+Internal repository readers retrieve submission/observation evidence, iterate a
+run with bounded indexed keyset pages, return revision audit history and select
+authoritative usage at a revision high-water mark. Submission history seeks use
+`(run_id, submission_id, revision_seq)` to bound both identity and revision range
+without sorting the full history. The reader explicitly requires this verified
+index so SQLite planner differences cannot choose a run-wide scan.
+`ReadOnlyRepository` shares
+these readers without creating application files. Safe metadata remains available
+under minimal capture independently of response bodies. Missing assessment text
+still requires authoritative retrieval or remains unresolved; evidence recovery
+never authorizes another submission or fabricates normalized results.
+
+Version-1 internal authorization commits run/manifest/provider/capture before the
+submission boundary. Ordinary RunSpec v1/v2 implies retention none. Only explicit
+synthetic mock fixtures can grant positive retention in this phase. Reopening
+verifies the committed policy rather than current environment/default values.
+Permitted reasoning text uses the existing protected content-addressed artifact
+store; metadata contains safe references only. Ordinary CLI/status/result outputs
+never include reasoning text. Missing or modified artifacts, changed usage/order,
+identity/capture conflicts and unsupported schema versions fail safely.
+
+Fault checkpoints cover extraction, permitted artifacts, companion publication,
+observation/evidence transaction, evidence replay, grouped result commit and final
+run status. The [integration design](phase-4b-integration-design.md) records the
+pre-implementation seam review. Native translation, real provider adapters,
+companion exports and live qualification remain deferred.

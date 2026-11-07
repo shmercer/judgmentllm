@@ -455,3 +455,12 @@ FastAPI and `serve` arrive in Milestone 7. No future command is implemented as
 an alias for mock execution.
 
 JSON control and diagnostic records escape non-ASCII characters, preserving exact decoded IDs and paths even through locale-limited redirected Windows streams.
+
+### Phase 4B evidence compatibility
+
+CLI control envelope 1 and existing assessment exports remain unchanged. New
+stores internally commit safe provider evidence separately from result rows;
+ordinary status/JSON/diagnostics never include provider reasoning text. Existing
+nullable result token columns stay unchanged. No `usage export` or `reasoning
+export` command is added before Phase 6. Historical schema-1 stores are inspected
+and exported without migration or fabricated evidence.

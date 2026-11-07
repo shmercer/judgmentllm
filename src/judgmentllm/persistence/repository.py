@@ -14,8 +14,16 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Literal, TypeVar, cast
 
+from judgmentllm.evidence.usage import ProviderUsage
 from judgmentllm.io import Result, revalidate_result
+from judgmentllm.persistence import evidence as evidence_store
 from judgmentllm.persistence.artifacts import ArtifactStore
+from judgmentllm.persistence.evidence import (
+    EvidenceReceipt,
+    UsageRevision,
+    UsageRevisionRecord,
+    VerifiedEvidenceCommit,
+)
 from judgmentllm.persistence.hashing import (
     bytes_digest,
     canonical_bytes,
@@ -100,6 +108,79 @@ class Repository:
         except BaseException:
             self.connection.close()
             raise
+
+    @property
+    def evidence_supported(self) -> bool:
+        """Historical schema-1 executions have no fabricated evidence."""
+        return self.connection.execute("PRAGMA user_version").fetchone()[0] == 2
+
+    def prepare_evidence_commit(
+        self, receipt: EvidenceReceipt
+    ) -> VerifiedEvidenceCommit:
+        return evidence_store.prepare_evidence_commit(self, receipt)
+
+    def record_evidence(
+        self,
+        receipt: EvidenceReceipt,
+        *,
+        owner_token: str,
+        prepared: VerifiedEvidenceCommit | None = None,
+    ) -> None:
+        evidence_store.record_evidence(
+            self, receipt, owner_token=owner_token, prepared=prepared
+        )
+
+    def get_evidence_for_submission(
+        self, run_id: str, submission_id: str
+    ) -> EvidenceReceipt | None:
+        return evidence_store.get_evidence_for_submission(self, run_id, submission_id)
+
+    def get_evidence_for_observation(
+        self, run_id: str, observation_id: str
+    ) -> EvidenceReceipt | None:
+        return evidence_store.get_evidence_for_observation(self, run_id, observation_id)
+
+    def iter_evidence(
+        self, run_id: str, *, page_size: int = 100
+    ) -> Iterator[EvidenceReceipt]:
+        return evidence_store.iter_evidence(self, run_id, page_size=page_size)
+
+    def usage_high_water_mark(self, run_id: str) -> int:
+        return evidence_store.usage_high_water_mark(self, run_id)
+
+    def usage_revision_history(
+        self,
+        run_id: str,
+        submission_id: str,
+        *,
+        page_size: int = 100,
+        high_water_mark: int | None = None,
+    ) -> Iterator[UsageRevisionRecord]:
+        return evidence_store.usage_revision_history(
+            self,
+            run_id,
+            submission_id,
+            page_size=page_size,
+            high_water_mark=high_water_mark,
+        )
+
+    def authoritative_usage(
+        self, run_id: str, submission_id: str, *, high_water_mark: int | None = None
+    ) -> ProviderUsage | None:
+        return evidence_store.authoritative_usage(
+            self, run_id, submission_id, high_water_mark=high_water_mark
+        )
+
+    def append_usage_revision(
+        self,
+        revision: UsageRevision,
+        *,
+        owner_token: str,
+        fault: Callable[[str, str], None] | None = None,
+    ) -> None:
+        evidence_store.append_usage_revision(
+            self, revision, owner_token=owner_token, fault=fault
+        )
 
     def __enter__(self) -> Repository:
         return self

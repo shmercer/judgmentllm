@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping
+from functools import lru_cache
 from typing import Any, Literal, Self, cast
 
 from pydantic import (
@@ -72,9 +73,9 @@ class EvidenceModel(StrictModel):
             if info.mode == "json" and isinstance(value, dict):
                 supplied = cast(dict[str, object], value)
                 value = {
-                    key: TypeAdapter(
-                        cls.model_fields[key].annotation or Any
-                    ).validate_json(json.dumps(item), strict=True)
+                    key: _json_field_adapter(cls, key).validate_json(
+                        json.dumps(item), strict=True
+                    )
                     if key in cls.model_fields
                     and key not in {"schema_version", "semantics_version"}
                     else item
@@ -130,6 +131,20 @@ class EvidenceModel(StrictModel):
 
     def __setattr__(self, name: str, value: Any) -> None:
         raise _invalid_evidence() from None
+
+
+@lru_cache(maxsize=256)
+def _json_field_adapter(
+    model_type: type[EvidenceModel], field_name: str
+) -> TypeAdapter[Any]:
+    """Reuse compiled static field schemas, never inputs or validation results.
+
+    Every value still passes strict JSON validation and the full model handler.
+    Keys are declared model types/field names, independent of provider data,
+    authorization policy values, run size and response contents. A fixed bound
+    also covers callers defining additional evidence model subclasses.
+    """
+    return TypeAdapter(model_type.model_fields[field_name].annotation or Any)
 
 
 def _invalid_evidence() -> ValidationError:

@@ -284,7 +284,7 @@ def test_reported_and_estimated_cost_are_distinct() -> None:
     )
     record = extract_provider_usage(
         identity(),
-        context(),
+        context(provider="mock", endpoint="synthetic"),
         ReportedUsageInput(
             usage_source="synthetic.reported_usage",
             reported_cost=reported,
@@ -480,3 +480,61 @@ def test_cross_field_validation_errors_are_content_free() -> None:
                 raise RuntimeError("invalid cross-field record accepted")
     except Exception:
         pytest.fail("Synthetic cross-field privacy check failed.", pytrace=False)
+
+
+@pytest.mark.parametrize("short,long,parent", [(60, 50, 100), (1, 1, 1)])
+def test_complete_anthropic_subdivisions_cannot_exceed_parent(
+    short: int, long: int, parent: int
+) -> None:
+    with pytest.raises(ValidationError):
+        extract_anthropic_messages_usage(
+            identity(),
+            context(provider="anthropic", endpoint="messages"),
+            AnthropicMessagesUsageInput(
+                cache_creation_input_tokens=parent,
+                cache_creation=AnthropicCacheCreationInput(
+                    ephemeral_5m_input_tokens=short,
+                    ephemeral_1h_input_tokens=long,
+                ),
+            ),
+        )
+
+
+@pytest.mark.parametrize(
+    "short,long,parent", [(60, 30, 100), (60, None, 100), (60, 50, None)]
+)
+def test_partial_anthropic_subdivisions_preserve_missing_totals(
+    short: int, long: int | None, parent: int | None
+) -> None:
+    record = extract_anthropic_messages_usage(
+        identity(),
+        context(provider="anthropic", endpoint="messages"),
+        AnthropicMessagesUsageInput(
+            cache_creation_input_tokens=parent,
+            cache_creation=AnthropicCacheCreationInput(
+                ephemeral_5m_input_tokens=short,
+                ephemeral_1h_input_tokens=long,
+            ),
+        ),
+    )
+    assert record.cache_write_tokens == parent
+
+
+@pytest.mark.parametrize(
+    "provider",
+    ["openai", "anthropic", "gemini", "vertex", "together", "ollama", "typesafe"],
+)
+def test_synthetic_cost_cannot_claim_real_provider_billing(provider: str) -> None:
+    with pytest.raises(ValidationError):
+        extract_provider_usage(
+            identity(),
+            context(provider=provider),
+            ReportedUsageInput(
+                usage_source="synthetic.reported_usage",
+                reported_cost=ReportedCost(
+                    amount=Decimal("0.002"),
+                    currency="USD",
+                    source="synthetic.reported_cost",
+                ),
+            ),
+        )

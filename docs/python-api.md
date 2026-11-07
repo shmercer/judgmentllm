@@ -383,8 +383,9 @@ preparation. It makes no model call, requires no credentials and persists no run
 Built-in v2 prompts omit zero-exemplar sections; custom templates may omit the
 exemplar placeholder only when no exemplars are selected. Supplied exemplars
 remain complete, ordered and protected. V1 templates retain historical bytes.
-Native provider translation, live authentication and usage/reasoning/order-evidence
-sidecars remain later work.
+Native provider translation and live authentication remain later work. Phase 4B
+persists usage/reasoning/order metadata through the existing execution service;
+its internal inspection seam is documented below.
 
 ## Structural plans and pair schedules
 
@@ -649,8 +650,8 @@ minimal capture; prompts, payloads and raw output remain unavailable.
 
 The [assessment output design](assessment-output-design.md) is authoritative.
 Phase 3 implements credential diagnostics below. Phase 4A implements standalone
-evidence interfaces; durable capture, live verification and explicitly proposed
-export APIs remain future work. Existing
+evidence interfaces; Phase 4B integrates durable capture and recovery. Live
+verification and explicitly proposed export APIs remain future work. Existing
 normalized results and RunSpec v1/v2 contracts remain the compatibility baseline.
 
 ### Credential diagnostics (Phase 3, implemented)
@@ -750,8 +751,7 @@ fields, boolean token counters and incompatible semantic combinations fail with
 fixed safe validation errors; raw invalid values/keys are excluded from error
 strings, representations, `errors()` and JSON forms. `model_copy()` and
 `model_construct()` preserve validation. These APIs perform no I/O, credential
-inspection, SDK construction or provider submission and are not invoked by the
-current execution engine. Extension and privacy requirements are documented in
+inspection, SDK construction or provider submission and are integrated by the Phase 4B execution boundary. Extension and privacy requirements are documented in
 [evidence privacy guidance](evidence-privacy.md).
 
 `EvidenceIdentity(run_id, request_uid, attempt_id, submission_id,
@@ -815,12 +815,19 @@ against an invented universal equation. Known included components cannot exceed
 a reported parent, and breakdown values must agree with their mapped counters.
 Unestablished source counters are rejected: OpenAI cache writes and Anthropic
 total/reasoning counts have no mapping in this phase. No real-provider cost mapping is enabled:
-`ReportedCost` currently admits only explicit synthetic reported-cost semantics.
+`ReportedCost` currently admits only explicit synthetic reported-cost semantics,
+and `ProviderUsage` rejects such costs on every real-provider identity. The
+production ingestion boundary also rejects synthetic fixture provenance for real
+providers. Actual unsupported costs remain null.
 `EstimatedCost` requires an explicit amount/currency, pricing date/source and
 allowlisted assumptions and is never inferred from token counts. A definitive
 failure can have usage without a fabricated provider observation. Consumers must
-select a fact per physical submission before any grouped-trait join; durable
-selection/revision and aggregation services are deferred.
+select one fact per physical submission before any grouped-trait join. Phase 4B
+provides append-only revision selection and audit; public aggregation/export
+services remain deferred. When both disjoint Anthropic 5-minute/1-hour cache-write
+subdivisions and the parent are reported, their sum must not exceed the parent.
+Equality is not required; missing subdivisions or parents remain valid partial
+evidence.
 
 Order extraction:
 
@@ -903,14 +910,15 @@ explicit feature support. Documentation or synthetic fixtures cannot claim it;
 no endpoint/model capability is registered or transport selected by these records.
 Composed generation facts must match scope and qualification flags exactly.
 
-Phase 4B will add authorized retention/redaction, receipt/recovery links and
+Phase 4B adds authorized retention/redaction, receipt/recovery links and
 append-only evidence revisions through the
-[existing execution seams](persistence-contracts.md#phase-4b-evidence-integration-seams-deferred).
-Phase 4C will add native-schema translation and transport resolution. Real
-adapters (Phase 5), companion exports/R joins (Phase 6) and authorized live
-qualification (Phase 7) remain deferred. All current RunSpec, mock, result,
-receipt, persistence, CLI and R contracts are unchanged. These standalone APIs do
-not establish operational runtime evidence capture.
+[existing execution service](persistence-contracts.md#phase-4b-durable-evidence-integration).
+New stores use registry schema 2; genuine historical schema-1 stores are opened
+without migration or fabricated evidence. Historical acknowledgment/response
+receipt formats, RunSpec v1/v2, mock protocol bytes, normalized results, CLI
+envelope v1 and canonical/R assessment exports remain unchanged.
+Phase 4C native-schema translation, Phase 5 real adapters, Phase 6 companion
+exports/R joins and Phase 7 authorized live qualification remain deferred.
 
 ### Proposed evidence export services
 
@@ -963,3 +971,50 @@ No proposed API in this section authorizes a live call during ordinary tests.
 Offline synthetic adapter/CLI exports must pass the standing R/jsonlite gates;
 Milestone 6 exposes the implemented services through CLI-first `rubricLLM` without
 creating an R authentication or assessment engine.
+
+### Internal durable evidence inspection (Phase 4B)
+
+The existing `Repository` / `ReadOnlyRepository` expose
+`get_evidence_for_submission(run_id, submission_id)`,
+`get_evidence_for_observation(run_id, observation_id)` and bounded
+`iter_evidence(run_id, page_size=100)`. Returned version-1 companion receipts
+contain typed safe metadata and protected artifact references, never reasoning
+text. Historical schema-1 stores return unavailable evidence and remain unchanged.
+`usage_high_water_mark`, `usage_revision_history` and `authoritative_usage` select
+an auditable revision snapshot. Explicit owned `append_usage_revision` requires a
+previously published version-1 revision receipt. These are internal Phase 6 seams;
+no public companion export commands or R evidence engine are introduced.
+
+Provider adapters may optionally attach `ProviderEvidence` to `ProviderResponse`.
+It separates exact emitted text from transport bytes and provides typed reported
+usage, documented reasoning boundaries and a credential-free sanitized derivative.
+It adds no required protocol methods, scoring behavior or mock wire fields.
+Transient text is excluded from routine serialization/representations. Unsupported
+adapters retain unknown facts and fail closed on unseparable body retention.
+Ordinary RunSpec v1/v2 authorizes no reasoning text. Only internal explicit
+synthetic fixture authorizations can retain protected text in this phase.
+
+`prepare_evidence()` is an internal pre-retention service, not a provider request.
+It uses executor-supplied immutable identities/configuration, an optional v2
+output commitment and the response's typed extension. `ProviderEvidence` carries
+only typed usage, exact emitted assessment bytes, documented reasoning block
+headers/text and a provider-defined safe derivative. No arbitrary provider metadata
+dictionary is accepted. `ProviderResponse.raw` remains transient transport bytes,
+excluded from dumps and representations; it cannot establish assessment key order.
+`TransportNotSubmitted` and its transient subclass optionally carry typed reported
+usage without implying acceptance or billing, and never create an observation.
+
+Evidence readers verify receipt commitments and protected artifact bytes. A
+matching receipt replay is idempotent; conflicting identities, metadata,
+authorization or hashes raise content-free integrity failures. An omitted body
+uses the legacy response receipt's empty identity plus an explicit companion
+omission marker and a null result raw-response path. Safe metadata remains
+available even when results cannot be recovered without authoritative retrieval;
+missing bodies never authorize resubmission. Observation receipts marked omitted
+must carry the zero-length, empty-byte SHA-256 sentinel under the matching
+full/minimal capture policy; invocation failures have no response identity.
+Initial usage readers also require the exact original companion-receipt digest
+and fixed initial revision identity/source fields. Rebinding that digest to a
+different existing registered artifact fails safely even when foreign keys are
+valid, including recovery of already committed results. No public reasoning
+reader or companion export is introduced in this phase.

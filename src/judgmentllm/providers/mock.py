@@ -38,6 +38,7 @@ from judgmentllm.persistence.models import SHA256, ExecutionModel
 from judgmentllm.planning import CapabilityProfile, stable_id, validate_run
 from judgmentllm.preparation.session import RequestDependency
 from judgmentllm.prompts import RenderedAssessmentPrompt, RenderedPromptV2
+from judgmentllm.providers.evidence import ProviderEvidence, exact_output_substring
 from judgmentllm.providers.ledger import (
     AcceptanceRecord,
     MockAcceptanceLedger,
@@ -224,6 +225,61 @@ class MockResponseEnvelope(ExecutionModel):
 
 class MockResponseEnvelopeV2(MockResponseEnvelope):
     protocol: Literal["judgmentllm-mock-v2"] = "judgmentllm-mock-v2"
+
+
+def _response_evidence(
+    raw: bytes, payload: MockPayload, *, terminal: bool
+) -> ProviderEvidence:
+    """Declare only the known synthetic envelope's safe capture boundaries."""
+    output = exact_output_substring(raw)
+    safe = True
+    try:
+        # Reject malformed/duplicate envelope properties before any capture.
+        decode_assessment_output(raw)
+        if not terminal:
+            if output is None:
+                safe = False
+            else:
+                decoded = decode_assessment_output(output)
+                if not isinstance(decoded, dict):
+                    safe = False
+                elif payload.task_kind == "rubric":
+                    root = cast(dict[str, JsonValue], decoded)
+                    known = {member.trait_id for member in payload.members}
+                    if set(root) - {"scores", "explanations"}:
+                        safe = False
+                    for key, entries in root.items():
+                        allowed = (
+                            {"trait_id", "text"}
+                            if key == "explanations"
+                            else {"trait_id", "category_label", "explanation"}
+                        )
+                        if not isinstance(entries, list):
+                            safe = False
+                            continue
+                        for entry in entries:
+                            if (
+                                not isinstance(entry, dict)
+                                or set(entry) - allowed
+                                or entry.get("trait_id") not in known
+                            ):
+                                safe = False
+                else:
+                    pair = cast(dict[str, JsonValue], decoded)
+                    safe = not bool(set(pair) - {"winner_id", "tie", "explanation"})
+                    safe = safe and pair.get("winner_id") in (
+                        None,
+                        *payload.members[0].presented_order,
+                    )
+    except (ValueError, TypeError):
+        safe = False
+    return ProviderEvidence(
+        provenance="synthetic_fixture",
+        output_text=output,
+        output_source="raw_output_text",
+        safe_response=raw if safe else None,
+        original_body_safe=safe,
+    )
 
 
 def _fixture_digest(scenario: MockScenario) -> str:
@@ -724,13 +780,21 @@ class MockAdapter:
                         corrupt_output.pop("explanations", None)
                     raw = ordered_json_bytes(decoded)
             return ProviderResponse(
-                observation_key=observation_key, kind=envelope_v2.kind, raw=raw
+                observation_key=observation_key,
+                kind=envelope_v2.kind,
+                raw=raw,
+                evidence=_response_evidence(
+                    raw, payload, terminal=envelope_v2.kind != "response"
+                ),
             )
         envelope = MockResponseEnvelope.model_validate(fields)
         return ProviderResponse(
             observation_key=observation_key,
             kind=envelope.kind,
             raw=canonical_bytes(envelope),
+            evidence=_response_evidence(
+                canonical_bytes(envelope), payload, terminal=envelope.kind != "response"
+            ),
         )
 
     async def _establish(

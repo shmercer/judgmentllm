@@ -495,11 +495,10 @@ async def test_grouped_minimal_privacy_live_and_recovery(
     # An inspection failure cannot substitute for the requested interruption.
     assert injected == (stage is not None)
     assert deferred == ({lock} if sys.platform == "win32" else set())
-    assert mapped == (
-        {sqlite_shm}
-        if sys.platform == "win32" and stage != "during_member_validation"
-        else set()
-    )
+    # The evidence transaction checkpoint now exercises SHM inspection before
+    # member validation as well as during result commit. Require the exact
+    # Windows fallback path at every interruption stage; all bytes were scanned.
+    assert mapped == ({sqlite_shm} if sys.platform == "win32" else set())
     inspect_released(allow_explanation=stage is None)
     if stage:
         await recover_run("001", store=store, adapter=adapter, spec=spec, fault=inspect)

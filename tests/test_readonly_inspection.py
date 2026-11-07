@@ -50,7 +50,7 @@ def test_invalid_registry_remains_byte_identical_and_uninitialized(
             elif kind == "unversioned":
                 connection.execute("CREATE TABLE arbitrary(value TEXT)")
             else:
-                connection.execute("PRAGMA user_version=2")
+                connection.execute(f"PRAGMA user_version={SCHEMA_VERSION + 1}")
     before = snapshot(store)
     with pytest.raises((SchemaVersionError, sqlite3.DatabaseError)):
         ReadOnlyRepository(store)
@@ -230,7 +230,7 @@ def test_public_inspection_rejects_invalid_existing_registry_without_mutation(
                 connection.execute("CREATE TABLE arbitrary(value TEXT)")
             else:
                 connection.execute(
-                    f"PRAGMA user_version={2 if kind == 'incompatible' else 0}"
+                    f"PRAGMA user_version={SCHEMA_VERSION + 1 if kind == 'incompatible' else 0}"
                 )
     monkeypatch.setenv("JUDGMENTLLM_RUN_HOME", str(store))
     before = snapshot(store)

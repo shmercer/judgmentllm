@@ -12,7 +12,7 @@ import sqlite3
 
 from judgmentllm.persistence.models import TRANSITIONS, SchemaVersionError, utc_now
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 def _choices(values: tuple[str, ...] | list[str]) -> str:
@@ -607,7 +607,90 @@ _TRIGGERS: tuple[str, ...] = (
     _guard("exports_published_delete", "DELETE", "exports", "OLD.state='published'"),
 )
 
-_STATEMENTS = (*_TABLES, *_INDEXES, *_TRIGGERS)
+_LEGACY_STATEMENTS = (*_TABLES, *_INDEXES, *_TRIGGERS)
+LEGACY_SCHEMA_CHECKSUM = hashlib.sha256(
+    "\n".join(_LEGACY_STATEMENTS).encode("utf-8")
+).hexdigest()
+
+_EVIDENCE_TABLES = (
+    f"""CREATE TABLE evidence_receipts (
+        run_id TEXT NOT NULL, submission_id TEXT NOT NULL, attempt_id TEXT NOT NULL,
+        request_uid TEXT NOT NULL, observation_id TEXT,
+        receipt_sha256 TEXT NOT NULL CHECK({_hash("receipt_sha256")}),
+        PRIMARY KEY(run_id, submission_id), UNIQUE(run_id, observation_id),
+        UNIQUE(run_id, submission_id, observation_id),
+        FOREIGN KEY(run_id, submission_id, attempt_id)
+          REFERENCES submissions(run_id, submission_id, attempt_id),
+        FOREIGN KEY(run_id, attempt_id, request_uid)
+          REFERENCES attempts(run_id, attempt_id, request_uid),
+        FOREIGN KEY(run_id, observation_id, attempt_id)
+          REFERENCES observations(run_id, observation_id, attempt_id),
+        FOREIGN KEY(run_id, receipt_sha256) REFERENCES artifacts(run_id, sha256)
+    )""",
+    f"""CREATE TABLE usage_revisions (
+        revision_seq INTEGER PRIMARY KEY CHECK(revision_seq>=1),
+        run_id TEXT NOT NULL, submission_id TEXT NOT NULL,
+        revision_id TEXT NOT NULL, revision_number INTEGER NOT NULL CHECK(revision_number>=0),
+        source TEXT NOT NULL CHECK(source IN ('initial','synthetic.authoritative','provider.authoritative')),
+        source_version INTEGER NOT NULL CHECK(source_version=1),
+        usage_json TEXT NOT NULL CHECK(json_valid(usage_json)),
+        usage_sha256 TEXT NOT NULL CHECK({_hash("usage_sha256")}),
+        receipt_sha256 TEXT NOT NULL CHECK({_hash("receipt_sha256")}),
+        UNIQUE(run_id, submission_id, revision_id),
+        UNIQUE(run_id, submission_id, revision_number),
+        CHECK((revision_number=0)=(source='initial')),
+        FOREIGN KEY(run_id, submission_id) REFERENCES evidence_receipts(run_id, submission_id),
+        FOREIGN KEY(run_id, receipt_sha256) REFERENCES artifacts(run_id, sha256)
+    )""",
+    f"""CREATE TABLE observation_evidence (
+        run_id TEXT NOT NULL, observation_id TEXT NOT NULL, submission_id TEXT NOT NULL,
+        order_json TEXT NOT NULL CHECK(json_valid(order_json)),
+        order_sha256 TEXT NOT NULL CHECK({_hash("order_sha256")}),
+        PRIMARY KEY(run_id, observation_id),
+        FOREIGN KEY(run_id, observation_id, submission_id) REFERENCES observations(run_id, observation_id, submission_id),
+        FOREIGN KEY(run_id, submission_id, observation_id) REFERENCES evidence_receipts(run_id, submission_id, observation_id)
+    )""",
+    f"""CREATE TABLE reasoning_blocks (
+        run_id TEXT NOT NULL, observation_id TEXT NOT NULL,
+        block_ordinal INTEGER NOT NULL CHECK(block_ordinal>=0),
+        metadata_json TEXT NOT NULL CHECK(json_valid(metadata_json)),
+        metadata_sha256 TEXT NOT NULL CHECK({_hash("metadata_sha256")}),
+        artifact_sha256 TEXT,
+        PRIMARY KEY(run_id, observation_id, block_ordinal),
+        FOREIGN KEY(run_id, observation_id) REFERENCES observation_evidence(run_id, observation_id),
+        FOREIGN KEY(run_id, artifact_sha256) REFERENCES artifacts(run_id, sha256)
+    )""",
+)
+_EVIDENCE_KEYS = {
+    "evidence_receipts": (("run_id", "submission_id"), ("run_id", "observation_id")),
+    "usage_revisions": (
+        ("revision_seq",),
+        ("run_id", "submission_id", "revision_id"),
+        ("run_id", "submission_id", "revision_number"),
+    ),
+    "observation_evidence": (("run_id", "observation_id"),),
+    "reasoning_blocks": (("run_id", "observation_id", "block_ordinal"),),
+}
+_EVIDENCE_TRIGGERS = tuple(
+    statement
+    for table, keys in _EVIDENCE_KEYS.items()
+    for statement in (
+        _guard(f"{table}_immutable_update", "UPDATE", table),
+        _guard(f"{table}_immutable_delete", "DELETE", table),
+        _no_replace(table, keys),
+    )
+)
+_STATEMENTS = (
+    *_LEGACY_STATEMENTS,
+    *_EVIDENCE_TABLES,
+    "CREATE UNIQUE INDEX idx_observations_evidence_link ON observations (run_id, observation_id, submission_id)",
+    _index("usage_revisions", "run_revision", "run_id, revision_seq"),
+    _index(
+        "usage_revisions", "submission_revision", "run_id, submission_id, revision_seq"
+    ),
+    _index("evidence_receipts", "ordered", "run_id, submission_id"),
+    *_EVIDENCE_TRIGGERS,
+)
 SCHEMA_CHECKSUM = hashlib.sha256("\n".join(_STATEMENTS).encode("utf-8")).hexdigest()
 
 
@@ -627,14 +710,14 @@ def verify(connection: sqlite3.Connection) -> None:
     actual structure are checked against the same committed database snapshot.
     """
     version = connection.execute("PRAGMA user_version").fetchone()[0]
-    if version != SCHEMA_VERSION:
+    if version not in (1, SCHEMA_VERSION):
         raise SchemaVersionError("unsupported database schema version")
     migrations = connection.execute(
         "SELECT version,checksum,schema_sha256 FROM schema_migrations ORDER BY version"
     ).fetchall()
     if len(migrations) != 1 or tuple(migrations[0][:2]) != (
-        SCHEMA_VERSION,
-        SCHEMA_CHECKSUM,
+        version,
+        LEGACY_SCHEMA_CHECKSUM if version == 1 else SCHEMA_CHECKSUM,
     ):
         raise SchemaVersionError("database migration checksum is inconsistent")
     if migrations[0][2] != _schema_digest(connection):
@@ -655,7 +738,7 @@ def initialize(connection: sqlite3.Connection) -> None:
         initial_version = connection.execute("PRAGMA user_version").fetchone()[0]
         connection.execute("BEGIN IMMEDIATE" if initial_version == 0 else "BEGIN")
         version = connection.execute("PRAGMA user_version").fetchone()[0]
-        if version not in (0, SCHEMA_VERSION):
+        if version not in (0, 1, SCHEMA_VERSION):
             raise SchemaVersionError("unsupported database schema version")
         if version == 0:
             if connection.execute(
