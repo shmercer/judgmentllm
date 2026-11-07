@@ -165,3 +165,30 @@ and lasts up to 24 hours after last use. Exact schema identifiers/enum values ca
 therefore be sensitive even when response text is absent. Google schema complexity,
 Together model eligibility and local Ollama daemon/model support remain scoped
 unknowns; schema transport does not authorize a provider call or content retention.
+
+
+## Phase 4C3 transport capture and offline admission
+
+Native schemas carry category labels and identifiers; prompt and complete payload
+bytes can carry full assessment and exemplar text. They are content-bearing
+artifacts, including their serialized output commitments and transport plans.
+Full capture uses existing protected objects. Minimal capture registers hashes and
+lengths directly, without staging these bytes; receipts contain controlled tokens,
+existing identities and safe hashes only. Matching original sources and explicit
+runtime context are required for reconstruction. Hashes do not anonymize content
+or authorize substitution. Normalized explanations retain their established
+separate authorization.
+
+Transport JSON uses the existing native duplicate-safe ingress at every depth,
+including escaped-equivalent keys. Unknown fields, coerced versions and malicious
+keys/values fail through content-free diagnostics. Runtime context hides its
+representation; evidence/profile identities never contain credentials. Client
+construction, auth resolution, credential-file/ADC discovery, metadata endpoints
+and provider calls remain absent. The private synthetic adapter is admitted only
+for exact matching synthetic scopes/profiles and never registers real support.
+
+The Phase 4B pre-retention boundary remains in force. Native request schemas do
+not fabricate observed property order or serving enforcement. Synthetic responses
+use explicitly identified fixture provenance, no reported real cost/usage and no
+reasoning grant. Unsafe or malformed body capture fails closed under established
+policy. Full/minimal replay preserves append-only receipts and tamper detection.

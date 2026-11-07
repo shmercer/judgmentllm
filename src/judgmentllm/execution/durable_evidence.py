@@ -150,6 +150,19 @@ class DurableEvidence:
     ) -> tuple[ArtifactIdentity, ResponseReceipt, EvidenceReceipt | None]:
         """No original response bytes enter artifact I/O before safe extraction."""
         session = self.session
+
+        commitment = (
+            work.prepared.output_commitment
+            if isinstance(work.prepared, PreparedRequestV2)
+            else None
+        )
+        if session.spec.schema_version == 3:
+            from judgmentllm.transport import PreparedRequestV3
+
+            if not isinstance(work.prepared, PreparedRequestV3):
+                raise IntegrityError("native evidence lacks its output commitment")
+            commitment = work.prepared.output_commitment
+
         if not self.enabled:
             historical = read_receipt(self.store, work.submission_id)
             if historical is not None:
@@ -191,12 +204,13 @@ class DurableEvidence:
                     "observation_kind": response.kind,
                 }
             ),
-            commitment=work.prepared.output_commitment
-            if isinstance(work.prepared, PreparedRequestV2)
-            else None,
+            commitment=commitment,
             response=response,
             capture=session.spec.capture,
             authorization=self.authorization,
+            transport_context=session.prepared.transport_context
+            if session.prepared is not None and session.spec.schema_version == 3
+            else None,
         )
         session.checkpoint("after_evidence_extraction", work.prepared.request_uid)
         if not self.enabled and prepared.disposition != "exact":

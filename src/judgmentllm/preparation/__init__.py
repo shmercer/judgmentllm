@@ -11,7 +11,7 @@ import uuid
 from collections.abc import Iterator
 from contextlib import ExitStack
 from pathlib import Path
-from typing import BinaryIO, cast
+from typing import TYPE_CHECKING, BinaryIO, cast
 
 import yaml
 
@@ -21,6 +21,7 @@ from judgmentllm.config import (
     RunSpec,
     RunSpecification,
     RunSpecV2,
+    RunSpecV3,
     _load_run_spec,  # pyright: ignore[reportPrivateUsage]
     parse_document,
     validate_run_spec_json,
@@ -61,11 +62,13 @@ from judgmentllm.preparation.manifest import (
     ExecutableManifest,
     ExecutableRunManifest,
     ExecutableRunManifestV2,
+    ExecutableRunManifestV3,
     ExemplarCommitment,
     FrozenSnapshotAuthorization,
     SourceDiscrepancy,
     TemplateCommitment,
     TemplateCommitmentV2,
+    TemplateCommitmentV3,
     TraitCommitment,
     assessment_digest,
     configuration_digest,
@@ -74,6 +77,9 @@ from judgmentllm.preparation.manifest import (
 from judgmentllm.preparation.records import index_digest  # pyright: ignore[reportPrivateUsage]
 from judgmentllm.preparation.session import PreparedRun as PreparedRun
 from judgmentllm.preparation.session import RequestDependency as RequestDependency
+
+if TYPE_CHECKING:
+    from judgmentllm.transport import TransportContext
 
 
 def _checkpoint(stage: str, source_id: str | None = None) -> None:
@@ -107,6 +113,7 @@ def _manifest(
     origin: Path | None,
     template: str | None,
     capabilities: CapabilityProfile | None,
+    transport_context: TransportContext | None = None,
 ) -> ExecutableManifest:
     plan = plan_run(spec, capabilities=capabilities)
     raw = canonical_bytes(spec)
@@ -139,10 +146,18 @@ def _manifest(
             for c in spec.criteria
         )
     manifest_type = (
-        ExecutableRunManifestV2 if spec.schema_version == 2 else ExecutableRunManifest
+        ExecutableRunManifestV3
+        if spec.schema_version == 3
+        else ExecutableRunManifestV2
+        if spec.schema_version == 2
+        else ExecutableRunManifest
     )
     template_type = (
-        TemplateCommitmentV2 if spec.schema_version == 2 else TemplateCommitment
+        TemplateCommitmentV3
+        if spec.schema_version == 3
+        else TemplateCommitmentV2
+        if spec.schema_version == 2
+        else TemplateCommitment
     )
     manifest_data: dict[str, object] = dict(
         run_id=builder.run_id,
@@ -185,6 +200,18 @@ def _manifest(
     )
     if spec.schema_version == 2:
         manifest_data["output_selection"] = resolve_schema_selection(spec, capabilities)
+    if spec.schema_version == 3:
+        from judgmentllm.transport import transport_context_digest
+
+        if transport_context is None:
+            raise PreparationError(
+                "native-capable preparation requires transport context"
+            )
+        manifest_data.update(
+            transport_context_sha256=transport_context_digest(transport_context),
+            initial_transport_count=0,
+            initial_transport_sha256="0" * 64,
+        )
     return manifest_type.model_validate(manifest_data)
 
 
@@ -195,6 +222,7 @@ def prepare_run(
     run_id: str,
     capabilities: CapabilityProfile | None = None,
     exhaustive_rendering: bool = False,
+    transport_context: TransportContext | None = None,
 ) -> PreparedRun:
     """Freeze, validate, index and seal a new run under exclusive OS ownership.
 
@@ -219,13 +247,13 @@ def prepare_run(
             )
         origin = (
             None
-            if isinstance(spec_or_path, (RunSpec, RunSpecV2))
+            if isinstance(spec_or_path, (RunSpec, RunSpecV2, RunSpecV3))
             else Path(spec_or_path).resolve()
         )
         initial: tuple[FileSignature, str] | None = None
         discovered: dict[str, tuple[FileSignature, str]] = {}
         if origin is None:
-            assert isinstance(spec_or_path, (RunSpec, RunSpecV2))
+            assert isinstance(spec_or_path, (RunSpec, RunSpecV2, RunSpecV3))
             spec = _revalidate_record(spec_or_path)
         else:
             raw, sig, digest = _memory_source(origin)
@@ -250,6 +278,14 @@ def prepare_run(
             spec = _load_run_spec(origin, document_reader=discover_document)
             initial = sig, digest
         profile = _revalidate_record(capabilities) if capabilities else None
+        if spec.schema_version == 3 and transport_context is None:
+            raise PreparationError(
+                "native-capable preparation requires transport context"
+            )
+        if spec.schema_version != 3 and transport_context is not None:
+            raise PreparationError(
+                "historical preparation cannot acquire native transport"
+            )
         plan_run(spec, capabilities=profile)
         repository.create_run(
             RunRecord(
@@ -307,7 +343,40 @@ def prepare_run(
                 spec, template, profile, exhaustive=exhaustive_rendering
             )
             builder.finish()
-            manifest = _manifest(builder, spec, origin, template, profile)
+            manifest = _manifest(
+                builder, spec, origin, template, profile, transport_context
+            )
+            if isinstance(manifest, ExecutableRunManifestV3):
+                from judgmentllm.preparation.native import preseal_transports
+
+                assert transport_context is not None and isinstance(spec, RunSpecV3)
+                count, digest = preseal_transports(
+                    builder,
+                    spec,
+                    template,
+                    manifest,
+                    transport_context,
+                    _checkpoint,
+                )
+                manifest = manifest.model_copy(
+                    update={
+                        "initial_transport_count": count,
+                        "initial_transport_sha256": digest,
+                    }
+                )
+                # Independently verify the complete bounded index before a seal
+                # can authorize execution. The same session is returned below.
+                prepared = PreparedRun(
+                    repository,
+                    manifest,
+                    spec,
+                    template,
+                    profile,
+                    record_reader=_read_record,
+                    transport_context=transport_context,
+                )
+                prepared.verify_compatibility(capabilities=profile)
+                prepared.verify_transport_index()
             artifact = builder.store.put(canonical_bytes(manifest), "application/json")
             repository.register_artifact(run_id, artifact)
             builder.store.publish_manifest(artifact)
@@ -320,10 +389,18 @@ def prepare_run(
                 require_signature(Path(source.original_location), source.generation)
             repository.seal_run(run_id, ManifestReference(artifact=artifact))
             _checkpoint("manifest_sealed")
-        prepared = PreparedRun(
-            repository, manifest, spec, template, profile, record_reader=_read_record
-        )
+        if prepared is None:
+            prepared = PreparedRun(
+                repository,
+                manifest,
+                spec,
+                template,
+                profile,
+                record_reader=_read_record,
+                transport_context=transport_context,
+            )
         prepared.verify_compatibility(capabilities=profile)
+        prepared.verify_transport_index()
         return prepared
     except BaseException as error:
         if prepared is not None:
@@ -521,6 +598,7 @@ def open_prepared_run(
     capabilities: CapabilityProfile | None = None,
     use_frozen_snapshot: bool = False,
     owner_token: str | None = None,
+    transport_context: TransportContext | None = None,
 ) -> PreparedRun:
     """Verify and reopen; explicit snapshot permission is scoped to this call.
 
@@ -562,11 +640,13 @@ def open_prepared_run(
                 template,
                 profile,
                 record_reader=_read_record,
+                transport_context=transport_context,
                 authorized_sources=frozenset(d.source_id for d in discrepancies)
                 if use_frozen_snapshot and manifest.capture == "full"
                 else frozenset(),
             )
             prepared.verify_compatibility(capabilities=profile)
+            prepared.verify_transport_index()
             # Independently reparse every locator before completing an interrupted
             # seal. Ordinary reopened lookups verify selected records on demand.
             if unsealed:

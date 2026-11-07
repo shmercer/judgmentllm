@@ -14,7 +14,7 @@ from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from importlib.resources import files
 from pathlib import Path
-from typing import Literal, cast
+from typing import TYPE_CHECKING, Literal, cast
 
 from jinja2 import StrictUndefined, Template, TemplateError, meta, nodes
 from jinja2.sandbox import SandboxedEnvironment
@@ -94,7 +94,13 @@ class RenderedPromptV2(StrictModel):
         return self
 
 
-RenderedAssessmentPrompt = RenderedPrompt | RenderedPromptV2
+if TYPE_CHECKING:
+    from judgmentllm.native_prompts import RenderedPromptV3
+
+    RenderedAssessmentPrompt = RenderedPrompt | RenderedPromptV2 | RenderedPromptV3
+else:
+    # Historical runtime imports stay independent of native orchestration.
+    RenderedAssessmentPrompt = RenderedPrompt | RenderedPromptV2
 
 
 _PRESETS = {

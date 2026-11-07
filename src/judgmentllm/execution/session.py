@@ -50,6 +50,7 @@ from judgmentllm.persistence.receipts import (
 from judgmentllm.persistence.repository import Repository
 from judgmentllm.planning import stable_id
 from judgmentllm.preparation import PreparedRun, RequestDependency, open_prepared_run
+from judgmentllm.prompts import RenderedPrompt, RenderedPromptV2
 from judgmentllm.providers import (
     PreparedRequest,
     PreparedRequestV2,
@@ -99,6 +100,7 @@ class ExecutionSession:
                 capabilities=profile,
                 use_frozen_snapshot=use_frozen_snapshot,
                 owner_token=self.token,
+                transport_context=getattr(adapter, "transport_context", None),
             )
             self.repository = self.prepared.repository
             self.spec = self.prepared.spec
@@ -182,11 +184,120 @@ class ExecutionSession:
         self.prepared.capabilities = current
         self.adapter.validate(self.spec)
 
+    def prepare_attempt(
+        self, dependency: RequestDependency, attempt_id: str, *, initial: bool = False
+    ) -> PreparedRequest:
+        """Reconstruct pinned V3 bytes; historical rendering keeps its old path."""
+        assert self.prepared is not None
+        if self.spec.schema_version == 3:
+            from judgmentllm.transport import physical_identity
+
+            if (
+                getattr(self.adapter, "transport_context", None)
+                != self.prepared.transport_context
+            ):
+                raise IntegrityError("transport runtime context changed")
+            return self.prepared.prepare_transport_attempt(
+                dependency,
+                physical_identity(
+                    self.run_id, dependency.request.request_uid, attempt_id
+                ),
+                frozen=self.prepared.transport_for_attempt(attempt_id),
+            )
+        rendered = (
+            self.prepared.render(dependency)
+            if initial
+            else self.prepared.render_attempt(dependency)
+        )
+        if not isinstance(rendered, (RenderedPrompt, RenderedPromptV2)):
+            raise IntegrityError("historical attempt acquired native rendering")
+        return self.adapter.prepare(self.spec, dependency, rendered)
+
+    def verify_native_attempt(self, attempt: AttemptRecord) -> PreparedRequest:
+        """Check terminal and pending native attempts against their original seal."""
+        assert self.prepared is not None
+        from judgmentllm.execution.retry import subset_dependency
+
+        dependency = subset_dependency(
+            self.prepared.dependency_for_request(attempt.request_uid),
+            self.repository.attempt_task_ids(self.run_id, attempt.attempt_id),
+        )
+        wire = self.prepare_attempt(dependency, attempt.attempt_id)
+        if (
+            wire.prompt_sha256 != attempt.prompt_sha256
+            or wire.payload_sha256 != attempt.payload_sha256
+            or wire.task_ids
+            != self.repository.attempt_task_ids(self.run_id, attempt.attempt_id)
+            or attempt.membership_sha256
+            != semantic_digest("attempt-membership", list(wire.task_ids))
+        ):
+            raise IntegrityError("native attempt differs from its commitment")
+        return wire
+
+    def initial_submission(
+        self, attempt: AttemptRecord, prepared: PreparedRequest
+    ) -> None:
+        """Create intent only for independently verified pre-seal initial work."""
+        assert self.prepared is not None
+        from judgmentllm.transport import PreparedRequestV3, physical_identity
+
+        if not isinstance(prepared, PreparedRequestV3):
+            raise IntegrityError("initial native preparation is unavailable")
+        receipt = self.prepared.transport_for_attempt(attempt.attempt_id)
+        identity = physical_identity(
+            self.run_id, attempt.request_uid, attempt.attempt_id
+        )
+        from judgmentllm.persistence.evidence import read_evidence_receipt
+
+        if (
+            attempt.attempt_number != 1
+            or attempt.authorization_id is not None
+            or attempt.state != "prepared"
+            or receipt.parent_commitment_sha256 is not None
+            or receipt != prepared.transport_commitment
+            or self.repository.get_submission_for_attempt(
+                self.run_id, attempt.attempt_id
+            )
+            is not None
+            or self.repository.get_results_for_attempt(self.run_id, attempt.attempt_id)
+            or read_acknowledgment(self.prepared.store, identity.submission_id)
+            is not None
+            or read_receipt(self.prepared.store, identity.submission_id) is not None
+            or read_evidence_receipt(self.prepared.store, identity.submission_id)
+            is not None
+            or self.repository.connection.execute(
+                "SELECT 1 FROM observations WHERE run_id=? AND attempt_id=? LIMIT 1",
+                (self.run_id, attempt.attempt_id),
+            ).fetchone()
+            is not None
+        ):
+            raise IntegrityError(
+                "missing submission does not describe initial native intent"
+            )
+        # No submission can exist before sealing; all receipt/attempt checks above
+        # precede this short owned transaction. This never repairs retry intent.
+        with self.transaction():
+            current = self.repository.get_attempt(self.run_id, attempt.attempt_id)
+            if current != attempt:
+                raise IntegrityError("initial native attempt changed")
+            self.repository.create_submission(
+                SubmissionRecord(
+                    run_id=self.run_id,
+                    attempt_id=attempt.attempt_id,
+                    submission_id=identity.submission_id,
+                    correlation_id=identity.correlation_id,
+                    payload_sha256=prepared.payload_sha256,
+                )
+            )
+        self.checkpoint("after_initial_submission", attempt.request_uid)
+
     def next_work(self) -> ExecutionWork | None:
         assert self.prepared is not None
         while True:
             existing = next(self.existing, None)
             if existing is not None:
+                if self.spec.schema_version == 3:
+                    self.verify_native_attempt(existing)
                 results = self.repository.get_results_for_attempt(
                     self.run_id, existing.attempt_id
                 )
@@ -224,6 +335,8 @@ class ExecutionSession:
                 dependency = next(self.dependencies, None)
                 if dependency is None:
                     return None
+                if self.spec.schema_version == 3:
+                    raise IntegrityError("sealed native request was scheduled twice")
                 ordinal = self.ordinal
                 self.ordinal += 1
                 attempt_id = stable_id(
@@ -232,12 +345,8 @@ class ExecutionSession:
             request = dependency.request
             self.checkpoint("before_request_creation", request.request_uid)
             self.verify()
-            prepared = self.adapter.prepare(
-                self.spec,
-                dependency,
-                self.prepared.render_attempt(dependency)
-                if existing is not None
-                else self.prepared.render(dependency),
+            prepared = self.prepare_attempt(
+                dependency, attempt_id, initial=existing is None
             )
             if (
                 prepared.task_ids != tuple(t.task_id for t in request.tasks)
@@ -335,6 +444,11 @@ class ExecutionSession:
                 submission = self.repository.get_submission_for_attempt(
                     self.run_id, attempt_id
                 )
+                if submission is None and self.spec.schema_version == 3:
+                    self.initial_submission(existing, prepared)
+                    submission = self.repository.get_submission_for_attempt(
+                        self.run_id, attempt_id
+                    )
                 if (
                     existing.prompt_sha256 != prepared.prompt_sha256
                     or existing.payload_sha256 != prepared.payload_sha256
@@ -359,6 +473,8 @@ class ExecutionSession:
     def repair_committed(self, attempt: AttemptRecord, status: str) -> None:
         """Committed records are authoritative, including a lost final report."""
         assert self.prepared is not None
+        if self.spec.schema_version == 3:
+            self.verify_native_attempt(attempt)
         for digest in (attempt.prompt_sha256, attempt.payload_sha256):
             self.prepared.store.verify(
                 self.repository.get_artifact(self.run_id, digest)
@@ -459,9 +575,7 @@ class ExecutionSession:
                     )
         self.checkpoint("after_claim", work.prepared.request_uid)
         self.verify()
-        current = self.adapter.prepare(
-            self.spec, work.dependency, self.prepared.render_attempt(work.dependency)
-        )
+        current = self.prepare_attempt(work.dependency, work.attempt_id)
         if current != work.prepared:
             raise IntegrityError("payload changed before submission")
         with self.transaction():
@@ -785,7 +899,7 @@ class ExecutionSession:
         try:
             parsed = (
                 self.adapter.parse(response, strict_output=True)
-                if isinstance(work.prepared, PreparedRequestV2)
+                if self.spec.schema_version in (2, 3)
                 else self.adapter.parse(response)
             )
         except ValueError:
@@ -796,6 +910,15 @@ class ExecutionSession:
             parsed = None
         self.checkpoint("before_validation", work.prepared.request_uid)
         contract = None
+        if self.spec.schema_version == 3:
+            from judgmentllm.transport import PreparedRequestV3
+
+            if not isinstance(work.prepared, PreparedRequestV3):
+                raise IntegrityError("native execution requires its committed output")
+            current = self.prepare_attempt(work.dependency, work.attempt_id)
+            if current != work.prepared:
+                raise IntegrityError("native commitment changed before interpretation")
+            contract = work.prepared.output_commitment.contract
         if self.spec.schema_version == 2:
             if not isinstance(work.prepared, PreparedRequestV2):
                 raise IntegrityError(
@@ -805,11 +928,7 @@ class ExecutionSession:
                 work.prepared.output_commitment, self.spec, work.dependency.request
             )
             # Verify the same detached representation still produces the committed bytes.
-            current = self.adapter.prepare(
-                self.spec,
-                work.dependency,
-                self.prepared.render_attempt(work.dependency),
-            )
+            current = self.prepare_attempt(work.dependency, work.attempt_id)
             if current != work.prepared:
                 raise IntegrityError("output commitment changed before interpretation")
             contract = commitment.contract

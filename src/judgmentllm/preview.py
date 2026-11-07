@@ -8,6 +8,7 @@ from judgmentllm.config import (
     RunSpec,
     RunSpecification,
     RunSpecV2,
+    RunSpecV3,
     load_run_spec,
     validate_run_spec,
 )
@@ -33,9 +34,13 @@ def preview_prompt(
     """
     spec = (
         validate_run_spec(spec)
-        if isinstance(spec, (RunSpec, RunSpecV2))
+        if isinstance(spec, (RunSpec, RunSpecV2, RunSpecV3))
         else load_run_spec(spec)
     )
+    if isinstance(spec, RunSpecV3):
+        raise ValueError(
+            "native-capable preview requires a committed transport context"
+        )
     plan = plan_run(spec, capabilities=capabilities)
     template = (
         spec.prompt.file.read_text(encoding="utf-8") if spec.prompt.file else None

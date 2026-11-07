@@ -283,3 +283,24 @@ or model qualification is established by this offline phase. Complete local
 assessment validation remains authoritative. See the [route evidence matrix](assessment-provider-evidence.md#phase-4c2-independent-multi-provider-projection-evidence).
 RunSpec execution, historical prompts and durable contracts remain text-only;
 4C3 integration, real adapters and Vertex authentication remain deferred.
+
+## Phase 4C3 durable native transport boundary
+
+Explicit RunSpec 3, executable manifest 3, renderer/output/prepared-request 3 and
+separate transport commitment 1 connect native selection to existing immutable
+preparation and recovery. This is an offline implementation pending exact-head
+qualification; no real-provider execution or live acceptance is enabled. Historical
+V1/V2 configuration, prompt, manifest, payload and selection identities remain
+unchanged. Each physical request freezes its exact native/text decision and route
+before rendering, commits exact schema/configuration/format/prompt/final-payload
+representations, and enters the manifest's bounded initial-transport index before
+sealing. Reopening verifies original facts and bytes without auto reselection.
+
+Full capture publishes approved content through existing protected artifacts;
+minimal capture keeps safe identities/hashes and requires unchanged original
+sources. Retry subsets inherit the original family and route with their own
+physical commitments. Refusals, invalid results and uncertain submissions preserve
+existing validation and reconciliation semantics. Nine mechanisms are exercised
+only through private exact-scope synthetic fixtures; real adapters and exact
+endpoint wire builders remain Phase 5. See the detailed
+[durable transport contracts](persistence-contracts.md#phase-4c3-native-capable-durable-boundary).

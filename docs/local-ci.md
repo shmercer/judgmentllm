@@ -440,3 +440,22 @@ developer environments may report explicit optional-dependency skips. The probes
 are credential-free and guarded; this flag authorizes no SDK client, inference
 request, daemon contact or model download. Existing matrices, coverage policy,
 R gates, resource thresholds and timeouts remain unchanged.
+
+
+## Phase 4C3 qualification additions
+
+New offline synthetic native integration runs inside the ordinary complete suite,
+using actual preparation/execution/recovery and normalized exports. Private
+synthetic profiles are not production model support. Effective guards prohibit
+provider sockets/DNS, SDK/client initialization and credential/ADC discovery;
+durable-store writes remain permitted. Existing guarded converter probes remain
+mandatory independently of transport integration.
+
+Preserve all seven exact-head local configurations, 49 existing strict R/jsonlite
+gates, 70 resource measurements and five hosted jobs. Native Python-to-R assertions
+supplement those gates without replacing or relabeling them. Coverage stays only
+on Linux/3.11; all other lanes explicitly disable it. Commit the candidate before
+`grid.py --mode prepare` and `--mode check`; source changes after qualification
+require a new complete exact-head run. Preserve VM locks, graceful shutdown,
+180-second fixtures, memory limits, hosted 30-minute timeout, original retained
+compatibility stores and complete failed-attempt evidence.

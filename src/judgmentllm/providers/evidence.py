@@ -37,6 +37,7 @@ from judgmentllm.persistence.hashing import bytes_digest
 
 if TYPE_CHECKING:
     from judgmentllm.providers.protocol import ProviderResponse
+    from judgmentllm.transport import OutputCommitmentV3, TransportContext
 
 
 class ProviderReasoningBlock(EvidenceModel):
@@ -94,10 +95,11 @@ def prepare_evidence(
     *,
     identity: EvidenceIdentity,
     context: UsageContext,
-    commitment: OutputCommitmentV2 | None,
+    commitment: OutputCommitmentV2 | OutputCommitmentV3 | None,
     response: ProviderResponse,
     capture: Literal["full", "minimal"],
     authorization: ReasoningAuthorization | None = None,
+    transport_context: TransportContext | None = None,
 ) -> PreparedEvidence:
     """Prepare safe facts before publishing any response or reasoning artifact.
 
@@ -114,7 +116,19 @@ def prepare_evidence(
         # Revalidate excluded transient bytes too, rather than trusting model_copy.
         evidence = ProviderEvidence.model_validate(dict(evidence))
         if evidence.provenance == "synthetic_fixture" and context.provider != "mock":
-            raise ValueError("synthetic evidence requires a synthetic provider")
+            # A persisted evidence record never grants fixture admission. The
+            # caller must supply the same reviewed private runtime authority.
+            if (
+                transport_context is None
+                or not transport_context.trusted_synthetic
+                or (
+                    transport_context.scope.provider,
+                    transport_context.scope.endpoint,
+                    transport_context.scope.model,
+                )
+                != (context.provider, context.endpoint, context.requested_model)
+            ):
+                raise ValueError("synthetic evidence requires a synthetic provider")
     if policy.retention != "none" and (
         context.provider != "mock"
         or evidence is None

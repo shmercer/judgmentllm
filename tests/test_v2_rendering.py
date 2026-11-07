@@ -188,7 +188,7 @@ def test_root_version_dispatch_preserves_v1(
     assert type(load_run_spec(path)) is type(checked)
 
 
-@pytest.mark.parametrize("version", [True, False, 0, 3, "2", 2.0, None])
+@pytest.mark.parametrize("version", [True, False, 0, 4, "2", 2.0, None])
 def test_invalid_explicit_version(tmp_path: Path, version: object) -> None:
     data = example_spec(tmp_path).model_dump(mode="python")
     data["schema_version"] = version

@@ -450,3 +450,30 @@ Phase 4C3 owns immutable native prompts, preparation, transport commitments and
 recovery. Real adapters, Vertex ADC/authorization-key integration, companion
 exports and live qualification remain deferred. No historical run is migrated
 or rewritten, and normal execution remains text-only.
+
+
+### Phase 4C3 implementation and acceptance boundary
+
+The additive implementation connects RunSpec/manifest/output/renderer/prepared
+request 3 and transport commitment 1 through existing bounded preparation,
+append-only artifacts, execution and recovery. Each first physical request is
+selected, projected, rendered and payload-committed before sealing. Reopening
+verifies the original selection and exact bytes; grouped retries inherit the
+original family and route with fresh subset-specific commitments. Historical
+V1/V2 serializations, identities, fixtures and lifecycle behavior remain frozen.
+
+Implementation status is **pending exact-head qualification**, not milestone
+acceptance. Required acceptance retains all nine synthetic routes, native/auto/text
+and strict capability matrices, full/minimal integrity/privacy/recovery, genuine
+alpha2/alpha3 compatibility, native Python-to-R checks, seven local configurations,
+49 existing strict R gates, 70 resource measurements, primary branch-aware coverage
+at least 90%, mandatory SDK probes and all five hosted jobs at the final head.
+No gate/limit/180-second fixture deadline or hosted timeout may be relaxed.
+
+Keep qualification evidence outside Dropbox and preserve failed attempts. The
+standalone historical fixture corpus must remain byte-identical. Production
+catalogs gain no real-model acceptance, and ordinary provider dispatch remains
+unimplemented. Phase 5 begins only in a separate task: endpoint-owned complete
+payload builders, credential boundary integration and independent serving
+qualification; companion exports, caching, batches and R wrappers remain at their
+assigned phases. Phase 4C3 does not complete all of Milestone 3.

@@ -139,7 +139,7 @@ def test_explanation_default_preset(tmp_path: Path) -> None:
     [
         ("schema_version", True, "schema_version"),
         ("schema_version", "1", "schema_version"),
-        ("schema_version", 3, "schema_version"),
+        ("schema_version", 4, "schema_version"),
         ("input", "data.tsv", "format"),
         ("provider", " ", "nonempty"),
         ("model", " padded ", "nonempty"),

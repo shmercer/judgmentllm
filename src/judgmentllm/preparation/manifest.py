@@ -2,9 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Literal, cast
+from typing import Any, Literal, Self, cast
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import (
+    Field,
+    ModelWrapValidatorHandler,
+    TypeAdapter,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 from judgmentllm.config import ExecutionSpec, InputSpec, RunSpecification
 from judgmentllm.models import ID
@@ -220,18 +227,125 @@ class ExecutableRunManifestV2(ExecutableRunManifest):
         return value
 
 
-ExecutableManifest = ExecutableRunManifest | ExecutableRunManifestV2
+class TemplateCommitmentV3(TemplateCommitment):
+    """Native-capable renderer; independent of neutral output contract version."""
+
+    renderer_version: Literal[3] = 3  # pyright: ignore[reportIncompatibleVariableOverride]
+
+    @field_validator("renderer_version", mode="before")
+    @classmethod
+    def strict_renderer_version(cls, value: object) -> object:
+        if type(value) is not int or value != 3:
+            raise ValueError("renderer_version must be integer 3")
+        return value
+
+
+class ExecutableRunManifestV3(ExecutableRunManifest):
+    """Additive native transport boundary; no historical run-level selection."""
+
+    schema_version: Literal[3] = 3  # pyright: ignore[reportIncompatibleVariableOverride]
+    run_spec_version: Literal[3] = 3
+    output_contract_version: Literal[2] = 2
+    output_commitment_version: Literal[3] = 3
+    transport_commitment_version: Literal[1] = 1
+    request_identity_version: Literal[3] = 3  # pyright: ignore[reportIncompatibleVariableOverride]
+    template: TemplateCommitmentV3  # pyright: ignore[reportIncompatibleVariableOverride]
+    transport_context_sha256: SHA256
+    initial_transport_count: int = Field(ge=0)
+    initial_transport_sha256: SHA256
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def safe_manifest(
+        cls,
+        value: object,
+        handler: ModelWrapValidatorHandler[Self],
+        info: ValidationInfo,
+    ) -> Self:
+        from judgmentllm.evidence._base import _invalid_evidence  # pyright: ignore[reportPrivateUsage]
+
+        try:
+            if info.mode == "json" and isinstance(value, dict):
+                import json
+
+                values = cast(dict[str, object], value)
+                value = {
+                    key: TypeAdapter(
+                        cls.model_fields[key].annotation or Any
+                    ).validate_json(json.dumps(item), strict=True)
+                    if key in cls.model_fields and not key.endswith("_version")
+                    else item
+                    for key, item in values.items()
+                }
+            return handler(value)
+        except Exception:
+            raise _invalid_evidence() from None
+
+    @classmethod
+    def model_validate_json(
+        cls, json_data: str | bytes | bytearray, **kwargs: Any
+    ) -> Self:
+        from judgmentllm.evidence._base import _invalid_evidence  # pyright: ignore[reportPrivateUsage]
+        from judgmentllm.output_contracts import decode_assessment_output
+
+        try:
+            if type(json_data) is bytearray:
+                raw: str | bytes = bytes(json_data)
+            elif type(json_data) in (str, bytes):
+                raw = cast(str | bytes, json_data)
+            else:
+                raise ValueError("invalid JSON input")
+            decode_assessment_output(raw)
+            return super().model_validate_json(raw, **kwargs)
+        except Exception:
+            raise _invalid_evidence() from None
+
+    @field_validator("schema_version", mode="before")
+    @classmethod
+    def _version(cls, value: object) -> object:
+        if type(value) is not int or value != 3:
+            raise ValueError("schema_version must be the supported integer 3")
+        return value
+
+    @field_validator(
+        "schema_version",
+        "run_spec_version",
+        "output_contract_version",
+        "output_commitment_version",
+        "transport_commitment_version",
+        "request_identity_version",
+        "assessment_schema_version",
+        "canonicalization_version",
+        "serializer_version",
+        "index_version",
+        mode="before",
+    )
+    @classmethod
+    def strict_version_tokens(cls, value: object) -> object:
+        if type(value) is not int:
+            raise ValueError("manifest versions must be integers")
+        return value
+
+
+ExecutableManifest = (
+    ExecutableRunManifest | ExecutableRunManifestV2 | ExecutableRunManifestV3
+)
 
 
 def parse_executable_manifest(raw: bytes) -> ExecutableManifest:
-    import json
+    from judgmentllm.output_contracts import decode_assessment_output
 
-    value: object = json.loads(raw)
+    # Inspect original pairs before dispatch so a duplicate discriminator cannot
+    # route native commitments into a historical parser. Valid old bytes retain
+    # their established typed records and exact round-trip rules.
+    value: object = decode_assessment_output(raw)
     version = (
         cast(dict[str, object], value).get("schema_version", 1)
         if isinstance(value, dict)
         else None
     )
+    if type(version) is int and version == 3:
+        return ExecutableRunManifestV3.model_validate_json(raw)
     if type(version) is int and version == 2:
         return ExecutableRunManifestV2.model_validate_json(raw)
     return ExecutableRunManifest.model_validate_json(raw)

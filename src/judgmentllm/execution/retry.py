@@ -33,6 +33,7 @@ from judgmentllm.persistence.ownership import ExecutorOwnership
 from judgmentllm.persistence.repository import Repository
 from judgmentllm.planning import stable_id
 from judgmentllm.preparation import PreparedRun, RequestDependency, open_prepared_run
+from judgmentllm.prompts import RenderedPrompt, RenderedPromptV2
 from judgmentllm.providers import ProviderAdapter
 
 
@@ -325,12 +326,29 @@ def prepare_subset_retry(
             if existing_rows
             else None
         )
-        if existing is not None:
-            if (
-                existing.request_uid != request_uid
-                or repository.attempt_task_ids(run_id, existing.attempt_id) != selected
+    if existing is not None:
+        if (
+            existing.request_uid != request_uid
+            or repository.attempt_task_ids(run_id, existing.attempt_id) != selected
+        ):
+            raise RetryAuthorizationError("retry operation selection conflicts")
+        # Rendering and artifact verification stay outside write transactions.
+        if prepared_run.spec.schema_version == 3:
+            from judgmentllm.transport import physical_identity
+
+            wire = prepared_run.prepare_transport_attempt(
+                subset,
+                physical_identity(run_id, request_uid, existing.attempt_id),
+                frozen=prepared_run.transport_for_attempt(existing.attempt_id),
+            )
+            if (wire.prompt_sha256, wire.payload_sha256) != (
+                existing.prompt_sha256,
+                existing.payload_sha256,
             ):
-                raise RetryAuthorizationError("retry operation selection conflicts")
+                raise IntegrityError("existing retry transport commitment differs")
+        with repository.execution_transaction(run_id, owner_token):
+            if repository.get_attempt(run_id, existing.attempt_id) != existing:
+                raise IntegrityError("existing retry changed during verification")
             prior = _prior_outcomes(
                 repository, run_id, request_uid, selected, existing.attempt_number
             )
@@ -345,7 +363,8 @@ def prepare_subset_retry(
                     policy,
                 )
             )
-            return existing
+        return existing
+    with repository.execution_transaction(run_id, owner_token):
         row = repository.connection.execute(
             "SELECT COALESCE(MAX(attempt_number),0) FROM attempts WHERE run_id=? AND request_uid=?",
             (run_id, request_uid),
@@ -392,13 +411,37 @@ def prepare_subset_retry(
         capabilities=adapter.capabilities(prepared_run.spec)
     )
     adapter.validate(prepared_run.spec)
-    rendered = prepared_run.render_attempt(subset)
-    wire = adapter.prepare(prepared_run.spec, subset, rendered)
+    attempt_id = stable_id("attempt", run_id, request_uid, attempt_number)
+    native_artifacts = ()
+    if prepared_run.spec.schema_version == 3:
+        from judgmentllm.preparation.native import publish_prepared_transport
+        from judgmentllm.transport import physical_identity
+
+        original = repository.get_attempt_for_request(
+            run_id, request_uid, attempt_number=1
+        )
+        if original is None:
+            raise IntegrityError("native retry lacks its original attempt")
+        wire = prepared_run.prepare_transport_attempt(
+            subset,
+            physical_identity(run_id, request_uid, attempt_id),
+            parent=prepared_run.transport_for_attempt(original.attempt_id),
+        )
+        prompt_bytes = wire.rendered_text.encode("utf-8")
+        native_artifacts = publish_prepared_transport(
+            repository, prepared_run.store, wire, prepared_run.spec.capture
+        )
+    else:
+        rendered = prepared_run.render_attempt(subset)
+        if not isinstance(rendered, (RenderedPrompt, RenderedPromptV2)):
+            raise IntegrityError("historical retry acquired native rendering")
+        wire = adapter.prepare(prepared_run.spec, subset, rendered)
+        prompt_bytes = rendered.text.encode("utf-8")
     if (
         wire.request_uid != request_uid
         or wire.task_ids != selected
         or wire.dependency_sha256 != dependency.dependency_sha256
-        or bytes_digest(rendered.text.encode("utf-8")) != wire.prompt_sha256
+        or bytes_digest(prompt_bytes) != wire.prompt_sha256
         or bytes_digest(wire.payload) != wire.payload_sha256
         or (wire.provider, wire.endpoint, wire.model)
         != (
@@ -409,7 +452,6 @@ def prepare_subset_retry(
         or wire.generation != prepared_run.spec.generation
     ):
         raise IntegrityError("retry preparation differs from its frozen subset")
-    prompt_bytes = rendered.text.encode("utf-8")
     store = prepared_run.store
     prompt = (
         store.put(prompt_bytes, "text/plain")
@@ -422,7 +464,6 @@ def prepare_subset_retry(
         else store.hash_only(wire.payload_sha256, len(wire.payload), "application/json")
     )
     checkpoint("after_retry_preparation_artifacts", request_uid)
-    attempt_id = stable_id("attempt", run_id, request_uid, attempt_number)
     attempt = AttemptRecord(
         run_id=run_id,
         attempt_id=attempt_id,
@@ -456,6 +497,8 @@ def prepare_subset_retry(
         checkpoint("during_retry_authorization", request_uid)
         repository._register_artifact(run_id, prompt)  # pyright: ignore[reportPrivateUsage]
         repository._register_artifact(run_id, payload)  # pyright: ignore[reportPrivateUsage]
+        for artifact in native_artifacts:
+            repository._register_artifact(run_id, artifact)  # pyright: ignore[reportPrivateUsage]
         repository.create_attempt(attempt, selected)
         checkpoint("during_retry_preparation", request_uid)
         submission_id = stable_id("submission", run_id, attempt_id)
@@ -506,6 +549,7 @@ def authorize_subset_retry(
             capabilities=capabilities,
             use_frozen_snapshot=use_frozen_snapshot,
             owner_token=owner_token,
+            transport_context=getattr(adapter, "transport_context", None),
         ) as prepared:
             request_uid: str | None = None
             for task_id in selected:

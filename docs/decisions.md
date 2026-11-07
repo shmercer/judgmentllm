@@ -232,3 +232,26 @@ exercise positive decisions, while real-model acceptance remains unknown.
 Prompt-schema repetition is route-specific documented guidance for 4C3, including
 Together; it does not change rendering in 4C2. Durable native activation remains
 a separate phase, preserving historical text-only execution.
+
+
+## Phase 4C3: additive durable native transport
+
+Use explicit RunSpec/PromptSpec 3 for typed mechanism intent, manifest 3 for a
+recognizable durable boundary, renderer/output/prepared-request 3 for new content,
+and separate transport-plan/commitment/physical-identity 1. Reuse unchanged OpenAI
+V1 and provider-neutral V2 projections/decisions through explicit dispatch.
+Preserve all old serializations and never upgrade historical text selections.
+
+Freeze selection per physical request before rendering. Commit an acyclic plan
+inside the full synthetic payload and then commit final payload bytes in a safe
+receipt, anchored by immutable attempt rows and the manifest's streaming initial
+index. Reuse existing append-only persistence and bounded indexed iteration;
+introduce no database migration or second persistence engine.
+
+Replay verifies original choices and exact representations without auto resolution.
+Retries inherit family/route and publish independent subset commitments; failures
+never select fallback transport. Full/minimal capture and source reconstruction
+remain explicit. Private synthetic profile authority is mandatory for the new
+execution seam; translators/evidence alone cannot activate a real adapter. Phase
+5 owns full provider wire builders and authentication. Implementation acceptance
+remains pending the exact-head qualification record.
