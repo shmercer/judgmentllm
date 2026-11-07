@@ -510,7 +510,7 @@ Native-record `model_validate_json()` rejects duplicate object keys at every
 JSON depth before Pydantic can apply last-key-wins decoding. A duplicate is
 invalid even when its final occurrence matches the expected value and all
 projection/decision digests would otherwise match. This applies to projection,
-decision, native scope and private profile JSON entry points. Validation then
-uses the original JSON to preserve date/tuple parsing, Unicode and exact version
-tokens. Errors are content-free. Historical `EvidenceModel` parsing and existing
+decision, native scope and private profile JSON entry points. Both passes consume the same immutable JSON: exact built-in `str`/`bytes`, or
+one snapshot of built-in `bytearray`. Input subclasses are unsupported. JSON-mode
+validation preserves date/tuple parsing, Unicode and exact version tokens. Errors are content-free. Historical `EvidenceModel` parsing and existing
 serialized representations/identities remain unchanged.

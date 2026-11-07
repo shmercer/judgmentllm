@@ -1058,3 +1058,76 @@ def test_strict_json_preflight_failures_use_safe_native_validation_errors(
     diagnostic = str(error.value) + repr(error.value.errors()) + error.value.json()
     assert "private-canary" not in diagnostic
     assert error.value.errors()[0]["type"] == "evidence_invalid"
+
+
+def test_duplicate_json_cannot_be_hidden_by_bytearray_subclass_conversion() -> None:
+    record = scope().model_dump(mode="json")
+    valid = scope().model_dump_json().encode("utf-8")
+    duplicate = duplicate_json_member(record, (), "provider", "private-buffer-canary")
+    converted = False
+
+    class ReplacedBytes(bytearray):
+        def __bytes__(self) -> bytes:
+            nonlocal converted
+            converted = True
+            return valid
+
+    with pytest.raises(ValidationError) as error:
+        NativeProjectionScopeV1.model_validate_json(
+            ReplacedBytes(duplicate.encode("utf-8"))
+        )
+    assert not converted
+    assert "private-buffer-canary" not in str(error.value)
+    assert "provider" not in error.value.json()
+
+
+def test_bytearray_json_uses_same_entry_snapshot_after_original_buffer_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import judgmentllm.native_schema as native_schema
+
+    expected = scope()
+    initial = expected.model_dump_json().encode("utf-8")
+    original_buffer = bytearray(initial)
+    mutated_record = expected.model_dump(mode="json")
+    mutated_record["provider"] = "other"
+    mutated = duplicate_json_member(
+        mutated_record, (), "provider", "private-buffer-canary"
+    ).encode("utf-8")
+    strict_decode = native_schema.decode_assessment_output
+    seen: list[str | bytes] = []
+
+    def mutate_after_preflight(raw: str | bytes) -> object:
+        assert type(raw) is bytes
+        seen.append(raw)
+        decoded = strict_decode(raw)
+        original_buffer[:] = mutated
+        return decoded
+
+    monkeypatch.setattr(
+        native_schema, "decode_assessment_output", mutate_after_preflight
+    )
+    restored = NativeProjectionScopeV1.model_validate_json(original_buffer)
+    assert seen == [initial]
+    assert original_buffer == mutated
+    assert restored == expected
+
+
+@pytest.mark.parametrize("input_class", [str, bytes])
+def test_native_json_rejects_immutable_input_subclasses(
+    input_class: type[str] | type[bytes],
+) -> None:
+    if input_class is str:
+
+        class TextSubclass(str):
+            pass
+
+        raw: str | bytes = TextSubclass(scope().model_dump_json())
+    else:
+
+        class BytesSubclass(bytes):
+            pass
+
+        raw = BytesSubclass(scope().model_dump_json().encode("utf-8"))
+    with pytest.raises(ValidationError):
+        NativeProjectionScopeV1.model_validate_json(raw)

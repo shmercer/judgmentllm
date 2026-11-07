@@ -53,13 +53,19 @@ class NativeModel(EvidenceModel):
         cls, json_data: str | bytes | bytearray, **kwargs: Any
     ) -> Self:
         try:
-            # Pydantic has already discarded duplicate key pairs by the time a
-            # model validator runs. Check the complete original document first;
-            # then retain JSON mode for dates, tuples and exact version tokens.
-            decode_assessment_output(
-                bytes(json_data) if isinstance(json_data, bytearray) else json_data
-            )
-            return super().model_validate_json(json_data, **kwargs)
+            # Pydantic has discarded duplicate pairs before model validators run.
+            # Snapshot mutable input once and validate those same immutable bytes
+            # in both parsers. Exact types prevent subclass conversion overrides.
+            raw: str | bytes
+            if type(json_data) is bytearray:
+                raw = bytes(json_data)
+            elif type(json_data) in (str, bytes):
+                raw = cast(str | bytes, json_data)
+            else:
+                raise ValueError("unsupported JSON input type")
+            decode_assessment_output(raw)
+            # Preserve JSON mode for dates, tuples and exact version tokens.
+            return super().model_validate_json(raw, **kwargs)
         except Exception:
             pass
         raise _invalid_evidence() from None

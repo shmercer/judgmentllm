@@ -129,7 +129,9 @@ candidate projections are not persisted by any historical lifecycle operation.
 
 
 The native-record JSON boundary performs strict duplicate-key preflight over the
-entire original document, including nested objects and array members. Duplicate
+entire original document, including nested objects and array members. Mutable
+`bytearray` input is captured once so preflight and validation cannot consume
+different documents; input subclasses are rejected. Duplicate
 key names and values never enter error text or structured error details, even
 when the final value is legitimate. Fresh-process canary tests exercise this
 boundary under the same SDK/network/credential/filesystem admission guards.
