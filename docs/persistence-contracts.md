@@ -530,6 +530,12 @@ The companion embeds safe response-receipt metadata so recovery can repair a
 missing historical receipt after interruption without retrieving the provider.
 Exact matching replay verifies every immutable identity/digest; conflicting replay
 fails. Receipt/artifact verification also runs for completed observations.
+For an observation marked `response_retention="omitted"`, both the retained
+identity and embedded response receipt identify exactly zero bytes with the
+SHA-256 of empty bytes. Full capture retains the empty sentinel; minimal capture
+keeps its hash-only identity. Nonempty retained content cannot be labeled omitted.
+Definitive-failure evidence without an observation instead has no retained
+response identity or response receipt.
 
 Usage initial facts belong to physical submissions, including invoked definitive
 failures without an observation. An unaccepted attempt is not evidence of billing.
@@ -540,6 +546,12 @@ content digests and a global monotonic sequence. Selection at a high-water mark
 chooses the last revision; revisions and overlapping counters are never summed.
 Published revision receipts precede owned database insertion, permitting exact
 idempotent replay after interruption. No trait-level usage records are created.
+The initial row fixes `revision_id="initial"`, `revision_number=0`,
+`source="initial"` and `source_version=1`. Its `receipt_sha256` must equal the
+exact original companion receipt digest, as well as its usage JSON and digest
+matching that receipt. A foreign key to another registered artifact is
+insufficient. Submission/observation readers and public recovery of completed
+results verify these bindings before accepting the initial usage fact.
 
 Internal repository readers retrieve submission/observation evidence, iterate a
 run with bounded indexed keyset pages, return revision audit history and select

@@ -9,6 +9,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
+from sqlite3 import Row
 from typing import TYPE_CHECKING, Annotated, Literal, TypeVar, cast
 
 from pydantic import Field, field_validator, model_validator
@@ -140,6 +141,13 @@ class EvidenceReceipt(EvidenceModel):
                 or self.acknowledgment_sha256 is None
             ):
                 raise ValueError("observation evidence is incomplete")
+            if self.response_receipt.capture != self.capture:
+                raise ValueError("response receipt capture policy mismatch")
+            if self.response_retention == "omitted" and (
+                self.retained.byte_length != 0
+                or self.retained.sha256 != bytes_digest(b"")
+            ):
+                raise ValueError("omitted response requires an empty sentinel")
             if self.response_receipt_sha256 != bytes_digest(
                 canonical_bytes(self.response_receipt)
             ):
@@ -631,13 +639,24 @@ def _verify_committed_metadata(
     ):
         raise IntegrityError("committed reasoning evidence failed verification")
     initial = repository.connection.execute(
-        "SELECT usage_json,usage_sha256 FROM usage_revisions WHERE run_id=? AND submission_id=? AND revision_number=0",
+        "SELECT revision_id,revision_number,source,source_version,receipt_sha256,usage_json,usage_sha256 FROM usage_revisions WHERE run_id=? AND submission_id=? AND revision_number=0",
         (run_id, submission_id),
     ).fetchone()
+    if initial is None:
+        raise IntegrityError("committed initial usage failed verification")
+    _verify_initial_usage_row(initial, receipt)
+
+
+def _verify_initial_usage_row(row: Row, receipt: EvidenceReceipt) -> None:
+    """Bind revision zero's complete audit metadata to its immutable companion."""
     if (
-        initial is None
-        or canonical_bytes(receipt.usage).decode() != initial["usage_json"]
-        or evidence_digest(receipt.usage) != initial["usage_sha256"]
+        row["revision_id"] != "initial"
+        or row["revision_number"] != 0
+        or row["source"] != "initial"
+        or row["source_version"] != 1
+        or row["receipt_sha256"] != evidence_digest(receipt)
+        or row["usage_json"] != canonical_bytes(receipt.usage).decode()
+        or row["usage_sha256"] != evidence_digest(receipt.usage)
     ):
         raise IntegrityError("committed initial usage failed verification")
 
@@ -714,6 +733,8 @@ def usage_revision_history(
         if not rows:
             return
         for row in rows:
+            if row["revision_number"] == 0:
+                _verify_initial_usage_row(row, receipt)
             try:
                 usage = ProviderUsage.model_validate_json(row["usage_json"])
                 if (

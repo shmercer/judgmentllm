@@ -1010,5 +1010,11 @@ authorization or hashes raise content-free integrity failures. An omitted body
 uses the legacy response receipt's empty identity plus an explicit companion
 omission marker and a null result raw-response path. Safe metadata remains
 available even when results cannot be recovered without authoritative retrieval;
-missing bodies never authorize resubmission. No public reasoning reader or
-companion export is introduced in this phase.
+missing bodies never authorize resubmission. Observation receipts marked omitted
+must carry the zero-length, empty-byte SHA-256 sentinel under the matching
+full/minimal capture policy; invocation failures have no response identity.
+Initial usage readers also require the exact original companion-receipt digest
+and fixed initial revision identity/source fields. Rebinding that digest to a
+different existing registered artifact fails safely even when foreign keys are
+valid, including recovery of already committed results. No public reasoning
+reader or companion export is introduced in this phase.

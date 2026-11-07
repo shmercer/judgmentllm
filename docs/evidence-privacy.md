@@ -88,6 +88,10 @@ and never identifies that sentinel as the original provider body. Full capture
 may publish that empty artifact, which contains no response content. Routine
 result `raw_response_path` remains null for omitted content. Minimal capture
 publishes no response-body artifact, including no empty sentinel artifact.
+The companion validates the zero byte length and empty-byte SHA-256 directly;
+its retained identity equals the embedded response receipt identity and obeys the
+same capture policy. A nonempty body cannot be marked omitted. An invocation
+failure with no observation has no retained identity or response receipt.
 
 Unsafe output property names, unknown trait IDs and malformed emitted text cause
 body withholding when a safe structured derivative cannot be established. The
