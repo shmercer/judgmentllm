@@ -589,3 +589,14 @@ Historical `SchemaSelectionV2` and `OutputCommitmentV2` serialization remains
 text-only and sealed request identities are unchanged. Ordered native schema and
 format-fragment commitments will enter durable preparation deliberately in 4C3;
 no implicit migration or historical rewrite occurs in 4C1.
+
+
+## Phase 4C2 standalone persistence boundary
+
+Multi-provider V2 projections and transport decisions remain in-memory candidates.
+No registry, manifest, prepared request, receipt, source hash, recovery or export
+schema is changed. Historical text-only selections and sealed identities remain
+unchanged, including OpenAI V1 standalone records. Exact native/schema/configuration
+content must not enter minimal-capture evidence through these new contracts.
+Phase 4C3 owns deliberate immutable native rendering/preparation/recovery binding;
+no historical migration or rewrite is authorized here.

@@ -171,9 +171,13 @@ updates its tests and user documentation and passes applicable R acceptance.
      OpenAI Responses/Chat translations, explicit local-only constraints, exact
      ordered bytes/hashes, general schema-limit tests and synthetic scoped
      selection. Historical durable text-only execution remains unchanged.
-   - **4C2, deferred: other provider translators.** Extend the reviewed pure
-     projection boundary for Anthropic, Gemini Developer, Vertex, Together and
-     Ollama with exact endpoint/dialect fixtures.
+   - **4C2: multi-provider standalone translations.** Separate V2 contracts extend
+     the reviewed pure projection boundary for Anthropic, Gemini Developer,
+     Vertex, Together and local Ollama. Seven exact provider/route registrations
+     preserve all OpenAI V1 identities and distinguish represented constraints,
+     SDK retention, documented support and independent enforcement. Acceptance
+     requires the exact-head evidence described below; implementation alone
+     does not qualify a real model or activate durable execution.
    - **4C3, deferred: durable native selection and transport commitments.** Bind
      decisions and exact schema/format bytes into preparation, native-specific
      prompts and recovery without rewriting historical selections or sealed runs.
@@ -416,3 +420,33 @@ Native projection/selection fixtures are credential-free and network-free;
 no live-provider operation or real-model qualification is part of acceptance.
 Exact-head reports are retained outside synchronized folders, separate from
 implementation status. The development PR stays open and unmerged for review.
+
+
+### Phase 4C2 acceptance boundary
+
+V2 adds seven standalone reviewed schema mechanisms and separate projection and
+selection entry points. All OpenAI V1 code, 24 projection fixtures and historical
+serialization identities remain unchanged. The new corpus contains 112 exact
+projection records, 112 frozen positive synthetic native decisions, 64 default
+Google text decisions and six tiny Google converter baselines. Guarded probes
+cover all 112 assessment schemas without clients, credentials or provider calls.
+Together prompt repetition remains documented guidance for 4C3.
+
+Represented schema constraints, SDK retention, documented serving support and
+independently verified enforcement remain distinct; no real-model enforcement
+or live qualification is established. Complete local validation is mandatory.
+Unknown or incompatible capabilities follow the strict native/auto/text policy.
+
+Implementation acceptance requires targeted provider/privacy/historical tests,
+Ruff, strict Pyright, then all seven local exact-head configurations, 49 strict
+R/jsonlite gates, 70 resource measurements and five exact-head hosted jobs. SDK
+probes are mandatory in qualification even when core-only developer environments
+lack optional SDK extras. Keep the 90% branch-coverage gate only on Linux/3.11,
+other lanes without coverage, all existing memory/deadline limits, and genuine
+alpha2/alpha3 compatibility. Retained external reports establish qualification;
+this source document does not claim an unexecuted gate passed.
+
+Phase 4C3 owns immutable native prompts, preparation, transport commitments and
+recovery. Real adapters, Vertex ADC/authorization-key integration, companion
+exports and live qualification remain deferred. No historical run is migrated
+or rewritten, and normal execution remains text-only.

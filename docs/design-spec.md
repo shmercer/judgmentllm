@@ -271,3 +271,15 @@ qualify later design heads under the current seven-configuration local policy.
 Real providers remain later milestones.
 See the dated [Subphase 5 verification record](milestone-2-subphase-5-verification.md)
 and current [scale qualification record](milestone-2-subphase-6-verification.md).
+
+
+## Milestone 3 Phase 4C2 boundary
+
+Separate provider-neutral V2 projection/selection APIs cover the remaining
+provider-native schema routes without altering OpenAI Phase 4C1 V1 identities.
+Representation, SDK conversion retention, documented endpoint support and
+independently verified enforcement are distinct facts. No real serving enforcement
+or model qualification is established by this offline phase. Complete local
+assessment validation remains authoritative. See the [route evidence matrix](assessment-provider-evidence.md#phase-4c2-independent-multi-provider-projection-evidence).
+RunSpec execution, historical prompts and durable contracts remain text-only;
+4C3 integration, real adapters and Vertex authentication remain deferred.

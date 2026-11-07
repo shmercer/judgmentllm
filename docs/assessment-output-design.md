@@ -921,3 +921,34 @@ Phase 4C2 supplies other provider translators. Phase 4C3 binds selection and
 ordered representations into durable preparation, prompts and recovery. Actual
 provider submissions, authentication work, exports and live qualification remain
 in their assigned later phases.
+
+
+## Phase 4C2: separate V2 projection and selection boundary
+
+Provider-neutral V2 projections and decisions extend the standalone foundation
+for Anthropic Messages, Gemini Developer, Vertex Gemini, Together Chat and local
+Ollama Chat. The two Google schema interfaces have distinct registrations and
+identities for each provider. OpenAI V1 contracts and entry points remain frozen;
+there is no automatic conversion or unified dispatcher.
+
+All translations originate from the existing canonical schema generator and
+immutable assessment membership. The evidence envelope stays at version 1;
+projection and decision contracts independently use version 2. Records commit
+canonical, native, SDK configuration and converted format representations with
+separate exact ordered-byte digests, route/version scope, requested order,
+constraint coverage and bounded provenance. V2 verification regenerates the exact
+registered translation and never reselects a mechanism.
+
+Represented constraints, SDK retention, documented serving support and independently
+verified enforcement are separate facts. Phase 4C2 proves no real-model serving
+enforcement. Default selection profiles cannot select native for real models;
+positive decisions require private synthetic exact-scope profiles. Complete local
+validation is mandatory, and projection failure cannot change groups, categories,
+orientations or call counts. See the
+[provider/route evidence matrix](assessment-provider-evidence.md#phase-4c2-independent-multi-provider-projection-evidence).
+
+Phase 4C3 must freeze native-specific instructions, route selection, schema/format
+bytes and recovery commitments. Prompt-schema repetition policies recorded here
+are route-specific guidance for that work. This phase changes no historical
+prompt, durable manifest, prepared request, receipt, export or recovery behavior.
+Real adapters, Vertex authentication and live qualification remain deferred.

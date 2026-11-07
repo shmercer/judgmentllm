@@ -1049,3 +1049,44 @@ profiles without changing historical identities. See the
 [projection matrix](assessment-provider-evidence.md#phase-4c1-openai-projection-matrix).
 `SchemaSelectionV2` and `OutputCommitmentV2` remain text-only; native execution
 activation is deferred to 4C3 and subsequent adapter work.
+
+
+## Internal multi-provider native APIs (Phase 4C2)
+
+`judgmentllm.native_schema_v2` and `judgmentllm.native_selection_v2` provide separate
+internal standalone APIs: `project_native_schema_v2`,
+`resolve_native_transport_v2` and `verify_native_transport_decision_v2`.
+They accept existing assessment contracts, exact `NativeProjectionScopeV1` scope
+and an explicitly selected mechanism. Google schema routes cannot be selected
+implicitly or exchanged during verification. V1 OpenAI APIs retain their types,
+serialized bytes and identities; no automatic conversion is provided.
+
+The V2 projection commits the canonical schema, native schema, SDK configuration
+and converted format fragment separately. Route-owned wrappers accommodate
+Anthropic's unnamed format, Google's two interfaces, Together's named format and
+Ollama's schema-valued format. Constraint records distinguish represented content,
+SDK retention, documented endpoint support and independent enforcement. Exact
+schemas carry sensitive IDs/labels and remain excluded from representations and
+unrelated diagnostics.
+
+`native`, `auto`, strict `auto` and `text` retain their established policy meanings.
+The production catalog contains reviewed translator implementations but no positive
+real-model acceptance profiles. Caller-supplied `ScopedProviderEvidence` cannot
+supply trust. Synthetic profiles exercise supported decisions offline; live
+qualification remains unknown. Explicit text selection bypasses translation;
+verification checks the original frozen decision without fallback.
+
+These modules are not top-level public exports and are not imported by ordinary
+RunSpec rendering, preview, preparation, execution, recovery or persistence.
+No arbitrary provider schema/request JSON, SDK construction or credential lookup
+is introduced. Future 4C3 integration must commit exact prompts and payloads before
+submission. Together/Ollama schema repetition remains documented prompt guidance.
+
+V2 decisions also commit the supplied metadata-only scoped evidence digest.
+Verification compares this snapshot and the exact pinned projection/profile
+directly; it does not call the resolver or translate explicit text selections.
+Implementation safety budgets are distinct from provider claims: at most 256
+traits, 10,000 enum entries and 1,000,000 source string characters before
+expansion; each emitted fragment is at most 1,000,000 UTF-8 bytes, 32 generic JSON
+levels and 256 alternative branches. Excess produces a controlled failure without
+truncation. These limits confer no model acceptance.

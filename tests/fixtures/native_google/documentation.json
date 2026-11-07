@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "sdk_package": "google-genai",
+  "sdk_version": "2.34.0",
+  "recorded_on": "2026-11-07",
+  "source_files": {
+    "types.py": {
+      "url": "https://github.com/googleapis/python-genai/blob/v2.34.0/google/genai/types.py",
+      "sha256": "1a435d319fb2cd9da117ab962433c53783c3e5ab71851762574700ec975a5350"
+    },
+    "models.py": {
+      "url": "https://github.com/googleapis/python-genai/blob/v2.34.0/google/genai/models.py",
+      "sha256": "f78ac26c5e01ba8863ebedf10345ef4b48be6c3edd1c573f33d0ed964366116c"
+    },
+    "_transformers.py": {
+      "url": "https://github.com/googleapis/python-genai/blob/v2.34.0/google/genai/_transformers.py",
+      "sha256": "a7d84a3b0605f14bb43044063ee78852198da81f1c13e50fb02401ba91ff099a"
+    },
+    "_common.py": {
+      "url": "https://github.com/googleapis/python-genai/blob/v2.34.0/google/genai/_common.py",
+      "sha256": "8a45f980cfd1c4fcef967a5f5618490d611637bb7772fd42bdad0cb63050ba2a"
+    },
+    "_api_client.py": {
+      "url": "https://github.com/googleapis/python-genai/blob/v2.34.0/google/genai/_api_client.py",
+      "sha256": "b179b80a126a35c98b98aeefa701950304c38c8a1e117136a2270a0901fd93e4"
+    }
+  },
+  "references": [
+    "https://googleapis.github.io/python-genai/",
+    "https://ai.google.dev/gemini-api/docs/structured-output",
+    "https://docs.cloud.google.com/vertex-ai/generative-ai/docs/reference/rest/v1/Schema",
+    "https://docs.cloud.google.com/vertex-ai/generative-ai/docs/multimodal/control-generated-output"
+  ],
+  "scopes": {
+    "gemini": "v1beta",
+    "vertex": "v1beta1"
+  },
+  "facts": {
+    "schema_route": "response_schema emits responseSchema with SDK Schema field order, snake_case fields and uppercase types",
+    "json_schema_route": "response_json_schema emits responseJsonSchema preserving JSON Schema dictionary order and casing",
+    "mime": "application/json is required; routes are mutually exclusive",
+    "closure": "additionalProperties=false is representable and converter retained; response_schema serving-guide enforcement remains unestablished",
+    "local": "nonblank explanations, root tie relation, unique complete traits and joins remain mandatory local validation",
+    "acceptance": "SDK conversion is not model acceptance or independent enforcement",
+    "ordering": "propertyOrdering requests root and nested order; no observed model order evidence",
+    "limits": "implementation budgets are not provider compilation or model-specific limits",
+    "redirect": "Cloud documentation redirects do not change the vertex provider identity"
+  }
+}

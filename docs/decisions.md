@@ -213,3 +213,22 @@ requirement is introduced.
 - Reuse CLI envelope version 1 and extend the existing installed-CLI R gate.
   Require the established seven local lanes, 49 strict R executions and five
   hosted configurations on the final head. Auth verification remains deferred.
+
+
+## Phase 4C2: additive native V2 contracts
+
+Keep all OpenAI Phase 4C1 V1 APIs, records, bytes and identities unchanged. Add
+separate provider-neutral V2 projection and selection entry points rather than
+expanding OpenAI-specific literal types or regenerating golden fixtures. Reuse
+canonical schema generation/validation and detached source semantics. The evidence
+envelope remains version 1; projection and decision versions become 2 independently.
+No V1-to-V2 conversion or unified dispatcher is introduced.
+
+Use explicit reviewed provider/endpoint/mechanism registrations and separate
+Google schema-route identities. Keep exact native, SDK configuration and converted
+format bytes distinct. Representation or SDK retention cannot establish endpoint
+support or independently verified enforcement. Private synthetic profiles may
+exercise positive decisions, while real-model acceptance remains unknown.
+Prompt-schema repetition is route-specific documented guidance for 4C3, including
+Together; it does not change rendering in 4C2. Durable native activation remains
+a separate phase, preserving historical text-only execution.

@@ -533,3 +533,15 @@ verified contracts and must reject unsupported explanation requests.
 Assessment explanations are task content. Provider-exposed thinking or reasoning
 summaries are separate request/observation evidence, never substitutes for a
 required assessment explanation or instructions to reveal hidden reasoning.
+
+
+## Phase 4C2 prompt handoff
+
+The seven additional standalone native mechanisms preserve all six historical
+editable/rendered/schema snapshots. No native instructions are rendered in this
+phase. Each route records a prompt-schema policy for Phase 4C3; Together's schema
+inclusion is documented provider guidance, not an established universal API
+requirement. Local Ollama recommends schema repetition. Google's two interfaces
+remain distinct and Vertex's documented repetition guidance is separately scoped.
+Future integration must freeze the selected route and exact native/text instruction
+bytes without silently replacing custom prose or changing assessment calls.

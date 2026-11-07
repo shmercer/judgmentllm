@@ -1,0 +1,122 @@
+{
+  "responses/grouped_scores": {
+    "projection_json": "02c243fd1713a6318e4a0e8346865674b8891fab40241c2cf137a6131a1a8172",
+    "auto_json": "59d26e103b9bd7feb54a429bdae3f8736217e65c50531437611b72b40406eb44",
+    "text_json": "fb69d58de27c7b2a215f6775e113b65b2220dd99d58ce43186d7b12a1f7537d7"
+  },
+  "responses/grouped_together": {
+    "projection_json": "960cb32f8509723c1240bc626d34d84c84c9b9b42f7629376793d8f316b68c53",
+    "auto_json": "b3e8488b64902227e86b71770b422b3c1036785e159f43fe703e2f46f7de02f8",
+    "text_json": "84294c762a877ea673a3cb59efde94ccfadc0c7f4fa089b6b5950d99859dd25b"
+  },
+  "responses/grouped_scores_first": {
+    "projection_json": "8efc8e52b535f3a7a5705d5486ca58dc7d97fc26199b909824eedafedd71079d",
+    "auto_json": "e87179e8279727853bf54b52261b6c427163a2289758b5b8c6c5044de081f923",
+    "text_json": "ce9e9c6f6fe745ca0c05c0559454ea58c2515519efa380b164ae8ddbda994a73"
+  },
+  "responses/grouped_explanations_first": {
+    "projection_json": "6d5d20bcd1f244590826b5d33409c15892f371bd61fd2ff16ff05519eef1c3dd",
+    "auto_json": "aac0954091751969868934da68f1f198499ac544fc8b6337f45e8ad0900e8ce9",
+    "text_json": "c21f464eaa86d8b818ad8b6d71bb9b954826e605a82cb5c24a08097dd31e771b"
+  },
+  "responses/single_scores": {
+    "projection_json": "e22c537012fdc74823b6bd8f88cff09d1edd6be0f57a43219c1f641cac569e1d",
+    "auto_json": "e9f5dd791d2d09c7ab6d9bd8dddd33b08ca8537c70eeeacc8862287445b345ba",
+    "text_json": "5e9c5f5de69571fc7fa4c988023424dcff0a0cb751780904e47504d6ea49b720"
+  },
+  "responses/single_together": {
+    "projection_json": "f1ae8b2f072edac3908364eed9ceb9f8c37e5e31c509c15ea6a494f4380a2ff2",
+    "auto_json": "5f2576239939b3108f8062fb2bd61a35ba9b0b74890467e107cf63a1a152cbb6",
+    "text_json": "f9ed4f327d69892a01230bb8a0657df7358114fc8f0bf37d43381ec4ab6f0fd8"
+  },
+  "responses/single_scores_first": {
+    "projection_json": "62278f6f7d037b34cc67dfe669480e6bf8fd70f9fa671b06f89505fcafa42384",
+    "auto_json": "b02c1472f9bf877950f5ed4b53cc38107e9342e5d9c416f2f1b7990cb8d93081",
+    "text_json": "403c197c8dfbfd2cf4c66c16535607d27da88dbeccc6e085a9309d409499acf7"
+  },
+  "responses/single_explanations_first": {
+    "projection_json": "4a2d7a1d52108c8a72eb4391bc9e06adf467da5f34e9a72058d87b74fd7a13a5",
+    "auto_json": "5b5cee19cf57f05c3647a4eec481cf59acd9c40918d4ea09d2e13269fe359094",
+    "text_json": "34b42b27d6c90b3593f77234d8d4689a45d5e63cffa9f4c67119270e4e1d4429"
+  },
+  "responses/pairwise_ties_False_explanations_False": {
+    "projection_json": "42ad879f1169a66547309339e66c8dc813ab176bdeb2467ea375c6eb7abca3a3",
+    "auto_json": "0be50522e82b2c9401a1eaa0d882ecab4ef2d247c2aae7b4ec2ec5248fcf25b6",
+    "text_json": "a61dac2045466180eda544096f7dba12d52d92a51619c11f8b09ee52c4286c05"
+  },
+  "responses/pairwise_ties_False_explanations_True": {
+    "projection_json": "75bc34ddb05f098efc940fe52db742bed1796cff1b1a366930d6aba862c978f7",
+    "auto_json": "ed1ae860704177ac1a5d9924d0719b249ec7912ec1b08f3c059400d0f10bd3f9",
+    "text_json": "e46ed6e2783068d4c6d5cdea4a90e95e6e5f222c4c6f7abab52d047e512a103d"
+  },
+  "responses/pairwise_ties_True_explanations_False": {
+    "projection_json": "489531d569513ab6d197d8233a7e0c4929b722ca8fb1c97ee6f075be028ad14e",
+    "auto_json": "cc9bcb50e94ded04981943261e34445364f13f51b6c578f37d4bf9b7ab52a472",
+    "text_json": "14c43114f8a0160fca2962371cd5e3a52082e74fc81f8e5960c2cbd92304acbe"
+  },
+  "responses/pairwise_ties_True_explanations_True": {
+    "projection_json": "6548856a3148a094dd4b241b7eef71b94569df1679f5ba5e1b89320f173cdc48",
+    "auto_json": "d0d439c2da64b765ed0961038ec0ca1164530a66d2c1a57acc4750ea3db4d072",
+    "text_json": "a92dd284cc43c0e5f6a029b1780ca2cc9de8413fde97aab95a99e39555e9b3ff"
+  },
+  "chat.completions/grouped_scores": {
+    "projection_json": "c4b84d90cffb4fa2c4739e4fd9a953e5ea3a654abc5ebf30e9ff3b3f12a3d2de",
+    "auto_json": "541b041570a755a22838f459170085e2feb96c018ac22fdfb44cce1d0b6fa2a3",
+    "text_json": "7987bd11bad82e1fdbbb0ebbaac850f63327fb4d6cdd2f98c68da50b79985557"
+  },
+  "chat.completions/grouped_together": {
+    "projection_json": "0e5053a01e33790322215cfdf3609c93fc5f45d234c8c28abadacbda3843071d",
+    "auto_json": "a4316521fc1cafbbddaa293d35bd01b9669957d77d530215bb62b27ad213bb2f",
+    "text_json": "7dc5e7b2689130f65bf6227977896453dbd9a4e0bfe5439c8247fa20b2a7e1aa"
+  },
+  "chat.completions/grouped_scores_first": {
+    "projection_json": "cee455eac1bac25e4c8627b675a25f9f213594e97b1a9025bcbea41c4d307818",
+    "auto_json": "2a8c22eef48e98c167657163c524c8f9f0debfbffb50c17bbb16a3cb521e06f7",
+    "text_json": "bda6d9e7d434ac0b78584a3a835cb723d1136fb15b6769f67ce9ea700d035f31"
+  },
+  "chat.completions/grouped_explanations_first": {
+    "projection_json": "1db87a4be60b894f35a446df995197957b63e3c6fd70c0fff8a1b2bfbaa395f9",
+    "auto_json": "a189dcff6709c0ddf045db4c58012380dcb6950dbee0846480e937482aae9700",
+    "text_json": "01597321ac9513050d0b416d9372b52595fc4cb2aadd636e4891a1db118b1385"
+  },
+  "chat.completions/single_scores": {
+    "projection_json": "bd0918bd0e25bdc9dfddeb97beb2a272ce86695ce68fb1a2c878dd58c729d2d3",
+    "auto_json": "57e4725bb39ca67af2de05436656da35bf5da0b629982334bca5f0267ab8ed41",
+    "text_json": "e091405382abe81103bb88063b9c7b6d25bd60b267edf20eb8f1f7d1ff703f9a"
+  },
+  "chat.completions/single_together": {
+    "projection_json": "5fae167d91027fd3e668ae23cf65224629b3ddfe2839e03c9c9134517bd2b961",
+    "auto_json": "71a5f20b53bb8305d01681dc6114c129876c227391dad7412f918dd4497592aa",
+    "text_json": "bb60776c052b8012a1811719cbdf2c3b5c366881b95ac987806da4ebd3040b7b"
+  },
+  "chat.completions/single_scores_first": {
+    "projection_json": "6301fc03273edb2f8a6bd15d0dbb49bc7ab9159ab1a3e72ebac6e63f565b0c03",
+    "auto_json": "5f14252a181dc480f151e29919d94492ae6ecce7c01dcfaa005bb7070b042d41",
+    "text_json": "90881c8d908be29efae81ebe2fe15b567f49ac639c8f3b80d82d6399df51f887"
+  },
+  "chat.completions/single_explanations_first": {
+    "projection_json": "69d8ec177131b36b1dfbd2c0536c367bb6a9daa421884d88301a7fb9786946be",
+    "auto_json": "65d55d20b124bfbf898a07aa9ca3b78bb009154426e77ad4fa8422e35f8c4d1b",
+    "text_json": "f2071befe7bdca9d9fad0ae1316acadd420c9695223ddb2839efcda59cfd221a"
+  },
+  "chat.completions/pairwise_ties_False_explanations_False": {
+    "projection_json": "867799c20cd6fd1fc5560cf4e3719f6e25b48af5e7ac005d99515f82afe909b4",
+    "auto_json": "91814bf387a9c680206eb2529e28aa3afe7e2f74bec828da6a9492a63d14e0ee",
+    "text_json": "d36e2724b711342de97a81250d0695d6677692879315034641499cae4cdb2c29"
+  },
+  "chat.completions/pairwise_ties_False_explanations_True": {
+    "projection_json": "e27e253cf5500627bde84e39746def8433bee3efb0aa68a492af6c6c4500d449",
+    "auto_json": "0e079fa094d132a6e1dc233aa68e7d973fb1abb7a16f0316ecedf056aa8e1a31",
+    "text_json": "439221c20779999c76dbc0c20a0d461b69391c1b98ee65cd79398a7c6fce86c2"
+  },
+  "chat.completions/pairwise_ties_True_explanations_False": {
+    "projection_json": "4d0233ad48c9c3c8a35e1c633ea5189f0e91dcb605c63a441fd66703ec74a647",
+    "auto_json": "001f792ea32d5e31b426ce1216a92a578b299e792ad5830d5db5ba654891107b",
+    "text_json": "678ea31a1f46e0315736d04165f174e747913524e522d8750419d340cd21412c"
+  },
+  "chat.completions/pairwise_ties_True_explanations_True": {
+    "projection_json": "d4932851dfde6209c27895ec5e0ab7921e3a8ff01c0913525440fcd2e1ec7fea",
+    "auto_json": "355bbf9b206df85db9925ff61f10e09817676e1f7316c423b40543bbaa2ea306",
+    "text_json": "97b8d55c0a79dfb44db76c4a842bed6f8027f4c9c05c8ab7e156fd19c2f9908c"
+  }
+}

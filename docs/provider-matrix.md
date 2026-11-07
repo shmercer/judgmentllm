@@ -101,3 +101,16 @@ Unknown capabilities remain unknown, not false and not true. Avoid hardcoded all
 - Ollama local: https://github.com/ollama/ollama/blob/main/docs/api/introduction.mdx
 - Together provider documentation: https://docs.together.ai/
 - Together SDK v3 release notes: https://github.com/togethercomputer/together-py/releases/tag/v3.0.0
+
+
+### Phase 4C2 standalone translators
+
+Seven independently identified V2 mechanisms cover Anthropic Messages, Gemini
+Developer `response_schema` and `response_json_schema`, Vertex's two corresponding
+interfaces, Together Chat and ordinary local Ollama Chat. These are pure candidate
+projections, not executable adapters. The [detailed route matrix](assessment-provider-evidence.md#phase-4c2-independent-multi-provider-projection-evidence)
+records pinned SDK/API scopes, represented constraints, converter retention,
+documented endpoint support, local checks and unknown model/serving enforcement.
+No real model is accepted or live-qualified. OpenAI V1 projection/selection APIs
+and identities remain unchanged. Property ordering is requested, not observed.
+Prompt-schema guidance awaits 4C3; provider calls/authentication await later work.

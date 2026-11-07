@@ -136,3 +136,32 @@ key names and values never enter error text or structured error details, even
 when the final value is legitimate. Fresh-process canary tests exercise this
 boundary under the same SDK/network/credential/filesystem admission guards.
 The shared historical evidence JSON boundary is unchanged.
+
+
+## Phase 4C2 multi-provider projection privacy
+
+V2 extends the unchanged native duplicate-safe immutable JSON boundary. Schemas
+contain exact IDs/category labels but no student response text, trait descriptions,
+credential material or SDK-generated descriptions. Content-bearing fields stay
+out of representations and controlled diagnostics. Hashes/provenance must never
+identify credentials. Candidate schemas are not safe minimal-capture metadata.
+
+Representation, SDK retention, documentation and verified serving enforcement
+remain separate evidence dimensions. No positive real-model enforcement or live
+qualification is inferred from fixtures, installed SDKs or converters. Together
+and Ollama generic schema dictionaries establish no complete keyword-enforcement
+claim. Vertex Cloud Schema preserving closure establishes no serving enforcement.
+
+Fresh-process projection tests forbid SDK imports, credentials, network, mutation
+and subprocesses. Separate converter-only tests permit only the exact reviewed SDK
+paths under self-tested socket/DNS, client-construction, credential-file/environment,
+ADC/metadata/refresh, filesystem-write, subprocess and download guards. Ordinary
+Ollama package import is prohibited because it creates a default client. Tests
+send synthetic secret canaries by pipe and inspect errors, logs and scratch
+without exposing canaries in failure output.
+
+Anthropic's documented compiled-schema cache is separate from message retention
+and lasts up to 24 hours after last use. Exact schema identifiers/enum values can
+therefore be sensitive even when response text is absent. Google schema complexity,
+Together model eligibility and local Ollama daemon/model support remain scoped
+unknowns; schema transport does not authorize a provider call or content retention.

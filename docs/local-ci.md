@@ -430,3 +430,13 @@ commit that changes the revision being qualified. The execution report for
 review links that exact ledger, all six native results and any failures. The
 infrastructure branch remains unpublished until that review. No merge, release,
 or Subphase 5 work is authorized.
+
+## Phase 4C2 native SDK probe admission
+
+All local lanes and hosted jobs set
+`JUDGMENTLLM_REQUIRE_NATIVE_SDK_PROBES=1`. Missing pinned optional SDKs therefore
+fail their converter/static probe tests instead of skipping. Ordinary core-only
+developer environments may report explicit optional-dependency skips. The probes
+are credential-free and guarded; this flag authorizes no SDK client, inference
+request, daemon contact or model download. Existing matrices, coverage policy,
+R gates, resource thresholds and timeouts remain unchanged.
