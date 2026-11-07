@@ -126,3 +126,11 @@ guards detect prohibited operations. Secret canaries arrive by pipe, stay out of
 fixture files, and are suppressed from failed pytest diagnostics. Constructor,
 copying and structured validation failures remain content-free. Standalone
 candidate projections are not persisted by any historical lifecycle operation.
+
+
+The native-record JSON boundary performs strict duplicate-key preflight over the
+entire original document, including nested objects and array members. Duplicate
+key names and values never enter error text or structured error details, even
+when the final value is legitimate. Fresh-process canary tests exercise this
+boundary under the same SDK/network/credential/filesystem admission guards.
+The shared historical evidence JSON boundary is unchanged.

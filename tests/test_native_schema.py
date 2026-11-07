@@ -895,3 +895,166 @@ def test_pairwise_large_winner_ids_are_rejected_before_canonical_expansion(
     with pytest.raises(NativeProjectionError) as error:
         project_openai_schema(contract, scope=scope())
     assert error.value.diagnostic.limit == "string_characters"
+
+
+def duplicate_json_member(
+    record: dict[str, Any], path: tuple[str | int, ...], key: str, first: object
+) -> str:
+    """Insert a duplicate while preserving the original member as the last value."""
+    target: Any = record
+    for component in path:
+        target = target[component]
+    target_text = json.dumps(target, ensure_ascii=False, separators=(",", ":"))
+    duplicate = (
+        "{"
+        + json.dumps(key, ensure_ascii=False)
+        + ":"
+        + json.dumps(first, ensure_ascii=False, separators=(",", ":"))
+        + ","
+        + target_text[1:]
+    )
+    document = json.dumps(record, ensure_ascii=False, separators=(",", ":"))
+    assert target_text in document
+    raw = document.replace(target_text, duplicate, 1)
+    # Last-key-wins decoding would reproduce every original value and hash.
+    assert json.loads(raw) == record
+    return raw
+
+
+@pytest.mark.parametrize(
+    ("path", "key"),
+    [
+        ((), "projection_version"),
+        ((), "native_schema_sha256"),
+        ((), "projection_sha256"),
+        (("scope",), "provider"),
+        (("scope",), "endpoint"),
+        (("scope",), "model"),
+        (("scope",), "model_scope"),
+        (("scope",), "sdk_package"),
+        (("scope",), "sdk_version"),
+        (("scope",), "api_version"),
+        (("source",), "contract_version"),
+        (("source", "traits", 0), "trait_id"),
+        (("source", "traits", 0), "category_labels"),
+        (("member_properties", 0), "trait_id"),
+        (("native_constraints", 0), "constraint"),
+        (("provenance", 0), "source_sha256"),
+    ],
+)
+@pytest.mark.parametrize("identical", [False, True])
+@pytest.mark.parametrize("input_type", [str, bytes, bytearray])
+def test_projection_json_rejects_duplicate_members_before_pair_evidence_is_lost(
+    path: tuple[str | int, ...],
+    key: str,
+    identical: bool,
+    input_type: type[str] | type[bytes] | type[bytearray],
+) -> None:
+    projection = project_openai_schema(
+        rubric("scores_first", explanations=True), scope=scope()
+    )
+    record = projection.model_dump(mode="json")
+    target: Any = record
+    for component in path:
+        target = target[component]
+    first = target[key] if identical else "private-duplicate-key-canary"
+    raw = duplicate_json_member(record, path, key, first)
+    data = raw if input_type is str else input_type(raw.encode("utf-8"))
+    with pytest.raises(ValidationError) as error:
+        NativeSchemaProjectionV1.model_validate_json(data)
+    diagnostic = str(error.value) + repr(error.value.errors()) + error.value.json()
+    assert "private-duplicate-key-canary" not in diagnostic
+    assert key not in diagnostic
+    assert error.value.errors()[0]["type"] == "evidence_invalid"
+
+
+@pytest.mark.parametrize(
+    "key",
+    [
+        "provider",
+        "endpoint",
+        "model",
+        "model_scope",
+        "sdk_package",
+        "sdk_version",
+        "api_version",
+    ],
+)
+@pytest.mark.parametrize("identical", [False, True])
+def test_native_scope_json_rejects_direct_duplicate_identity_fields(
+    key: str, identical: bool
+) -> None:
+    record = scope().model_dump(mode="json")
+    raw = duplicate_json_member(
+        record, (), key, record[key] if identical else "private-scope-canary"
+    )
+    with pytest.raises(ValidationError) as error:
+        NativeProjectionScopeV1.model_validate_json(raw)
+    assert "private-scope-canary" not in str(error.value)
+    assert key not in error.value.json()
+
+
+@pytest.mark.parametrize("input_type", [str, bytes, bytearray])
+def test_duplicate_safe_json_roundtrips_preserve_unicode_dates_tuples_and_identity(
+    input_type: type[str] | type[bytes] | type[bytearray],
+) -> None:
+    projection = project_openai_schema(
+        rubric("explanations_first", explanations=True), scope=scope()
+    )
+    raw = projection.model_dump_json()
+    data = raw if input_type is str else input_type(raw.encode("utf-8"))
+    restored = NativeSchemaProjectionV1.model_validate_json(data)
+    assert restored == projection
+    assert restored.projection_sha256 == projection.projection_sha256
+    assert restored.provenance[0].recorded_on.isoformat() == "2026-11-07"
+    assert isinstance(restored.root_properties, tuple)
+    assert restored.native_schema_text == projection.native_schema_text
+    assert "é" in restored.native_schema_text
+    assert isinstance(restored.source, NativeRubricSourceV1)
+    assert restored.source.traits[1].category_labels == tuple(
+        level.label for level in traits()[1].levels
+    )
+
+
+def test_duplicate_preflight_precedes_pydantic_and_matches_escaped_key_names(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from judgmentllm.evidence._base import EvidenceModel
+
+    called = False
+
+    def forbidden(
+        cls: type[EvidenceModel], raw: str | bytes | bytearray, **kwargs: Any
+    ) -> EvidenceModel:
+        nonlocal called
+        called = True
+        raise AssertionError("Pydantic must not see a duplicate-key document")
+
+    monkeypatch.setattr(EvidenceModel, "model_validate_json", classmethod(forbidden))
+    # The decoded keys are identical despite distinct spellings in the source.
+    raw = r'{"\u0070rovider":"private-escaped-canary","provider":"openai","endpoint":"responses"}'
+    with pytest.raises(ValidationError) as error:
+        NativeProjectionScopeV1.model_validate_json(raw)
+    assert not called
+    assert "private-escaped-canary" not in str(error.value)
+    assert "provider" not in error.value.json()
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        '{"private-canary":NaN}',
+        '{"private-canary":1e9999}',
+        '{"private-canary":',
+        b"\xff",
+        bytearray(b'{"private-canary":Infinity}'),
+    ],
+)
+def test_strict_json_preflight_failures_use_safe_native_validation_errors(
+    raw: str | bytes | bytearray,
+) -> None:
+    with pytest.raises(ValidationError) as error:
+        NativeProjectionScopeV1.model_validate_json(raw)
+    diagnostic = str(error.value) + repr(error.value.errors()) + error.value.json()
+    assert "private-canary" not in diagnostic
+    assert error.value.errors()[0]["type"] == "evidence_invalid"

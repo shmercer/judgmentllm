@@ -504,3 +504,13 @@ documents the conservative subset and general schema limits. Every accepted
 assessment still passes the complete existing canonical validators. No new
 user-authored JSON-schema parameter, arbitrary payload setting, result column,
 R export or persistence migration is introduced. Durable integration is 4C3.
+
+
+Native-record `model_validate_json()` rejects duplicate object keys at every
+JSON depth before Pydantic can apply last-key-wins decoding. A duplicate is
+invalid even when its final occurrence matches the expected value and all
+projection/decision digests would otherwise match. This applies to projection,
+decision, native scope and private profile JSON entry points. Validation then
+uses the original JSON to preserve date/tuple parsing, Unicode and exact version
+tokens. Errors are content-free. Historical `EvidenceModel` parsing and existing
+serialized representations/identities remain unchanged.

@@ -734,3 +734,140 @@ def test_mutated_output_order_cannot_escape_into_diagnostics() -> None:
             + failure.value.diagnostic.model_dump_json(),
             (secret,),
         )
+
+
+def _duplicated_member_json(
+    values: dict[str, Any], path: tuple[str, ...], first: object = "discarded"
+) -> str:
+    """Keep the committed value last so ordinary JSON parsing loses the attack."""
+    target = path[0]
+    members: list[str] = []
+    for key, value in values.items():
+        name = json.dumps(key)
+        if key == target and len(path) == 1:
+            members.append(name + ":" + json.dumps(first))
+        if key == target and len(path) > 1:
+            encoded = _duplicated_member_json(value, path[1:], first)
+        else:
+            encoded = json.dumps(value)
+        members.append(name + ":" + encoded)
+    return "{" + ",".join(members) + "}"
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ("schema_version",),
+        ("policy",),
+        ("strict_capabilities",),
+        ("mechanism",),
+        ("schema_dialect",),
+        ("native_support",),
+        ("model_support",),
+        ("source_schema_sha256",),
+        ("source_sha256",),
+        ("implementation_version",),
+        ("documentation_sha256",),
+        ("fixture_sha256",),
+        ("projection_sha256",),
+        ("decision_sha256",),
+        ("local_validation_required",),
+        ("scope", "schema_version"),
+        ("scope", "provider"),
+        ("scope", "endpoint"),
+        ("scope", "model"),
+        ("scope", "model_scope"),
+        ("scope", "sdk_package"),
+        ("scope", "sdk_version"),
+        ("scope", "api_version"),
+        ("diagnostic", "reason"),
+        ("diagnostic", "native_support"),
+    ],
+)
+def test_decision_rejects_duplicate_json_members_before_last_value_wins(
+    path: tuple[str, ...],
+) -> None:
+    values = resolve().model_dump(mode="json")
+    raw = _duplicated_member_json(values, path)
+    assert json.loads(raw) == values
+    with pytest.raises(ValidationError):
+        selection.TransportDecisionV1.model_validate_json(raw)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ("schema_version",),
+        ("mechanism",),
+        ("schema_dialect",),
+        ("implementation_version",),
+        ("features",),
+        ("documentation_sha256",),
+        ("fixture_sha256",),
+        ("scope", "schema_version"),
+        ("scope", "provider"),
+        ("scope", "endpoint"),
+        ("scope", "model"),
+        ("scope", "model_scope"),
+        ("scope", "sdk_package"),
+        ("scope", "sdk_version"),
+        ("scope", "api_version"),
+    ],
+)
+def test_trusted_fixture_profile_rejects_duplicate_json_members(
+    path: tuple[str, ...],
+) -> None:
+    values = profile(scope()).model_dump(mode="json")
+    raw = _duplicated_member_json(values, path)
+    assert json.loads(raw) == values
+    with pytest.raises(ValidationError):
+        selection._FixtureProfile.model_validate_json(raw)
+
+
+@pytest.mark.parametrize("kind", ["decision", "profile"])
+@pytest.mark.parametrize("encoding", ["str", "bytes", "bytearray"])
+def test_duplicate_safe_json_keeps_valid_selection_identity_and_input_types(
+    kind: str,
+    encoding: str,
+) -> None:
+    record = resolve() if kind == "decision" else profile(scope())
+    raw = record.model_dump_json()
+    valid = (
+        raw
+        if encoding == "str"
+        else raw.encode("utf-8")
+        if encoding == "bytes"
+        else bytearray(raw, "utf-8")
+    )
+    assert type(record).model_validate_json(valid) == record
+    duplicated = _duplicated_member_json(
+        record.model_dump(mode="json"), ("scope", "model")
+    )
+    invalid = (
+        duplicated
+        if encoding == "str"
+        else duplicated.encode("utf-8")
+        if encoding == "bytes"
+        else bytearray(duplicated, "utf-8")
+    )
+    with pytest.raises(ValidationError):
+        type(record).model_validate_json(invalid)
+
+
+@pytest.mark.parametrize("kind", ["decision", "profile"])
+@private_failure
+def test_duplicate_json_errors_never_echo_secret_keys_or_values(kind: str) -> None:
+    secret = "synthetic-private-duplicate-json-canary"
+    record = resolve() if kind == "decision" else profile(scope())
+    values = record.model_dump(mode="json")
+    invalid = _duplicated_member_json(values, ("scope", "model"), secret)
+    unknown_key = "unknown-" + secret
+    unknown = dict(values)
+    unknown[unknown_key] = secret
+    for raw in (invalid, _duplicated_member_json(unknown, (unknown_key,), secret)):
+        with pytest.raises(ValidationError) as failure:
+            type(record).model_validate_json(raw)
+        error = failure.value
+        exclude_secrets(
+            str(error) + repr(error) + repr(error.errors()) + error.json(), (secret,)
+        )

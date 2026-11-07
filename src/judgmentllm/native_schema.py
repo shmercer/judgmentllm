@@ -8,11 +8,14 @@ from __future__ import annotations
 
 import warnings
 from hashlib import sha256
-from typing import Literal, Self, TypeAlias, cast
+from typing import Any, Literal, Self, TypeAlias, cast
 
 from pydantic import Field, ModelWrapValidatorHandler, model_validator
 
-from judgmentllm.evidence._base import EvidenceModel
+from judgmentllm.evidence._base import (
+    EvidenceModel,
+    _invalid_evidence,  # pyright: ignore[reportPrivateUsage]
+)
 from judgmentllm.evidence.scope import EvidenceProvenance, VersionIdentifier
 from judgmentllm.models import ID, Level, PairTask, Trait
 from judgmentllm.output_commitments import ordered_json_bytes
@@ -21,6 +24,7 @@ from judgmentllm.output_contracts import (
     OutputOrder,
     PairwiseOutputContract,
     RubricOutputContract,
+    decode_assessment_output,
     serialize_output_schema,
 )
 from judgmentllm.persistence.hashing import canonical_bytes
@@ -42,7 +46,23 @@ SchemaLimit: TypeAlias = Literal[
 
 
 class NativeModel(EvidenceModel):
-    """Reject JSON literal coercion before EvidenceModel adapts JSON fields."""
+    """Reject duplicate JSON keys and literal coercion before model adaptation."""
+
+    @classmethod
+    def model_validate_json(
+        cls, json_data: str | bytes | bytearray, **kwargs: Any
+    ) -> Self:
+        try:
+            # Pydantic has already discarded duplicate key pairs by the time a
+            # model validator runs. Check the complete original document first;
+            # then retain JSON mode for dates, tuples and exact version tokens.
+            decode_assessment_output(
+                bytes(json_data) if isinstance(json_data, bytearray) else json_data
+            )
+            return super().model_validate_json(json_data, **kwargs)
+        except Exception:
+            pass
+        raise _invalid_evidence() from None
 
     @model_validator(mode="wrap")
     @classmethod

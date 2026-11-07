@@ -74,7 +74,7 @@ with warnings.catch_warnings(record=True) as observed:
         NativeProjectionScopeV1, NativeSchemaProjectionV1,
     )
     from judgmentllm.providers.openai_schema import project_openai_schema
-    from judgmentllm.native_selection import resolve_native_transport
+    from judgmentllm.native_selection import TransportDecisionV1, resolve_native_transport
 
     contract = RubricOutputContract(
         traits=(Trait(
@@ -107,6 +107,34 @@ with warnings.catch_warnings(record=True) as observed:
                 assert assessment not in str(error) + repr(error)
             else:
                 assert assessment not in repr(decision) + decision.model_dump_json()
+        projection_json = projection.model_dump_json()
+        scope_json = scope.model_dump_json()
+        text_decision = resolve_native_transport(contract, scope=scope, policy="text")
+        decision_json = text_decision.model_dump_json()
+        for model, raw in (
+            (NativeSchemaProjectionV1,
+             '{"schema_version":' + json.dumps(credential) + ',' + projection_json[1:]),
+            (NativeSchemaProjectionV1,
+             projection_json.replace('"scope":{',
+                 '"scope":{"model":' + json.dumps(credential) + ',', 1)),
+            (NativeProjectionScopeV1,
+             '{"model":' + json.dumps(assessment) + ',' + scope_json[1:]),
+            (TransportDecisionV1,
+             '{"native_support":' + json.dumps(credential) + ',' + decision_json[1:]),
+            (NativeSchemaProjectionV1,
+             '{' + json.dumps(assessment) + ':' + json.dumps(credential) + ','
+             + json.dumps(assessment) + ':' + json.dumps(credential) + ','
+             + projection_json[1:]),
+        ):
+            try:
+                model.model_validate_json(raw)
+            except ValueError as error:
+                rendered = str(error) + repr(error)
+                if hasattr(error, "errors"):
+                    rendered += repr(error.errors()) + error.json()
+                assert credential not in rendered and assessment not in rendered
+            else:
+                raise AssertionError("Duplicate native JSON accepted")
         bad_contract = contract.model_copy(update={"output_order": assessment})
         try:
             resolve_native_transport(bad_contract, scope=scope, policy="auto")
