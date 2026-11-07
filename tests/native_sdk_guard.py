@@ -101,7 +101,7 @@ class OfflineGuards:
         self.check("mkdir", lambda: Path("native-guard-mkdir-canary").mkdir())
         for key in sorted(_CREDENTIAL_KEYS):
             self.check("credential_environment", lambda key=key: os.environ.get(key))
-        if os.supports_bytes_environ:
+        if sys.platform != "win32" and os.supports_bytes_environ:
             self.check(
                 "credential_bytes_environment",
                 lambda: os.environb.get(b"ANTHROPIC_AUTH_TOKEN"),
