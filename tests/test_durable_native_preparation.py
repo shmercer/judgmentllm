@@ -713,3 +713,50 @@ async def test_rehashed_retry_lineage_is_checked_before_payload_reconstruction(
             prepared.prepare_transport_attempt(
                 subset, physical_identity("001", retry.request_uid, retry.attempt_id)
             )
+
+
+def test_preseal_input_pages_use_the_existing_source_ordered_index(
+    tmp_path: Path,
+) -> None:
+    from judgmentllm.preparation.native import _input_ids
+
+    config, context = native_specification(tmp_path / "inputs", "minimal")
+    with prepare_run(
+        config, store=tmp_path / "runtime", run_id="001", transport_context=context
+    ) as prepared:
+        source_id = next(
+            source.source_id
+            for source in prepared.manifest.sources
+            if source.role == "response"
+        )
+        statements: list[str] = []
+        connection = prepared.repository.connection
+        connection.set_trace_callback(statements.append)
+        try:
+            identifiers = tuple(
+                _input_ids(prepared.repository, "001", source_id, "response")
+            )
+        finally:
+            connection.set_trace_callback(None)
+        assert identifiers == ("001", "002")
+        pages = [
+            statement
+            for statement in statements
+            if statement.startswith("SELECT record_id,ordinal FROM input_records")
+        ]
+        assert len(pages) == 2  # First page and the terminal empty page.
+        for statement in pages:
+            plan = tuple(
+                str(row[3])
+                for row in connection.execute("EXPLAIN QUERY PLAN " + statement)
+            )
+            assert any(
+                "idx_input_records_ordered" in detail
+                and "source_id=?" in detail
+                and "ordinal>?" in detail
+                for detail in plan
+            ), plan
+            assert not any(
+                "TEMP B-TREE" in detail or "SCAN input_records" in detail
+                for detail in plan
+            ), plan

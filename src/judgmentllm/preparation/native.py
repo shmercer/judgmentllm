@@ -97,13 +97,17 @@ def publish_prepared_transport(
 
 
 def _input_ids(
-    repository: Repository, run_id: str, kind: Literal["response", "pair"]
+    repository: Repository,
+    run_id: str,
+    source_id: str,
+    kind: Literal["response", "pair"],
 ) -> Iterator[str]:
     after = -1
     while True:
         rows = repository.connection.execute(
-            "SELECT record_id,ordinal FROM input_records WHERE run_id=? AND record_kind=? AND ordinal>? ORDER BY ordinal LIMIT 128",
-            (run_id, kind, after),
+            "SELECT record_id,ordinal FROM input_records WHERE run_id=? "
+            "AND source_id=? AND record_kind=? AND ordinal>? ORDER BY ordinal LIMIT 128",
+            (run_id, source_id, kind, after),
         ).fetchall()
         if not rows:
             return
@@ -128,7 +132,10 @@ def preseal_transports(
     digest = InitialTransportDigest()
     task_ordinal = 0
     kind = "response" if spec.task_kind == "rubric" else "pair"
-    for record_id in _input_ids(repository, manifest.run_id, kind):
+    source_id = next(
+        source.source_id for source in manifest.sources if source.role == kind
+    )
+    for record_id in _input_ids(repository, manifest.run_id, source_id, kind):
         record = builder.lookup(kind, record_id)
         for planned in plan_record(
             spec, record, template_text=template, capabilities=manifest.capabilities
