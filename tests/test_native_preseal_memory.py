@@ -67,11 +67,13 @@ with responses.open("w", encoding="utf-8") as stream:
 context = context_for(MECHANISMS[0])
 started = time.perf_counter()
 tracemalloc.start()
-# CPython 3.11 interns parsed path components. Initialize its bounded global
-# metadata table while tracing, so later compaction frees and allocations are
-# both tracked. This fixed setup uses no request content or preparation.
+# CPython versions parse/intern path metadata differently. Force leaf parsing
+# and explicitly initialize the bounded intern table while tracing, so later
+# compaction frees and allocations are both tracked. No request content or
+# preparation is warmed by this fixed metadata-only setup.
 for startup_index in range(32768):
     startup_path = Path("/judgmentllm-resource-startup/objects") / f"{startup_index:064x}"
+    sys.intern(startup_path.name)
 del startup_path, startup_index
 baseline_current = tracemalloc.get_traced_memory()[0]
 tracemalloc.reset_peak()

@@ -462,7 +462,11 @@ compatibility stores and complete failed-attempt evidence.
 
 The native preparation memory fixture initializes only fixed, content-free
 interpreter path metadata while tracing, then records the baseline before any
-request preparation. This balances Python intern-table replacement allocations;
-it does not warm schemas, prompts or payloads. Retain both raw and incremental
-allocation measurements, the original raw memory bounds, both request counts and
-the subprocess deadline. Whole-process native memory includes the metadata setup.
+request preparation. Its fixed 32,768-name loop accesses each synthetic path's
+leaf name and explicitly interns it: newer CPython versions parse paths lazily
+or no longer intern components automatically. This makes the metadata setup
+consistent across the pinned interpreters and balances intern-table replacement
+allocations; it does not warm schemas, prompts or payloads. Retain both raw and
+incremental allocation measurements, the original raw memory bounds, both request
+counts and the subprocess deadline. Whole-process native memory includes the
+metadata setup.
