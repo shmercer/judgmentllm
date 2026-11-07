@@ -297,6 +297,241 @@ async def test_complete_seal_execute_reopen_recover(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("mechanism", MECHANISMS)
+@pytest.mark.parametrize("capture", ["full", "minimal"])
+async def test_auto_freezes_mixed_transports_for_group_and_single_remainder(
+    tmp_path: Path,
+    mechanism: str,
+    capture: Literal["full", "minimal"],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One run and its retry keep request-specific transport choices frozen."""
+    from judgmentllm.execution.retry import subset_dependency
+
+    source = specification(
+        tmp_path / "inputs",
+        mechanism,
+        capture=capture,
+        policy="auto",
+        traits=3,
+        explanations=False,
+        strict=False,
+    )
+    document = json.loads(source.read_text(encoding="utf-8"))
+    document["execution"]["groups"] = [["01", "02"], ["03"]]
+    source.write_text(json.dumps(document), encoding="utf-8")
+    spec = load_run_spec(source)
+    assert isinstance(spec, RunSpecV3)
+    context = context_for(mechanism)
+    if context.openai_catalog is not None:
+        context = replace(
+            context,
+            openai_catalog=replace(
+                context.openai_catalog,
+                profiles=tuple(
+                    profile.model_copy(
+                        update={
+                            "features": tuple(
+                                feature
+                                for feature in profile.features
+                                if feature != "rubric_grouped"
+                            )
+                        }
+                    )
+                    for profile in context.openai_catalog.profiles
+                ),
+            ),
+        )
+    else:
+        assert context.provider_catalog is not None
+        context = replace(
+            context,
+            provider_catalog=replace(
+                context.provider_catalog,
+                profiles=tuple(
+                    profile.model_copy(
+                        update={
+                            "features": tuple(
+                                feature
+                                for feature in profile.features
+                                if feature != "rubric_grouped"
+                            )
+                        }
+                    )
+                    for profile in context.provider_catalog.profiles
+                ),
+            ),
+        )
+    store = tmp_path / "runtime"
+    ledger = store / "synthetic-service.sqlite3"
+    scenario = MockScenario(
+        members={"02": MockMemberScenario(outcome="invalid_category")}
+    )
+    adapter = NativeFixtureAdapter(
+        ledger, mechanism, context=context, scenario=scenario, retry_valid=True
+    )
+    capabilities = adapter.capabilities(spec)
+    assert capabilities.grouped is True
+
+    def committed_attempts(prepared: Any) -> dict[str, bytes]:
+        return {
+            attempt.attempt_id: canonical_bytes(
+                {
+                    "request_uid": attempt.request_uid,
+                    "attempt_number": attempt.attempt_number,
+                    "task_ids": list(
+                        prepared.repository.attempt_task_ids("001", attempt.attempt_id)
+                    ),
+                    "membership_sha256": attempt.membership_sha256,
+                    "prompt_sha256": attempt.prompt_sha256,
+                    "payload_sha256": attempt.payload_sha256,
+                    "receipt": prepared.transport_for_attempt(attempt.attempt_id),
+                }
+            )
+            for attempt in prepared.repository.iter_attempts("001")
+        }
+
+    with prepare_run(
+        source,
+        store=store,
+        run_id="001",
+        capabilities=capabilities,
+        transport_context=adapter.transport_context,
+    ) as prepared:
+        assert prepared.manifest.schema_version == 3
+        dependencies = tuple(prepared.iter_request_dependencies())
+        assert tuple(d.request.trait_ids for d in dependencies) == (
+            ("01", "02"),
+            ("03",),
+        )
+        attempts = tuple(prepared.repository.iter_attempts("001"))
+        assert len(tuple(prepared.repository.iter_requests("001"))) == 2
+        assert len(attempts) == prepared.manifest.initial_transport_count == 2
+        assert prepared.repository.summary("001").tasks == 3
+        assert tuple(prepared.repository.iter_submissions("001")) == ()
+        receipts = tuple(prepared.transport_for_attempt(a.attempt_id) for a in attempts)
+        assert tuple(r.mechanism for r in receipts) == ("text", mechanism)
+        assert all(r.selection.policy == "auto" for r in receipts)
+        group_decision = (
+            receipts[0].selection.openai_decision
+            or receipts[0].selection.provider_decision
+        )
+        assert group_decision is not None
+        assert group_decision.native_support == "unknown"
+        assert group_decision.model_support == "supported"
+        assert group_decision.diagnostic.reason == "trusted_fixture_missing"
+        for dependency, attempt, receipt in zip(
+            dependencies, attempts, receipts, strict=True
+        ):
+            wire = prepared.prepare_transport_attempt(
+                dependency,
+                physical_identity("001", attempt.request_uid, attempt.attempt_id),
+                frozen=receipt,
+            )
+            assert wire.output_commitment.local_validation_required
+            assert (wire.output_commitment.projection is not None) == (
+                receipt.mechanism != "text"
+            )
+            assert bytes_digest(wire.payload) == attempt.payload_sha256
+        originals = committed_attempts(prepared)
+        group_request_uid = attempts[0].request_uid
+        parent_receipt = receipts[0]
+    initial = await execute_run("001", store=store, adapter=adapter)
+    assert initial.summary.tasks == initial.summary.results == 3
+    assert initial.summary.successful_results == 2
+    assert initial.summary.unsuccessful_results == 1
+    assert initial.summary.attempts == 2
+    assert adapter.submit_calls == adapter.ledger.acceptance_count() == 2
+    with ReadOnlyRepository(store) as repository:
+        initial_results = tuple(repository.iter_results("001"))
+        failed = next(
+            result for result in initial_results if result.status == "invalid"
+        )
+        assert isinstance(failed, RubricResult) and failed.trait_id == "02"
+        initial_outcomes = {
+            (result.task_id, result.attempt_id): canonical_bytes(result)
+            for result in initial_results
+        }
+    authorize_subset_retry(
+        "001",
+        store=store,
+        adapter=adapter,
+        spec=spec,
+        operation_id="mixed-text-subset",
+        task_ids=(failed.task_id,),
+    )
+    with reopen(adapter, store) as prepared:
+        assert prepared.manifest.schema_version == 3
+        retry = prepared.repository.get_attempt_for_request(
+            "001", group_request_uid, attempt_number=2
+        )
+        assert retry is not None
+        retry_members = prepared.repository.attempt_task_ids("001", retry.attempt_id)
+        assert retry_members == (failed.task_id,)
+        subset = subset_dependency(
+            prepared.dependency_for_request(group_request_uid), retry_members
+        )
+        # This exact subset qualifies natively as a new physical request. Its
+        # authorized retry must nevertheless retain the committed text family.
+        newly_eligible = build_output_commitment_v3(
+            spec, subset.request, adapter.transport_context
+        )
+        assert newly_eligible.selection.mechanism == mechanism
+        assert newly_eligible.projection is not None
+        child = prepared.transport_for_attempt(retry.attempt_id)
+        assert child.mechanism == "text"
+        assert child.selection.kind == "inherited-v1"
+        assert child.parent_commitment_sha256 == parent_receipt.commitment_sha256
+        assert child.neutral_schema_sha256 != parent_receipt.neutral_schema_sha256
+        assert child.prompt_sha256 != parent_receipt.prompt_sha256
+        assert child.payload_sha256 != parent_receipt.payload_sha256
+        after_authorization = committed_attempts(prepared)
+        assert len(after_authorization) == 3
+        assert all(
+            after_authorization[key] == value for key, value in originals.items()
+        )
+        assert prepared.manifest.initial_transport_count == 2
+
+    def forbidden(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("mixed committed transports must never reselect")
+
+    monkeypatch.setattr("judgmentllm.transport._resolve_native_transport", forbidden)
+    monkeypatch.setattr("judgmentllm.transport._resolve_native_transport_v2", forbidden)
+    report = await execute_run("001", store=store, adapter=adapter)
+    assert report.summary.tasks == report.summary.logical_completed_tasks == 3
+    assert report.summary.successful_results == 3
+    assert report.summary.results == 4 and report.summary.unsuccessful_results == 1
+    assert report.summary.attempts == 3
+    assert adapter.submit_calls == adapter.ledger.acceptance_count() == 3
+    with ReadOnlyRepository(store) as repository:
+        results = tuple(repository.iter_results("001"))
+        retained = {
+            (result.task_id, result.attempt_id): canonical_bytes(result)
+            for result in results
+        }
+        assert all(retained[key] == value for key, value in initial_outcomes.items())
+        complete = tuple(result for result in results if result.status == "complete")
+        assert len({result.task_id for result in complete}) == len(complete) == 3
+        assert all(
+            isinstance(result, RubricResult)
+            and result.category_label == PRIVATE_LABEL
+            and result.numeric_category_value == 1.0
+            for result in complete
+        )
+    fresh = NativeFixtureAdapter(
+        ledger, mechanism, context=context, scenario=scenario, retry_valid=True
+    )
+    recovered = await recover_run("001", store=store, adapter=fresh)
+    assert recovered.summary.successful_results == 3
+    assert recovered.summary.results == 4 and recovered.summary.attempts == 3
+    with reopen(fresh, store) as prepared:
+        assert committed_attempts(prepared) == after_authorization
+        assert len(tuple(prepared.repository.iter_requests("001"))) == 2
+    assert fresh.submit_calls == 0
+    assert fresh.ledger.acceptance_count() == adapter.ledger.acceptance_count() == 3
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("mechanism", MECHANISMS)
 @pytest.mark.parametrize("ties", [False, True])
 async def test_pair_orientation_and_ties(
     tmp_path: Path, mechanism: str, ties: bool

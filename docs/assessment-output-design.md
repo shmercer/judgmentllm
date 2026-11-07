@@ -1,8 +1,11 @@
 # Milestone 3 assessment outputs, provider evidence, and authentication
 
-**Status: Phases 1–3 and 4A/4B implement provider-neutral contracts, offline mock
-execution, credential diagnostics and durable synthetic evidence integration.
-Real-provider integrations and qualification remain deferred.** This authoritative Milestone 3 design
+**Status: Phases 1–3 and 4A/4B implement provider-neutral contracts, offline
+mock execution, credential diagnostics and durable synthetic evidence
+integration. Phase 4C3 completes offline durable native transport integration
+through private synthetic fixtures. Real-provider integrations and
+qualification remain deferred.**
+This authoritative Milestone 3 design
 was originally prepared on 2026-11-05. The working contracts are described in
 [data contracts](data-contracts.md), [persistence contracts](persistence-contracts.md)
 and the [Python API](python-api.md). The [six prompt examples](assessment-prompt-examples.md)
@@ -37,8 +40,11 @@ plus scoped evidence provenance. Every new record starts at `schema_version: 1`.
 Phase 4B invokes these services before response retention and persists safe
 metadata using registry schema 2 and separate version-1 companion receipts.
 Ordinary execution retains no provider reasoning; explicit immutable synthetic
-fixture grants can retain permitted text in protected artifacts. Phase 4C1 adds standalone native projections and selection decisions; no native
-execution, real adapter or live authentication is implemented. Requested visible ordering makes no claim about a model's internal
+fixture grants can retain permitted text in protected artifacts. Phase 4C1 adds
+standalone native projections and selection decisions; Phase 4C2 adds independent
+provider routes. Phase 4C3 connects these to durable preparation and recovery
+through private synthetic fixtures. No real provider adapter or live authentication
+is implemented. Requested visible ordering makes no claim about a model's internal
 reasoning; the standalone extractor reports only trustworthy emitted key order.
 The installed-CLI R gate exercises actual v2 runs and exports alongside the
 retained v1 fixtures. Exact-head local and hosted qualification remains required.
@@ -956,8 +962,9 @@ Real adapters, Vertex authentication and live qualification remain deferred.
 
 ## Phase 4C3 durable native integration
 
-This additive implementation is pending exact-head local and hosted qualification;
-it establishes no real-provider adapter or serving acceptance. Explicit RunSpec
+The additive offline implementation is complete. Exact-head local and hosted
+acceptance records are maintained separately in the external qualification ledger;
+this establishes no real-provider adapter or serving acceptance. Explicit RunSpec
 3 separates new transport intent from historical RunSpec 1/2. Manifest 3,
 OutputCommitment 3, renderer 3 and PreparedRequest 3 are independently versioned;
 TransportCommitment, TransportPlan and physical identity start at version 1.

@@ -178,9 +178,10 @@ updates its tests and user documentation and passes applicable R acceptance.
      SDK retention, documented support and independent enforcement. Acceptance
      requires the exact-head evidence described below; implementation alone
      does not qualify a real model or activate durable execution.
-   - **4C3, deferred: durable native selection and transport commitments.** Bind
-     decisions and exact schema/format bytes into preparation, native-specific
-     prompts and recovery without rewriting historical selections or sealed runs.
+   - **4C3, implemented offline: durable native selection and transport commitments.**
+     Decisions and exact schema/format bytes are bound into preparation,
+     native-specific prompts and recovery without rewriting historical selections
+     or sealed runs. Real provider adapters remain deferred to Phase 5.
    Version affected schemas independently; never migrate or rewrite historical
    runs implicitly. Companion exports remain Phase 6 below.
 5. **Generative adapters, one provider/endpoint family per PR.** Implement OpenAI
@@ -462,8 +463,10 @@ verifies the original selection and exact bytes; grouped retries inherit the
 original family and route with fresh subset-specific commitments. Historical
 V1/V2 serializations, identities, fixtures and lifecycle behavior remain frozen.
 
-Implementation status is **pending exact-head qualification**, not milestone
-acceptance. Required acceptance retains all nine synthetic routes, native/auto/text
+The **offline implementation is complete**. Exact-head local and hosted acceptance
+records are maintained separately in the external qualification ledger;
+implementation status does not establish milestone or real-provider acceptance.
+Required acceptance retains all nine synthetic routes, native/auto/text
 and strict capability matrices, full/minimal integrity/privacy/recovery, genuine
 alpha2/alpha3 compatibility, native Python-to-R checks, seven local configurations,
 49 existing strict R gates, 70 resource measurements, primary branch-aware coverage

@@ -16,18 +16,21 @@ their established contracts.
 
 Mock v2 uses complete textual schemas with strict local validation; its `auto`
 policy records text selection because native enforcement is unavailable. Phase
-4C1 adds standalone offline OpenAI schema projections and scoped decisions; durable
-native integration, real provider adapters, live authentication and live
-qualification remain later work. Phase 4A adds standalone strict version-1 provider
-evidence records and pure usage/order/reasoning extraction and authorization
-services. Phase 4B integrates these before response retention using registry schema
-2 and separate version-1 companion receipts; historical schema-1 stores remain
-unmigrated with unavailable evidence. Actual execution and recovery tests use only
-synthetic adapters, and implementation status does not establish qualification. See the
-[Python API](python-api.md) and [prompt examples](assessment-prompt-examples.md).
-Phase 3 implements a shared authentication registry and strictly offline
-`credential_status()` / `auth status`, without SDK construction or provider calls.
-Implementation status does not substitute for exact-head qualification evidence.
+4C1 adds standalone offline OpenAI schema projections and scoped decisions; 4C2
+adds independent provider routes. Phase 4C3 completes offline durable native
+integration through private synthetic fixtures. Real provider adapters, live
+authentication and serving qualification remain deferred. Phase 4A adds
+standalone strict version-1 provider evidence records and pure
+usage/order/reasoning extraction and authorization services. Phase 4B
+integrates these before response retention using registry schema 2 and separate
+version-1 companion receipts; historical schema-1 stores remain unmigrated with
+unavailable evidence. Actual execution and recovery tests use only synthetic
+adapters, and implementation status does not establish qualification. See the
+[Python API](python-api.md) and
+[prompt examples](assessment-prompt-examples.md). Phase 3 implements a shared
+authentication registry and strictly offline `credential_status()` / `auth status`, without SDK construction or
+provider calls. Implementation status does not substitute for exact-head
+qualification evidence.
 
 ## 1. Goals
 
@@ -286,15 +289,17 @@ RunSpec execution, historical prompts and durable contracts remain text-only;
 
 ## Phase 4C3 durable native transport boundary
 
-Explicit RunSpec 3, executable manifest 3, renderer/output/prepared-request 3 and
-separate transport commitment 1 connect native selection to existing immutable
-preparation and recovery. This is an offline implementation pending exact-head
-qualification; no real-provider execution or live acceptance is enabled. Historical
-V1/V2 configuration, prompt, manifest, payload and selection identities remain
-unchanged. Each physical request freezes its exact native/text decision and route
-before rendering, commits exact schema/configuration/format/prompt/final-payload
-representations, and enters the manifest's bounded initial-transport index before
-sealing. Reopening verifies original facts and bytes without auto reselection.
+Explicit RunSpec 3, executable manifest 3, renderer/output/prepared-request 3
+and separate transport commitment 1 connect native selection to existing
+immutable preparation and recovery. The offline implementation is complete.
+Exact-head local and hosted acceptance records are maintained separately in the
+external qualification ledger; no real-provider execution or live acceptance is
+enabled. Historical V1/V2 configuration, prompt, manifest, payload and
+selection identities remain unchanged. Each physical request freezes its exact
+native/text decision and route before rendering, commits exact
+schema/configuration/format/prompt/final-payload representations, and enters
+the manifest's bounded initial-transport index before sealing. Reopening
+verifies original facts and bytes without auto reselection.
 
 Full capture publishes approved content through existing protected artifacts;
 minimal capture keeps safe identities/hashes and requires unchanged original

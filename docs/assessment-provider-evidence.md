@@ -435,10 +435,13 @@ records; acceptance reports identify the exact qualified commit separately.
 
 ## Phase 4C3 frozen presentation and adapter handoff
 
-Durable integration remains synthetic and pending exact-head qualification.
-No default catalog gains positive real-model acceptance. New execution requires
-an explicit private synthetic runtime context; a caller evidence record, SDK
-installation or translator registration cannot activate a real adapter.
+The offline durable integration is complete and remains synthetic. Exact-head
+local and hosted acceptance records are maintained separately in the external
+qualification ledger. Real provider adapters, serving and live authentication
+remain unqualified and deferred. No default catalog gains positive real-model
+acceptance. New execution requires an explicit private synthetic runtime
+context; a caller evidence record, SDK installation or translator registration
+cannot activate a real adapter.
 
 | Exact mechanism | Projection / decision | Native prompt schema representation |
 |---|---|---|
