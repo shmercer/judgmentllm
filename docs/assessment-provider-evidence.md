@@ -351,3 +351,83 @@ supports an endpoint or every keyword. The conservative profile always leaves
 array bounds and explanation lengths local-only, including for models that might
 support them. Synthetic exact-scope fixture profiles test positive selection;
 the default registry does not qualify real models.
+
+
+## Phase 4C2: independent multi-provider projection evidence
+
+These internal, standalone V2 translations describe candidate request content.
+They do not activate RunSpec execution or establish acceptance by a real model.
+The default selection registry supplies no positive real-model profiles and no
+independent live qualification. Exact synthetic scope profiles exercise selection.
+OpenAI Phase 4C1 V1 records, entry points, formats and identities remain unchanged.
+
+Four facts must remain separate for every constraint:
+
+1. **Represented:** the candidate schema contains the constraint.
+2. **SDK retained:** a pinned static type/serialization or guarded converter probe
+   establishes preservation at that preparation boundary.
+3. **Documented support:** exact-route documentation establishes support, rejects
+   it, or leaves it unknown; a generic dictionary type proves no keyword support.
+4. **Verified enforcement:** independently observed serving behavior. This is
+   unknown for every real provider/model in Phase 4C2.
+
+A represented keyword or successful converter does not establish enforcement.
+All complete canonical assessment validators remain mandatory, even where a
+native constraint is represented and documented. Requested property ordering is
+also distinct from observed generated order; the latter is unknown here.
+
+| Provider / endpoint | Implemented V2 mechanism | Pinned SDK / API | Representation and converter evidence | Serving limitations / prompt guidance |
+|---|---|---|---|---|
+| `anthropic` / `messages` | `output_config.format` | `anthropic==2.3.0`; API `2026-10-21` from pinned SDK constant | `{type: json_schema, schema}`; no name, beta header or deprecated field | Conservative subset; enum capitalization caveat, compilation limits; real-model acceptance unknown |
+| `gemini` / `models.generate_content` | `response_schema` | `google-genai==2.34.0`; `v1beta` | JSON MIME plus Cloud Schema; `responseSchema`, uppercase types, SDK-prepared snake-case fields | Developer scope is independently tested; closure preservation alone does not establish endpoint support |
+| `gemini` / `models.generate_content` | `response_json_schema` | `google-genai==2.34.0`; `v1beta` | JSON MIME plus JSON Schema; `responseJsonSchema`; dictionary casing/order retained | Detailed model/endpoint keyword enforcement remains unqualified |
+| `vertex` / `models.generate_content` | `response_schema` | `google-genai==2.34.0`; `v1beta1` | Cloud Schema dictionary and `types.Schema` conversion agree; closure and `propertyOrdering` retained | Cloud REST closure representation is not proof of response-schema serving enforcement; empty-string enum restriction applies |
+| `vertex` / `models.generate_content` | `response_json_schema` | `google-genai==2.34.0`; `v1beta1` | Separate JSON Schema path producing `responseJsonSchema` | Model/serving enforcement remains unknown; no inference from the other Google interface |
+| `together` / `chat.completions` | `response_format` | `together==3.0.0`; API version unresolved | `{type: json_schema, json_schema: {name, schema}}`; omit optional `strict` and descriptions | Precise keyword enforcement and model eligibility unknown; schema repetition is documented guidance, not a universal API requirement |
+| `ollama` / `chat` | schema-valued `format` | `ollama==0.6.3`; daemon version unresolved | Exact schema dictionary for ordinary local `/api/chat`; distinct from `format: "json"` | Daemon/model availability and keyword enforcement unknown; schema repetition recommended; cloud outside scope |
+
+API versions are explicit fixture scopes, not claims of server qualification.
+Other SDK/API versions cannot silently reuse these identities. Current Google
+Cloud documentation redirects do not rename the public provider `vertex`.
+
+| Constraint family | Anthropic candidate | Google candidates | Together / local Ollama candidates | Mandatory local behavior |
+|---|---|---|---|---|
+| Typed objects, required fields and closure | Represented | Represented, including closure; serving support separately scoped | Represented; no comprehensive keyword-enforcement claim | Reject unknown/missing fields and invalid types |
+| Exact trait/category/winner values | Typed enums; string constants become singleton enums | Typed enums; string constants become singleton enums | Constants/enums retained with redundant explicit types | Case-sensitive exact membership; never alter labels or orientation |
+| Per-trait alternatives | Disjoint `oneOf` becomes `anyOf` | Disjoint `oneOf` becomes `anyOf` | Canonical alternatives retained | Complete unique trait membership |
+| Array bounds | Omitted conservatively | Retained in both distinct schema interfaces | Retained in schema | Exact array cardinality and membership |
+| Explanation lengths | Omitted | Omitted conservatively | Retained in schema | Nonblank explanations, including whitespace rejection |
+| Tie/null relationship | Root relation omitted; nullable winner retained | Root relation omitted; route-specific nullable representation | Canonical relation retained | Null winner iff tie; allowed winner IDs unchanged |
+| Cross-array correspondence / duplicate JSON keys | Local | Local | Local | Complete score/explanation join and duplicate-safe raw ingress |
+
+Anthropic's [structured-output guide](https://platform.claude.com/docs/en/build-with-claude/structured-outputs)
+documents enum/const capitalization exceptions, union/optional-parameter ceilings,
+additional unknown grammar limits and separate compiled-schema caching. Exact
+labels remain authoritative locally; no case-insensitive normalization is added.
+The automatic schema transformer is not the projection implementation and must
+not generate descriptions from private schema content.
+
+Google evidence uses the pinned
+[configuration models](https://github.com/googleapis/python-genai/blob/v2.34.0/google/genai/types.py),
+[converters](https://github.com/googleapis/python-genai/blob/v2.34.0/google/genai/models.py)
+and [transformers](https://github.com/googleapis/python-genai/blob/v2.34.0/google/genai/_transformers.py).
+Cloud Schema follows SDK field ordering rather than an assumed camel-case wire
+rendering. JSON Schema is a separate representation. Both require JSON MIME;
+setting both routes is incompatible. Probes use isolated input snapshots because
+`t_schema` mutates dictionaries. The
+[Cloud REST Schema reference](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/reference/rest/v1/Schema)
+and [structured-output guide](https://docs.cloud.google.com/vertex-ai/generative-ai/docs/multimodal/control-generated-output)
+have different scopes; neither substitutes for actual model qualification.
+
+[Together guidance](https://docs.together.ai/docs/inference/chat/structured-outputs)
+and [Ollama guidance](https://docs.ollama.com/capabilities/structured-outputs)
+establish wrappers and prompt-schema recommendations, not a universally enforced
+JSON Schema dialect. Lossless candidate schemas retain canonical keywords;
+unknown keyword acceptance remains unknown rather than silently removing them.
+Their prompt policies are metadata for 4C3 and do not modify any prompt here.
+
+Production translators import no SDK. Converter/static probes run offline with
+self-tested network, credential, client, filesystem and subprocess guards.
+Ordinary Ollama import is excluded because its initializer constructs a client.
+The pinned source hashes, fixture bytes and provenance are part of reviewed
+records; acceptance reports identify the exact qualified commit separately.

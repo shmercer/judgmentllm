@@ -514,3 +514,26 @@ decision, native scope and private profile JSON entry points. Both passes consum
 one snapshot of built-in `bytearray`. Input subclasses are unsupported. JSON-mode
 validation preserves date/tuple parsing, Unicode and exact version tokens. Errors are content-free. Historical `EvidenceModel` parsing and existing
 serialized representations/identities remain unchanged.
+
+
+## Internal native-projection V2 contracts (Phase 4C2)
+
+The new standalone `NativeSchemaProjectionV2` and `TransportDecisionV2` contracts
+coexist with unchanged OpenAI V1 records. Their evidence-envelope `schema_version`
+remains 1, while `projection_version` and `decision_version` are independently 2.
+No RunSpec, output contract, normalized result, persistence or R schema changes.
+
+V2 retains detached source semantics, exact canonical schema identity, exact
+ordered native/SDK-configuration/converted-format representations and hashes,
+requested root/member orders, reviewed route/dialect/implementation scope,
+constraint coverage and provenance. No universal schema-name field is imposed.
+Coverage distinguishes representation, SDK retention, documented support and
+independently verified enforcement; the last remains unknown for real models.
+Every complete canonical local validator remains mandatory.
+
+Strict JSON ingress inherits the Phase 4C1 immutable snapshot and duplicate-key
+preflight, including nested and escaped-equivalent duplicates. Rehashed inconsistent
+records fail regeneration checks. V2 identities use distinct versioned domains.
+Frozen decisions bind the exact Google schema route and verify without reselection.
+Content-bearing schema records are in-memory candidates, not minimal-capture
+metadata or authorization for durable retention.

@@ -226,6 +226,7 @@ class Runner:
             "UV_PROJECT_ENVIRONMENT": str(self.source / ".venv"),
             "UV_PYTHON": sys.executable,
             "JUDGMENTLLM_R_STRICT": "1",
+            "JUDGMENTLLM_REQUIRE_NATIVE_SDK_PROBES": "1",
             "COVERAGE_RCFILE": str(self.source / "pyproject.toml"),
             "COVERAGE_FILE": str(self.output / ".coverage"),
             "PYTHONDONTWRITEBYTECODE": "1",

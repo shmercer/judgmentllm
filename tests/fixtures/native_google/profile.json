@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "profile_version": 1,
+  "fixture_scope": "synthetic offline only",
+  "fixture_cases": 16,
+  "provider_routes": [
+    "gemini.generate_content.response_schema",
+    "gemini.generate_content.response_json_schema",
+    "vertex.generate_content.response_schema",
+    "vertex.generate_content.response_json_schema"
+  ],
+  "converter_cases": [
+    "tiny_dictionary",
+    "tiny_typed_schema",
+    "tiny_json_schema",
+    "all_16_assessment_schemas_per_provider_route"
+  ],
+  "live_qualified": false,
+  "mandatory_local_validation": true
+}

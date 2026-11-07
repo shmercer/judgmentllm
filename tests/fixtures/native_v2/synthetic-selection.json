@@ -1,0 +1,25 @@
+{
+  "profile_version": 2,
+  "acceptance": "synthetic_offline_only",
+  "model": "judgmentllm-synthetic-native-v2",
+  "live_qualified": null,
+  "features": [
+    "rubric_scores",
+    "rubric_grouped",
+    "rubric_explanations_together",
+    "rubric_scores_first",
+    "rubric_explanations_first",
+    "pairwise_forced_choice",
+    "pairwise_ties",
+    "pairwise_explanations"
+  ],
+  "mechanisms": [
+    "anthropic.messages.output_config.format",
+    "gemini.generate_content.response_schema",
+    "gemini.generate_content.response_json_schema",
+    "vertex.generate_content.response_schema",
+    "vertex.generate_content.response_json_schema",
+    "together.chat.response_format",
+    "ollama.chat.format"
+  ]
+}

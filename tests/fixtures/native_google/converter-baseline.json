@@ -1,0 +1,38 @@
+[
+  {
+    "provider": "gemini",
+    "route": "response_schema",
+    "input": "dictionary",
+    "fragment": "{\"responseMimeType\":\"application/json\",\"responseSchema\":{\"additional_properties\":false,\"properties\":{\"winner_id\":{\"enum\":[\"002\",\"001\"],\"type\":\"STRING\"},\"tie\":{\"type\":\"BOOLEAN\"}},\"property_ordering\":[\"winner_id\",\"tie\"],\"required\":[\"winner_id\",\"tie\"],\"type\":\"OBJECT\"}}"
+  },
+  {
+    "provider": "gemini",
+    "route": "response_schema",
+    "input": "typed_schema",
+    "fragment": "{\"responseMimeType\":\"application/json\",\"responseSchema\":{\"additional_properties\":false,\"properties\":{\"winner_id\":{\"enum\":[\"002\",\"001\"],\"type\":\"STRING\"},\"tie\":{\"type\":\"BOOLEAN\"}},\"property_ordering\":[\"winner_id\",\"tie\"],\"required\":[\"winner_id\",\"tie\"],\"type\":\"OBJECT\"}}"
+  },
+  {
+    "provider": "gemini",
+    "route": "response_json_schema",
+    "input": "dictionary",
+    "fragment": "{\"responseMimeType\":\"application/json\",\"responseJsonSchema\":{\"type\":\"object\",\"properties\":{\"winner_id\":{\"type\":\"string\",\"enum\":[\"002\",\"001\"]},\"tie\":{\"type\":\"boolean\"}},\"required\":[\"winner_id\",\"tie\"],\"additionalProperties\":false,\"propertyOrdering\":[\"winner_id\",\"tie\"]}}"
+  },
+  {
+    "provider": "vertex",
+    "route": "response_schema",
+    "input": "dictionary",
+    "fragment": "{\"responseMimeType\":\"application/json\",\"responseSchema\":{\"additional_properties\":false,\"properties\":{\"winner_id\":{\"enum\":[\"002\",\"001\"],\"type\":\"STRING\"},\"tie\":{\"type\":\"BOOLEAN\"}},\"property_ordering\":[\"winner_id\",\"tie\"],\"required\":[\"winner_id\",\"tie\"],\"type\":\"OBJECT\"}}"
+  },
+  {
+    "provider": "vertex",
+    "route": "response_schema",
+    "input": "typed_schema",
+    "fragment": "{\"responseMimeType\":\"application/json\",\"responseSchema\":{\"additional_properties\":false,\"properties\":{\"winner_id\":{\"enum\":[\"002\",\"001\"],\"type\":\"STRING\"},\"tie\":{\"type\":\"BOOLEAN\"}},\"property_ordering\":[\"winner_id\",\"tie\"],\"required\":[\"winner_id\",\"tie\"],\"type\":\"OBJECT\"}}"
+  },
+  {
+    "provider": "vertex",
+    "route": "response_json_schema",
+    "input": "dictionary",
+    "fragment": "{\"responseMimeType\":\"application/json\",\"responseJsonSchema\":{\"type\":\"object\",\"properties\":{\"winner_id\":{\"type\":\"string\",\"enum\":[\"002\",\"001\"]},\"tie\":{\"type\":\"boolean\"}},\"required\":[\"winner_id\",\"tie\"],\"additionalProperties\":false,\"propertyOrdering\":[\"winner_id\",\"tie\"]}}"
+  }
+]
