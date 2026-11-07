@@ -259,10 +259,7 @@ test thresholds or replace genuine provider qualification with mocks.
 
 ### Official packaging references (recheck when implementing)
 
--  [Python Packaging User Guide: packaging
-  projects](https://packaging.python.org/en/latest/tutorials/packaging-projects/)
--  [Python Packaging User Guide:
-  versioning](https://packaging.python.org/en/latest/discussions/versioning/)
+- [Python Packaging User Guide: packaging projects](https://packaging.python.org/en/latest/tutorials/packaging-projects/)
+- [Python Packaging User Guide: versioning](https://packaging.python.org/en/latest/discussions/versioning/)
 - [PyPI: Trusted Publishing](https://docs.pypi.org/trusted-publishers/using-a-publisher/)
--  [PyPI: creating a project through a pending
-  publisher](https://docs.pypi.org/trusted-publishers/creating-a-project-through-oidc/)
+- [PyPI: creating a project through a pending publisher](https://docs.pypi.org/trusted-publishers/creating-a-project-through-oidc/)
