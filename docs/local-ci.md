@@ -459,3 +459,10 @@ on Linux/3.11; all other lanes explicitly disable it. Commit the candidate befor
 require a new complete exact-head run. Preserve VM locks, graceful shutdown,
 180-second fixtures, memory limits, hosted 30-minute timeout, original retained
 compatibility stores and complete failed-attempt evidence.
+
+The native preparation memory fixture initializes only fixed, content-free
+interpreter path metadata while tracing, then records the baseline before any
+request preparation. This balances Python intern-table replacement allocations;
+it does not warm schemas, prompts or payloads. Retain both raw and incremental
+allocation measurements, the original raw memory bounds, both request counts and
+the subprocess deadline. Whole-process native memory includes the metadata setup.

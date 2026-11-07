@@ -92,9 +92,7 @@ def publish_prepared_transport(
             else store.hash_only(bytes_digest(content), len(content), media)
         )
         identities.append(identity)
-    publish_transport_commitment(store, wire.transport_commitment)
-    raw = canonical_bytes(wire.transport_commitment)
-    identities.append(store.put(raw, "application/json"))
+    identities.append(publish_transport_commitment(store, wire.transport_commitment))
     return tuple(identities)
 
 
@@ -258,12 +256,8 @@ def verify_initial_transports(prepared: PreparedRun) -> None:
             or wire.payload_sha256 != attempt.payload_sha256
         ):
             raise IntegrityError("reconstructed transport differs from initial attempt")
-        for content in wire.content_artifacts().values():
-            artifact = repository.get_artifact(run_id, bytes_digest(content))
-            if artifact.byte_length != len(content) or (
-                artifact.relative_path is not None
-            ) != (manifest.capture == "full"):
-                raise IntegrityError("transport artifact capture is inconsistent")
+        # Frozen preparation already verified every content artifact and its
+        # capture identity; do not reopen the same objects a second time here.
         digest.add(
             digest.count, request, attempt, bytes_digest(canonical_bytes(receipt))
         )

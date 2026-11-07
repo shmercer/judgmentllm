@@ -528,3 +528,188 @@ def test_native_manifest_raw_version_tokens_cannot_be_normalized(
     data[field] = float(data[field])
     with pytest.raises(ValueError):
         ExecutableRunManifestV3.model_validate_json(canonical_bytes(data))
+
+
+@pytest.mark.parametrize("policy", ["auto", "native", "text"])
+def test_existing_attempt_implicitly_loads_frozen_transport_without_reselection(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    policy: str,
+) -> None:
+    config, context = native_specification(tmp_path / "inputs")
+    document = json.loads(config.read_text(encoding="utf-8"))
+    document["prompt"]["structured_output"] = policy
+    config.write_text(json.dumps(document), encoding="utf-8")
+    with prepare_run(
+        config, store=tmp_path / "runtime", run_id="001", transport_context=context
+    ) as prepared:
+        dependency = next(prepared.iter_request_dependencies())
+        attempt = prepared.repository.get_attempt_for_request(
+            "001", dependency.request.request_uid
+        )
+        assert attempt is not None
+
+        def forbidden(*args: object, **kwargs: object) -> object:
+            raise AssertionError("existing attempt must not invoke transport selection")
+
+        monkeypatch.setattr(
+            "judgmentllm.transport._resolve_native_transport", forbidden
+        )
+        monkeypatch.setattr(
+            "judgmentllm.transport._resolve_native_transport_v2", forbidden
+        )
+        wire = prepared.prepare_transport_attempt(
+            dependency,
+            physical_identity("001", attempt.request_uid, attempt.attempt_id),
+        )
+        assert wire.payload_sha256 == attempt.payload_sha256
+        assert wire.transport_commitment == prepared.transport_for_attempt(
+            attempt.attempt_id
+        )
+
+
+def test_native_attempt_identity_must_match_its_original_attempt_number(
+    tmp_path: Path,
+) -> None:
+    config, context = native_specification(tmp_path / "inputs")
+    with prepare_run(
+        config, store=tmp_path / "runtime", run_id="001", transport_context=context
+    ) as prepared:
+        attempt = next(prepared.repository.iter_attempts("001"))
+        connection = prepared.repository.connection
+        trigger = connection.execute(
+            "SELECT sql FROM sqlite_master WHERE type='trigger' AND name='attempts_identity'"
+        ).fetchone()[0]
+        with prepared.repository.transaction():
+            connection.execute("DROP TRIGGER attempts_identity")
+            connection.execute(
+                "UPDATE attempts SET attempt_number=2 WHERE run_id=? AND attempt_id=?",
+                ("001", attempt.attempt_id),
+            )
+            connection.execute(trigger)
+        with pytest.raises(PreparationError):
+            prepared.transport_for_attempt(attempt.attempt_id)
+
+
+def test_receipt_publication_does_not_write_its_object_twice(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from judgmentllm.persistence.hashing import canonical_bytes
+    from judgmentllm.preparation.native import publish_prepared_transport
+
+    config, context = native_specification(tmp_path / "inputs", "minimal")
+    with prepare_run(
+        config, store=tmp_path / "runtime", run_id="001", transport_context=context
+    ) as prepared:
+        dependency = next(prepared.iter_request_dependencies())
+        attempt = next(prepared.repository.iter_attempts("001"))
+        wire = prepared.prepare_transport_attempt(
+            dependency,
+            physical_identity("001", attempt.request_uid, attempt.attempt_id),
+        )
+        receipt_bytes = canonical_bytes(wire.transport_commitment)
+        original = prepared.store.put
+        writes = 0
+
+        def put(data: bytes, media_type: str = "application/octet-stream") -> object:
+            nonlocal writes
+            if data == receipt_bytes:
+                writes += 1
+            return original(data, media_type)
+
+        monkeypatch.setattr(prepared.store, "put", put)
+        artifacts = publish_prepared_transport(
+            prepared.repository, prepared.store, wire, "minimal"
+        )
+        assert writes == 1
+        assert artifacts[-1].sha256 == bytes_digest(receipt_bytes)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("change", ["parent", "native_to_text"])
+async def test_rehashed_retry_lineage_is_checked_before_payload_reconstruction(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    change: str,
+) -> None:
+    from test_native_transport_integration import prepared_case, reopen
+
+    from judgmentllm.execution import execute_run
+    from judgmentllm.execution.retry import authorize_subset_retry, subset_dependency
+    from judgmentllm.persistence.hashing import canonical_bytes, semantic_digest
+    from judgmentllm.persistence.repository import ReadOnlyRepository
+    from judgmentllm.providers import MockMemberScenario, MockScenario
+    from judgmentllm.transport import TransportCommitmentV1, TransportPlanV1
+
+    adapter, store, spec = prepared_case(
+        tmp_path,
+        capture="full",
+        policy="auto",
+        scenario=MockScenario(
+            members={"02": MockMemberScenario(outcome="invalid_category")}
+        ),
+        retry_valid=True,
+    )
+    await execute_run("001", store=store, adapter=adapter)
+    with ReadOnlyRepository(store) as repository:
+        failed = next(
+            result
+            for result in repository.iter_results("001")
+            if result.status == "invalid"
+        )
+    retry = authorize_subset_retry(
+        "001",
+        store=store,
+        adapter=adapter,
+        task_ids=(failed.task_id,),
+        operation_id="retry-lineage",
+        spec=spec,
+    )
+    with reopen(adapter, store) as prepared:
+        subset = subset_dependency(
+            prepared.dependency_for_request(retry.request_uid), (failed.task_id,)
+        )
+        receipt = prepared.transport_for_attempt(retry.attempt_id)
+        data = receipt.model_dump(mode="json", exclude={"commitment_sha256"})
+        if change == "parent":
+            data["parent_commitment_sha256"] = "0" * 64
+            data["selection"]["parent_commitment_sha256"] = "0" * 64
+        else:
+            data["mechanism"] = data["selection"]["mechanism"] = "text"
+            for field in (
+                "projection_version",
+                "projection_sha256",
+                "native_schema_sha256",
+                "native_schema_bytes",
+                "sdk_config_sha256",
+                "sdk_config_bytes",
+                "format_sha256",
+                "format_bytes",
+            ):
+                data[field] = None
+        data["plan_sha256"] = TransportPlanV1.model_validate_json(
+            json.dumps(
+                {key: data[key] for key in TransportPlanV1.model_fields if key in data}
+            )
+        ).plan_sha256
+        data["commitment_sha256"] = semantic_digest("transport-commitment-v1", data)
+        changed = TransportCommitmentV1.model_validate_json(json.dumps(data))
+        artifact = prepared.store.put(canonical_bytes(changed), "application/json")
+        prepared.repository.register_artifact("001", artifact)
+        prepared.store.reference_path(transport_reference(retry.attempt_id)).unlink()
+        prepared.store.publish_reference(
+            artifact, transport_reference(retry.attempt_id)
+        )
+
+        def forbidden(*args: object, **kwargs: object) -> object:
+            raise AssertionError(
+                "incompatible lineage must fail before rebuilding payloads"
+            )
+
+        monkeypatch.setattr(
+            "judgmentllm.transport.prepare_transport_request", forbidden
+        )
+        with pytest.raises(PreparationError, match="lineage"):
+            prepared.prepare_transport_attempt(
+                subset, physical_identity("001", retry.request_uid, retry.attempt_id)
+            )

@@ -202,7 +202,6 @@ class ExecutionSession:
                 physical_identity(
                     self.run_id, dependency.request.request_uid, attempt_id
                 ),
-                frozen=self.prepared.transport_for_attempt(attempt_id),
             )
         rendered = (
             self.prepared.render(dependency)

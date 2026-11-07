@@ -12,7 +12,7 @@ from typing import cast
 from test_native_transport_integration import offline as offline
 
 _SCRIPT = r"""
-import builtins, gc, io, json, os, socket, sys, tracemalloc
+import builtins, gc, io, json, os, socket, sys, time, tracemalloc
 from pathlib import Path
 original_import = builtins.__import__
 def forbidden(*args, **kwargs):
@@ -65,19 +65,34 @@ with responses.open("w", encoding="utf-8") as stream:
     for index in range(count):
         stream.write(json.dumps({"item_id":f"{index:06d}","text":"x" * 4096}) + "\n")
 context = context_for(MECHANISMS[0])
+started = time.perf_counter()
 tracemalloc.start()
+# CPython 3.11 interns parsed path components. Initialize its bounded global
+# metadata table while tracing, so later compaction frees and allocations are
+# both tracked. This fixed setup uses no request content or preparation.
+for startup_index in range(32768):
+    startup_path = Path("/judgmentllm-resource-startup/objects") / f"{startup_index:064x}"
+del startup_path, startup_index
+baseline_current = tracemalloc.get_traced_memory()[0]
+tracemalloc.reset_peak()
 with prepare_run(source, store=root / "runtime", run_id="memory", transport_context=context) as prepared:
     expected = count
     assert prepared.manifest.initial_transport_count == expected
     assert prepared.repository.summary("memory").attempts == expected
     assert not tuple(prepared.repository.iter_submissions("memory"))
-    peak = tracemalloc.get_traced_memory()[1]
-    live = tracemalloc.get_traced_memory()[0]
+    raw_peak = tracemalloc.get_traced_memory()[1]
+    raw_live = tracemalloc.get_traced_memory()[0]
+    peak = raw_peak - baseline_current
+    live = raw_live - baseline_current
 del prepared; gc.collect()
-remaining = tracemalloc.get_traced_memory()[0]
+raw_remaining = tracemalloc.get_traced_memory()[0]
+remaining = raw_remaining - baseline_current
 tracemalloc.stop()
 print(json.dumps({"requests":expected, "python_peak_bytes":peak, "python_live_bytes":live,
-    "python_after_gc_bytes":remaining, "native_peak_bytes":native_peak_bytes()}))
+    "python_after_gc_bytes":remaining, "native_peak_bytes":native_peak_bytes(),
+    "python_baseline_bytes":baseline_current, "python_raw_peak_bytes":raw_peak,
+    "python_raw_live_bytes":raw_live, "python_raw_after_gc_bytes":raw_remaining,
+    "elapsed_ms":int((time.perf_counter() - started) * 1000)}))
 """
 
 
@@ -121,7 +136,11 @@ def measurement(directory: Path, count: int) -> dict[str, int]:
         timeout=90,
     )
     assert completed.returncode == 0, completed.stderr
-    return cast(dict[str, int], json.loads(completed.stdout))
+    measured = cast(dict[str, int], json.loads(completed.stdout))
+    (directory / "measurements.json").write_text(
+        json.dumps(measured, indent=2), encoding="utf-8"
+    )
+    return measured
 
 
 def test_native_preseal_request_product_uses_bounded_memory(tmp_path: Path) -> None:
@@ -131,8 +150,17 @@ def test_native_preseal_request_product_uses_bounded_memory(tmp_path: Path) -> N
     assert large["requests"] == 8 * small["requests"]
     for result in (small, large):
         assert 0 < result["native_peak_bytes"] < 256 * mib
+        assert result["python_raw_peak_bytes"] < 32 * mib
         assert result["python_peak_bytes"] < 32 * mib
         assert result["python_after_gc_bytes"] < result["python_peak_bytes"]
+        assert (
+            result["python_peak_bytes"]
+            == result["python_raw_peak_bytes"] - result["python_baseline_bytes"]
+        )
+        assert (
+            result["python_after_gc_bytes"]
+            == result["python_raw_after_gc_bytes"] - result["python_baseline_bytes"]
+        )
     assert large["python_peak_bytes"] < small["python_peak_bytes"] + 3 * mib, (
         small,
         large,
@@ -145,3 +173,12 @@ def test_native_preseal_request_product_uses_bounded_memory(tmp_path: Path) -> N
         small,
         large,
     )
+
+    # Keep the original raw allocation growth budgets alongside baseline deltas.
+    assert large["python_raw_peak_bytes"] < small["python_raw_peak_bytes"] + 3 * mib, (
+        small,
+        large,
+    )
+    assert (
+        large["python_raw_after_gc_bytes"] < small["python_raw_after_gc_bytes"] + mib
+    ), (small, large)

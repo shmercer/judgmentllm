@@ -248,7 +248,11 @@ class FrozenTransportSelectionV1(_TransportModel):
                 and decision.policy == self.policy
                 and decision.mechanism == self.mechanism
             )
-        if not valid or (self.policy == "native" and self.mechanism == "text"):
+        if (
+            not valid
+            or (self.policy == "native" and self.mechanism == "text")
+            or (self.policy == "text" and self.mechanism != "text")
+        ):
             raise ValueError("selection dispatch differs")
         if self.mechanism != "text" and self.requested_mechanism != self.mechanism:
             raise ValueError("selected route differs")
@@ -934,8 +938,9 @@ def prepare_transport_request(
 ) -> PreparedRequestV3:
     """Build complete offline bytes or verify exact committed reconstruction.
 
-    Frozen replay must supply its original output commitment for non-inherited
-    selections. It never invokes ordinary auto resolution again.
+    Replay reconstructs from the frozen selection without ordinary resolution.
+    An inherited attempt also requires its independently verified parent receipt;
+    a child's checksum cannot establish the originally committed family.
     """
     from judgmentllm.native_prompts import render_request_v3
 
@@ -946,8 +951,36 @@ def prepare_transport_request(
             or identity.request_uid != dependency.request.request_uid
         ):
             raise TransportIntegrityError()
+        if parent is not None:
+            parent = TransportCommitmentV1.model_validate(dict(parent))
+            if (
+                parent.identity.run_id != identity.run_id
+                or parent.identity.request_uid != identity.request_uid
+                or parent.identity.attempt_id == identity.attempt_id
+                or parent.context_sha256 != transport_context_digest(context)
+                or parent.configuration_sha256
+                != semantic_digest("run-configuration", spec)
+                or parent.requested_mechanism != spec.prompt.native_mechanism
+                or parent.selection.policy != spec.prompt.structured_output
+            ):
+                raise TransportIntegrityError()
         if frozen is not None:
             frozen = TransportCommitmentV1.model_validate(dict(frozen))
+            if frozen.parent_commitment_sha256 is None:
+                if parent is not None:
+                    raise TransportIntegrityError()
+            elif (
+                parent is None
+                or frozen.parent_commitment_sha256 != parent.commitment_sha256
+                or frozen.mechanism != parent.mechanism
+                or frozen.requested_mechanism != parent.requested_mechanism
+                or frozen.selection.policy != parent.selection.policy
+                or frozen.context_sha256 != parent.context_sha256
+                or frozen.configuration_sha256 != parent.configuration_sha256
+                or frozen.identity.run_id != parent.identity.run_id
+                or frozen.identity.request_uid != parent.identity.request_uid
+            ):
+                raise TransportIntegrityError()
             if (
                 frozen.identity != identity
                 or frozen.context_sha256 != transport_context_digest(context)
@@ -1007,12 +1040,6 @@ def prepare_transport_request(
                     catalog=context.provider_catalog or _DEFAULT_CATALOG_V2,
                 )
         else:
-            if parent is not None and (
-                parent.identity.run_id != identity.run_id
-                or parent.identity.request_uid != identity.request_uid
-                or parent.identity.attempt_id == identity.attempt_id
-            ):
-                raise TransportIntegrityError()
             output = build_output_commitment_v3(
                 spec, dependency.request, context, inherited_commitment=parent
             )

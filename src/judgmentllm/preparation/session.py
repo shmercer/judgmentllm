@@ -29,6 +29,7 @@ from judgmentllm.persistence.hashing import (
 from judgmentllm.persistence.models import (
     SHA256,
     ExecutionModel,
+    NotFoundError,
 )
 from judgmentllm.persistence.repository import Repository
 from judgmentllm.planning import (
@@ -464,6 +465,7 @@ class PreparedRun:
     def transport_for_attempt(self, attempt_id: str) -> TransportCommitmentV1:
         """Read original safe metadata; missing commitments are never repaired."""
         from judgmentllm.persistence.transport_receipts import read_transport_commitment
+        from judgmentllm.planning import stable_id
         from judgmentllm.transport import physical_identity
 
         if not isinstance(self.manifest, ExecutableRunManifestV3):
@@ -471,7 +473,14 @@ class PreparedRun:
         attempt = self.repository.get_attempt(self.manifest.run_id, attempt_id)
         receipt = read_transport_commitment(self.store, attempt_id)
         if receipt is None or (
-            receipt.identity
+            attempt.attempt_id
+            != stable_id(
+                "attempt",
+                self.manifest.run_id,
+                attempt.request_uid,
+                attempt.attempt_number,
+            )
+            or receipt.identity
             != physical_identity(self.manifest.run_id, attempt.request_uid, attempt_id)
             or receipt.configuration_sha256 != self.manifest.configuration_sha256
             or receipt.context_sha256 != self.manifest.transport_context_sha256
@@ -531,15 +540,37 @@ class PreparedRun:
             or identity.request_uid != dependency.request.request_uid
         ):
             raise PreparationError("native physical identity differs from its run")
-        if frozen is not None and canonical_bytes(
-            self.transport_for_attempt(identity.attempt_id)
-        ) != canonical_bytes(frozen):
-            raise PreparationError(
-                "supplied transport commitment differs from original"
+        try:
+            existing = self.repository.get_attempt(
+                self.manifest.run_id, identity.attempt_id
             )
+        except NotFoundError:
+            existing = None
+        if existing is not None:
+            pinned = self.transport_for_attempt(identity.attempt_id)
+            if frozen is not None and canonical_bytes(pinned) != canonical_bytes(
+                frozen
+            ):
+                raise PreparationError(
+                    "supplied transport commitment differs from original"
+                )
+            # An omitted argument never permits an already committed request to
+            # enter ordinary auto selection again.
+            frozen = pinned
+        elif frozen is not None:
+            raise PreparationError("frozen transport has no matching prepared attempt")
         first_id = stable_id("attempt", self.manifest.run_id, identity.request_uid, 1)
         if identity.attempt_id != first_id:
             original_receipt = self.transport_for_attempt(first_id)
+            if frozen is not None and (
+                frozen.parent_commitment_sha256 != original_receipt.commitment_sha256
+                or frozen.mechanism != original_receipt.mechanism
+                or frozen.requested_mechanism != original_receipt.requested_mechanism
+                or frozen.selection.policy != original_receipt.selection.policy
+            ):
+                raise PreparationError(
+                    "retry transport lineage differs from its original parent"
+                )
             if parent is not None and canonical_bytes(parent) != canonical_bytes(
                 original_receipt
             ):
@@ -555,6 +586,10 @@ class PreparedRun:
             )
         elif parent is not None:
             raise PreparationError("initial transport cannot inherit another attempt")
+        elif existing is None:
+            raise PreparationError(
+                "initial native transport must be prepared before sealing"
+            )
         wire = prepare_transport_request(
             self.spec,
             dependency,

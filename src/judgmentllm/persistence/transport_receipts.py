@@ -27,7 +27,7 @@ def transport_reference(attempt_id: str) -> str:
 
 def publish_transport_commitment(
     store: ArtifactStore, commitment: TransportCommitmentV1
-) -> Path:
+) -> ArtifactIdentity:
     """Publish exact immutable metadata before registry preparation commits."""
     from judgmentllm.transport import TransportCommitmentV1
 
@@ -39,9 +39,8 @@ def publish_transport_commitment(
     except (ValueError, TypeError):
         raise ArtifactIntegrityError("transport metadata is invalid") from None
     artifact = store.put(raw, "application/json")
-    return store.publish_reference(
-        artifact, transport_reference(checked.identity.attempt_id)
-    )
+    store.publish_reference(artifact, transport_reference(checked.identity.attempt_id))
+    return artifact
 
 
 def read_transport_commitment(
