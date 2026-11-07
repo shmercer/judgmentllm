@@ -1,0 +1,26 @@
+{
+  "profile_version": 1,
+  "model": "judgmentllm-synthetic-native-v1",
+  "sdk_package": "openai",
+  "sdk_version": "3.42.1",
+  "api_version": null,
+  "documentation_sha256": "e74cfa4abb72d9ae8e874217c1ab71b9a837dc87fee276dcfdda92f4c1705c1e",
+  "mechanisms": {
+    "responses": "openai.responses.text.format",
+    "chat.completions": "openai.chat.response_format"
+  },
+  "schema_dialect": "openai.strict-json-schema.v1",
+  "implementation_version": 1,
+  "features": [
+    "rubric_scores",
+    "rubric_grouped",
+    "rubric_explanations_together",
+    "rubric_scores_first",
+    "rubric_explanations_first",
+    "pairwise_forced_choice",
+    "pairwise_ties",
+    "pairwise_explanations"
+  ],
+  "acceptance": "synthetic_offline_only",
+  "live_qualified": null
+}

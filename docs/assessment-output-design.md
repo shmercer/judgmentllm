@@ -37,8 +37,8 @@ plus scoped evidence provenance. Every new record starts at `schema_version: 1`.
 Phase 4B invokes these services before response retention and persists safe
 metadata using registry schema 2 and separate version-1 companion receipts.
 Ordinary execution retains no provider reasoning; explicit immutable synthetic
-fixture grants can retain permitted text in protected artifacts. No native
-translator, real adapter or live authentication is implemented. Requested visible ordering makes no claim about a model's internal
+fixture grants can retain permitted text in protected artifacts. Phase 4C1 adds standalone native projections and selection decisions; no native
+execution, real adapter or live authentication is implemented. Requested visible ordering makes no claim about a model's internal
 reasoning; the standalone extractor reports only trustworthy emitted key order.
 The installed-CLI R gate exercises actual v2 runs and exports alongside the
 retained v1 fixtures. Exact-head local and hosted qualification remains required.
@@ -871,3 +871,53 @@ exact-head qualification evidence are recorded separately; implementation alone
 does not qualify a release. Phase 4C transport, Phase 5 real adapters, Phase 6
 companion exports and Phase 7 live qualification remain deferred. The future
 Vertex adapter still requires a distinct authorization-key route alongside ADC.
+
+
+## Phase 4C1: standalone native projection foundations
+
+The internal native-schema and native-selection modules provide independently
+versioned, immutable in-memory candidate projections and transport decisions.
+They are not called by rendering, preparation, execution, manifests or recovery.
+`SchemaSelectionV2` and `OutputCommitmentV2` retain their historical text-only
+serialization. Existing v1/v2 request identities and sealed runs are unchanged.
+No unrestricted schema or provider-payload setting is exposed publicly.
+
+Projection always starts with `generate_output_schema()` and
+`serialize_output_schema()`. Exact UTF-8 schema and format-fragment bytes preserve
+insertion order; their SHA-256 digests are distinct from the semantic identity
+of the entire projection. That identity includes implementation/profile version,
+exact endpoint/model/SDK/API scope, source semantics, constraint partition and
+provenance. Minimal immutable source semantics retain trait/category ordering
+or original/presented pair IDs without unrelated descriptions or response text.
+Verification regenerates the projection, rejects tampering, and never repairs
+or reselects a committed decision.
+
+The conservative OpenAI profile preserves closed objects, required fields,
+structural types and exact enums. It maps trait constants to singleton enums and
+disjoint rubric member alternatives to nested `anyOf`. The tie-enabled pairwise
+root composition is removed only by its reviewed relationship transformation;
+nullable winner enum and boolean tie remain. Every omitted array bound and
+explanation-length constraint is recorded as local-only. Uniqueness,
+completeness, nonblank explanations, separated-array correspondence and the
+null-winner/tie relationship remain mandatory through the existing validators.
+Conservative native enforcement does not weaken accepted assessments.
+
+Responses and Chat use distinct strict format fragments, recorded byte for byte.
+The [provider matrix](assessment-provider-evidence.md#phase-4c1-openai-projection-matrix)
+distinguishes documented schema limits, fixture-tested translation and unknown
+model acceptance. Requested property order is committed; actual emitted order
+still requires trustworthy observation evidence and says nothing about internal
+reasoning order.
+
+Native selection requires compatible registered code, trusted fixture/profile
+provenance and positive exact-scope model support. Descriptive caller evidence
+alone grants no authority. `native` rejects unsupported/unknown operation;
+`auto` selects native only when eligible, otherwise explicitly selects text;
+strict `auto` rejects unknown support. Known unsupported native operation may
+select text. Explicit `text` retains the full neutral validation contract.
+No real model acceptance profile or live qualification is supplied by 4C1.
+
+Phase 4C2 supplies other provider translators. Phase 4C3 binds selection and
+ordered representations into durable preparation, prompts and recovery. Actual
+provider submissions, authentication work, exports and live qualification remain
+in their assigned later phases.

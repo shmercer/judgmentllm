@@ -164,9 +164,17 @@ updates its tests and user documentation and passes applicable R acceptance.
      append-only evidence revisions deliberately with genuine old-store tests.
      Safe metadata must survive minimal capture, reopening and idempotent replay.
      Preserve all unsuccessful submissions without grouped usage duplication.
-   - **4C, deferred: native translation and transport.** Add fixture-tested exact
-     endpoint projections, scoped mechanism selection and exact nonsecret transport
-     commitments. Retain the full local assessment contract and explicit text policy.
+   - **4C1, implemented: native projection foundations.** Standalone strict
+     version-1 projections and transport decisions provide conservative offline
+     OpenAI Responses/Chat translations, explicit local-only constraints, exact
+     ordered bytes/hashes, general schema-limit tests and synthetic scoped
+     selection. Historical durable text-only execution remains unchanged.
+   - **4C2, deferred: other provider translators.** Extend the reviewed pure
+     projection boundary for Anthropic, Gemini Developer, Vertex, Together and
+     Ollama with exact endpoint/dialect fixtures.
+   - **4C3, deferred: durable native selection and transport commitments.** Bind
+     decisions and exact schema/format bytes into preparation, native-specific
+     prompts and recovery without rewriting historical selections or sealed runs.
    Version affected schemas independently; never migrate or rewrite historical
    runs implicitly. Companion exports remain Phase 6 below.
 5. **Generative adapters, one provider/endpoint family per PR.** Implement OpenAI
@@ -338,4 +346,17 @@ and recovery tests must pass before implementation acceptance, followed by all
 seven exact-head local configurations, 49 R gates, 70 resource measurements,
 primary branch coverage ≥90% and five hosted jobs. Qualification records remain
 outside Dropbox and identify the exact commit; no live requests/authentication
-operations are part of these gates. Phase 4C and later work remain deferred.
+operations are part of these gates. This records the Phase 4B boundary; the
+standalone Phase 4C1 foundation is described below, with 4C2/4C3 deferred.
+
+
+### Phase 4C1 acceptance boundary
+
+Qualification requires all seven exact-head local lanes, all 49 strict R/jsonlite
+gates and 70 resource measurements, branch coverage at least 90% only on
+Ubuntu/Python 3.11, genuine historical compatibility, and all five required
+hosted jobs. No gate, timeout, resource limit or historical fixture is weakened.
+Native projection/selection fixtures are credential-free and network-free;
+no live-provider operation or real-model qualification is part of acceptance.
+Exact-head reports are retained outside synchronized folders, separate from
+implementation status. The development PR stays open and unmerged for review.
