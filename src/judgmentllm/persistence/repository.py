@@ -8,7 +8,9 @@ whether to retry. Its transaction context composes operations via savepoints.
 from __future__ import annotations
 
 import json
+import shutil
 import sqlite3
+import tempfile
 from collections.abc import Callable, Generator, Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
@@ -1194,6 +1196,8 @@ class ReadOnlyRepository(Repository):
     SQLite's read-only WAL connections still participate in SQLite-owned shared
     coordination; unlike immutable readers they observe committed WAL changes.
     No application directory, schema, ownership or assessment artifact is created.
+    ``preserve_files`` uses a verified point-in-time snapshot without touching
+    original SQLite coordination files. Protected text artifacts are not copied.
     """
 
     def __init__(
@@ -1210,6 +1214,7 @@ class ReadOnlyRepository(Repository):
         self.root = Path(root).resolve()
         database = self.root / "registry.sqlite3"
         self._checkpointed_signature: tuple[int, int, int, int, int] | None = None
+        self._inspection_snapshot: tempfile.TemporaryDirectory[str] | None = None
         self._database = database
         self._wal = database.with_name(database.name + "-wal")
         immutable = preserve_files and not self._wal.exists()
@@ -1230,18 +1235,27 @@ class ReadOnlyRepository(Repository):
             preserve_files and not database.with_name(database.name + "-shm").is_file()
         ):
             raise IntegrityError("read-only WAL coordination is unavailable")
+        opened_database = database
+        if preserve_files and not immutable:
+            opened_database = self._copy_wal_snapshot()
         # A checkpointed immutable reader creates no SQLite WAL/SHM sidecars.
         # Verify its snapshot again before returning inspection results; a new
         # writer or checkpoint invalidates it rather than silently losing WAL.
         # Active WAL readers retain the established committed-WAL behavior.
         # mode=ro forbids database creation, including a deletion race between
         # the existence check above and SQLite opening the URI.
-        self.connection = sqlite3.connect(
-            database.as_uri() + ("?mode=ro&immutable=1" if immutable else "?mode=ro"),
-            uri=True,
-            isolation_level=None,
-            timeout=busy_timeout_ms / 1000,
-        )
+        try:
+            self.connection = sqlite3.connect(
+                opened_database.as_uri()
+                + ("?mode=ro&immutable=1" if immutable else "?mode=ro"),
+                uri=True,
+                isolation_level=None,
+                timeout=busy_timeout_ms / 1000,
+            )
+        except BaseException:
+            if self._inspection_snapshot is not None:
+                self._inspection_snapshot.cleanup()
+            raise
         self._depth = 0
         self._execution_owner: tuple[str, str] | None = None
         try:
@@ -1255,7 +1269,60 @@ class ReadOnlyRepository(Repository):
             self._verify_snapshot()
         except BaseException:
             self.connection.close()
+            if self._inspection_snapshot is not None:
+                self._inspection_snapshot.cleanup()
             raise
+
+    def _copy_wal_snapshot(self) -> Path:
+        """Copy only registry metadata/WAL; protected text artifacts stay put.
+
+        Opening SQLite only on this private snapshot avoids touching original
+        shared-memory coordination, including a final-writer checkpoint race.
+        Copying streams bounded chunks; a changing source fails closed. The
+        ordinary reader still observes live WAL; this mode is point-in-time.
+        """
+        paths = (self._database, self._wal)
+        try:
+            before = tuple(self._file_signature(path) for path in paths)
+            temporary = tempfile.TemporaryDirectory(prefix="judgmentllm-readonly-")
+            self._inspection_snapshot = temporary
+            target = Path(temporary.name) / self._database.name
+            for path, original in zip(paths, before, strict=True):
+                if path.is_symlink():
+                    raise IntegrityError(
+                        "read-only registry cannot contain symbolic links"
+                    )
+                with (
+                    path.open("rb") as source,
+                    (Path(temporary.name) / path.name).open("xb") as destination,
+                ):
+                    if self._file_signature(path) != original:
+                        raise IntegrityError(
+                            "read-only registry changed during inspection"
+                        )
+                    shutil.copyfileobj(source, destination, length=65_536)
+            if tuple(self._file_signature(path) for path in paths) != before:
+                raise IntegrityError("read-only registry changed during inspection")
+            return target
+        except OSError:
+            if self._inspection_snapshot is not None:
+                self._inspection_snapshot.cleanup()
+            raise IntegrityError("read-only registry snapshot is unavailable") from None
+        except BaseException:
+            if self._inspection_snapshot is not None:
+                self._inspection_snapshot.cleanup()
+            raise
+
+    @staticmethod
+    def _file_signature(path: Path) -> tuple[int, int, int, int, int]:
+        stat = path.stat()
+        return (
+            stat.st_dev,
+            stat.st_ino,
+            stat.st_size,
+            stat.st_mtime_ns,
+            stat.st_ctime_ns,
+        )
 
     def _snapshot_signature(self) -> tuple[int, int, int, int, int]:
         try:
@@ -1281,4 +1348,8 @@ class ReadOnlyRepository(Repository):
         try:
             self._verify_snapshot()
         finally:
-            self.connection.close()
+            try:
+                self.connection.close()
+            finally:
+                if self._inspection_snapshot is not None:
+                    self._inspection_snapshot.cleanup()

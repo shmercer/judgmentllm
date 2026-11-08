@@ -3,14 +3,18 @@
 # pyright: reportPrivateUsage=false
 from __future__ import annotations
 
+import os
+import shutil
 import sqlite3
+import tempfile
 from pathlib import Path
 from typing import Any
 
 import pytest
 from test_persistence_repository import _run
 
-from judgmentllm.persistence.models import IntegrityError
+import judgmentllm.persistence.repository as repository_module
+from judgmentllm.persistence.models import IntegrityError, NotFoundError
 from judgmentllm.persistence.repository import ReadOnlyRepository, Repository
 
 
@@ -40,15 +44,25 @@ def test_preserved_checkpointed_inspection_creates_no_sidecars(tmp_path: Path) -
     assert snapshot(tmp_path) == before
 
 
-def test_preserved_active_wal_observes_new_committed_rows(tmp_path: Path) -> None:
+def test_preserved_active_wal_is_a_stable_committed_snapshot(tmp_path: Path) -> None:
     with Repository(tmp_path) as writer:
         _run(writer, "001")
         assert (tmp_path / "registry.sqlite3-wal").is_file()
         assert (tmp_path / "registry.sqlite3-shm").is_file()
-        with ReadOnlyRepository(tmp_path, preserve_files=True) as reader:
-            assert reader.get_run("001").run_id == "001"
+        with (
+            ReadOnlyRepository(tmp_path, preserve_files=True) as snapshot_reader,
+            ReadOnlyRepository(tmp_path) as default_reader,
+        ):
+            assert snapshot_reader.get_run("001").run_id == "001"
+            assert default_reader.get_run("001").run_id == "001"
             _run(writer, "002")
-            assert reader.get_run("002").run_id == "002"
+            # Preserved inspection is one stable point in time. The historical
+            # default reader retains its live committed-WAL behavior.
+            with pytest.raises(NotFoundError):
+                snapshot_reader.get_run("002")
+            assert default_reader.get_run("002").run_id == "002"
+            with ReadOnlyRepository(tmp_path, preserve_files=True) as reopened:
+                assert reopened.get_run("002").run_id == "002"
         assert writer.get_run("002").run_id == "002"
 
 
@@ -127,3 +141,133 @@ def test_preserved_inspection_rejects_registry_symlinks_before_sqlite(
     with pytest.raises(IntegrityError):
         ReadOnlyRepository(root, preserve_files=True)
     assert (target.read_bytes() if target.exists() else None) == before
+
+
+def test_writer_checkpoint_during_open_cannot_create_inspection_sidecars(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    writer = Repository(tmp_path)
+    _run(writer, "001")
+    original_connect = sqlite3.connect
+
+    def checkpoint_before_connect(*args: Any, **kwargs: Any) -> sqlite3.Connection:
+        # Model the final writer closing after the preserve_files WAL/SHM gate
+        # and before SQLite opens the reader. A safe inspection may decline a
+        # changed snapshot, but must not create replacement coordination files.
+        writer.close()
+        return original_connect(*args, **kwargs)
+
+    monkeypatch.setattr(sqlite3, "connect", checkpoint_before_connect)
+    try:
+        try:
+            with ReadOnlyRepository(tmp_path, preserve_files=True) as reader:
+                assert reader.get_run("001").run_id == "001"
+        except IntegrityError:
+            pass
+        assert not (tmp_path / "registry.sqlite3-wal").exists()
+        assert not (tmp_path / "registry.sqlite3-shm").exists()
+    finally:
+        writer.close()
+
+
+@pytest.fixture
+def inspection_snapshots(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> list[Path]:
+    original = tempfile.TemporaryDirectory
+    parent = tmp_path / "private-snapshots"
+    parent.mkdir()
+    created: list[Path] = []
+
+    def recording_temporary(
+        *args: Any, **kwargs: Any
+    ) -> tempfile.TemporaryDirectory[str]:
+        kwargs["dir"] = str(parent)
+        temporary = original(*args, **kwargs)
+        created.append(Path(temporary.name))
+        return temporary
+
+    monkeypatch.setattr(tempfile, "TemporaryDirectory", recording_temporary)
+    return created
+
+
+def test_active_snapshot_is_private_bounded_and_removed_on_close(
+    tmp_path: Path,
+    inspection_snapshots: list[Path],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "store"
+    original_copy = shutil.copyfileobj
+    chunk_sizes: list[int] = []
+
+    def bounded_copy(source: Any, destination: Any, length: int = 0) -> None:
+        chunk_sizes.append(length)
+        original_copy(source, destination, length=length)
+
+    monkeypatch.setattr(shutil, "copyfileobj", bounded_copy)
+    with Repository(root) as writer:
+        _run(writer, "001")
+        before = snapshot(root)
+        with ReadOnlyRepository(root, preserve_files=True) as reader:
+            assert reader.root == root.resolve()
+            assert reader.get_run("001").run_id == "001"
+            assert len(inspection_snapshots) == 1
+            temporary = inspection_snapshots[0]
+            assert temporary.is_dir()
+            if os.name != "nt":
+                assert temporary.stat().st_mode & 0o777 == 0o700
+            assert all(path.is_file() for path in temporary.iterdir())
+            assert not (temporary / "runs").exists()
+        assert chunk_sizes == [65_536, 65_536]
+        assert not inspection_snapshots[0].exists()
+        assert snapshot(root) == before
+
+
+@pytest.mark.parametrize(
+    "failure", ["copy", "database_change", "wal_change", "open", "verify"]
+)
+def test_active_snapshot_failure_discards_private_copies(
+    tmp_path: Path,
+    inspection_snapshots: list[Path],
+    monkeypatch: pytest.MonkeyPatch,
+    failure: str,
+) -> None:
+    root = tmp_path / "store"
+    with Repository(root) as writer:
+        _run(writer, "001")
+        before = snapshot(root)
+        if failure in {"copy", "database_change", "wal_change"}:
+            original_copy = shutil.copyfileobj
+            copied = 0
+
+            def failing_copy(source: Any, destination: Any, length: int = 0) -> None:
+                nonlocal copied
+                if failure == "copy":
+                    raise OSError("synthetic copy failure")
+                original_copy(source, destination, length=length)
+                copied += 1
+                if copied == 1:
+                    if failure == "database_change":
+                        database = root / "registry.sqlite3"
+                        stat = database.stat()
+                        os.utime(database, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1))
+                    else:
+                        _run(writer, "002")
+
+            monkeypatch.setattr(shutil, "copyfileobj", failing_copy)
+        elif failure == "open":
+
+            def failing_open(*_args: Any, **_kwargs: Any) -> Any:
+                raise sqlite3.OperationalError("synthetic open failure")
+
+            monkeypatch.setattr(sqlite3, "connect", failing_open)
+        else:
+
+            def failing_verify(_connection: sqlite3.Connection) -> None:
+                raise IntegrityError("synthetic verification failure")
+
+            monkeypatch.setattr(repository_module, "verify", failing_verify)
+        with pytest.raises((IntegrityError, sqlite3.OperationalError)):
+            ReadOnlyRepository(root, preserve_files=True)
+        assert len(inspection_snapshots) == 1
+        assert not inspection_snapshots[0].exists()
+        if failure != "wal_change":
+            assert snapshot(root) == before

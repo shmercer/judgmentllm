@@ -193,10 +193,8 @@ def test_invalid_utf8_has_fixed_error_and_provider_outcome_does_not_redefine_val
     body["output"][0]["status"] = "incomplete"
     component = _extract_assessment_component(body, "responses")
     assert component.output_text == text.encode()
-    parsed = diagnose_assessment_output(
-        component, rubric(), provider_outcome="output_limit"
-    )
-    assert parsed.code == "truncated" and parsed.canonical_valid
+    parsed = diagnose_assessment_output(component, rubric())
+    assert parsed.code == "valid" and parsed.canonical_valid
     assert body["status"] == "incomplete"
 
 

@@ -495,3 +495,11 @@ display protected unvalidated assessment text. The qualification harness reports
 safe diagnostic metadata, keeps historical plan reports readable, and requires a
 fresh source-bound version-2 plan for new execution. Positively terminal invalid
 assessments can advance within that fixed matrix; uncertainty cannot.
+
+
+The repository qualification report adds `case_status` to distinguish pending,
+unresolved, rejected, accepted without usable observation, completed valid or
+invalid assessment, refusal, truncation, and local evidence-integrity failure.
+`matrix_execution_complete`, `all_assessments_valid`, `valid_assessment_count`, and
+`invalid_assessment_count` distinguish completing the planned matrix from passing
+its assessment checks; independent live qualification review remains required.

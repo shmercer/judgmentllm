@@ -10,6 +10,7 @@ from typing import Any, Literal
 
 import httpx2
 import pytest
+import pytest_asyncio
 from test_openai_lifecycle import envelope, production_spec
 
 from judgmentllm.assessment_inspection import inspect_assessment_output
@@ -20,8 +21,8 @@ from judgmentllm.production_transport import production_context
 from judgmentllm.providers.openai import OpenAIAdapter
 
 
-@pytest.fixture(autouse=True)
-def offline(monkeypatch: pytest.MonkeyPatch) -> None:
+@pytest_asyncio.fixture(autouse=True)
+async def offline(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OPENAI_API_KEY", "UTF8_SYNTHETIC_AUTH_CANARY")
 
     def forbidden(*_args: Any, **_kwargs: Any) -> Any:

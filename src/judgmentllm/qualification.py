@@ -1120,11 +1120,40 @@ def report_plan(directory: Path) -> dict[str, object]:
             estimated_total = None
             for name in totals:
                 totals[name] = None
+        if item["evidence_integrity_failure"]:
+            status = "evidence_integrity_failure"
+        elif item["acceptance_outcome"] == "rejected":
+            status = "provider_rejected_request"
+        elif item["acceptance_outcome"] == "unresolved":
+            status = "submitted_acceptance_unresolved"
+        elif item["acceptance_outcome"] == "not_submitted":
+            status = "not_submitted"
+        elif item["provider_outcome"] in {"refusal", "content_filter"}:
+            status = "provider_refused"
+        elif item["provider_outcome"] == "output_limit":
+            status = "provider_truncated_output"
+        elif item["assessment_continuation_allowed"]:
+            status = (
+                "provider_completed_assessment_valid"
+                if item["local_assessment_valid"]
+                else "provider_completed_assessment_invalid"
+            )
+        elif item["submission_certainty"] == "accepted":
+            status = "provider_accepted_no_usable_observation"
+        else:
+            status = "not_attempted"
+        item["case_status"] = status
         item["assessment_behavior_verified"] = (
             item["assessment_continuation_allowed"] is True
             and item["local_assessment_valid"] is True
         )
         reports.append(item)
+    valid_count = sum(
+        row["case_status"] == "provider_completed_assessment_valid" for row in reports
+    )
+    invalid_count = sum(
+        row["case_status"] == "provider_completed_assessment_invalid" for row in reports
+    )
     return {
         "report_version": 1,
         "source_commit": plan.source_commit,
@@ -1148,6 +1177,10 @@ def report_plan(directory: Path) -> dict[str, object]:
         ),
         "reported_usage_totals": totals,
         "calls": reports,
+        "matrix_execution_complete": valid_count + invalid_count == len(plan.calls),
+        "all_assessments_valid": valid_count == len(plan.calls),
+        "valid_assessment_count": valid_count,
+        "invalid_assessment_count": invalid_count,
         "independent_review_required": True,
         "recovery_limitations": "store=false; retained response recovery only; uncertain or consumed requests are never replaced.",
         "spending_limitations": "Conservative estimate under cited rates; account terms, pricing changes and taxes may differ.",

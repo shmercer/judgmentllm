@@ -82,6 +82,13 @@ def test_plan_is_offline_exact_and_has_no_execution_authority(
         assert call.payload_sha256 == bytes_digest(call.request_body_utf8.encode())
     report = q.report_plan(directory)
     assert report["physical_send_attempts"] == 0
+    assert report["matrix_execution_complete"] is False
+    assert report["all_assessments_valid"] is False
+    assert report["valid_assessment_count"] == report["invalid_assessment_count"] == 0
+    assert all(
+        row["case_status"] == "not_attempted"
+        for row in cast(list[dict[str, object]], report["calls"])
+    )
     assert report["independent_review_required"] is True
 
 
@@ -373,6 +380,10 @@ async def test_eight_call_matrix_real_sdk_and_safe_continuation(
     report = await q.execute_plan(directory, **arguments)
     assert len(sent) == 8
     assert report["physical_send_attempts"] == 8
+    assert report["matrix_execution_complete"] is True
+    assert report["all_assessments_valid"] is True
+    assert report["valid_assessment_count"] == 8
+    assert report["invalid_assessment_count"] == 0
     assert report["reported_usage_totals"] == {
         "input_tokens": 800,
         "output_tokens": 80,
@@ -380,6 +391,9 @@ async def test_eight_call_matrix_real_sdk_and_safe_continuation(
     }
     calls = cast(list[dict[str, object]], report["calls"])
     assert all(row["local_assessment_valid"] is True for row in calls)
+    assert all(
+        row["case_status"] == "provider_completed_assessment_valid" for row in calls
+    )
     assert all(row["durable_evidence_consistent"] is True for row in calls)
     assert all(row["live_qualified"] is False for row in calls)
     assert all(row["provider_accepted"] is True for row in calls)
@@ -425,6 +439,9 @@ async def test_timeout_consumes_allocation_without_replacement(
     first = cast(list[dict[str, object]], report["calls"])[0]
     assert first["provider_accepted"] is None
     assert first["acceptance_outcome"] == "unresolved"
+    assert first["case_status"] == "submitted_acceptance_unresolved"
+    assert report["matrix_execution_complete"] is False
+    assert report["all_assessments_valid"] is False
     assert first["provider_response_observed"] is False
     assert first["submission_certainty"] == "unknown"
     assert first["invocation_acceptance"] == "unresolved"
@@ -526,6 +543,7 @@ async def test_report_distinguishes_forwarded_rejection_and_remains_readonly(
     assert first["physical_send_attempted"] is True
     assert first["provider_accepted"] is False
     assert first["acceptance_outcome"] == "rejected"
+    assert first["case_status"] == "provider_rejected_request"
     assert first["invocation_failure_code"] == code
     assert first["submission_certainty"] == "not_submitted"
     assert first["invocation_acceptance"] is None
@@ -582,6 +600,7 @@ async def test_failed_provider_observation_is_not_assessment_acceptance(
     assert first["provider_outcome"] == first["completion_status"] == "provider_failure"
     assert first["provider_accepted"] is None
     assert first["acceptance_outcome"] == "provider_failure"
+    assert first["case_status"] == "provider_accepted_no_usable_observation"
     assert first["assessment_behavior_verified"] is False
     assert "PRIVATE_PROVIDER_FAILURE_CANARY" not in json.dumps(report)
 
@@ -607,6 +626,9 @@ async def test_report_separates_request_acceptance_from_unsuccessful_completion(
     assert first["acceptance_outcome"] == "accepted"
     assert first["provider_response_observed"] is True
     assert first["provider_outcome"] == first["completion_status"] == status
+    assert first["case_status"] == (
+        "provider_refused" if status == "refusal" else "provider_truncated_output"
+    )
     assert first["assessment_behavior_verified"] is False
     assert first["local_assessment_valid"] is False
     assert "PRIVATE_REFUSAL_BODY_CANARY" not in json.dumps(report)
@@ -637,6 +659,13 @@ async def test_completed_terminal_invalid_assessments_continue_without_replaceme
     report = await q.execute_plan(directory, **arguments)
     calls = cast(list[dict[str, object]], report["calls"])
     assert len(sent) == report["physical_send_attempts"] == 8
+    assert report["matrix_execution_complete"] is True
+    assert report["all_assessments_valid"] is False
+    assert report["valid_assessment_count"] == 0
+    assert report["invalid_assessment_count"] == 8
+    assert all(
+        row["case_status"] == "provider_completed_assessment_invalid" for row in calls
+    )
     assert all(row["outcome"] == "partial" for row in calls)
     assert all(row["normalized_outcomes"] == ["invalid"] for row in calls)
     assert all(row["assessment_terminal"] is True for row in calls)
@@ -845,6 +874,8 @@ async def test_corrupt_or_missing_committed_receipt_stops_and_reports_readonly(
     row = cast(list[dict[str, object]], report["calls"])[0]
     assert row["evidence_integrity_failure"] is True
     assert row["outcome"] == row["acceptance_outcome"] == "evidence_integrity_failure"
+    assert row["case_status"] == "evidence_integrity_failure"
+    assert report["matrix_execution_complete"] is False
     assert row["assessment_continuation_allowed"] is False
     assert row["recovery_required"] is True
     assert "PRIVATE_CORRUPT_RECEIPT_CANARY" not in json.dumps(report)

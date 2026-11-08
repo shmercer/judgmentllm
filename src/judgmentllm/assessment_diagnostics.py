@@ -163,8 +163,6 @@ class AssessmentParseDiagnostic:
 def diagnose_assessment_output(
     component: AssessmentComponent,
     contract: AssessmentOutputContract,
-    *,
-    provider_outcome: str | None = None,
 ) -> AssessmentParseDiagnostic:
     """Use the canonical complete-output validator without repair or rescoring."""
     from judgmentllm.output_contracts import (
@@ -173,30 +171,16 @@ def diagnose_assessment_output(
         validate_rubric_contract_output,
     )
 
-    outcomes: dict[str, AssessmentDiagnosticCode] = {
-        "refusal": "refusal",
-        "content_filter": "refusal",
-        "output_limit": "truncated",
-        "incomplete": "incomplete",
-        "unsupported_output": "unsupported_components",
-        "tool_call": "unsupported_components",
-        "multiple_outputs": "multiple_outputs",
-    }
-    outcome_code = outcomes.get(provider_outcome or "")
     if component.extraction_status != "extracted":
-        return AssessmentParseDiagnostic(
-            outcome_code or component.extraction_status, False
-        )
+        return AssessmentParseDiagnostic(component.extraction_status, False)
     raw = component.output_text
     if raw is None or not raw.strip():
-        return AssessmentParseDiagnostic(outcome_code or "no_text", False)
+        return AssessmentParseDiagnostic("no_text", False)
     try:
         if isinstance(contract, RubricOutputContract):
             validate_rubric_contract_output(raw, contract)
         else:
             validate_pairwise_contract_output(raw, contract)
     except (ValueError, TypeError, RecursionError) as error:
-        return AssessmentParseDiagnostic(
-            outcome_code or contract_error_code(error), False
-        )
-    return AssessmentParseDiagnostic(outcome_code or "valid", True)
+        return AssessmentParseDiagnostic(contract_error_code(error), False)
+    return AssessmentParseDiagnostic("valid", True)

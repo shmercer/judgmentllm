@@ -218,3 +218,15 @@ Reports distinguish accepted, rejected and unresolved requests from completion
 status and local assessment validity. Missing acknowledgment never proves rejection.
 A successful sample qualifies only its independently reviewed exact feature scope.
 No live calls are authorized by this guide or by approval to implement the adapter.
+
+
+Qualification reports expose a safe `case_status` for every planned request:
+`not_attempted`, `not_submitted`, `submitted_acceptance_unresolved`,
+`provider_rejected_request`, `provider_accepted_no_usable_observation`,
+`provider_completed_assessment_valid`, `provider_completed_assessment_invalid`,
+`provider_refused`, `provider_truncated_output`, or `evidence_integrity_failure`.
+`matrix_execution_complete` requires all eight completed provider observations and
+terminal valid or invalid assessments; `all_assessments_valid` requires eight valid
+assessments. The separate `valid_assessment_count` and `invalid_assessment_count`
+make a completed matrix of invalid outputs explicit. These facts never establish
+reviewed live qualification automatically.

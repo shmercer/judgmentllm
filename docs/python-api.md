@@ -1190,7 +1190,9 @@ inspect_assessment_output(
 ```
 
 The service verifies an existing observation and companion receipt using the
-read-only repository. It performs no provider operation and requires no
+read-only repository. A running store is inspected through a private, temporary
+registry snapshot; protected text artifacts remain in the original run store.
+A changing snapshot is rejected. It performs no provider operation and requires no
 credentials. The default result contains `label` and nullable `diagnostic`.
 `include_text=True` additionally reads exact UTF-8 bytes only for an existing
 full-capture artifact. `output_text` is excluded from `repr`, `model_dump()` and
