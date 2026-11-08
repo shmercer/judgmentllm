@@ -80,6 +80,21 @@ from judgmentllm.providers.protocol import PreparedRequest
 # no positive model authority, and persistence cannot create that authority.
 # pyright: reportPrivateUsage=false
 
+# A substituted resolver keeps its exact legacy call signature and behavior.
+# These references gate only a one-call compiler handoff, never eligibility.
+_STOCK_OPENAI_RESOLVER = _resolve_native_transport
+_STOCK_OPENAI_RESOLVER_CODE = getattr(_resolve_native_transport, "__code__", None)
+_STOCK_OPENAI_PROJECTOR = project_openai_schema
+_STOCK_OPENAI_PROJECTOR_CODE = getattr(project_openai_schema, "__code__", None)
+
+
+def _stock_openai_projector_unchanged() -> bool:
+    return (
+        project_openai_schema is _STOCK_OPENAI_PROJECTOR
+        and getattr(project_openai_schema, "__code__", None)
+        is _STOCK_OPENAI_PROJECTOR_CODE
+    )
+
 
 class TransportIntegrityError(ValueError):
     """Controlled compatibility failure; never includes content or provider data."""
@@ -134,8 +149,12 @@ def transport_context_digest(context: TransportContext) -> str:
         return semantic_digest(
             "native-runtime-context-v1",
             {
-                "scope": scope,
-                "evidence": evidence,
+                # These are fresh owned results of the full admissions above.
+                # Hashing their JSON snapshots avoids admitting them again.
+                "scope": scope.model_dump(mode="json"),
+                "evidence": None
+                if evidence is None
+                else evidence.model_dump(mode="json"),
                 "openai_implementations": [
                     [
                         i.endpoint,
@@ -195,10 +214,15 @@ def _preparation_token(
     if type(value) is date:
         return (date, value.isoformat())
     kind = type(value)
-    if kind in (type(None), bool, int, float, str, bytes):
-        # Most leaves are primitives. Preserve the exact shared token semantics
-        # without repeating model/dataclass discovery for every scalar leaf.
-        return exact_token(value)
+    if kind in (type(None), bool, int, str):
+        # Match exact_token's leaf representation without allocating a new
+        # traversal set for every scalar in an already active traversal.
+        return (kind, value)
+    if kind is float:
+        return (kind, cast(float, value).hex())
+    if kind is bytes:
+        # Keep the existing uncacheable semantics for unsupported byte values.
+        return None
     if kind is FunctionType:
         function = cast(FunctionType, value)
         if (
@@ -423,14 +447,19 @@ class OutputCommitmentV3(_TransportModel):
         ):
             raise ValueError("neutral representation differs")
         decision = self.selection.openai_decision or self.selection.provider_decision
-        if decision is not None and (
-            decision.scope != self.scope
-            or decision.source_schema_sha256 != self.schema_sha256
-            or decision.source_sha256
-            != bytes_digest(canonical_bytes(snapshot_source(self.contract)))
-            or decision.features != _features(self.contract)
-        ):
-            raise ValueError("selection source identity differs")
+        source = None
+        if decision is not None:
+            # This constructor returns a fresh fully admitted source. Reuse it
+            # for both identity and projection binding within this validator.
+            source = snapshot_source(self.contract)
+            if (
+                decision.scope != self.scope
+                or decision.source_schema_sha256 != self.schema_sha256
+                or decision.source_sha256
+                != bytes_digest(canonical_bytes(source.model_dump(mode="json")))
+                or decision.features != _features(self.contract)
+            ):
+                raise ValueError("selection source identity differs")
         native = self.selection.mechanism != "text"
         if native != (self.projection is not None):
             raise ValueError("projection presence differs")
@@ -441,10 +470,15 @@ class OutputCommitmentV3(_TransportModel):
             ):
                 raise ValueError("text representation differs")
         else:
-            projection = type(self.projection).model_validate(dict(self.projection))
+            # NativeModel always revalidates instances. The projection field
+            # has already independently reconstructed and checked its complete
+            # current representation before this after-validator runs.
+            projection = self.projection
+            if source is None:
+                source = snapshot_source(self.contract)
             if (
                 projection.scope != self.scope
-                or projection.source != snapshot_source(self.contract)
+                or projection.source != source
                 or projection.neutral_schema_text != self.schema_text
                 or projection.mechanism != self.selection.mechanism
                 or self.sdk_config_fragment_text
@@ -533,8 +567,14 @@ def _verify_openai(
     decision: TransportDecisionV1,
     contract: AssessmentOutputContract,
     context: TransportContext,
+    *,
+    prepared_projection: NativeSchemaProjectionV1 | None = None,
 ) -> None:
-    """Verify frozen V1 facts without the historical auto resolver call."""
+    """Verify frozen V1 facts without the historical auto resolver call.
+
+    The private optional projection has just passed the output field's complete
+    independent admission in this same call; ordinary callers regenerate it.
+    """
     checked = TransportDecisionV1.model_validate(dict(decision))
     catalog = context.openai_catalog or _DEFAULT_CATALOG
     implementation = next(
@@ -648,8 +688,26 @@ def _verify_openai(
     if checked.native_support != support or checked.diagnostic.reason != diagnostic:
         raise TransportIntegrityError()
     if checked.mechanism != "text":
-        projection = _project(contract, context, checked.mechanism)
-        if projection.projection_sha256 != checked.projection_sha256:
+        projection = (
+            _project(contract, context, checked.mechanism)
+            if prepared_projection is None
+            else prepared_projection
+        )
+        if (
+            type(projection) is not NativeSchemaProjectionV1
+            or type(projection.projection_version) is not int
+            or projection.projection_version != 1
+            or type(projection.implementation_version) is not int
+            or projection.implementation_version != 1
+            or type(projection.source_contract_version) is not int
+            or projection.source_contract_version != 2
+            or projection.scope != context.scope
+            or projection.source_sha256 != checked.source_sha256
+            or projection.neutral_schema_sha256 != checked.source_schema_sha256
+            or projection.mechanism != checked.mechanism
+            or projection.schema_dialect != checked.schema_dialect
+            or projection.projection_sha256 != checked.projection_sha256
+        ):
             raise TransportIntegrityError()
 
 
@@ -684,6 +742,10 @@ def build_output_commitment_v3(
     inherited_commitment: TransportCommitmentV1 | None = None,
 ) -> OutputCommitmentV3:
     """Select a fresh request, or inherit the parent's exact family and route."""
+    try:
+        _validate_context(spec, context)
+    except (ValueError, TypeError, AttributeError, RecursionError):
+        raise TransportIntegrityError() from None
     return _build_output_commitment_v3(
         spec,
         request,
@@ -700,9 +762,11 @@ def _build_output_commitment_v3(
     context_sha256: str,
     *,
     inherited_commitment: TransportCommitmentV1 | None = None,
+    _reuse_projection: bool = False,
 ) -> OutputCommitmentV3:
     try:
-        _validate_context(spec, context)
+        # Public callers validate in build_output_commitment_v3; preparation
+        # has already validated its detached, exact-token-guarded inputs.
         contract = _contract(spec, request)
         mechanism = spec.prompt.native_mechanism
         projection: Projection | None = None
@@ -733,14 +797,32 @@ def _build_output_commitment_v3(
                 mechanism="text",
             )
         elif mechanism is not None and mechanism.startswith("openai."):
-            decision = _resolve_native_transport(
-                contract,
-                scope=context.scope,
-                policy=spec.prompt.structured_output,
-                strict_capabilities=spec.strict_capabilities,
-                evidence=context.evidence,
-                catalog=context.openai_catalog or _DEFAULT_CATALOG,
-            )
+            projections: list[NativeSchemaProjectionV1] = []
+            if (
+                _reuse_projection
+                and _stock_openai_projector_unchanged()
+                and _resolve_native_transport is _STOCK_OPENAI_RESOLVER
+                and getattr(_resolve_native_transport, "__code__", None)
+                is _STOCK_OPENAI_RESOLVER_CODE
+            ):
+                decision = _resolve_native_transport(
+                    contract,
+                    scope=context.scope,
+                    policy=spec.prompt.structured_output,
+                    strict_capabilities=spec.strict_capabilities,
+                    evidence=context.evidence,
+                    catalog=context.openai_catalog or _DEFAULT_CATALOG,
+                    _projection_sink=projections,
+                )
+            else:
+                decision = _resolve_native_transport(
+                    contract,
+                    scope=context.scope,
+                    policy=spec.prompt.structured_output,
+                    strict_capabilities=spec.strict_capabilities,
+                    evidence=context.evidence,
+                    catalog=context.openai_catalog or _DEFAULT_CATALOG,
+                )
             selection = FrozenTransportSelectionV1(
                 kind="openai-v1",
                 policy=decision.policy,
@@ -749,7 +831,14 @@ def _build_output_commitment_v3(
                 openai_decision=decision,
             )
             if decision.mechanism != "text":
-                projection = _project(contract, context, mechanism)
+                # Only the stock resolver plus stock translator can hand off a
+                # candidate. The output field independently reprojects it below;
+                # custom resolvers/translators retain their complete old path.
+                projection = (
+                    projections[0]
+                    if len(projections) == 1
+                    else _project(contract, context, mechanism)
+                )
         elif mechanism is not None:
             decision_v2 = _resolve_native_transport_v2(
                 contract,
@@ -884,17 +973,23 @@ class TransportCommitmentV1(_TransportModel):
             or decision.source_schema_sha256 != self.neutral_schema_sha256
         ):
             raise ValueError("decision receipt identities differ")
-        plan = TransportPlanV1(
-            identity=self.identity,
-            configuration_sha256=self.configuration_sha256,
-            dependency_sha256=self.dependency_sha256,
-            membership_sha256=self.membership_sha256,
-            output_commitment_sha256=self.output_commitment_sha256,
-            prompt_sha256=self.prompt_sha256,
-            context_sha256=self.context_sha256,
-            parent_commitment_sha256=self.parent_commitment_sha256,
-        )
-        if self.plan_sha256 != plan.plan_sha256:
+        # Every field (including the physical identity) has independently
+        # validated before this after-validator. A plan adds only these same
+        # fields and literal versions; deriving its JSON avoids admitting the
+        # same nested identity again without weakening the public plan boundary.
+        plan = {
+            "schema_version": 1,
+            "plan_version": 1,
+            "identity": self.identity.model_dump(mode="json"),
+            "configuration_sha256": self.configuration_sha256,
+            "dependency_sha256": self.dependency_sha256,
+            "membership_sha256": self.membership_sha256,
+            "output_commitment_sha256": self.output_commitment_sha256,
+            "prompt_sha256": self.prompt_sha256,
+            "context_sha256": self.context_sha256,
+            "parent_commitment_sha256": self.parent_commitment_sha256,
+        }
+        if self.plan_sha256 != semantic_digest("transport-plan-v1", plan):
             raise ValueError("receipt plan identity differs")
         if self.commitment_sha256 != semantic_digest(
             "transport-commitment-v1",
@@ -976,8 +1071,16 @@ class PreparedRequestV3(PreparedRequest, _TransportModel):
             or tuple(task.trait_id for task in original.tasks) != original.trait_ids
             or self.payload != ordered_json_bytes(_json_object(expected_payload))
             or payload_ids != self.task_ids
-            or receipt
-            != _receipt(plan, output, self.rendered_text.encode("utf-8"), self.payload)
+            # The nested receipt has already independently validated all of
+            # its fields and hashes. Compare every expected JSON field without
+            # constructing a second identical receipt. Canonical bytes preserve
+            # exact scalar types (True, 1 and 1.0 never compare as equal).
+            or canonical_bytes(receipt.model_dump(mode="json"))
+            != canonical_bytes(
+                _receipt_values(
+                    plan, output, self.rendered_text.encode("utf-8"), self.payload
+                )
+            )
             or receipt.prompt_sha256 != self.prompt_sha256
             or plan.prompt_sha256 != self.prompt_sha256
             or plan.identity.request_uid != self.request_uid
@@ -1023,9 +1126,9 @@ class PreparedRequestV3(PreparedRequest, _TransportModel):
         return artifacts
 
 
-def _receipt(
+def _receipt_values(
     plan: TransportPlanV1, output: OutputCommitmentV3, prompt: bytes, payload: bytes
-) -> TransportCommitmentV1:
+) -> dict[str, object]:
     projection = output.projection
     native = (
         None if projection is None else projection.native_schema_text.encode("utf-8")
@@ -1038,12 +1141,13 @@ def _receipt(
     fragment = (
         None if projection is None else projection.format_fragment_text.encode("utf-8")
     )
+    plan_snapshot = plan.model_dump(mode="json")
     values = {
-        **plan.model_dump(),
-        "plan_sha256": plan.plan_sha256,
+        **plan_snapshot,
+        "plan_sha256": semantic_digest("transport-plan-v1", plan_snapshot),
         "mechanism": output.selection.mechanism,
         "requested_mechanism": output.selection.requested_mechanism,
-        "selection": output.selection,
+        "selection": output.selection.model_dump(mode="json"),
         "projection_version": None
         if projection is None
         else projection.projection_version,
@@ -1068,12 +1172,21 @@ def _receipt(
         "local_validation_required": True,
     }
     values.pop("plan_version", None)
-    return TransportCommitmentV1.model_validate(
-        {
-            **values,
-            "commitment_sha256": semantic_digest("transport-commitment-v1", values),
-        }
-    )
+    return {
+        **values,
+        "commitment_sha256": semantic_digest("transport-commitment-v1", values),
+    }
+
+
+def _receipt(
+    plan: TransportPlanV1, output: OutputCommitmentV3, prompt: bytes, payload: bytes
+) -> TransportCommitmentV1:
+    values = _receipt_values(plan, output, prompt, payload)
+    # Python-mode admission retains strict tuple/date types in the already
+    # checked models; the identity above hashes their exact JSON snapshots.
+    values["identity"] = plan.identity
+    values["selection"] = output.selection
+    return TransportCommitmentV1.model_validate(values)
 
 
 def prepare_transport_request(
@@ -1198,7 +1311,14 @@ def prepare_transport_request(
                 raise TransportIntegrityError()
             if output.selection.openai_decision is not None:
                 _verify_openai(
-                    output.selection.openai_decision, output.contract, context
+                    output.selection.openai_decision,
+                    output.contract,
+                    context,
+                    prepared_projection=output.projection
+                    if input_token is not None
+                    and _stock_openai_projector_unchanged()
+                    and type(output.projection) is NativeSchemaProjectionV1
+                    else None,
                 )
             if output.selection.provider_decision is not None:
                 _verify_native_transport_decision_v2(
@@ -1220,6 +1340,7 @@ def prepare_transport_request(
                     context,
                     context_sha256,
                     inherited_commitment=parent,
+                    _reuse_projection=True,
                 )
             )
         # The constructor above fully validated these same values. Reuse only a

@@ -33,6 +33,9 @@ from judgmentllm.persistence.hashing import (
 from judgmentllm.persistence.models import SHA256
 from judgmentllm.providers.openai_schema import project_openai_schema
 
+_STOCK_OPENAI_PROJECTOR = project_openai_schema
+_STOCK_OPENAI_PROJECTOR_CODE = getattr(project_openai_schema, "__code__", None)
+
 NativeSupport = Literal["supported", "unsupported", "unknown"]
 NativePolicy = Literal["native", "auto", "text"]
 NativeMechanism = Literal["openai.responses.text.format", "openai.chat.response_format"]
@@ -371,9 +374,16 @@ def _resolve_native_transport(
     evidence: ScopedProviderEvidence | None = None,
     schema_dialect: str = _DIALECT,
     catalog: _Catalog,
+    _projection_sink: list[NativeSchemaProjectionV1] | None = None,
 ) -> TransportDecisionV1:
+    # The optional private sink is one-call compiler output, never authority or
+    # retained state. Its consumer still fully admits the typed projection.
     # Public boundary errors cannot disclose arbitrary keyword values or content.
     try:
+        if _projection_sink is not None and (
+            type(_projection_sink) is not list or _projection_sink
+        ):
+            raise NativeSelectionError("invalid_selection_input", "unknown")
         scope = NativeProjectionScopeV1.model_validate(dict(scope))
         if (
             policy not in {"native", "auto", "text"}
@@ -549,9 +559,21 @@ def _resolve_native_transport(
         else None,
         "local_validation_required": True,
     }
-    return TransportDecisionV1.model_validate_json(
+    decision = TransportDecisionV1.model_validate_json(
         json.dumps({**values, "decision_sha256": _decision_digest(values)})
     )
+    if (
+        _projection_sink is not None
+        and native
+        and type(projection) is NativeSchemaProjectionV1
+        and implementation is not None
+        and project_openai_schema is _STOCK_OPENAI_PROJECTOR
+        and implementation.translate is _STOCK_OPENAI_PROJECTOR
+        and getattr(implementation.translate, "__code__", None)
+        is _STOCK_OPENAI_PROJECTOR_CODE
+    ):
+        _projection_sink.append(projection)
+    return decision
 
 
 def verify_native_transport_decision(

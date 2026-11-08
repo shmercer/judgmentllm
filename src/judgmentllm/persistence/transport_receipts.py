@@ -33,7 +33,9 @@ def publish_transport_commitment(
 
     try:
         checked = _parse_transport_commitment(canonical_bytes(commitment))
-        raw = canonical_bytes(checked)
+        # The parser has just fully admitted a new owned receipt. Serialize its
+        # detached JSON fields instead of admitting that same model again.
+        raw = canonical_bytes(checked.model_dump(mode="json"))
         if len(raw) > _MAX_RECEIPT_BYTES:
             raise ValueError("oversized transport metadata")
     except (ValueError, TypeError):
@@ -60,7 +62,7 @@ def read_transport_commitment(
         checked = _parse_transport_commitment(raw)
         if (
             len(raw) > _MAX_RECEIPT_BYTES
-            or canonical_bytes(checked) != raw
+            or canonical_bytes(checked.model_dump(mode="json")) != raw
             or checked.identity.attempt_id != attempt_id
         ):
             raise ValueError("inconsistent transport metadata")

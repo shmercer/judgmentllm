@@ -513,3 +513,21 @@ The four supplemental OpenAI SDK workloads retain numeric memory, queue and
 serialization measurements under each local lane's `openai-resources/` evidence
 and the hosted `openai-resources-OS-PYTHON` artifact, including measurements
 available on failing jobs. All70 standard measurements remain mandatory.
+
+The first Phase 5A exact-head local grid passed all seven lanes, but the
+[hosted Windows follow-up](https://github.com/shmercer/judgmentllm/actions/runs/42456933461/job/128657858619)
+still exceeded the original 90-second native child deadline. The other four
+hosted jobs passed. Profiling isolated CPU time in repeated projection, canonical
+snapshot and receipt admissions; filesystem and SQLite costs were small.
+
+The follow-up correction reuses freshly admitted values within one preparation,
+retaining independent typed projection validation, complete receipt comparison,
+public admission boundaries and custom translator/resolver behavior. It adds
+regressions for forged models, exact scalar types, noncanonical receipts and
+modified translator identity/code. It introduces no cross-request cache or new
+authority. All 530 targeted security, historical, recovery and SDK HTTP tests,
+Ruff and strict Pyright passed before committing. A preceding candidate completed
+the unchanged 256-request fixture in 40.678s on Linux and 48.060s on Windows; these
+measurements are development evidence, not final-head qualification. The final
+commit must pass all seven local configurations and five hosted jobs again, with
+every original timeout, memory limit and failed-attempt record preserved.
