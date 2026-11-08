@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import socket
 import sqlite3
@@ -158,6 +159,14 @@ def test_readonly_report_and_duplicate_json_rejection(
         q.report_plan(directory)
 
 
+def _forbidden_network(*_args: object, **_kwargs: object) -> Any:
+    raise AssertionError("External network is forbidden")
+
+
+async def _forbidden_async_network(*_args: object, **_kwargs: object) -> Any:
+    raise AssertionError("External network is forbidden")
+
+
 def _install_transport(
     monkeypatch: pytest.MonkeyPatch,
     plan: q._QualificationPlan,
@@ -261,11 +270,15 @@ def _install_transport(
     monkeypatch.setattr(provider, "OpenAIAdapter", factory)
     monkeypatch.setenv("OPENAI_API_KEY", "synthetic-qualification-credential")
 
-    def forbidden(*_args: object, **_kwargs: object) -> Any:
-        raise AssertionError("External network is forbidden")
-
-    monkeypatch.setattr(socket, "socket", forbidden)
-    monkeypatch.setattr(socket, "getaddrinfo", forbidden)
+    # Proactor wakeups inspect existing sockets with isinstance(). Keep the
+    # socket class intact and reject every connection path before OS networking.
+    monkeypatch.setattr(socket, "getaddrinfo", _forbidden_network)
+    monkeypatch.setattr(socket, "create_connection", _forbidden_network)
+    monkeypatch.setattr(socket.socket, "connect", _forbidden_network)
+    monkeypatch.setattr(socket.socket, "connect_ex", _forbidden_network)
+    loop = asyncio.get_running_loop()
+    monkeypatch.setattr(loop, "create_connection", _forbidden_async_network)
+    monkeypatch.setattr(loop, "sock_connect", _forbidden_async_network)
     return sent
 
 
@@ -294,6 +307,42 @@ def _readonly_report(
         report = q.report_plan(directory)
     assert snapshot() == before
     return report
+
+
+@pytest.mark.asyncio
+async def test_offline_guard_preserves_sockets_and_denies_connections(
+    planned: tuple[Path, q._QualificationPlan], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, plan = planned
+    socket_class = socket.socket
+    with socket_class() as connection:
+        sent = _install_transport(monkeypatch, plan)
+        assert socket.socket is socket_class
+        assert isinstance(connection, socket.socket)
+        # Pin guard identity before each canary so a regression cannot reach OS
+        # connection or name-resolution code, even for a numeric address.
+        assert socket.getaddrinfo is _forbidden_network
+        with pytest.raises(AssertionError, match="External network is forbidden"):
+            socket.getaddrinfo("192.0.2.1", 443)
+        assert socket.create_connection is _forbidden_network
+        with pytest.raises(AssertionError, match="External network is forbidden"):
+            socket.create_connection(("192.0.2.1", 443))
+        assert socket.socket.connect is _forbidden_network
+        with pytest.raises(AssertionError, match="External network is forbidden"):
+            connection.connect(("192.0.2.1", 443))
+        assert socket.socket.connect_ex is _forbidden_network
+        with pytest.raises(AssertionError, match="External network is forbidden"):
+            connection.connect_ex(("192.0.2.1", 443))
+        loop = asyncio.get_running_loop()
+        assert loop.create_connection is _forbidden_async_network
+        with pytest.raises(AssertionError, match="External network is forbidden"):
+            await loop.create_connection(asyncio.Protocol, "192.0.2.1", 443)
+        assert loop.sock_connect is _forbidden_async_network
+        with pytest.raises(AssertionError, match="External network is forbidden"):
+            await loop.sock_connect(connection, ("192.0.2.1", 443))
+        # Existing event-loop self-pipe sockets must continue waking the loop.
+        assert await asyncio.wait_for(asyncio.to_thread(lambda: "awake"), 10) == "awake"
+        assert not sent
 
 
 @pytest.mark.asyncio
