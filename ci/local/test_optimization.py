@@ -386,12 +386,20 @@ def test_documented_test_consolidation_preserves_acceptance_without_a_count_gate
         verify_contract(contract, {"tests/new.py::combined"}, ["tests"])
 
 
-@pytest.mark.parametrize("loss", ["none", "line", "branch", "source"])
+@pytest.mark.parametrize(
+    "loss",
+    ["none", "line", "branch", "source", "exclusions", "denominator", "settings"],
+)
 def test_equal_percentages_cannot_hide_lost_coverage(tmp_path: Path, loss: str) -> None:
     source = tmp_path / "source"
     source.mkdir()
     module = source / "sample.py"
     module.write_text("first\nsecond\nthird\n")
+    (source / "pyproject.toml").write_text(
+        "[tool.coverage.run]\nbranch = "
+        + ("false" if loss == "settings" else "true")
+        + "\n"
+    )
     totals = {
         "covered_lines": 9,
         "num_statements": 10,
@@ -399,12 +407,15 @@ def test_equal_percentages_cannot_hide_lost_coverage(tmp_path: Path, loss: str) 
         "num_branches": 10,
     }
     expected: dict[str, Any] = {
+        "measurement_settings": {"run": {"branch": True}},
         "totals": totals,
         "files": {
             "sample.py": {
                 "source_sha256": hashlib.sha256(module.read_bytes()).hexdigest(),
                 "executed_lines": [1, 2],
                 "executed_branches": [[2, 3]],
+                "excluded_lines": [3],
+                "denominators": {"num_statements": 10, "num_branches": 10},
             }
         },
     }
@@ -414,6 +425,11 @@ def test_equal_percentages_cannot_hide_lost_coverage(tmp_path: Path, loss: str) 
             "sample.py": {
                 "executed_lines": [1, 3] if loss == "line" else [1, 2],
                 "executed_branches": [[2, -1]] if loss == "branch" else [[2, 3]],
+                "excluded_lines": [3, 4] if loss == "exclusions" else [3],
+                "summary": {
+                    "num_statements": 11 if loss == "denominator" else 10,
+                    "num_branches": 10,
+                },
             }
         },
     }
@@ -509,7 +525,7 @@ def test_process_sampler_measures_owned_child_and_joins_its_thread() -> None:
             [
                 sys.executable,
                 "-c",
-                "import sys; data=bytearray(30*1024*1024); print('ready',flush=True); sys.stdin.readline()",
+                "import sys; data=bytearray(30*1024*1024); data[::4096]=b'x'*(len(data)//4096); print('ready',flush=True); sys.stdin.readline()",
             ],
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,

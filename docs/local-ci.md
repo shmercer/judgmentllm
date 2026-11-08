@@ -13,9 +13,17 @@ Windows Python 3.12. Manual `windows_311_only=true` retains the complete Windows
 3.11 job. Historical proposal and qualification records below describe the
 infrastructure rollout; they do not override this matrix or the seventh gate.
 
+The [CI optimization profiles](ci-optimization.md) provide fast component testing,
+complete PR checks, release checks and reproducible allocation experiments.
+The [baseline audit](ci-test-audit.md) and [requirement map](../ci/verification-map.json)
+explain retained guarantees and documented setup consolidation. All seven local
+configurations and 49 strict R gates remain mandatory. The default grid uses an
+explicit bounded schedule; resource batches can run concurrently in independently
+budgeted allocations. Partial benchmark stages never establish qualification.
+
 | Platform | Local Python (exact) | Coverage |
 |---|---|---|
-| Ubuntu | 3.11.18 | Enabled, branch coverage ≥90% |
+| Ubuntu | 3.11.18 | Branch-enabled combined coverage ≥90%, plus exact baseline line/branch nonregression |
 | Ubuntu | 3.12.16 | Disabled (`--no-cov`) |
 | Ubuntu | 3.15.2 | Disabled (`--no-cov`) |
 | macOS | 3.11.18, 3.12.16 | Disabled (`--no-cov`), both lanes |
@@ -45,7 +53,9 @@ recorded commits; they are not seven-configuration qualification.
 | macOS | Existing Quickemu `macos-sequoia`, macOS 15.8.1 x86_64, six CPUs, 16 GiB RAM | Host `/mnt/VM_Fast/judgmentllm-ci/macos`; guest `~/judgmentllm-ci` |
 
 The Linux adapter creates a namespaced derivative image, preserving the existing
-R project's image and tags. Containers have six CPUs and 16 GiB RAM. The Windows
+R project's image and tags. Containers have explicit per-run CPU quotas (the
+historical reference is six) and 16 GiB RAM; the selected schedule records each
+quota and bounds active lanes. The Windows
 adapter uses `docker start` on the existing container; it never invokes a VM
 installer, recreates the container, changes Compose, or changes its disk/share
 configuration. The macOS adapter invokes the existing Quickemu configuration
@@ -58,6 +68,13 @@ entire operation, including result collection and graceful shutdown:
 /mnt/VM_Fast/pairwiseLLM-checks/windows-ci/.local-ci-windows.lock
 /mnt/VM_Fast/pairwiseLLM-checks/macos-ci/.ci.lock
 ```
+
+Grid and direct guest adapters also reject incomplete allocation recovery journals
+under `/mnt/VM_Fast/judgmentllm-ci/overrides` before guest work. No supported
+per-run CPU/RAM override exists in the current guest launchers, so guest settings
+remain unchanged. Any future supported experiment must journal durable original
+settings and verify restoration against actual settings under these same locks;
+see [the recovery protocol](ci-optimization.md#temporary-guest-allocation-recovery).
 
 Never run an adapter while another project holds the corresponding lock. A
 preexisting running VM is left running. A VM started by the adapter is shut down

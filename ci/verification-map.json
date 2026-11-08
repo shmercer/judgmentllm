@@ -1,0 +1,183 @@
+{
+  "schema_version": 1,
+  "baseline_commit": "1298bedf5e408d48ef1fd6e113677a0ece27aa24",
+  "requirements": {
+    "typed-contracts-and-output-validation": {
+      "tests": [
+        "tests/test_models.py",
+        "tests/test_config.py",
+        "tests/test_results.py",
+        "tests/test_output_contracts.py",
+        "tests/test_output_contract_interpretation.py",
+        "tests/test_export_validation.py",
+        "tests/test_openai_validation.py"
+      ],
+      "guarantees": "Strict types, original IDs, complete outcomes and probabilities, negative validation, no repair/truncation"
+    },
+    "historical-serialization-and-stores": {
+      "tests": [
+        "tests/test_version_compatibility.py",
+        "tests/test_native_v2_compatibility.py",
+        "tests/test_output_contract_compatibility.py",
+        "tests/test_compatibility_qualification.py"
+      ],
+      "artifacts": [
+        "tests/fixtures"
+      ],
+      "guarantees": "Genuine historical producers, immutable manifests and exports, old IDs and one-way compatibility"
+    },
+    "provider-and-sdk-boundary": {
+      "tests": [
+        "tests/test_openai_sdk_adapter.py",
+        "tests/test_openai_responses_parsing.py",
+        "tests/test_native_other_sdk.py",
+        "tests/test_native_other_providers.py",
+        "tests/test_provider_evidence_boundary.py"
+      ],
+      "guarantees": "Pinned actual SDK serialization/parsing, synthetic HTTP transports and byte commitments; no live calls"
+    },
+    "native-selection-and-transport": {
+      "tests": [
+        "tests/test_native_selection.py",
+        "tests/test_native_schema.py",
+        "tests/test_native_transport_integration.py",
+        "tests/test_native_transport_integrity.py",
+        "tests/test_production_transport.py",
+        "tests/test_durable_native_preparation.py"
+      ],
+      "guarantees": "Authority, endpoint/protocol incompatibility, exact request and immutable selection/attempt identity"
+    },
+    "durable-submission-and-recovery": {
+      "tests": [
+        "tests/test_execution_processes.py",
+        "tests/test_execution_persistence.py",
+        "tests/test_preparation_recovery.py",
+        "tests/test_native_transport_processes.py",
+        "tests/test_evidence_recovery_integrity.py",
+        "tests/test_openai_lifecycle.py",
+        "tests/test_openai_qualification.py"
+      ],
+      "guarantees": "Every durable failure boundary, independent acceptance, conservative retry, no duplicate sends"
+    },
+    "cancellation-and-concurrency": {
+      "tests": [
+        "tests/test_execution_cancellation.py",
+        "tests/test_execution_cancellation_processes.py",
+        "tests/test_cli_process_safety.py",
+        "tests/test_openai_cancellation.py",
+        "tests/test_persistence_ownership.py"
+      ],
+      "guarantees": "Owned child exit, cancellation/recovery, lock ownership, bounded independent processes"
+    },
+    "credentials-privacy-and-security": {
+      "tests": [
+        "tests/test_auth.py",
+        "tests/test_auth_privacy.py",
+        "tests/test_auth_cli_processes.py",
+        "tests/test_execution_privacy.py",
+        "tests/test_native_schema_privacy.py",
+        "tests/test_native_v2_privacy.py",
+        "tests/test_assessment_capture.py",
+        "tests/test_evidence_reasoning_scope.py",
+        "tests/test_durable_evidence_lifecycle.py"
+      ],
+      "guarantees": "No credential discovery/leakage, full/minimal capture, reasoning authorization, unsafe evidence rejection"
+    },
+    "diagnostic-evidence": {
+      "tests": [
+        "tests/test_assessment_diagnostics.py",
+        "tests/test_assessment_capture.py",
+        "tests/test_readonly_inspection.py",
+        "tests/test_readonly_diagnostic_repository.py",
+        "tests/test_openai_diagnostics.py"
+      ],
+      "guarantees": "Exact retained component, hash-only privacy, immutable read-only diagnostics and failure classification"
+    },
+    "resource-and-stress": {
+      "tests": [
+        "tests/test_execution_resources.py",
+        "tests/test_preparation_resources.py",
+        "tests/test_grouped_resources.py",
+        "tests/test_native_preseal_memory.py",
+        "tests/test_native_memory_accounting.py",
+        "tests/test_openai_resources.py",
+        "tests/test_scale_benchmarks.py::test_tiny_scale_allocation_diagnostics"
+      ],
+      "separate_release_protocol": "docs/milestone-2-subphase-6-verification.md",
+      "guarantees": "Original workload sizes, 90/180-second child deadlines, 32/8/256 MiB limits and growth bounds, process/queue bounds"
+    },
+    "cross-platform": {
+      "execution": [
+        "linux-3.11",
+        "linux-3.12",
+        "linux-3.15",
+        "windows-3.11",
+        "windows-3.12",
+        "macos-3.11",
+        "macos-3.12"
+      ],
+      "guarantees": "All selected cases exactly once, only documented platform skips, no xfail, all native installation and R gates"
+    },
+    "strict-r-interoperability": {
+      "gates": [
+        "exports",
+        "persistence",
+        "generation",
+        "source-preparation",
+        "execution",
+        "grouped-lifecycle",
+        "cli-lifecycle"
+      ],
+      "execution": "Every one of seven local configurations: 49 strict executions. Hosted Ubuntu 3.11 retains seven required gates. Main pytest retains its actual R checks.",
+      "guarantees": "Actual Python-generated outputs and installed CLI consumed in R/jsonlite; missing dependencies fail; IDs/order/probabilities/missing values unchanged"
+    },
+    "ruff": {
+      "gates": [
+        "ruff-lint",
+        "ruff-format"
+      ],
+      "execution": "Every local lane and every hosted job; retained because current cost is negligible"
+    },
+    "strict-pyright": {
+      "gates": [
+        "strict-pyright"
+      ],
+      "execution": "Every local lane and every hosted job; now checks ci as well as production/tests"
+    },
+    "packaging-and-installation": {
+      "gates": [
+        "build",
+        "distribution-metadata",
+        "clean-wheel-installation",
+        "clean-source-installation"
+      ],
+      "execution": "Every local lane; hosted wheel on every OS and sdist on Linux as before",
+      "guarantees": "Build/twine strict metadata, independent core-only install/import/CLI/offline smoke"
+    },
+    "ci-infrastructure": {
+      "tests": [
+        "ci/local"
+      ],
+      "main_native_suite": [
+        "ci/local/test_gates.py",
+        "ci/local/test_optimization.py"
+      ],
+      "execution": "Full infrastructure suite on hosted Ubuntu 3.11 plus portable infrastructure in each native main suite",
+      "guarantees": "Source/lock/archive integrity, exact case receipts, missing shard/worker failure propagation, recovery and ownership"
+    },
+    "hosted-required-jobs": {
+      "execution": [
+        "ubuntu-latest/3.11",
+        "ubuntu-latest/3.15",
+        "macos-latest/3.11",
+        "macos-latest/3.15",
+        "windows-latest/3.12"
+      ],
+      "manual": "windows-latest/3.11 complete troubleshooting job",
+      "guarantees": "Pinned actions/dependencies, same PR head SHA, 50-minute job deadline, failed/missing partitions cannot pass"
+    }
+  },
+  "policy_reductions": [],
+  "test_replacement_contract": "ci/test-contract.json",
+  "coverage_floor": "ci/coverage-floor.json"
+}

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import tomllib
 from pathlib import Path
 from typing import Any, cast
 
@@ -25,6 +26,10 @@ def compare(current: Path, baseline: Path | None, source: Path) -> dict[str, Any
     if baseline is None:
         return result
     original = cast(dict[str, Any], json.loads(baseline.read_text(encoding="utf-8")))
+    if "measurement_settings" in original:
+        project = tomllib.loads((source / "pyproject.toml").read_text(encoding="utf-8"))
+        if project["tool"]["coverage"] != original["measurement_settings"]:
+            result["losses"].append({"reason": "coverage measurement settings changed"})
     before = original["totals"]
     for hits, denominator in [
         ("covered_lines", "num_statements"),
@@ -54,6 +59,20 @@ def compare(current: Path, baseline: Path | None, source: Path) -> dict[str, Any
             )
             continue
         actual = measured["files"].get(filename, {})
+        if "denominators" in expected and any(
+            actual.get("summary", {}).get(key) != value
+            for key, value in expected["denominators"].items()
+        ):
+            result["losses"].append(
+                {"file": filename, "reason": "coverage source denominator changed"}
+            )
+        if (
+            "excluded_lines" in expected
+            and actual.get("excluded_lines") != expected["excluded_lines"]
+        ):
+            result["losses"].append(
+                {"file": filename, "reason": "coverage exclusions changed"}
+            )
         lines = sorted(
             set(expected["executed_lines"]) - set(actual.get("executed_lines", []))
         )
