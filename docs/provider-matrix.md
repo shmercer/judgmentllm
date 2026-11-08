@@ -114,3 +114,21 @@ documented endpoint support, local checks and unknown model/serving enforcement.
 No real model is accepted or live-qualified. OpenAI V1 projection/selection APIs
 and identities remain unchanged. Property ordering is requested, not observed.
 Prompt-schema guidance awaits 4C3; provider calls/authentication await later work.
+
+
+### Phase 4C3 durable transport support
+
+All two OpenAI V1 and seven provider-neutral V2 mechanisms can enter the additive
+RunSpec/manifest/output/prepared-request 3 path under private exact-scope synthetic
+fixtures. Request-specific native/text selections, renderer 3 and complete
+synthetic payload commitments survive sealing, reopening and subset retry.
+The [complete repetition matrix](assessment-provider-evidence.md#phase-4c3-frozen-presentation-and-adapter-handoff)
+freezes native guidance separately for every Google route and preserves Together
+and Ollama's projected schema guidance.
+
+This infrastructure does not activate any real provider adapter, model,
+authentication or endpoint. Production catalogs retain no positive real-model
+native acceptance. All serving enforcement stays unknown; complete canonical
+local validation remains mandatory. Implementation acceptance requires retained
+exact-head qualification; real endpoint construction/authentication and separately
+authorized serving qualification remain Phase 5 and later work.

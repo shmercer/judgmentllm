@@ -1,6 +1,6 @@
 # Data contracts and scoring semantics
 
-**Implemented RunSpec versions 1 and 2; document and normalized-result schemas remain version 1.** Assessment models live in
+**RunSpec versions 1/2 remain historical; explicit version 3 adds the offline native transport boundary. Document and normalized-result schemas remain version 1.** Assessment models live in
 `judgmentllm.models`, run configuration in `judgmentllm.config`, and normalized
 outputs in `judgmentllm.results`. Public lifecycle services execute synthetic
 assessments through the mock provider. Real provider integrations remain later milestones. The internal
@@ -537,3 +537,31 @@ records fail regeneration checks. V2 identities use distinct versioned domains.
 Frozen decisions bind the exact Google schema route and verify without reselection.
 Content-bearing schema records are in-memory candidates, not minimal-capture
 metadata or authorization for durable retention.
+
+
+## Explicit RunSpec 3 and durable transport versions
+
+`RunSpecV3` / `PromptSpecV3` are additive typed contracts. Root `schema_version: 3`
+is required; omission still selects 1. V1/V2 reject the new field and keep exact
+serialization. V3 inherits assessment controls and adds
+`prompt.native_mechanism`, a closed literal union of nine reviewed mechanisms.
+Auto/native require that explicit route; text may omit it. Unknown mechanisms,
+arbitrary provider dictionaries and user-defined schemas are rejected.
+
+`OutputCommitmentV3` commits the unchanged neutral contract 2, renderer 3,
+FrozenTransportSelection 1, canonical schema bytes and semantic identity, optional
+unchanged projection 1/2, exact SDK fragment, repetition policy and scoped runtime
+context identity. Content-bearing fields remain private in representations.
+`TransportPlanV1` commits configuration, input dependency, ordered membership,
+output, prompt and physical identities before the complete payload is assembled.
+`TransportCommitmentV1` adds exact schema/configuration/format/prompt/payload
+hashes and lengths plus the final plan digest. Its safe receipt contains no
+complete schema, category labels, student responses or exemplars.
+
+These new records inherit duplicate-safe JSON ingress, strict integer version
+tokens, frozen/deep-revalidated values and content-free errors. Semantic hashes,
+ordered representations and final payload hashes are distinct. Unknown fields,
+changed nested values and conflicting rehashed records cannot replace immutable
+manifest/attempt bindings. Normalized results, outcome semantics, schema 1
+exports and R contracts are unchanged. Production execution still has no real
+generative adapters; native preparation uses private synthetic context only.

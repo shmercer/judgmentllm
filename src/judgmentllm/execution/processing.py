@@ -6,7 +6,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import cast
 
-from judgmentllm.config import RunSpecification
+from judgmentllm.config import RunSpecification, RunSpecV2, RunSpecV3
 from judgmentllm.output_contracts import (
     AssessmentOutputContract,
     PairwiseOutputContract,
@@ -67,7 +67,10 @@ def _request_contract(
         raise ValueError("output contract assessment kind must match the run")
     if contract.explanations != spec.execution.explanations:
         raise ValueError("output contract explanations must match the run")
-    if spec.schema_version == 2 and contract.output_order != spec.prompt.output_order:
+    if (
+        isinstance(spec, (RunSpecV2, RunSpecV3))
+        and contract.output_order != spec.prompt.output_order
+    ):
         raise ValueError("output contract layout must match the run")
     request = dependency.request
     if isinstance(contract, PairwiseOutputContract):

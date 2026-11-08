@@ -178,9 +178,10 @@ updates its tests and user documentation and passes applicable R acceptance.
      SDK retention, documented support and independent enforcement. Acceptance
      requires the exact-head evidence described below; implementation alone
      does not qualify a real model or activate durable execution.
-   - **4C3, deferred: durable native selection and transport commitments.** Bind
-     decisions and exact schema/format bytes into preparation, native-specific
-     prompts and recovery without rewriting historical selections or sealed runs.
+   - **4C3, implemented offline: durable native selection and transport commitments.**
+     Decisions and exact schema/format bytes are bound into preparation,
+     native-specific prompts and recovery without rewriting historical selections
+     or sealed runs. Real provider adapters remain deferred to Phase 5.
    Version affected schemas independently; never migrate or rewrite historical
    runs implicitly. Companion exports remain Phase 6 below.
 5. **Generative adapters, one provider/endpoint family per PR.** Implement OpenAI
@@ -450,3 +451,34 @@ Phase 4C3 owns immutable native prompts, preparation, transport commitments and
 recovery. Real adapters, Vertex ADC/authorization-key integration, companion
 exports and live qualification remain deferred. No historical run is migrated
 or rewritten, and normal execution remains text-only.
+
+
+### Phase 4C3 implementation and acceptance boundary
+
+The additive implementation connects RunSpec/manifest/output/renderer/prepared
+request 3 and transport commitment 1 through existing bounded preparation,
+append-only artifacts, execution and recovery. Each first physical request is
+selected, projected, rendered and payload-committed before sealing. Reopening
+verifies the original selection and exact bytes; grouped retries inherit the
+original family and route with fresh subset-specific commitments. Historical
+V1/V2 serializations, identities, fixtures and lifecycle behavior remain frozen.
+
+The **offline implementation is complete**. Exact-head local and hosted acceptance
+records are maintained separately in the external qualification ledger;
+implementation status does not establish milestone or real-provider acceptance.
+Required acceptance retains all nine synthetic routes, native/auto/text
+and strict capability matrices, full/minimal integrity/privacy/recovery, genuine
+alpha2/alpha3 compatibility, native Python-to-R checks, seven local configurations,
+49 existing strict R gates, 70 resource measurements, primary branch-aware coverage
+at least 90%, mandatory SDK probes and all five hosted jobs at the final head.
+The hosted job ceiling is 50 minutes following the explicit Phase 4C3 review
+request. All resource limits, the native 90-second child deadline and existing
+180-second fixture deadlines remain unchanged.
+
+Keep qualification evidence outside Dropbox and preserve failed attempts. The
+standalone historical fixture corpus must remain byte-identical. Production
+catalogs gain no real-model acceptance, and ordinary provider dispatch remains
+unimplemented. Phase 5 begins only in a separate task: endpoint-owned complete
+payload builders, credential boundary integration and independent serving
+qualification; companion exports, caching, batches and R wrappers remain at their
+assigned phases. Phase 4C3 does not complete all of Milestone 3.

@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Hashable
 from pathlib import Path
-from typing import Generic, Literal, TypeVar, cast
+from typing import Generic, Literal, TypeAlias, TypeVar, cast
 
 import yaml
 from pydantic import (
@@ -139,6 +139,31 @@ class PromptSpecV2(PromptSpec):
 
     output_order: Literal["together", "scores_first", "explanations_first"] = "together"
     structured_output: Literal["auto", "native", "text"] = "auto"
+
+
+NativeTransportMechanism: TypeAlias = Literal[
+    "openai.responses.text.format",
+    "openai.chat.response_format",
+    "anthropic.messages.output_config.format",
+    "gemini.generate_content.response_schema",
+    "gemini.generate_content.response_json_schema",
+    "vertex.generate_content.response_schema",
+    "vertex.generate_content.response_json_schema",
+    "together.chat.response_format",
+    "ollama.chat.format",
+]
+
+
+class PromptSpecV3(PromptSpecV2):
+    """Explicit native route intent; never an arbitrary provider request body."""
+
+    native_mechanism: NativeTransportMechanism | None = None
+
+    @model_validator(mode="after")
+    def explicit_route(self) -> PromptSpecV3:
+        if self.structured_output != "text" and self.native_mechanism is None:
+            raise ValueError("auto/native transport requires prompt.native_mechanism")
+        return self
 
 
 _Version = TypeVar("_Version", bound=int)
@@ -298,7 +323,58 @@ class RunSpecV2(_RunSpecFields[Literal[2], PromptSpecV2]):
         return self
 
 
-RunSpecification = RunSpec | RunSpecV2
+class RunSpecV3(_RunSpecFields[Literal[3], PromptSpecV3]):
+    """Additive native-capable run intent; execution still requires an adapter."""
+
+    schema_version: Literal[3] = 3
+    prompt: PromptSpecV3
+
+    @field_validator("schema_version", mode="before")
+    @classmethod
+    def _version(cls, value: object) -> object:
+        if type(value) is not int or value != 3:
+            raise ValueError("schema_version must be the supported integer 3")
+        return value
+
+    @model_validator(mode="after")
+    def transport_settings(self) -> RunSpecV3:
+        if self.prompt.output_order != "together" and (
+            self.task_kind == "pairwise" or not self.execution.explanations
+        ):
+            raise ValueError("nondefault output order requires rubric explanations")
+        mechanism = self.prompt.native_mechanism
+        routes = {
+            "openai.responses.text.format": ("openai", "responses"),
+            "openai.chat.response_format": ("openai", "chat.completions"),
+            "anthropic.messages.output_config.format": ("anthropic", "messages"),
+            "gemini.generate_content.response_schema": (
+                "gemini",
+                "models.generate_content",
+            ),
+            "gemini.generate_content.response_json_schema": (
+                "gemini",
+                "models.generate_content",
+            ),
+            "vertex.generate_content.response_schema": (
+                "vertex",
+                "models.generate_content",
+            ),
+            "vertex.generate_content.response_json_schema": (
+                "vertex",
+                "models.generate_content",
+            ),
+            "together.chat.response_format": ("together", "chat.completions"),
+            "ollama.chat.format": ("ollama", "chat"),
+        }
+        if mechanism is not None and routes[mechanism] != (
+            self.provider,
+            self.endpoint,
+        ):
+            raise ValueError("native mechanism conflicts with provider/endpoint")
+        return self
+
+
+RunSpecification = RunSpec | RunSpecV2 | RunSpecV3
 
 
 def _spec_snapshot(value: object) -> object:
@@ -324,8 +400,14 @@ def validate_run_spec(value: object) -> RunSpecification:
     versions fail rather than coerce or migrate. Existing models are detached
     and rejected if validation would repair their current contents.
     """
-    if isinstance(value, (RunSpec, RunSpecV2)):
-        expected_version = 2 if isinstance(value, RunSpecV2) else 1
+    if isinstance(value, (RunSpec, RunSpecV2, RunSpecV3)):
+        expected_version = (
+            3
+            if isinstance(value, RunSpecV3)
+            else 2
+            if isinstance(value, RunSpecV2)
+            else 1
+        )
         if (
             type(value.schema_version) is not int
             or value.schema_version != expected_version
@@ -338,11 +420,16 @@ def validate_run_spec(value: object) -> RunSpecification:
         raise ConfigurationError("run specification must be an object")
     data = cast(dict[str, object], snapshot)
     version = data.get("schema_version", 1)
-    if type(version) is not int or version not in (1, 2):
-        raise ConfigurationError("schema_version must be the supported integer 1 or 2")
-    model = RunSpecV2 if version == 2 else RunSpec
+    if type(version) is not int or version not in (1, 2, 3):
+        raise ConfigurationError(
+            "schema_version must be a supported integer 1, 2, or 3"
+        )
+    model = RunSpecV3 if version == 3 else RunSpecV2 if version == 2 else RunSpec
     checked = model.model_validate(data)
-    if isinstance(value, (RunSpec, RunSpecV2)) and _spec_snapshot(checked) != snapshot:
+    if (
+        isinstance(value, (RunSpec, RunSpecV2, RunSpecV3))
+        and _spec_snapshot(checked) != snapshot
+    ):
         raise ConfigurationError("run specification would change during validation")
     return checked
 

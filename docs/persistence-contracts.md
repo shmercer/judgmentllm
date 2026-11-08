@@ -600,3 +600,42 @@ unchanged, including OpenAI V1 standalone records. Exact native/schema/configura
 content must not enter minimal-capture evidence through these new contracts.
 Phase 4C3 owns deliberate immutable native rendering/preparation/recovery binding;
 no historical migration or rewrite is authorized here.
+
+
+## Phase 4C3 native-capable durable boundary
+
+Executable manifest 3 dispatches separately from historical manifests 1/2. It
+stores run-level transport intent/context identity and an ordered aggregate of
+initial request/attempt/receipt commitments. It does not masquerade as historical
+run-level SchemaSelectionV2. No registry migration, old artifact rewrite or
+historical selection upgrade occurs. Existing request/task IDs remain stable.
+
+Existing bounded indexed preparation prepares each first physical attempt before
+sealing, using the established tasks/requests/attempts and artifact repository.
+It publishes permitted content and a TransportCommitment 1 receipt before the
+owned transaction. Immutable references live at
+`transports/<sha256(attempt_id UTF-8)>.json`; exact metadata is also a registered
+content-addressed artifact. The manifest's initial streaming index binds ordered
+request, dependency, attempt, membership, prompt, payload and receipt identities.
+Interrupted pre-seal work cannot be silently restarted under the same run ID.
+
+Full capture publishes exact output commitment, transport plan, canonical and
+native schemas, SDK configuration, converted format, prompt and complete payload
+through existing protected objects. Minimal capture registers their hashes and
+lengths without staging content, retaining only safe metadata receipts. Original
+unchanged sources and explicit runtime authority reconstruct the content; absent
+or changed originals fail. Full snapshots retain the existing explicit verified
+snapshot recovery policy. No secret or reasoning authorization is added.
+
+Reopening checks the manifest/version, source policy, complete initial bijection,
+receipt/attempt/submission links, artifact bytes and pinned reconstruction. It
+verifies the frozen selection rather than rerunning auto. Missing/corrupted
+artifacts and rehashed incompatible receipts fail without repair. An exact byte
+change matters even when semantics compare equal.
+
+Explicit grouped retry preserves the original logical request and ordered subset.
+The new physical attempt inherits the first attempt's native/text family and
+selected route, links its parent receipt hash, and publishes its own exact schema,
+prompt and payload before submission. An incompatible subset fails. Completion,
+refusal, invalid output, uncertainty, cancellation and duplicate observation keep
+the existing status/reconciliation rules; none authorize transport fallback.

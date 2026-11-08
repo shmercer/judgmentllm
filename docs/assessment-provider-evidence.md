@@ -431,3 +431,40 @@ self-tested network, credential, client, filesystem and subprocess guards.
 Ordinary Ollama import is excluded because its initializer constructs a client.
 The pinned source hashes, fixture bytes and provenance are part of reviewed
 records; acceptance reports identify the exact qualified commit separately.
+
+
+## Phase 4C3 frozen presentation and adapter handoff
+
+The offline durable integration is complete and remains synthetic. Exact-head
+local and hosted acceptance records are maintained separately in the external
+qualification ledger. Real provider adapters, serving and live authentication
+remain unqualified and deferred. No default catalog gains positive real-model
+acceptance. New execution requires an explicit private synthetic runtime
+context; a caller evidence record, SDK installation or translator registration
+cannot activate a real adapter.
+
+| Exact mechanism | Projection / decision | Native prompt schema representation |
+|---|---|---|
+| `openai.responses.text.format` | OpenAI 1 | Omit complete schema copy; retain protected requirements |
+| `openai.chat.response_format` | OpenAI 1 | Omit complete schema copy; retain protected requirements |
+| `anthropic.messages.output_config.format` | Provider-neutral 2 | Omit complete schema copy; retain protected requirements |
+| `gemini.generate_content.response_schema` | Provider-neutral 2 | Omit complete schema copy under its own route policy; no Vertex-policy inheritance |
+| `gemini.generate_content.response_json_schema` | Provider-neutral 2 | Independently frozen omission; serving guidance/enforcement remains unqualified |
+| `vertex.generate_content.response_schema` | Provider-neutral 2 | Omit complete schema duplication under documented guidance |
+| `vertex.generate_content.response_json_schema` | Provider-neutral 2 | Independently frozen omission; do not infer response_schema guidance applies |
+| `together.chat.response_format` | Provider-neutral 2 | Include exact projected native schema as documented guidance |
+| `ollama.chat.format` | Provider-neutral 2 | Include exact projected native schema as recommended guidance |
+
+The baseline Google projection policy is `none` except Vertex response_schema's
+explicit discouragement. For `none`, renderer 3 makes an explicit committed
+omission choice, retaining all protected requirements; it does not assert provider
+endorsement or native enforcement. Together's practice is not a universal API
+requirement. Text always repeats the complete canonical neutral schema.
+
+All nine mechanisms preserve their existing pinned SDK/API scopes. Exact native
+schema, SDK configuration fragment and converted format fragment are separately
+hashed; the full synthetic outgoing payload has its own digest. Phase 5 must
+replace the synthetic physical builder with endpoint-owned complete builders,
+without treating a converted fragment as final wire bytes. Represented, SDK
+retained, documented support and independently verified enforcement remain four
+facts. Synthetic acceptance never changes `enforcement_verified=None`.

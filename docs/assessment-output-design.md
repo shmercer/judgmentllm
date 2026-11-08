@@ -1,8 +1,11 @@
 # Milestone 3 assessment outputs, provider evidence, and authentication
 
-**Status: Phases 1–3 and 4A/4B implement provider-neutral contracts, offline mock
-execution, credential diagnostics and durable synthetic evidence integration.
-Real-provider integrations and qualification remain deferred.** This authoritative Milestone 3 design
+**Status: Phases 1–3 and 4A/4B implement provider-neutral contracts, offline
+mock execution, credential diagnostics and durable synthetic evidence
+integration. Phase 4C3 completes offline durable native transport integration
+through private synthetic fixtures. Real-provider integrations and
+qualification remain deferred.**
+This authoritative Milestone 3 design
 was originally prepared on 2026-11-05. The working contracts are described in
 [data contracts](data-contracts.md), [persistence contracts](persistence-contracts.md)
 and the [Python API](python-api.md). The [six prompt examples](assessment-prompt-examples.md)
@@ -37,8 +40,11 @@ plus scoped evidence provenance. Every new record starts at `schema_version: 1`.
 Phase 4B invokes these services before response retention and persists safe
 metadata using registry schema 2 and separate version-1 companion receipts.
 Ordinary execution retains no provider reasoning; explicit immutable synthetic
-fixture grants can retain permitted text in protected artifacts. Phase 4C1 adds standalone native projections and selection decisions; no native
-execution, real adapter or live authentication is implemented. Requested visible ordering makes no claim about a model's internal
+fixture grants can retain permitted text in protected artifacts. Phase 4C1 adds
+standalone native projections and selection decisions; Phase 4C2 adds independent
+provider routes. Phase 4C3 connects these to durable preparation and recovery
+through private synthetic fixtures. No real provider adapter or live authentication
+is implemented. Requested visible ordering makes no claim about a model's internal
 reasoning; the standalone extractor reports only trustworthy emitted key order.
 The installed-CLI R gate exercises actual v2 runs and exports alongside the
 retained v1 fixtures. Exact-head local and hosted qualification remains required.
@@ -952,3 +958,48 @@ bytes and recovery commitments. Prompt-schema repetition policies recorded here
 are route-specific guidance for that work. This phase changes no historical
 prompt, durable manifest, prepared request, receipt, export or recovery behavior.
 Real adapters, Vertex authentication and live qualification remain deferred.
+
+
+## Phase 4C3 durable native integration
+
+The additive offline implementation is complete. Exact-head local and hosted
+acceptance records are maintained separately in the external qualification ledger;
+this establishes no real-provider adapter or serving acceptance. Explicit RunSpec
+3 separates new transport intent from historical RunSpec 1/2. Manifest 3,
+OutputCommitment 3, renderer 3 and PreparedRequest 3 are independently versioned;
+TransportCommitment, TransportPlan and physical identity start at version 1.
+OpenAI projection/decision 1 and provider-neutral projection/decision 2 remain
+unchanged. Historical manifests dispatch before validation and retain their
+original text-only behavior, IDs, payloads and snapshots.
+
+The requested run policy is distinct from each physical request's frozen choice.
+RunSpec 3 requires an explicit typed `prompt.native_mechanism` for auto/native,
+including each of Google's four distinct routes. Selection uses exact ordered
+assessment membership, trusted profile authority and matching model/SDK/API facts.
+Explicit text never projects. Native requires qualified positive support; auto
+uses native only when qualified, otherwise controlled text selection; strict auto
+rejects unknown support. Descriptive evidence alone supplies no authority.
+
+Initial requests are prepared one at a time through existing source indexes and
+append-only task/request/attempt operations before sealing. The manifest commits
+an ordered streaming digest of every initial transport receipt. Each receipt binds
+physical run/request/attempt/submission/correlation identity, original dependency,
+ordered membership, configuration, context/profile evidence, output commitment,
+neutral semantics, ordered native/schema/configuration/format bytes, exact prompt,
+and complete synthetic payload. Acyclic TransportPlan 1 enters the payload;
+TransportCommitment 1 then binds that plan and the final payload digest.
+
+Reopening verifies source policy, the sealed index, receipts, registered artifact
+identities and deterministic pinned reconstruction. It does not rerun auto
+selection. Altered scope, evidence, translator, route, membership, content or
+bytes fail. Hashing changed content again cannot replace the sealed commitment.
+Retries inherit the original native/text family and exact route, preserve logical
+IDs, and commit a fresh subset-specific schema, prompt, payload and physical
+identity. An unrepresentable subset fails; no schema error or failed response
+permits hidden fallback. Uncertain requests still require receipt reconciliation.
+
+The offline protocol `judgmentllm-native-offline-v1` exercises the actual durable
+services using private exact-scope synthetic authority and an independent
+acceptance ledger. It is not a real provider request. Phase 5 must supply complete
+endpoint request builders, commit their exact final payload bytes, preserve all
+receipt/recovery invariants, and qualify authentication and serving separately.

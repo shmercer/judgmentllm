@@ -37,7 +37,11 @@ from judgmentllm.persistence.hashing import (
 from judgmentllm.persistence.models import SHA256, ExecutionModel
 from judgmentllm.planning import CapabilityProfile, stable_id, validate_run
 from judgmentllm.preparation.session import RequestDependency
-from judgmentllm.prompts import RenderedAssessmentPrompt, RenderedPromptV2
+from judgmentllm.prompts import (
+    RenderedAssessmentPrompt,
+    RenderedPrompt,
+    RenderedPromptV2,
+)
 from judgmentllm.providers.evidence import ProviderEvidence, exact_output_substring
 from judgmentllm.providers.ledger import (
     AcceptanceRecord,
@@ -415,6 +419,8 @@ class MockAdapter:
                 _revalidate_record(dependency),
                 _revalidate_record(rendered),
             )
+            if not isinstance(rendered, (RenderedPrompt, RenderedPromptV2)):
+                raise ValueError("historical mock cannot accept native rendering")
             if (spec.schema_version == 2) != isinstance(rendered, RenderedPromptV2):
                 raise ValueError("renderer version differs from the RunSpec version")
             request = dependency.request

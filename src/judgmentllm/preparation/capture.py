@@ -328,6 +328,25 @@ class SourceBuilder:
         renderer through PreparedRun.render before a future submission.
         """
         self.input_spec, self.pair_spec = spec.input, spec.pairs
+        if spec.schema_version == 3:
+            # Every actual request is rendered in the bounded pre-seal transport
+            # pass. Compile empty contexts through the same protected sandbox.
+            plan = plan_run(spec, capabilities=capabilities)
+            for group in plan.trait_groups:
+                validate_prompt_template(
+                    renderer_version=2,
+                    kind=spec.task_kind,
+                    trait_ids=group,
+                    exemplar_ids=plan.exemplar_ids,
+                    preset=spec.prompt.preset,
+                    template=template,
+                    advanced=spec.prompt.advanced,
+                    explanations=spec.execution.explanations,
+                    allow_ties=spec.allow_ties,
+                    limits=spec.prompt.limits,
+                )
+            self._checkpoint("rendering_verified", None)
+            return
         self._validate_representatives(spec, template, capabilities)
         if not exhaustive:
             self._checkpoint("rendering_verified", None)
@@ -350,7 +369,7 @@ class SourceBuilder:
         plan = plan_run(spec, capabilities=capabilities)
         for group in plan.trait_groups:
             validate_prompt_template(
-                renderer_version=spec.schema_version,
+                renderer_version=1 if spec.schema_version == 1 else 2,
                 kind=spec.task_kind,
                 trait_ids=group,
                 exemplar_ids=plan.exemplar_ids,

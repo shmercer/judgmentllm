@@ -1090,3 +1090,45 @@ traits, 10,000 enum entries and 1,000,000 source string characters before
 expansion; each emitted fragment is at most 1,000,000 UTF-8 bytes, 32 generic JSON
 levels and 256 alternative branches. Excess produces a controlled failure without
 truncation. These limits confer no model acceptance.
+
+
+## Internal durable native interfaces (Phase 4C3)
+
+Explicit `RunSpecV3` / `PromptSpecV3` add typed `prompt.native_mechanism`; the
+public mock lifecycle remains unchanged and cannot execute real providers.
+`judgmentllm.transport` contains the independently versioned native-capable seam:
+
+```python
+TransportContext(scope, evidence=None, openai_catalog=None, provider_catalog=None,
+                 service_identity=None, fixture_sha256=None)
+build_output_commitment_v3(spec, request, context, *, inherited_commitment=None)
+physical_identity(run_id, request_uid, attempt_id)
+prepare_transport_request(spec, dependency, identity, context, *, template=None,
+                          lookup=None, frozen=None, parent=None,
+                          committed_output=None)
+```
+
+The context is runtime authority, supplied explicitly again on reopening; it
+contains no credentials and is not reconstructed as trust from persisted metadata.
+Default catalogs contain no positive real-model profile. The actual synthetic
+preparation requires a private exact-scope synthetic profile. Descriptive evidence
+alone does not authorize a native mechanism or a provider operation.
+
+`OutputCommitmentV3`, `FrozenTransportSelectionV1`, `PhysicalRequestIdentityV1`,
+`TransportPlanV1`, `TransportCommitmentV1` and `PreparedRequestV3` have independent
+strict versions. PreparedRequest 3 binds real logical membership and exact
+in-memory synthetic payload bytes. `content_artifacts()` exposes content to the
+existing capture-policy publisher; never serialize the entire prepared request
+into minimal metadata. `render_request_v3` in `native_prompts` shares the existing
+sandbox/protected content implementation and produces `RenderedPromptV3`.
+
+Internal `prepare_run` and `open_prepared_run` accept optional
+`transport_context=` only for the explicit v3 path. `PreparedRun` provides
+`transport_for_attempt(attempt_id)` and
+`prepare_transport_attempt(dependency, identity, *, frozen=None, parent=None)`.
+First attempts are fully committed before sealing. Recovery reconstructs pinned
+representations and verifies them without auto selection. Retry subsets inherit
+the original family/route and create new exact commitments. The synthetic fixture
+adapter exposes the same context to existing execute/recover/retry services;
+it is test-only, never a registered production provider. Phase 5 must supply
+complete real endpoint builders and commit their final wire payload bytes.

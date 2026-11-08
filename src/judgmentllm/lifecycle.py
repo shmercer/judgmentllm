@@ -30,6 +30,7 @@ from judgmentllm.config import (
     RunSpec,
     RunSpecification,
     RunSpecV2,
+    RunSpecV3,
     load_run_spec,
     parse_json,
     validate_run_spec,
@@ -82,7 +83,7 @@ class _MockFixture(VersionedModel):
 def _checked_spec(spec_or_path: RunSpecification | str | Path) -> RunSpecification:
     return (
         validate_run_spec(spec_or_path)
-        if isinstance(spec_or_path, (RunSpec, RunSpecV2))
+        if isinstance(spec_or_path, (RunSpec, RunSpecV2, RunSpecV3))
         else load_run_spec(spec_or_path)
     )
 
@@ -179,6 +180,11 @@ def _mock_adapter(
 
 def _require_presentation(spec: RunSpecification) -> None:
     """Reject unavailable v2 mechanisms before creating a runtime store."""
+    if isinstance(spec, RunSpecV3):
+        raise LifecycleError(
+            "unsupported_capability",
+            "native-capable execution requires a private offline fixture adapter; real adapters remain unavailable",
+        )
     if isinstance(spec, RunSpecV2):
         try:
             resolve_schema_selection(spec)

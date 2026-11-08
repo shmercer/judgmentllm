@@ -545,3 +545,25 @@ requirement. Local Ollama recommends schema repetition. Google's two interfaces
 remain distinct and Vertex's documented repetition guidance is separately scoped.
 Future integration must freeze the selected route and exact native/text instruction
 bytes without silently replacing custom prose or changing assessment calls.
+
+
+## Renderer 3 transport presentation
+
+Explicit RunSpec 3 uses a separate renderer and new exact-byte fixtures; the six
+historical examples and their snapshot files remain unchanged. The new protected
+output-instructions block retains JSON-only output, exact trait/category coverage,
+nonblank explanations, requested root/member order and presented winner/tie
+rules. It shares the existing sandbox, StrictUndefined, content blocks, exemplar
+checks and prompt limits. Custom templates cannot omit, truncate or alter those
+requirements or protected source/exemplar blocks.
+
+Text embeds the full canonical neutral schema. Native omits complete repetition
+for both OpenAI mechanisms, Anthropic and each independently chosen Google route.
+Together and Ollama repeat the exact projected native schema. This choice is part
+of the output commitment; it does not claim provider enforcement. The complete
+[mechanism matrix](assessment-provider-evidence.md#phase-4c3-frozen-presentation-and-adapter-handoff)
+distinguishes evidence-backed guidance from deliberate presentation defaults.
+Changing instructions, template, exemplars, membership, order or mechanism changes
+the exact prompt hash and fails replay of an earlier commitment. Native rendering
+and durable execution are available only to controlled offline fixtures pending
+Phase 5 real adapters and separate qualification.

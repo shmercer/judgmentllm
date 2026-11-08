@@ -26,7 +26,9 @@ and optional Windows/Python 3.11 run the full suite with explicit `--no-cov`.
 Only the primary job uploads coverage.xml (including failed-job evidence when
 available) and invokes the existing optional Codecov integration. The default
 pytest branch coverage settings and blocking 90% threshold remain unchanged.
-Hosted jobs have a 30-minute timeout, with a runtime target under 20 minutes.
+Hosted jobs have a 50-minute timeout, as explicitly authorized during Phase 4C3
+review; the routine runtime target remains under 20 minutes. This job ceiling is
+separate from the native preparation child's 90-second deadline.
 The resource fixtures retain their separate 180-second deadline and existing
 memory and workload limits.
 
@@ -440,3 +442,33 @@ developer environments may report explicit optional-dependency skips. The probes
 are credential-free and guarded; this flag authorizes no SDK client, inference
 request, daemon contact or model download. Existing matrices, coverage policy,
 R gates, resource thresholds and timeouts remain unchanged.
+
+
+## Phase 4C3 qualification additions
+
+New offline synthetic native integration runs inside the ordinary complete suite,
+using actual preparation/execution/recovery and normalized exports. Private
+synthetic profiles are not production model support. Effective guards prohibit
+provider sockets/DNS, SDK/client initialization and credential/ADC discovery;
+durable-store writes remain permitted. Existing guarded converter probes remain
+mandatory independently of transport integration.
+
+Preserve all seven exact-head local configurations, 49 existing strict R/jsonlite
+gates, 70 resource measurements and five hosted jobs. Native Python-to-R assertions
+supplement those gates without replacing or relabeling them. Coverage stays only
+on Linux/3.11; all other lanes explicitly disable it. Commit the candidate before
+`grid.py --mode prepare` and `--mode check`; source changes after qualification
+require a new complete exact-head run. Preserve VM locks, graceful shutdown,
+180-second fixtures, memory limits, hosted 50-minute timeout, original retained
+compatibility stores and complete failed-attempt evidence.
+
+The native preparation memory fixture initializes only fixed, content-free
+interpreter path metadata while tracing, then records the baseline before any
+request preparation. Its fixed 32,768-name loop accesses each synthetic path's
+leaf name and explicitly interns it: newer CPython versions parse paths lazily
+or no longer intern components automatically. This makes the metadata setup
+consistent across the pinned interpreters and balances intern-table replacement
+allocations; it does not warm schemas, prompts or payloads. Retain both raw and
+incremental allocation measurements, the original raw memory bounds, both request
+counts and the subprocess deadline. Whole-process native memory includes the
+metadata setup.

@@ -6,7 +6,7 @@ changes a score, persists response text, or authorizes a submission or retry.
 
 from __future__ import annotations
 
-from typing import Annotated, Literal, cast
+from typing import TYPE_CHECKING, Annotated, Literal, cast
 
 from pydantic import Field, model_validator
 
@@ -18,6 +18,9 @@ from judgmentllm.output_contracts import (
     RubricOutputContract,
     decode_assessment_output,
 )
+
+if TYPE_CHECKING:
+    from judgmentllm.transport import OutputCommitmentV3
 
 OrderEvidence = Literal[
     "raw_output_text", "raw_tokens", "reassembled_stream", "unavailable"
@@ -158,7 +161,7 @@ def _sequence_status(observed: tuple[str, ...], expected: tuple[str, ...]) -> st
 
 
 def extract_observation_metadata(
-    commitment: OutputCommitmentV2,
+    commitment: OutputCommitmentV2 | OutputCommitmentV3,
     *,
     identity: EvidenceIdentity,
     output: str | bytes | None,
@@ -173,9 +176,16 @@ def extract_observation_metadata(
     All limits and failures produce fixed safe codes, with no response fragment.
     """
     try:
-        commitment = OutputCommitmentV2.model_validate_json(
-            commitment.model_dump_json()
-        )
+        if commitment.commitment_version == 3:
+            from judgmentllm.transport import OutputCommitmentV3
+
+            commitment = OutputCommitmentV3.model_validate_json(
+                commitment.model_dump_json()
+            )
+        else:
+            commitment = OutputCommitmentV2.model_validate_json(
+                commitment.model_dump_json()
+            )
     except (ValueError, TypeError, AttributeError):
         raise ValueError("invalid_output_commitment") from None
     requested = (

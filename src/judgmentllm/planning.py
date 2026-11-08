@@ -9,7 +9,7 @@ from typing import Literal
 
 from pydantic import Field
 
-from judgmentllm.config import RunSpecification, RunSpecV2, validate_run_spec
+from judgmentllm.config import RunSpecification, RunSpecV2, RunSpecV3, validate_run_spec
 from judgmentllm.generation import GenerationCapabilities
 from judgmentllm.io import _revalidate_record, read_pairs, read_responses  # pyright: ignore[reportPrivateUsage]
 from judgmentllm.models import PairTask, ResponseItem, StrictModel, VersionedModel
@@ -238,7 +238,7 @@ def validate_run(
     spec: RunSpecification, *, capabilities: CapabilityProfile | None = None
 ) -> ValidationReport:
     """Validate known compatibility, preserving unknowns as explicit diagnostics."""
-    if isinstance(spec, RunSpecV2):
+    if isinstance(spec, (RunSpecV2, RunSpecV3)):
         spec = validate_run_spec(spec)
     if (
         capabilities is None
@@ -495,6 +495,17 @@ def request_context_fingerprint(
                 "output_contract_version": 2,
                 "output_order": spec.prompt.output_order,
                 "structured_output": spec.prompt.structured_output,
+            }
+        )
+    if isinstance(spec, RunSpecV3):
+        context_parts.append(
+            {
+                "run_spec_version": 3,
+                "renderer_version": 3,
+                "output_contract_version": 2,
+                "output_order": spec.prompt.output_order,
+                "structured_output": spec.prompt.structured_output,
+                "native_mechanism": spec.prompt.native_mechanism,
             }
         )
     return stable_id("context", *context_parts)
