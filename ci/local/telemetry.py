@@ -8,7 +8,13 @@ import time
 from contextlib import AbstractContextManager
 from types import TracebackType
 
-import psutil
+try:
+    import psutil
+except ModuleNotFoundError:
+    # Native adapters bootstrap the locked environment with a bare interpreter.
+    # Detailed process sampling starts inside the installed suite runner; the
+    # bootstrap still records wall time and Unix waited-child CPU accurately.
+    psutil = None
 
 
 class ProcessSampler(AbstractContextManager["ProcessSampler"]):
@@ -23,7 +29,7 @@ class ProcessSampler(AbstractContextManager["ProcessSampler"]):
         if not 0.01 <= interval <= 5:
             raise ValueError("Invalid process sampling interval")
         self.interval = interval
-        self.root = psutil.Process(os.getpid())
+        self.root = psutil.Process(os.getpid()) if psutil is not None else None
         self.stop = threading.Event()
         self.thread: threading.Thread | None = None
         self.initial: dict[tuple[int, float], float] = {}
@@ -50,6 +56,8 @@ class ProcessSampler(AbstractContextManager["ProcessSampler"]):
         return usage.ru_utime, usage.ru_stime
 
     def sample(self, *, initial: bool = False) -> None:
+        if psutil is None or self.root is None:
+            return
         rss = children_rss = count = 0
         try:
             processes = [self.root, *self.root.children(recursive=True)]
@@ -119,7 +127,9 @@ class ProcessSampler(AbstractContextManager["ProcessSampler"]):
             for identity, value in self.cpu.items()
         )
         result: dict[str, int | float | str] = {
-            "method": "sampled owned PID/birth-time tree; CPU lower bound; RSS includes shared-page duplication",
+            "method": "sampled owned PID/birth-time tree; CPU lower bound; RSS includes shared-page duplication"
+            if psutil is not None
+            else "bootstrap interpreter: wall/owner CPU and Unix waited-child CPU only; detailed sampling in installed suite",
             "interval_seconds": self.interval,
             "wall_seconds": self.elapsed,
             "sampled_cpu_seconds": cpu,
