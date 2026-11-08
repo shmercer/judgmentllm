@@ -209,6 +209,7 @@ jobs:
           path: |
             ${{ runner.temp }}/judgmentllm-suite/*.json
             ${{ runner.temp }}/judgmentllm-suite/*.log
+            ${{ runner.temp }}/judgmentllm-suite/resource-measurements/*.json
             ${{ runner.temp }}/judgmentllm-preflights/*.json
           if-no-files-found: warn
 

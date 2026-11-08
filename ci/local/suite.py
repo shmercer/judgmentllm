@@ -7,6 +7,7 @@ import hashlib
 import importlib.metadata
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -297,6 +298,35 @@ def run(
             if path.exists()
             else {}
         )
+        if label == "resource":
+            # Keep portable evidence even when Windows uses a short guest-only
+            # scratch path. Never copy the large stores or generated inputs.
+            measurements = output / "resource-measurements"
+            measurements.mkdir(exist_ok=True)
+            candidates = (
+                path
+                for path in temporary.rglob("*.json")
+                if path.name.startswith("measurement")
+                or path.name
+                in {"transient-peak-measurement.json", "parent-child-measurement.json"}
+                or (
+                    path.parent.name == "raw" and path.parent.parent.parent == temporary
+                )
+            )
+            index: list[dict[str, str]] = []
+            for number, path in enumerate(sorted(candidates)):
+                filename = f"evidence-{number:03}.json"
+                shutil.copyfile(path, measurements / filename)
+                index.append(
+                    {
+                        "source": path.relative_to(temporary).as_posix(),
+                        "file": filename,
+                        "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                    }
+                )
+            (measurements / "manifest.json").write_text(
+                json.dumps(index, indent=2) + "\n", encoding="utf-8"
+            )
         return completed.returncode, receipt
 
     try:

@@ -291,8 +291,9 @@ def test_ordinary():
 def test_serial():
     assert os.environ.get("PYTEST_XDIST_WORKER") is None
 @pytest.mark.resource
-def test_resource():
+def test_resource(tmp_path):
     assert os.environ.get("PYTEST_XDIST_WORKER") is None
+    (tmp_path / "measurement.json").write_text('{"peak":64}')
 """
     if fault == "failed":
         code += '\ndef test_failure():\n    assert False, "synthetic fault"\n'
@@ -362,6 +363,14 @@ def test_resource():
             "resource",
         }
         assert summary["reused_preflight_cases"] == int(fault == "preflight")
+        preserved = output / "resource-measurements"
+        artifact = preserved / "evidence-000.json"
+        assert json.loads(artifact.read_text()) == {"peak": 64}
+        manifest = json.loads((preserved / "manifest.json").read_text())
+        assert len(manifest) == 1
+        assert (
+            manifest[0]["sha256"] == hashlib.sha256(artifact.read_bytes()).hexdigest()
+        )
 
 
 def test_documented_test_consolidation_preserves_acceptance_without_a_count_gate(

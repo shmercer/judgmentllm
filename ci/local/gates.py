@@ -440,6 +440,11 @@ class Runner:
                 for pattern in ("*.json", "*.log"):
                     for path in suite_output.glob(pattern):
                         shutil.copyfile(path, evidence / path.name)
+                if (suite_output / "resource-measurements").is_dir():
+                    shutil.copytree(
+                        suite_output / "resource-measurements",
+                        evidence / "resource-measurements",
+                    )
                 for trial in suite_output.glob("w[0-9]*"):
                     if trial.is_dir():
                         destination = evidence / trial.name

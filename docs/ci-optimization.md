@@ -125,6 +125,9 @@ failed, overlapping or resource-bearing preflight receipts fail closed.
 Full receipts/logs are copied out of short Windows scratch paths before cleanup.
 Hosted artifacts retain case/selection/allocation receipts and resource JSON;
 they omit the bulky synthetic runtime stores.
+Resource numeric records are copied with original relative paths and SHA-256
+hashes into `resource-measurements`, so guest shutdown does not strand measurements
+in private scratch directories. Their source bytes remain unchanged.
 
 For an isolated reproduction, use the reported locked interpreter and node ID:
 
