@@ -248,7 +248,11 @@ def test_active_snapshot_failure_discards_private_copies(
                     if failure == "database_change":
                         database = root / "registry.sqlite3"
                         stat = database.stat()
-                        os.utime(database, ns=(stat.st_atime_ns, stat.st_mtime_ns + 1))
+                        os.utime(
+                            database,
+                            ns=(stat.st_atime_ns, stat.st_mtime_ns + 1_000_000_000),
+                        )
+                        assert database.stat().st_mtime_ns != stat.st_mtime_ns
                     else:
                         _run(writer, "002")
 
@@ -266,7 +270,8 @@ def test_active_snapshot_failure_discards_private_copies(
 
             monkeypatch.setattr(repository_module, "verify", failing_verify)
         with pytest.raises((IntegrityError, sqlite3.OperationalError)):
-            ReadOnlyRepository(root, preserve_files=True)
+            with ReadOnlyRepository(root, preserve_files=True):
+                pass
         assert len(inspection_snapshots) == 1
         assert not inspection_snapshots[0].exists()
         if failure != "wal_change":

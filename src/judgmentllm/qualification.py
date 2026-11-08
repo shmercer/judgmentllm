@@ -894,6 +894,7 @@ def report_plan(directory: Path) -> dict[str, object]:
             "assessment_continuation_allowed": False,
             "recovery_required": case.case_id in consumed,
         }
+        terminal_assessment_observed = False
         store = directory / "execution" / case.case_id
         if (store / "registry.sqlite3").is_file():
             try:
@@ -1044,12 +1045,10 @@ def report_plan(directory: Path) -> dict[str, object]:
                         == case.task_ids
                     )
                     item["assessment_terminal"] = terminal
-                    item["assessment_continuation_allowed"] = bool(
+                    terminal_assessment_observed = bool(
                         terminal
                         and case.case_id in consumed
                         and item["durable_evidence_consistent"]
-                        and item["assessment_diagnostic_available"]
-                        and item["canonical_valid"] == item["local_assessment_valid"]
                         and item["provider_response_observed"]
                         and submission is not None
                         and submission.certainty == "accepted"
@@ -1059,7 +1058,14 @@ def report_plan(directory: Path) -> dict[str, object]:
                         and item["invocation_failure_code"] is None
                         and not item["recovery_required"]
                     )
+                    item["assessment_continuation_allowed"] = bool(
+                        plan.plan_version == 2
+                        and terminal_assessment_observed
+                        and item["assessment_diagnostic_available"]
+                        and item["canonical_valid"] == item["local_assessment_valid"]
+                    )
             except (PersistenceError, ValueError, OSError, sqlite3.Error):
+                terminal_assessment_observed = False
                 # Local integrity failures are reportable, never continuation
                 # authority. Exception messages may contain untrusted bytes.
                 item.update(
@@ -1132,7 +1138,7 @@ def report_plan(directory: Path) -> dict[str, object]:
             status = "provider_refused"
         elif item["provider_outcome"] == "output_limit":
             status = "provider_truncated_output"
-        elif item["assessment_continuation_allowed"]:
+        elif terminal_assessment_observed:
             status = (
                 "provider_completed_assessment_valid"
                 if item["local_assessment_valid"]
@@ -1144,8 +1150,7 @@ def report_plan(directory: Path) -> dict[str, object]:
             status = "not_attempted"
         item["case_status"] = status
         item["assessment_behavior_verified"] = (
-            item["assessment_continuation_allowed"] is True
-            and item["local_assessment_valid"] is True
+            terminal_assessment_observed and item["local_assessment_valid"] is True
         )
         reports.append(item)
     valid_count = sum(

@@ -798,13 +798,13 @@ async def test_partial_or_missing_durable_evidence_cannot_allow_continuation(
 
 def test_changed_source_builds_disjoint_new_physical_submission_identities(
     planned: tuple[Path, q._QualificationPlan],
-    tmp_path: Path,
+    tmp_path_factory: pytest.TempPathFactory,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _, original = planned
     monkeypatch.setattr(q, "_source_commit", lambda: "b" * 40)
     changed = q.build_plan(
-        directory=tmp_path / "new",
+        directory=tmp_path_factory.mktemp("oqn") / "new",
         source_commit="b" * 40,
         provider="openai",
         endpoints=original.endpoints,
@@ -1186,3 +1186,107 @@ async def test_harness_cancellation_stops_matrix_without_replacing_request(
     assert all(row["physical_send_attempted"] is False for row in rows[1:])
     await q.execute_plan(directory, **arguments)
     assert len(sent) == expected
+
+
+@pytest.mark.parametrize("valid", [False, True])
+@pytest.mark.asyncio
+async def test_legacy_terminal_assessment_reporting_never_grants_continuation(
+    planned: tuple[Path, q._QualificationPlan],
+    monkeypatch: pytest.MonkeyPatch,
+    valid: bool,
+) -> None:
+    import judgmentllm.providers.openai as provider
+    from judgmentllm.execution import execute_run
+    from judgmentllm.execution.retry import RetryPolicy
+    from judgmentllm.preparation import prepare_run
+    from judgmentllm.production_transport import production_context_for_identity
+    from judgmentllm.transport import physical_identity
+
+    directory, current = planned
+    calls: list[q._PlannedCall] = []
+    for call in current.calls:
+        run_id = "qualification-" + call.case_id
+        attempt_id = q.stable_id("attempt", run_id, call.request_uid, 1)
+        identity = physical_identity(run_id, call.request_uid, attempt_id)
+        calls.append(
+            q._PlannedCall.model_validate(
+                dict(call)
+                | {
+                    "run_id": run_id,
+                    "attempt_id": attempt_id,
+                    "submission_id": identity.submission_id,
+                    "correlation_id": identity.correlation_id,
+                }
+            )
+        )
+    legacy = q._QualificationPlan.model_validate(
+        dict(current) | {"plan_version": 1, "calls": tuple(calls)}
+    )
+    raw = canonical_bytes(legacy)
+    (directory / "plan.json").write_bytes(raw)
+    digest = bytes_digest(raw)
+    sent = _install_transport(
+        monkeypatch, legacy, assessment_output=None if valid else "{}"
+    )
+
+    # Construct new synthetic old-style evidence without running the rejected
+    # v1 harness. The old adapter did not supply the additive text diagnostic.
+    def no_component(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(provider, "_extract_assessment_component", no_component)
+    case = legacy.calls[0]
+    spec = q._verify_case(directory, case)
+    context = production_context_for_identity("openai", case.endpoint, case.model)
+    store = directory / "execution" / case.case_id
+    q._authorize(directory, legacy, digest)
+    with prepare_run(
+        spec, store=store, run_id=case.run_id, transport_context=context
+    ) as prepared:
+        dependency = next(prepared.iter_request_dependencies())
+        identity = physical_identity(case.run_id, case.request_uid, case.attempt_id)
+        wire = prepared.prepare_transport_attempt(dependency, identity)
+        # This test fixture records the prior physical intent before the mocked
+        # submission; this private operation is not v1 execute authorization.
+        q._QualificationSubmissionGuard(
+            directory, legacy, case, token=q._EXECUTOR_TOKEN
+        )(wire)
+    adapter = provider.OpenAIAdapter(case.endpoint, case.model, context=context)
+    try:
+        await execute_run(
+            case.run_id,
+            store=store,
+            adapter=adapter,
+            spec=spec,
+            retry_policy=RetryPolicy(max_attempts=1),
+        )
+    finally:
+        await adapter.aclose()
+    report = _readonly_report(directory, monkeypatch)
+    row = cast(list[dict[str, object]], report["calls"])[0]
+    assert len(sent) == report["physical_send_attempts"] == 1
+    assert row["case_status"] == (
+        "provider_completed_assessment_valid"
+        if valid
+        else "provider_completed_assessment_invalid"
+    )
+    assert row["assessment_terminal"] is True
+    assert row["assessment_diagnostic_available"] is False
+    assert row["parser_diagnostic"] is row["canonical_valid"] is None
+    assert row["local_assessment_valid"] is valid
+    assert row["assessment_behavior_verified"] is valid
+    assert row["assessment_continuation_allowed"] is False
+    assert row["live_qualified"] is False
+    assert report["valid_assessment_count"] == int(valid)
+    assert report["invalid_assessment_count"] == int(not valid)
+    assert report["matrix_execution_complete"] is False
+    assert report["all_assessments_valid"] is False
+    with pytest.raises(q.QualificationError):
+        await q.execute_plan(
+            directory,
+            authorized_plan_sha256=digest,
+            authorized_source_commit=legacy.source_commit,
+            accept_billable_calls=True,
+        )
+    assert len(sent) == 1
+    assert (directory / "plan.json").read_bytes() == raw
