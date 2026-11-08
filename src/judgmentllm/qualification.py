@@ -26,7 +26,7 @@ from judgmentllm.config import RunSpecV3
 from judgmentllm.models import StrictModel
 from judgmentllm.output_contracts import decode_assessment_output
 from judgmentllm.persistence.hashing import bytes_digest, canonical_bytes
-from judgmentllm.persistence.models import SHA256
+from judgmentllm.persistence.models import SHA256, NotFoundError
 from judgmentllm.planning import stable_id
 from judgmentllm.providers.protocol import PreparedRequest
 
@@ -839,6 +839,14 @@ def report_plan(directory: Path) -> dict[str, object]:
             "physical_send_attempted": case.case_id in consumed,
             "outcome": "pending",
             "live_qualified": False,
+            "provider_accepted": None,
+            "acceptance_outcome": "not_attempted",
+            "provider_response_observed": False,
+            "submission_certainty": "not_started",
+            "invocation_acceptance": None,
+            "provider_outcome": None,
+            "invocation_failure_code": None,
+            "completion_status": "not_attempted",
         }
         store = directory / "execution" / case.case_id
         if (store / "registry.sqlite3").is_file():
@@ -846,6 +854,14 @@ def report_plan(directory: Path) -> dict[str, object]:
                 results = tuple(repository.iter_results(case.run_id))
                 receipts = tuple(repository.iter_evidence(case.run_id))
                 item["outcome"] = repository.get_run(case.run_id).state
+                try:
+                    submission = repository.get_submission(
+                        case.run_id, case.submission_id
+                    )
+                except NotFoundError:
+                    submission = None
+                if submission is not None:
+                    item["submission_certainty"] = submission.certainty
                 item["normalized_outcomes"] = [r.status for r in results]
                 item["local_assessment_valid"] = bool(results) and all(
                     r.status == "complete" for r in results
@@ -857,6 +873,13 @@ def report_plan(directory: Path) -> dict[str, object]:
                 if receipts:
                     usage = receipts[0].usage
                     item["reported_model"] = usage.reported_model
+                    item["provider_response_observed"] = (
+                        receipts[0].identity.observation_id is not None
+                    )
+                    item["invocation_acceptance"] = receipts[0].invocation_acceptance
+                    item["provider_outcome"] = usage.provider_outcome
+                    item["invocation_failure_code"] = usage.invocation_failure_code
+                    item["completion_status"] = usage.provider_outcome or "not_observed"
                     item["observation_kind"] = usage.observation_kind
                     item["observed_order"] = (
                         receipts[0].order.model_dump(mode="json")
@@ -896,7 +919,34 @@ def report_plan(directory: Path) -> dict[str, object]:
                         totals[name] = (
                             None if value is None or prior is None else prior + value
                         )
-                    item["provider_accepted"] = receipts[0].remote_id is not None
+        # An acknowledged executor observation is not itself successful
+        # assessment acceptance. Keep explicit rejection, unresolved invocation,
+        # failed provider response and ordinary completion outcomes distinct.
+        if item["invocation_failure_code"] is not None:
+            item["provider_accepted"] = False
+            item["acceptance_outcome"] = "rejected"
+        elif item["invocation_acceptance"] == "unresolved":
+            item["acceptance_outcome"] = "unresolved"
+        elif item["provider_outcome"] == "provider_failure":
+            item["acceptance_outcome"] = "provider_failure"
+        elif (
+            item["provider_response_observed"] is True
+            and item["provider_outcome"] is not None
+        ):
+            item["provider_accepted"] = True
+            item["acceptance_outcome"] = "accepted"
+        elif item["submission_certainty"] == "not_submitted":
+            item["provider_accepted"] = False
+            item["acceptance_outcome"] = "not_submitted"
+        elif item["submission_certainty"] == "accepted":
+            item["acceptance_outcome"] = "acknowledged"
+        elif item["submission_certainty"] == "unknown" or case.case_id in consumed:
+            item["acceptance_outcome"] = "unresolved"
+        if (
+            item["acceptance_outcome"] != "not_attempted"
+            and item["completion_status"] == "not_attempted"
+        ):
+            item["completion_status"] = "not_observed"
         if case.case_id in consumed and "estimated_usd" not in item:
             estimated_total = None
             for name in totals:

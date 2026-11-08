@@ -113,6 +113,41 @@ async def execute_run(
                 continue
         pending_cleanup.result()
 
+    async def retain_known_work(*, preserve_original_error: bool = False) -> None:
+        """Drain bounded OpenAI handoffs after TaskGroup has stopped workers.
+
+        A worker fault can cancel another already invoked request just as caller
+        cancellation can. Cleanup never submits work or invents an invocation.
+        If durable storage itself failed, keep the original worker error while
+        attempting independent retained work where possible.
+        """
+        if not holder or cancellation_handoff is None:
+            return
+        session = holder[0]
+        for retained in tuple(cancellation_work.values()):
+            try:
+                work = retained.work
+                response = retained.response
+                if response is None and retained.acknowledgment is not None:
+                    response = cancellation_handoff(
+                        work.prepared,
+                        submission_id=work.submission_id,
+                        correlation_id=work.correlation_id,
+                    )
+                await drain(
+                    partial(
+                        session.cancelled_invocation,
+                        work,
+                        acknowledgment=retained.acknowledgment,
+                        response=response,
+                        known_invoked=retained.invoked,
+                    )
+                )
+            except Exception:
+                if not preserve_original_error:
+                    raise
+        cancellation_work.clear()
+
     try:
         session = await call(initialize)
         session.retry_policy = retry_policy
@@ -286,31 +321,14 @@ async def execute_run(
             result_queue_high_water=result_high,
         )
     except asyncio.CancelledError:
-        # TaskGroup has drained workers before reaching this boundary. Retain
-        # complete received observations through the ordinary services, then
-        # journal unknown usage only for a call whose forwarding is established.
-        if holder and cancellation_handoff is not None:
-            session = holder[0]
-            for retained in tuple(cancellation_work.values()):
-                work = retained.work
-                response = retained.response
-                if response is None and retained.acknowledgment is not None:
-                    response = cancellation_handoff(
-                        work.prepared,
-                        submission_id=work.submission_id,
-                        correlation_id=work.correlation_id,
-                    )
-                await drain(
-                    partial(
-                        session.cancelled_invocation,
-                        work,
-                        acknowledgment=retained.acknowledgment,
-                        response=response,
-                        known_invoked=retained.invoked,
-                    )
-                )
-            cancellation_work.clear()
+        await retain_known_work()
         await drain(cancel)
+        raise
+    except ExceptionGroup:
+        # Ordinary worker errors also cancel sibling SDK calls. Preserve their
+        # established evidence without changing the original failure into a
+        # successful report or classifying the run as caller-cancelled.
+        await retain_known_work(preserve_original_error=True)
         raise
     finally:
         # Queued behind any initialization/in-flight write on the same thread.

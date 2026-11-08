@@ -221,3 +221,192 @@ async def test_transport_self_cancellation_propagates_without_deadlock(
     with ReadOnlyRepository(store) as repository:
         (receipt,) = tuple(repository.iter_evidence("001"))
         assert receipt.invocation_acceptance == "unresolved"
+
+
+class _SyntheticWorkerFailure(RuntimeError):
+    pass
+
+
+def _concurrent_case(
+    directory: Path, endpoint: str, capture: Literal["full", "minimal"]
+) -> tuple[object, Path, str]:
+    import json
+
+    from test_openai_lifecycle import production_spec
+
+    from judgmentllm.preparation import prepare_run
+    from judgmentllm.production_transport import production_context
+
+    spec = production_spec(
+        directory / "inputs", endpoint, capture=capture, explanations=False
+    )
+    spec.execution.concurrency = 2
+    spec.input.path.write_text(
+        "".join(
+            json.dumps(
+                {"item_id": identifier, "text": "Synthetic assessment " + identifier}
+            )
+            + "\n"
+            for identifier in ("001", "002")
+        ),
+        encoding="utf-8",
+    )
+    assert spec.rubric is not None
+    output = json.dumps(
+        {
+            "scores": [
+                {"trait_id": trait.trait_id, "category_label": trait.levels[0].label}
+                for trait in spec.rubric.traits
+            ]
+        }
+    )
+    store = directory / "runtime"
+    with prepare_run(
+        spec,
+        store=store,
+        run_id="001",
+        capabilities=OpenAIAdapter.capabilities_for("openai", endpoint, spec.model),
+        transport_context=production_context(spec),
+    ):
+        pass
+    return spec, store, output
+
+
+@pytest.mark.parametrize("endpoint", ["responses", "chat.completions"])
+@pytest.mark.parametrize("capture", ["full", "minimal"])
+@pytest.mark.asyncio
+async def test_worker_failure_retains_response_and_cancelled_sibling_usage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    endpoint: str,
+    capture: Literal["full", "minimal"],
+) -> None:
+    from test_openai_lifecycle import envelope
+
+    from judgmentllm.config import RunSpecV3
+
+    monkeypatch.setenv("OPENAI_API_KEY", "synthetic-worker-failure-key")
+    spec, store, output = _concurrent_case(tmp_path, endpoint, capture)
+    assert isinstance(spec, RunSpecV3)
+    sibling_forwarded = asyncio.Event()
+    calls = 0
+
+    async def response(request: httpx2.Request) -> httpx2.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            await asyncio.wait_for(sibling_forwarded.wait(), timeout=5)
+            return httpx2.Response(200, json=envelope(endpoint, output))
+        sibling_forwarded.set()
+        await asyncio.Event().wait()
+        raise AssertionError("TaskGroup must cancel the in-flight sibling")
+
+    def fail_after_submit(stage: str, request: str) -> None:
+        if stage == "after_submit":
+            raise _SyntheticWorkerFailure("synthetic worker failure")
+
+    adapter = OpenAIAdapter(
+        endpoint,
+        spec.model,
+        concurrency=2,
+        http_transport=httpx2.MockTransport(response),
+    )
+    try:
+        with pytest.raises(ExceptionGroup) as caught:
+            await asyncio.wait_for(
+                execute_run(
+                    "001",
+                    store=store,
+                    adapter=adapter,
+                    spec=spec,
+                    fault=fail_after_submit,
+                ),
+                timeout=10,
+            )
+        assert len(caught.value.exceptions) == 1
+        assert isinstance(caught.value.exceptions[0], _SyntheticWorkerFailure)
+        assert adapter.actual_call_count == calls == 2
+    finally:
+        await adapter.aclose()
+
+    with ReadOnlyRepository(store) as repository:
+        evidence = tuple(repository.iter_evidence("001"))
+        assert len(evidence) == 2
+        received = tuple(
+            receipt
+            for receipt in evidence
+            if receipt.identity.observation_id is not None
+        )
+        unknown = tuple(
+            receipt
+            for receipt in evidence
+            if receipt.invocation_acceptance == "unresolved"
+        )
+        assert len(received) == len(unknown) == 1
+        assert received[0].usage.total_tokens == 30
+        assert unknown[0].usage.total_tokens is None
+        assert unknown[0].usage.definitive_failure_id is None
+        assert tuple(repository.iter_results("001"))
+        assert repository.get_run("001").state != "cancelled"
+
+    def forbidden(request: httpx2.Request) -> httpx2.Response:
+        raise AssertionError("Recovery cannot replace either prior SDK invocation")
+
+    fresh = OpenAIAdapter(
+        endpoint, spec.model, http_transport=httpx2.MockTransport(forbidden)
+    )
+    try:
+        report = await asyncio.wait_for(
+            recover_run("001", store=store, adapter=fresh, spec=spec), timeout=10
+        )
+        assert report.recovery_required and fresh.actual_call_count == 0
+    finally:
+        await fresh.aclose()
+    with ReadOnlyRepository(store) as repository:
+        assert len(tuple(repository.iter_evidence("001"))) == 2
+        assert (
+            repository.connection.execute(
+                "SELECT count(*) FROM usage_revisions"
+            ).fetchone()[0]
+            == 2
+        )
+
+
+@pytest.mark.parametrize("endpoint", ["responses", "chat.completions"])
+@pytest.mark.asyncio
+async def test_worker_failure_before_forward_does_not_invent_sibling_calls(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    endpoint: str,
+) -> None:
+    from judgmentllm.config import RunSpecV3
+
+    monkeypatch.setenv("OPENAI_API_KEY", "synthetic-worker-failure-key")
+    spec, store, _ = _concurrent_case(tmp_path, endpoint, "full")
+    assert isinstance(spec, RunSpecV3)
+    entered = 0
+    sibling_entered = asyncio.Event()
+
+    async def blocked_client() -> None:
+        nonlocal entered
+        entered += 1
+        if entered == 1:
+            await asyncio.wait_for(sibling_entered.wait(), timeout=5)
+            raise _SyntheticWorkerFailure("synthetic before-forward failure")
+        sibling_entered.set()
+        await asyncio.Event().wait()
+
+    adapter = OpenAIAdapter(endpoint, spec.model, concurrency=2)
+    monkeypatch.setattr(adapter, "_execution_client", blocked_client)
+    try:
+        with pytest.raises(ExceptionGroup) as caught:
+            await asyncio.wait_for(
+                execute_run("001", store=store, adapter=adapter, spec=spec), timeout=10
+            )
+        assert isinstance(caught.value.exceptions[0], _SyntheticWorkerFailure)
+        assert adapter.actual_call_count == 0
+    finally:
+        await adapter.aclose()
+    with ReadOnlyRepository(store) as repository:
+        assert not tuple(repository.iter_evidence("001"))
+        assert not tuple(repository.iter_results("001"))

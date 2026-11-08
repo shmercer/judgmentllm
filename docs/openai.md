@@ -124,8 +124,10 @@ Resume can submit untouched prepared work, so it can incur charges. It never
 replaces a submission whose acceptance is uncertain. Both endpoints initially use
 `store=false`; do not expect server retrieval. Trustworthy retained response
 evidence can be normalized after a restart. If that evidence is unavailable,
-status remains unresolved. Preserve the original store and inspect the recorded
-status before authorizing any explicit new attempt.
+status remains unresolved. A handled worker failure preserves available responses
+and known invocation evidence where storage remains writable, while retaining the
+original failure. Preserve the original store and inspect the recorded status
+before authorizing any explicit new attempt.
 
 Keep the SQLite runtime store on a local disk. Full capture retains prompts,
 nonsecret request bodies and sanitized responses locally. Minimal capture omits
@@ -162,5 +164,7 @@ After exact-head offline qualification and PR review, the reviewer must separate
 authorize the source commit and plan digest before the billable `execute` stage.
 The shared ledger consumes each planned request at most once. Continuation never
 adds replacement calls; reports cannot promote their own model-support status.
+Reports distinguish accepted, rejected and unresolved requests from completion
+status and local assessment validity. Missing acknowledgment never proves rejection.
 A successful sample qualifies only its independently reviewed exact feature scope.
 No live calls are authorized by this guide or by approval to implement the adapter.

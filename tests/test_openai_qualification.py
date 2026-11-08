@@ -161,6 +161,9 @@ def _install_transport(
     plan: q._QualificationPlan,
     *,
     timeout: bool = False,
+    rejection_status: int | None = None,
+    provider_failure: bool = False,
+    completion_status: str | None = None,
 ) -> list[bytes]:
     import httpx
 
@@ -175,6 +178,11 @@ def _install_transport(
         assert request.content == case.request_body_utf8.encode()
         if timeout:
             raise httpx.ReadTimeout("synthetic timeout", request=request)
+        if rejection_status is not None:
+            return httpx.Response(
+                rejection_status,
+                json={"error": {"message": "PRIVATE_REJECTION_BODY_CANARY"}},
+            )
         output = json.dumps(
             {"scores": [{"trait_id": "01", "category_label": "high"}]}
             if case.task_kind == "rubric"
@@ -225,6 +233,22 @@ def _install_transport(
                     "total_tokens": 110,
                 },
             }
+        if completion_status is not None:
+            assert case.endpoint == "responses"
+            if completion_status == "refusal":
+                body["output"][0]["content"] = [
+                    {"type": "refusal", "refusal": "PRIVATE_REFUSAL_BODY_CANARY"}
+                ]
+            else:
+                body.update(
+                    status="incomplete",
+                    incomplete_details={"reason": "max_output_tokens"},
+                )
+        if provider_failure:
+            assert case.endpoint == "responses"
+            body.update(
+                status="failed", error={"message": "PRIVATE_PROVIDER_FAILURE_CANARY"}
+            )
         return httpx.Response(200, json=body)
 
     original = provider.OpenAIAdapter
@@ -241,6 +265,33 @@ def _install_transport(
     monkeypatch.setattr(socket, "socket", forbidden)
     monkeypatch.setattr(socket, "getaddrinfo", forbidden)
     return sent
+
+
+def _readonly_report(
+    directory: Path, monkeypatch: pytest.MonkeyPatch
+) -> dict[str, object]:
+    import judgmentllm.providers.openai as provider
+
+    def snapshot() -> dict[str, bytes]:
+        return {
+            str(path.relative_to(directory)): path.read_bytes()
+            for path in directory.rglob("*")
+            if path.is_file()
+        }
+
+    before = snapshot()
+
+    def forbidden(*_args: object, **_kwargs: object) -> Any:
+        raise AssertionError(
+            "Report must not construct a client or discover credentials"
+        )
+
+    with monkeypatch.context() as guard:
+        guard.setattr(provider, "OpenAIAdapter", forbidden)
+        guard.setattr(provider, "_resolve_credentials", forbidden)
+        report = q.report_plan(directory)
+    assert snapshot() == before
+    return report
 
 
 @pytest.mark.asyncio
@@ -266,9 +317,22 @@ async def test_eight_call_matrix_real_sdk_and_safe_continuation(
     assert all(row["local_assessment_valid"] is True for row in calls)
     assert all(row["durable_evidence_consistent"] is True for row in calls)
     assert all(row["live_qualified"] is False for row in calls)
+    assert all(row["provider_accepted"] is True for row in calls)
+    assert all(row["acceptance_outcome"] == "accepted" for row in calls)
+    assert all(row["provider_response_observed"] is True for row in calls)
+    assert all(row["submission_certainty"] == "accepted" for row in calls)
+    assert all(
+        row["provider_outcome"] == row["completion_status"] == "completed"
+        for row in calls
+    )
+    assert all(
+        row["invocation_failure_code"] is row["invocation_acceptance"] is None
+        for row in calls
+    )
     assert "synthetic-qualification-credential" not in json.dumps(report)
     assert "resp_synthetic" not in json.dumps(report)
     assert "msg_synthetic" not in json.dumps(report)
+    assert _readonly_report(directory, monkeypatch)["calls"] == report["calls"]
     again = await q.execute_plan(directory, **arguments)
     assert len(sent) == 8
     assert again["physical_send_attempts"] == 8
@@ -293,6 +357,15 @@ async def test_timeout_consumes_allocation_without_replacement(
     report = await q.execute_plan(directory, **arguments)
     assert len(sent) == 1
     assert report["physical_send_attempts"] == 1
+    first = cast(list[dict[str, object]], report["calls"])[0]
+    assert first["provider_accepted"] is None
+    assert first["acceptance_outcome"] == "unresolved"
+    assert first["provider_response_observed"] is False
+    assert first["submission_certainty"] == "unknown"
+    assert first["invocation_acceptance"] == "unresolved"
+    assert first["completion_status"] == "not_observed"
+    assert first["provider_outcome"] is first["invocation_failure_code"] is None
+    assert _readonly_report(directory, monkeypatch)["calls"] == report["calls"]
     again = await q.execute_plan(directory, **arguments)
     assert len(sent) == 1
     assert again["physical_send_attempts"] == 1
@@ -360,3 +433,114 @@ async def test_ledger_mutation_cannot_replenish_a_consumed_allocation(
     assert q.report_plan(directory)["physical_send_attempts"] == 1
     await q.execute_plan(directory, **arguments)
     assert len(sent) == 1
+
+
+@pytest.mark.parametrize(
+    "status,code", [(401, "credentials_rejected"), (429, "rate_limited")]
+)
+@pytest.mark.asyncio
+async def test_report_distinguishes_forwarded_rejection_and_remains_readonly(
+    planned: tuple[Path, q._QualificationPlan],
+    monkeypatch: pytest.MonkeyPatch,
+    status: int,
+    code: str,
+) -> None:
+    import judgmentllm.providers.openai as provider
+
+    directory, plan = planned
+    sent = _install_transport(monkeypatch, plan, rejection_status=status)
+    report = await q.execute_plan(
+        directory,
+        authorized_plan_sha256=bytes_digest(canonical_bytes(plan)),
+        authorized_source_commit=plan.source_commit,
+        accept_billable_calls=True,
+    )
+    assert len(sent) == report["physical_send_attempts"] == 1
+    first = cast(list[dict[str, object]], report["calls"])[0]
+    assert first["physical_send_attempted"] is True
+    assert first["provider_accepted"] is False
+    assert first["acceptance_outcome"] == "rejected"
+    assert first["invocation_failure_code"] == code
+    assert first["submission_certainty"] == "not_submitted"
+    assert first["invocation_acceptance"] is None
+    assert first["provider_outcome"] is None
+    assert first["provider_response_observed"] is False
+    assert first["completion_status"] == "not_observed"
+    assert first["assessment_behavior_verified"] is False
+    pending = cast(list[dict[str, object]], report["calls"])[1]
+    assert pending["provider_accepted"] is None
+    assert pending["acceptance_outcome"] == "not_attempted"
+    assert pending["submission_certainty"] == "not_started"
+    assert pending["completion_status"] == "not_attempted"
+    assert "PRIVATE_REJECTION_BODY_CANARY" not in json.dumps(report)
+
+    def snapshot() -> dict[str, bytes]:
+        return {
+            str(path.relative_to(directory)): path.read_bytes()
+            for path in directory.rglob("*")
+            if path.is_file()
+        }
+
+    before = snapshot()
+
+    def forbidden(*_args: object, **_kwargs: object) -> Any:
+        raise AssertionError(
+            "Reporting must not discover credentials or construct clients"
+        )
+
+    monkeypatch.setattr(provider, "OpenAIAdapter", forbidden)
+    monkeypatch.setattr(provider, "_resolve_credentials", forbidden)
+    reread = q.report_plan(directory)
+    assert snapshot() == before
+    assert reread["calls"] == report["calls"]
+    assert len(sent) == 1
+
+
+@pytest.mark.asyncio
+async def test_failed_provider_observation_is_not_assessment_acceptance(
+    planned: tuple[Path, q._QualificationPlan],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    directory, plan = planned
+    sent = _install_transport(monkeypatch, plan, provider_failure=True)
+    report = await q.execute_plan(
+        directory,
+        authorized_plan_sha256=bytes_digest(canonical_bytes(plan)),
+        authorized_source_commit=plan.source_commit,
+        accept_billable_calls=True,
+    )
+    first = cast(list[dict[str, object]], report["calls"])[0]
+    assert len(sent) == 1
+    assert first["submission_certainty"] == "accepted"
+    assert first["provider_response_observed"] is True
+    assert first["provider_outcome"] == first["completion_status"] == "provider_failure"
+    assert first["provider_accepted"] is None
+    assert first["acceptance_outcome"] == "provider_failure"
+    assert first["assessment_behavior_verified"] is False
+    assert "PRIVATE_PROVIDER_FAILURE_CANARY" not in json.dumps(report)
+
+
+@pytest.mark.parametrize("status", ["refusal", "output_limit"])
+@pytest.mark.asyncio
+async def test_report_separates_request_acceptance_from_unsuccessful_completion(
+    planned: tuple[Path, q._QualificationPlan],
+    monkeypatch: pytest.MonkeyPatch,
+    status: str,
+) -> None:
+    directory, plan = planned
+    sent = _install_transport(monkeypatch, plan, completion_status=status)
+    report = await q.execute_plan(
+        directory,
+        authorized_plan_sha256=bytes_digest(canonical_bytes(plan)),
+        authorized_source_commit=plan.source_commit,
+        accept_billable_calls=True,
+    )
+    first = cast(list[dict[str, object]], report["calls"])[0]
+    assert len(sent) == 1
+    assert first["provider_accepted"] is True
+    assert first["acceptance_outcome"] == "accepted"
+    assert first["provider_response_observed"] is True
+    assert first["provider_outcome"] == first["completion_status"] == status
+    assert first["assessment_behavior_verified"] is False
+    assert first["local_assessment_valid"] is False
+    assert "PRIVATE_REFUSAL_BODY_CANARY" not in json.dumps(report)

@@ -213,9 +213,9 @@ async def test_production_seal_execute_export_reopen(
     "stage, recoverable",
     [
         ("after_submitting", False),
-        ("after_submit", False),
-        ("after_acknowledgment", False),
-        ("after_response", False),
+        ("after_submit", True),
+        ("after_acknowledgment", True),
+        ("after_response", True),
         ("after_evidence_commit", True),
         ("after_normalization", True),
     ],
@@ -225,9 +225,14 @@ async def test_interruption_fresh_adapter_never_replaces_call(
     tmp_path: Path, stage: str, recoverable: bool
 ) -> None:
     spec, store, adapter, bodies = setup_case(tmp_path, "responses")
+    interrupted = False
 
     def interrupt(current: str, request: str) -> None:
-        if current == stage:
+        nonlocal interrupted
+        # An in-process worker failure permits bounded cleanup. Hard process
+        # termination remains covered by the existing process recovery tests.
+        if current == stage and not interrupted:
+            interrupted = True
             raise RuntimeError("synthetic interruption")
 
     try:
