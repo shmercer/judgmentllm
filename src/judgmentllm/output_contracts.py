@@ -20,6 +20,7 @@ from pydantic import (
     model_validator,
 )
 
+from judgmentllm.assessment_errors import AssessmentOutputError, contract_error_code
 from judgmentllm.models import ID, PairTask, StrictModel, Trait
 from judgmentllm.results import (
     CategoricalOutput,
@@ -139,13 +140,13 @@ def _unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
     result: dict[str, object] = {}
     for key, value in pairs:
         if key in result:
-            raise ValueError("duplicate JSON object key")
+            raise AssessmentOutputError("duplicate JSON object key", "duplicate_keys")
         result[key] = value
     return result
 
 
 def _nonfinite(token: str) -> object:
-    raise ValueError("nonfinite JSON number")
+    raise AssessmentOutputError("nonfinite JSON number", "json_syntax")
 
 
 def decode_assessment_output(raw: str | bytes) -> object:
@@ -164,8 +165,17 @@ def decode_assessment_output(raw: str | bytes) -> object:
         )
         _json_value(value)
         return value
-    except (ValueError, TypeError, UnicodeError, RecursionError):
-        raise ValueError("invalid assessment output JSON") from None
+    except UnicodeError:
+        raise AssessmentOutputError(
+            "invalid assessment output JSON", "invalid_utf8"
+        ) from None
+    except (ValueError, TypeError, RecursionError) as error:
+        code = (
+            error.diagnostic_code
+            if isinstance(error, AssessmentOutputError)
+            else "json_syntax"
+        )
+        raise AssessmentOutputError("invalid assessment output JSON", code) from None
 
 
 def _checked_output(data: object) -> object:
@@ -330,8 +340,11 @@ def validate_rubric_contract_output(
         if len(joined["scores"]) != len(separated.scores):
             raise ValueError("unknown score trait")
         return validate_categorical_output(joined, checked.traits, explanations=True)
-    except (ValueError, TypeError, KeyError, RecursionError):
-        raise ValueError("invalid rubric assessment output") from None
+    except (ValueError, TypeError, KeyError, RecursionError) as error:
+        raise AssessmentOutputError(
+            "invalid rubric assessment output",
+            contract_error_code(error, task_kind=checked.task_kind),
+        ) from None
 
 
 def validate_pairwise_contract_output(
@@ -354,5 +367,8 @@ def validate_pairwise_contract_output(
             allow_ties=checked.allow_ties,
             explanations=checked.explanations,
         )
-    except (ValueError, TypeError, RecursionError):
-        raise ValueError("invalid pairwise assessment output") from None
+    except (ValueError, TypeError, RecursionError) as error:
+        raise AssessmentOutputError(
+            "invalid pairwise assessment output",
+            contract_error_code(error, task_kind=checked.task_kind),
+        ) from None

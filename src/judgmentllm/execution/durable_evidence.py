@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from judgmentllm.assessment_diagnostics import (
+    AssessmentComponentMetadata,
+    diagnose_assessment_output,
+)
 from judgmentllm.evidence import (
     EvidenceIdentity,
     ReasoningAuthorization,
@@ -11,6 +15,7 @@ from judgmentllm.evidence import (
     UsageContext,
     extract_provider_usage,
 )
+from judgmentllm.evidence.assessment import AssessmentDiagnosticV1
 from judgmentllm.evidence.usage import InvocationFailureCode
 from judgmentllm.execution.evidence import committed_authorization
 from judgmentllm.persistence.artifacts import ArtifactStore
@@ -262,6 +267,60 @@ class DurableEvidence:
             raise IntegrityError("received observation conflicts with durable receipt")
         companion = None
         if self.enabled:
+            diagnostic = None
+            adapter_evidence = response.evidence
+            if (
+                adapter_evidence is not None
+                and adapter_evidence.provenance == "provider_documented"
+                and adapter_evidence.assessment_component is not None
+                and commitment is not None
+                and session.spec.provider == "openai"
+                and session.prepared is not None
+                and session.prepared.manifest.schema_version == 4
+            ):
+                from judgmentllm.assessment_diagnostics import AssessmentComponent
+
+                component = AssessmentComponent.model_validate(
+                    dict(adapter_evidence.assessment_component)
+                )
+                parsed = diagnose_assessment_output(
+                    component,
+                    commitment.contract,
+                )
+                text = component.output_text
+                text_artifact = None
+                digest = None
+                if text is not None:
+                    digest = bytes_digest(text)
+                    text_artifact = (
+                        self.store.put(text, "text/plain; charset=utf-8")
+                        if session.spec.capture == "full"
+                        else ArtifactStore.hash_only(
+                            digest, len(text), "text/plain; charset=utf-8"
+                        )
+                    )
+                diagnostic = AssessmentDiagnosticV1(
+                    identity=self.identity(work, observation_id),
+                    endpoint=component.endpoint,
+                    requested_model=session.spec.model,
+                    provider_outcome=prepared.usage.provider_outcome,
+                    reported_model=prepared.usage.reported_model,
+                    remote_response_id=response.observation_key,
+                    component=AssessmentComponentMetadata.model_validate_json(
+                        component.model_dump_json()
+                    ),
+                    parser_diagnostic=parsed.code,
+                    canonical_valid=parsed.canonical_valid,
+                    capture=session.spec.capture,
+                    retention="withheld"
+                    if text is None
+                    else "retained"
+                    if session.spec.capture == "full"
+                    else "hash_only",
+                    artifact=text_artifact,
+                    content_sha256=digest,
+                    byte_length=component.byte_length,
+                )
             ack = read_acknowledgment(self.store, work.submission_id)
             assert ack is not None and self.authorization_sha256 is not None
             companion = EvidenceReceipt(
@@ -277,6 +336,7 @@ class DurableEvidence:
                 authorization=self.authorization,
                 authorization_sha256=self.authorization_sha256,
                 usage=prepared.usage,
+                assessment_diagnostic=diagnostic,
                 order=prepared.order,
                 reasoning=prepared.reasoning,
                 original=ArtifactStore.hash_only(

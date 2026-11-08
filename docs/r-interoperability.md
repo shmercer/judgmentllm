@@ -570,3 +570,14 @@ Existing result exports and evidence readers feed R assertions for character IDs
 category mappings, original/presented pair orientation, unsuccessful attempts,
 nullable usage, and grouped result-to-physical-usage joins. Companion usage and
 reasoning export interfaces remain Phase 6. None of these tests contacts OpenAI.
+
+
+The same required execution gate also consumes additive assessment diagnostics
+from new OpenAI receipts and separately reopened read-only inspections. It checks
+identity joins, fixed parser codes, exact text hash/length, full versus minimal
+retention, missing historical metadata, and exclusion of text from serialized
+inspection metadata. Synthetic malformed assessments remain invalid; their
+protected text is retained only for full capture. Existing result rows, complete
+category coding, leading-zero IDs, pair orientation, missing values and physical
+usage aggregation remain independently asserted. These fixture sidecars are test
+artifacts, not Phase 6 companion export interfaces or live qualification evidence.

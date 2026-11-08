@@ -151,3 +151,57 @@ stopifnot(all(is.na(openai_p$p_left)), all(is.na(openai_p$p_first)))
 for (order in openai_p$original_order) stopifnot(identical(jsonlite::fromJSON(order), c("001", "002")))
 for (order in openai_p$presented_order) stopifnot(identical(jsonlite::fromJSON(order), c("002", "001")))
 cat("OpenAI adapter interoperability passed: 8 audit rows, 6 physical usage records\n")
+
+
+# Additive diagnostics join physical observations without adding result columns.
+for (entry in openai_evidence) {
+  diagnostic <- entry$assessment_diagnostic
+  stopifnot(diagnostic$schema_version == 1L, diagnostic$diagnostic_version == 1L)
+  stopifnot(identical(diagnostic$identity, entry$identity))
+  stopifnot(diagnostic$endpoint == entry$usage$endpoint)
+  stopifnot(diagnostic$requested_model == "offline-unqualified-model")
+  stopifnot(diagnostic$reported_model == "offline-reported-model")
+  stopifnot(diagnostic$remote_response_id == entry$remote_id)
+  stopifnot(diagnostic$component$extraction_status == "extracted")
+  stopifnot(diagnostic$parser_diagnostic %in% c("valid", "category_error"))
+  stopifnot(isTRUE(diagnostic$canonical_valid) == (diagnostic$parser_diagnostic == "valid"))
+  stopifnot(nchar(diagnostic$content_sha256) == 64L)
+  stopifnot(diagnostic$artifact$sha256 == diagnostic$content_sha256)
+  stopifnot(diagnostic$byte_length == diagnostic$artifact$byte_length)
+  if (entry$capture == "full") {
+    stopifnot(diagnostic$retention == "retained", is.character(diagnostic$artifact$relative_path))
+  } else {
+    stopifnot(diagnostic$retention == "hash_only", is.null(diagnostic$artifact$relative_path))
+  }
+}
+stopifnot(sum(vapply(openai_evidence, function(x) x$assessment_diagnostic$parser_diagnostic == "category_error", logical(1))) == 2L)
+for (row in openai_rows) stopifnot(!"assessment_diagnostic" %in% names(row))
+for (audit in list(openai_r, openai_p)) stopifnot(!"assessment_diagnostic" %in% names(audit))
+inspections <- read_openai("assessment-inspections.jsonl")
+stopifnot(length(inspections) == 4L)
+stopifnot(!anyDuplicated(vapply(inspections, function(x) x$receipt_identity$run_id, character(1))))
+for (entry in inspections) {
+  inspection <- entry$inspection
+  diagnostic <- inspection$diagnostic
+  result <- entry$normalized_result
+  stopifnot(!"output_text" %in% names(inspection))
+  stopifnot(!isTRUE(entry$metadata_only_has_text))
+  stopifnot(grepl("Unvalidated model output", inspection$label, fixed=TRUE))
+  stopifnot(identical(diagnostic$identity, entry$receipt_identity))
+  stopifnot(diagnostic$identity$run_id == result$run_id)
+  stopifnot(diagnostic$identity$request_uid == result$request_uid)
+  stopifnot(diagnostic$identity$attempt_id == result$attempt_id)
+  stopifnot(diagnostic$component$extraction_status == "extracted")
+  stopifnot(diagnostic$provider_outcome == "completed")
+  stopifnot(diagnostic$parser_diagnostic == "json_syntax", !isTRUE(diagnostic$canonical_valid))
+  stopifnot(diagnostic$content_sha256 == entry$expected_content_sha256)
+  stopifnot(diagnostic$byte_length == entry$expected_byte_length)
+  stopifnot(result$schema_version == 1L, result$status == "invalid", result$error_kind == "invalid_output")
+  stopifnot(result$item_id == "001", result$trait_id == "01")
+  stopifnot(is.null(result$category_label), is.null(result$primary_score), is.null(result$probabilities))
+  stopifnot(isTRUE(entry$explicit_inspection_has_text) == (diagnostic$capture == "full"))
+  stopifnot(diagnostic$retention == if (diagnostic$capture == "full") "retained" else "hash_only")
+}
+absent <- jsonlite::fromJSON(file.path(openai_root, "diagnostic-absent.json"), simplifyVector=FALSE)
+stopifnot(is.null(absent$diagnostic), !"output_text" %in% names(absent))
+cat("Assessment diagnostic interoperability passed: exact protected invalid text, hash-only minimal capture, unchanged exports\n")

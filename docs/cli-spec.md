@@ -486,3 +486,12 @@ The earlier general `providers smoke` command remains deferred. Phase 5A uses a
 separate reproducible qualification harness requiring explicit source, endpoint,
 model, mechanism, synthetic data, consent, evidence location and shared request,
 token and spending limits. It never runs from ordinary CI or implicitly after CI.
+
+
+Phase 5A assessment-output diagnostics are available through the separate
+read-only Python inspection service documented in `python-api.md`; this adds no
+CLI command or control-envelope field. Ordinary status and result exports never
+display protected unvalidated assessment text. The qualification harness reports
+safe diagnostic metadata, keeps historical plan reports readable, and requires a
+fresh source-bound version-2 plan for new execution. Positively terminal invalid
+assessments can advance within that fixed matrix; uncertainty cannot.

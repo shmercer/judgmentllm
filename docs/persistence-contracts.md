@@ -681,3 +681,27 @@ window does not manufacture a known invocation or provider acceptance. Initial
 An unresolved companion cannot be replaced by a failure receipt or promote an
 unknown call to an assessment observation. Later server-retained retrieval is a
 separate future capability requiring its own evidence transition design.
+
+
+### Phase 5A protected assessment diagnostics
+
+New OpenAI observation receipts may carry `assessment_diagnostic` with diagnostic
+version 1. Its absence is excluded from serialization, preserving old receipt
+bytes. No SQLite migration or historical backfill occurs. Complete physical and
+remote observation identities, model scope and capture policy must agree with
+the enclosing companion; conflicts fail verification.
+
+A recognized assessment component has a separate protected UTF-8 artifact under
+full capture, even when parsing or canonical validation fails. Its immutable
+hash/length and component locator belong to the diagnostic. Minimal capture
+registers only the artifact identity without staging text. Extraction is bounded
+at 1 MiB and fails without truncation. Original-envelope and reasoning retention
+remain independently governed; an omitted envelope can coexist with a retained
+assessment component. The diagnostic cannot replace a replayable response or
+create recovery/retry/scoring authority.
+
+Read-only inspection verifies receipt and artifact identities, returns metadata
+by default, and reads retained full-capture text only on explicit `include_text`.
+Text remains excluded from result representations and serializers. Missing old
+records and omitted old content are not reconstructed. Normalized exports and
+all existing result/evidence joins retain their established meanings.

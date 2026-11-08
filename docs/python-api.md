@@ -1166,13 +1166,50 @@ organization/project routing or alternate API hosts.
 Full capture retains exact original response bytes only when the documented
 envelope passes strict safe-field checks. Unknown extensions, reasoning items,
 nonempty metadata, tool/audio payloads or annotations produce a labeled filtered
-derivative retaining the original assessment string. Unauthorized reasoning text
+derivative retaining the original assessment string when eligible. A separate
+protected assessment component can retain exact invalid output under full capture
+without retaining unsafe envelope fields. Unauthorized reasoning text
 is never retained. Minimal capture retains safe identifiers, hashes and evidence;
 it does not retain provider bodies or student inputs. Provider usage has one record
 per physical invocation, with requested/reported models separate, unknown counters
 null, cache/reasoning overlap explicit and no invented prices. Safe
 `usage.provider_outcome` distinguishes completion, refusal, content filtering,
 output limits, missing/multiple/unsupported output, tools and provider failures.
+
+### Read-only assessment diagnostics
+
+```python
+from judgmentllm.assessment_inspection import (
+    AssessmentOutputInspection,
+    inspect_assessment_output,
+)
+
+inspect_assessment_output(
+    run_id, observation_id, *, store, include_text=False
+) -> AssessmentOutputInspection
+```
+
+The service verifies an existing observation and companion receipt using the
+read-only repository. It performs no provider operation and requires no
+credentials. The default result contains `label` and nullable `diagnostic`.
+`include_text=True` additionally reads exact UTF-8 bytes only for an existing
+full-capture artifact. `output_text` is excluded from `repr`, `model_dump()` and
+JSON serialization. Minimal capture and unavailable historical artifacts return
+no text; no decoding repair, rescoring, recovery or new request occurs.
+
+`AssessmentDiagnosticV1` lives in `judgmentllm.evidence.assessment`. It has its
+own `diagnostic_version=1` inside the unchanged evidence schema 1. It binds
+`identity`, endpoint, requested/reported model, remote response ID and provider
+outcome to `component`, `parser_diagnostic`, `canonical_valid`, capture/retention,
+and nullable artifact/hash/length. `component` records allowlisted source/type
+metadata and extraction status without generated values. Recognized text has a
+separate 1,048,576-byte cap. Full capture stores the entire exact component;
+minimal capture records a hash-only artifact; withheld components have no content
+hash or artifact. A diagnostic never supplies assessment or retry authority.
+The canonical validators still reject invalid outputs without normalization or
+repair. Existing normalized result/export contracts are unchanged.
+
+### Recovery and provider diagnostics
 
 A bounded in-memory handoff joins submission acknowledgment to response retrieval.
 No remote retrieval is enabled with `store=false`. A new process can recover a

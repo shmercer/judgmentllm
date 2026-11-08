@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Annotated, Literal, TypeVar, cast
 from pydantic import Field, field_validator, model_validator
 
 from judgmentllm.evidence._base import EvidenceIdentity, EvidenceModel
+from judgmentllm.evidence.assessment import AssessmentDiagnosticV1
 from judgmentllm.evidence.order import ProviderObservationMetadata
 from judgmentllm.evidence.reasoning import (
     ReasoningAuthorization,
@@ -86,6 +87,9 @@ class EvidenceReceipt(EvidenceModel):
     original: ArtifactIdentity | None = None
     retained: ArtifactIdentity | None = None
     response_retention: Literal["exact", "redacted", "omitted"]
+    assessment_diagnostic: AssessmentDiagnosticV1 | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     invocation_acceptance: Literal["unresolved"] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
@@ -97,6 +101,18 @@ class EvidenceReceipt(EvidenceModel):
     @model_validator(mode="after")
     def consistent(self) -> EvidenceReceipt:
         identity = self.identity
+        diagnostic = self.assessment_diagnostic
+        if diagnostic is not None and (
+            diagnostic.identity != identity
+            or diagnostic.capture != self.capture
+            or diagnostic.endpoint != self.usage.endpoint
+            or diagnostic.requested_model != self.usage.requested_model
+            or diagnostic.reported_model != self.usage.reported_model
+            or diagnostic.provider_outcome != self.usage.provider_outcome
+            or diagnostic.remote_response_id != self.remote_id
+            or self.usage.provider != "openai"
+        ):
+            raise ValueError("assessment diagnostic identities conflict")
         if self.invocation_acceptance == "unresolved" and (
             identity.observation_id is not None
             or self.failure_transient
@@ -317,6 +333,9 @@ def _verify_artifacts(store: ArtifactStore, receipt: EvidenceReceipt) -> None:
         raise ArtifactIntegrityError("evidence authorization does not match")
     if receipt.retained is not None:
         store.verify(receipt.retained)
+    diagnostic = receipt.assessment_diagnostic
+    if diagnostic is not None and diagnostic.artifact is not None:
+        store.verify(diagnostic.artifact)
     for block in receipt.reasoning:
         if block.artifact is not None:
             if (
@@ -460,6 +479,9 @@ def prepare_evidence_commit(
         ):
             raise IntegrityError("evidence observation relationship does not match")
     artifacts = [_metadata_identity(receipt)]
+    diagnostic = receipt.assessment_diagnostic
+    if diagnostic is not None and diagnostic.artifact is not None:
+        artifacts.append(diagnostic.artifact)
     for block in receipt.reasoning:
         if block.artifact is not None:
             artifact = block.artifact

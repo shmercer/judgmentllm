@@ -588,3 +588,35 @@ reasoning output counters are included in parent counters, never summed twice.
 Optional observation metadata preserves reported model, SDK and completion outcome
 separately from requested configuration. Absent metadata retains historical
 serialization. Existing result/CSV/JSONL schemas and IDs are unchanged.
+
+
+## Phase 5A assessment diagnostic record
+
+`AssessmentDiagnosticV1` is an optional nested `assessment_diagnostic` in the
+existing version-1 companion evidence receipt. Absence is omitted from serialized
+receipts, preserving historical bytes. This addition changes neither RunSpec,
+manifest, SQLite schema nor normalized result/JSONL/CSV/R columns.
+
+The record independently versions its diagnostic as integer `1` and binds the
+complete run/request/attempt/submission/observation identity, endpoint, requested
+and reported models, remote response identity, provider outcome and capture
+policy to safe extraction metadata, `parser_diagnostic` and `canonical_valid`.
+The latter describes complete canonical output validation, independently of
+provider acceptance and any per-member result salvage. Fixed parser diagnostic
+codes
+cover JSON syntax, duplicate keys, root/field/trait/category/winner errors,
+missing text, unsupported/multiple components and size bounds. Provider outcomes
+record refusal, truncation and completion independently. No arbitrary provider
+values or excerpts enter metadata.
+
+Only one separately recognized documented assessment-text component is eligible.
+The 1 MiB component cap is independent of the unchanged 8 MiB HTTP response cap
+and whole-envelope safety rules. An oversized diagnostic does not suppress an
+existing independently proven-safe whole-envelope retention. Full capture
+retains exact UTF-8 text even when local validation fails; minimal capture
+stores a hash-only artifact and byte
+length. Over-limit or unsupported extraction is withheld without truncation or
+hashing unauthorized content. Reasoning, unknown fields, tools and provider
+metadata are excluded. Protected text is unvalidated output, not a scoring input
+replacement, retry grant or qualification claim. Historical omissions remain
+unavailable. See the read-only [inspection service](python-api.md#read-only-assessment-diagnostics).

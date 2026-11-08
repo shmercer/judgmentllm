@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import json
-from typing import Any, cast
+from typing import Any, Literal, cast
 
+from judgmentllm.assessment_diagnostics import (
+    MAX_ASSESSMENT_COMPONENT_BYTES,
+    AssessmentComponent,
+)
 from judgmentllm.evidence.usage import (
     OpenAIChatUsageInput,
     OpenAIResponsesUsageInput,
@@ -20,6 +24,7 @@ __all__ = [
     "_responses_output",
     "_chat_output",
     "_safe_original_envelope",
+    "_extract_assessment_component",
 ]
 
 
@@ -375,3 +380,170 @@ def _safe_original_envelope(
             elif value is not None and (type(value) is not int or value < 0):
                 return False
     return True
+
+
+def _extract_assessment_component(
+    body: dict[str, Any], endpoint: str
+) -> AssessmentComponent:
+    """Separate one documented assistant text field without judging its JSON.
+
+    Reasoning, refusal and tool text are never candidates. Multiple assistant
+    outputs are ambiguous and remain withheld; recognized text is never joined,
+    trimmed, repaired or truncated. Envelope safety remains an independent test.
+    """
+    if endpoint not in {"responses", "chat.completions"}:
+        raise ValueError("unsupported assessment extraction endpoint")
+    candidates: list[tuple[int, int | None, str]] = []
+    messages = content_count = 0
+    reasoning = refusal = tools = unsupported = False
+    item_types: set[Literal["message", "reasoning", "tool", "unsupported"]] = set()
+    content_types: set[Literal["output_text", "refusal", "tool", "unsupported"]] = set()
+    items_value = body.get("output" if endpoint == "responses" else "choices")
+    items: list[object] = []
+    if isinstance(items_value, list):
+        items = cast(list[object], items_value)
+    else:
+        unsupported = True
+    for item_index, item_value in enumerate(items):
+        if not isinstance(item_value, dict):
+            unsupported = True
+            item_types.add("unsupported")
+            continue
+        item = cast(dict[str, Any], item_value)
+        if endpoint == "responses":
+            kind = item.get("type")
+            if kind == "reasoning":
+                reasoning = True
+                item_types.add("reasoning")
+                continue
+            if isinstance(kind, str) and kind in {
+                "function_call",
+                "custom_tool_call",
+                "tool_call",
+            }:
+                tools = True
+                item_types.add("tool")
+                continue
+            if kind != "message":
+                unsupported = True
+                item_types.add("unsupported")
+                continue
+            message = item
+        else:
+            message_value = item.get("message")
+            if not isinstance(message_value, dict):
+                unsupported = True
+                item_types.add("unsupported")
+                continue
+            message = cast(dict[str, Any], message_value)
+        messages += 1
+        item_types.add("message")
+        if message.get("role") != "assistant":
+            unsupported = True
+            continue
+        if message.get("refusal") is not None:
+            refusal = True
+        if any(
+            message.get(name) is not None for name in ("tool_calls", "function_call")
+        ):
+            tools = True
+        if any(
+            message.get(name) is not None for name in ("reasoning", "reasoning_content")
+        ):
+            reasoning = True
+        if endpoint == "chat.completions":
+            content = message.get("content")
+            if isinstance(content, str):
+                content_count += 1
+                content_types.add("output_text")
+                if message.get("refusal") is None:
+                    candidates.append((item_index, None, content))
+            elif content is not None:
+                unsupported = True
+                content_types.add("unsupported")
+            continue
+        contents = message.get("content")
+        if not isinstance(contents, list):
+            unsupported = True
+            content_types.add("unsupported")
+            continue
+        for content_index, part_value in enumerate(cast(list[object], contents)):
+            content_count += 1
+            if not isinstance(part_value, dict):
+                unsupported = True
+                content_types.add("unsupported")
+                continue
+            part = cast(dict[str, Any], part_value)
+            if part.get("type") == "refusal":
+                refusal = True
+                content_types.add("refusal")
+            elif part.get("type") == "output_text" and isinstance(
+                part.get("text"), str
+            ):
+                content_types.add("output_text")
+                candidates.append((item_index, content_index, part["text"]))
+            else:
+                unsupported = True
+                content_types.add("unsupported")
+    metadata = {
+        "endpoint": endpoint,
+        "item_count": len(items),
+        "item_types": tuple(sorted(item_types)),
+        "content_types": tuple(sorted(content_types)),
+        "message_count": messages,
+        "content_component_count": content_count,
+        "text_component_count": len(candidates),
+        "reasoning_present": reasoning,
+        "refusal_present": refusal,
+        "tool_present": tools,
+        "unsupported_present": unsupported,
+    }
+    if (
+        len(candidates) > 1
+        or messages > 1
+        or (endpoint == "chat.completions" and len(items) > 1)
+    ):
+        return AssessmentComponent.model_validate(
+            {**metadata, "extraction_status": "multiple_outputs"}
+        )
+    if not candidates:
+        return AssessmentComponent.model_validate(
+            {
+                **metadata,
+                "extraction_status": "unsupported_components"
+                if unsupported
+                else "no_text",
+            }
+        )
+    item_index, content_index, text = candidates[0]
+    location = {
+        "source": "responses.output.message.content.output_text"
+        if endpoint == "responses"
+        else "chat.completions.choices.message.content",
+        "item_index": item_index,
+        "content_index": content_index,
+    }
+    try:
+        raw = text.encode("utf-8")
+    except UnicodeError:
+        return AssessmentComponent.model_validate(
+            {**metadata, **location, "extraction_status": "invalid_utf8"}
+        )
+    if len(raw) > MAX_ASSESSMENT_COMPONENT_BYTES:
+        return AssessmentComponent.model_validate(
+            {
+                **metadata,
+                **location,
+                "byte_length": len(raw),
+                "extraction_status": "oversized",
+            }
+        )
+    return AssessmentComponent.model_validate(
+        {
+            **metadata,
+            **location,
+            "byte_length": len(raw),
+            "output_text": raw,
+            "extraction_status": "extracted",
+        }
+    )

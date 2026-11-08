@@ -30,6 +30,7 @@ from judgmentllm.providers.evidence import ProviderEvidence, ProviderObservation
 from judgmentllm.providers.openai_response import (
     _chat_output,
     _encoded,
+    _extract_assessment_component,
     _mapping,
     _responses_output,
     _safe_original_envelope,
@@ -568,6 +569,18 @@ class OpenAIAdapter:
         except ValueError:
             # Invalid provider counters cannot invalidate otherwise useful output.
             usage = None
+        component = _extract_assessment_component(body, self.endpoint)
+        text_bytes = None
+        encoding_safe = True
+        if text is not None:
+            try:
+                text_bytes = text.encode("utf-8")
+            except UnicodeError:
+                # A valid JSON envelope can contain an escaped unpaired
+                # surrogate. It is no UTF-8 assessment component: preserve the
+                # observation and failure metadata without repairing its text.
+                text = None
+                encoding_safe = False
         envelope = {
             "protocol": _PROTOCOL,
             "observation_key": remote_id,
@@ -584,6 +597,7 @@ class OpenAIAdapter:
             )
         except (ValueError, TypeError):
             exact_safe = False
+        exact_safe = exact_safe and encoding_safe
         safe = raw if exact_safe else _encoded(envelope)
         reported = body.get("model") if isinstance(body.get("model"), str) else None
         return ProviderResponse.model_validate(
@@ -593,10 +607,11 @@ class OpenAIAdapter:
                 "raw": raw,
                 "evidence": ProviderEvidence(
                     provenance="provider_documented",
+                    assessment_component=component,
                     usage=usage,
-                    output_text=text.encode("utf-8") if text is not None else None,
+                    output_text=text_bytes,
                     output_source="raw_output_text"
-                    if text is not None
+                    if text_bytes is not None
                     else "unavailable",
                     safe_response=safe,
                     original_body_safe=exact_safe,

@@ -6,6 +6,8 @@ import asyncio
 import json
 import socket
 import sqlite3
+import subprocess
+import sys
 from contextlib import closing
 from datetime import date
 from decimal import Decimal
@@ -173,8 +175,12 @@ def _install_transport(
     *,
     timeout: bool = False,
     rejection_status: int | None = None,
+    reject_case_id: str | None = None,
+    connection_drop: bool = False,
+    cancel_after_forward: bool = False,
     provider_failure: bool = False,
     completion_status: str | None = None,
+    assessment_output: str | None = None,
 ) -> list[bytes]:
     import httpx
 
@@ -187,9 +193,15 @@ def _install_transport(
         sent.append(request.content)
         case = expected[bytes_digest(request.content)]
         assert request.content == case.request_body_utf8.encode()
+        if cancel_after_forward:
+            raise asyncio.CancelledError
         if timeout:
             raise httpx.ReadTimeout("synthetic timeout", request=request)
-        if rejection_status is not None:
+        if connection_drop:
+            raise httpx.ReadError("PRIVATE_CONNECTION_DROP_CANARY", request=request)
+        if rejection_status is not None and (
+            reject_case_id is None or case.case_id == reject_case_id
+        ):
             return httpx.Response(
                 rejection_status,
                 json={"error": {"message": "PRIVATE_REJECTION_BODY_CANARY"}},
@@ -199,6 +211,8 @@ def _install_transport(
             if case.task_kind == "rubric"
             else {"winner_id": "001"}
         )
+        if assessment_output is not None:
+            output = assessment_output
         if case.endpoint == "responses":
             body: dict[str, Any] = {
                 "id": "resp_synthetic",
@@ -596,3 +610,548 @@ async def test_report_separates_request_acceptance_from_unsuccessful_completion(
     assert first["assessment_behavior_verified"] is False
     assert first["local_assessment_valid"] is False
     assert "PRIVATE_REFUSAL_BODY_CANARY" not in json.dumps(report)
+
+
+@pytest.mark.parametrize(
+    "output",
+    [
+        "{",
+        '{"scores":[],"scores":[]}',
+        "{}",
+        '{"scores":[{"trait_id":"01","category_label":"unknown"}]}',
+    ],
+)
+@pytest.mark.asyncio
+async def test_completed_terminal_invalid_assessments_continue_without_replacement(
+    planned: tuple[Path, q._QualificationPlan],
+    monkeypatch: pytest.MonkeyPatch,
+    output: str,
+) -> None:
+    directory, plan = planned
+    sent = _install_transport(monkeypatch, plan, assessment_output=output)
+    arguments = _Authorization(
+        authorized_plan_sha256=bytes_digest(canonical_bytes(plan)),
+        authorized_source_commit=plan.source_commit,
+        accept_billable_calls=True,
+    )
+    report = await q.execute_plan(directory, **arguments)
+    calls = cast(list[dict[str, object]], report["calls"])
+    assert len(sent) == report["physical_send_attempts"] == 8
+    assert all(row["outcome"] == "partial" for row in calls)
+    assert all(row["normalized_outcomes"] == ["invalid"] for row in calls)
+    assert all(row["assessment_terminal"] is True for row in calls)
+    assert all(row["assessment_continuation_allowed"] is True for row in calls)
+    assert all(row["http_response_received"] is True for row in calls)
+    assert all(row["durable_evidence_consistent"] is True for row in calls)
+    assert all(row["assessment_diagnostic_available"] is True for row in calls)
+    assert all(row["canonical_valid"] is False for row in calls)
+    assert all(
+        row["assessment_sha256"] == bytes_digest(output.encode()) for row in calls
+    )
+    assert all(row["assessment_byte_length"] == len(output.encode()) for row in calls)
+    assert all(row["assessment_retention"] == "retained" for row in calls)
+    assert all(row["recovery_required"] is False for row in calls)
+    assert all(row["assessment_behavior_verified"] is False for row in calls)
+    assert all(row["live_qualified"] is False for row in calls)
+    assert _readonly_report(directory, monkeypatch)["calls"] == calls
+    # A separate continuation inspects the same invalid results, never replacing
+    # any of the eight consumed physical submission identities.
+    assert (await q.execute_plan(directory, **arguments))["calls"] == calls
+    assert len(sent) == 8
+
+
+def test_new_plan_identities_are_source_bound_and_legacy_plan_remains_readable(
+    planned: tuple[Path, q._QualificationPlan],
+    tmp_path: Path,
+) -> None:
+    from judgmentllm.transport import physical_identity
+
+    _, plan = planned
+    assert plan.plan_version == 2
+    legacy_calls: list[q._PlannedCall] = []
+    for call in plan.calls:
+        assert call.run_id == f"qualification-{plan.source_commit}-{call.case_id}"
+        run_id = "qualification-" + call.case_id
+        attempt_id = q.stable_id("attempt", run_id, call.request_uid, 1)
+        identity = physical_identity(run_id, call.request_uid, attempt_id)
+        legacy_calls.append(
+            q._PlannedCall.model_validate(
+                dict(call)
+                | {
+                    "run_id": run_id,
+                    "attempt_id": attempt_id,
+                    "submission_id": identity.submission_id,
+                    "correlation_id": identity.correlation_id,
+                }
+            )
+        )
+    legacy = q._QualificationPlan.model_validate(
+        dict(plan) | {"plan_version": 1, "calls": tuple(legacy_calls)}
+    )
+    assert not (
+        {c.submission_id for c in legacy.calls} & {c.submission_id for c in plan.calls}
+    )
+    # Historical bytes retain their version and exact canonical digest.
+    directory = tmp_path / "old"
+    directory.mkdir()
+    original = canonical_bytes(legacy)
+    (directory / "plan.json").write_bytes(original)
+    loaded, digest = q._load_plan(directory)
+    assert loaded.plan_version == 1
+    assert canonical_bytes(loaded) == original
+    assert digest == bytes_digest(original)
+    with pytest.raises(ValueError):
+        q._QualificationPlan.model_validate(dict(legacy) | {"plan_version": 2})
+    with pytest.raises(ValueError):
+        q._QualificationPlan.model_validate(dict(plan) | {"source_commit": "b" * 40})
+
+
+@pytest.mark.parametrize(
+    "missing", ["receipt", "results", "task", "observation", "diagnostic"]
+)
+@pytest.mark.asyncio
+async def test_partial_or_missing_durable_evidence_cannot_allow_continuation(
+    planned: tuple[Path, q._QualificationPlan],
+    monkeypatch: pytest.MonkeyPatch,
+    missing: str,
+) -> None:
+    from judgmentllm.persistence.repository import ReadOnlyRepository
+
+    directory, plan = planned
+    sent = _install_transport(monkeypatch, plan, assessment_output="{}")
+
+    # Model a positive HTTP observation whose local interpretation/commit is
+    # incomplete. The report must require every independent durable component.
+    def empty_records(*_args: Any, **_kwargs: Any) -> Any:
+        return iter(())
+
+    if missing == "receipt":
+        monkeypatch.setattr(ReadOnlyRepository, "iter_evidence", empty_records)
+    elif missing == "results":
+        monkeypatch.setattr(ReadOnlyRepository, "iter_results", empty_records)
+    elif missing == "task":
+        original = ReadOnlyRepository.get_task
+
+        def unfinished_task(self: Any, *args: Any, **kwargs: Any) -> Any:
+            return original(self, *args, **kwargs).model_copy(
+                update={"state": "active"}
+            )
+
+        monkeypatch.setattr(ReadOnlyRepository, "get_task", unfinished_task)
+    else:
+        original_receipts = ReadOnlyRepository.iter_evidence
+
+        def no_observation(self: Any, *args: Any, **kwargs: Any) -> Any:
+            for receipt in original_receipts(self, *args, **kwargs):
+                if missing == "diagnostic":
+                    yield receipt.model_copy(update={"assessment_diagnostic": None})
+                else:
+                    yield receipt.model_copy(
+                        update={
+                            "identity": receipt.identity.model_copy(
+                                update={"observation_id": None}
+                            )
+                        }
+                    )
+
+        monkeypatch.setattr(ReadOnlyRepository, "iter_evidence", no_observation)
+    arguments = _Authorization(
+        authorized_plan_sha256=bytes_digest(canonical_bytes(plan)),
+        authorized_source_commit=plan.source_commit,
+        accept_billable_calls=True,
+    )
+    report = await q.execute_plan(directory, **arguments)
+    assert len(sent) == 1
+    first = cast(list[dict[str, object]], report["calls"])[0]
+    assert first["assessment_continuation_allowed"] is False
+    assert first["assessment_behavior_verified"] is False
+
+
+def test_changed_source_builds_disjoint_new_physical_submission_identities(
+    planned: tuple[Path, q._QualificationPlan],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _, original = planned
+    monkeypatch.setattr(q, "_source_commit", lambda: "b" * 40)
+    changed = q.build_plan(
+        directory=tmp_path / "new",
+        source_commit="b" * 40,
+        provider="openai",
+        endpoints=original.endpoints,
+        model=original.model,
+        pricing=original.pricing,
+        max_requests=original.max_requests,
+        max_output_tokens=original.max_output_tokens,
+        max_total_tokens=original.max_total_tokens,
+        max_estimated_usd=original.max_estimated_usd,
+    )
+    assert len(changed.calls) == 8
+    assert {call.submission_id for call in changed.calls}.isdisjoint(
+        call.submission_id for call in original.calls
+    )
+    assert {call.attempt_id for call in changed.calls}.isdisjoint(
+        call.attempt_id for call in original.calls
+    )
+    assert {call.correlation_id for call in changed.calls}.isdisjoint(
+        call.correlation_id for call in original.calls
+    )
+    # Source-scoped execution identities change even when the synthetic provider
+    # request bodies deliberately exercise the identical eight API operations.
+    assert [call.payload_sha256 for call in changed.calls] == [
+        call.payload_sha256 for call in original.calls
+    ]
+
+
+@pytest.mark.parametrize("damage", ["corrupt", "missing"])
+@pytest.mark.asyncio
+async def test_corrupt_or_missing_committed_receipt_stops_and_reports_readonly(
+    planned: tuple[Path, q._QualificationPlan],
+    monkeypatch: pytest.MonkeyPatch,
+    damage: str,
+) -> None:
+    import judgmentllm.lifecycle as lifecycle
+    from judgmentllm.persistence.artifacts import ArtifactStore
+    from judgmentllm.persistence.evidence import _reference
+    from judgmentllm.persistence.repository import ReadOnlyRepository
+
+    directory, plan = planned
+    sent = _install_transport(monkeypatch, plan)
+    first = plan.calls[0]
+    original_export = lifecycle.export_run_results
+
+    def damage_evidence(*args: Any, **kwargs: Any) -> Any:
+        result = original_export(*args, **kwargs)
+        store = directory / "execution" / first.case_id
+        with ReadOnlyRepository(store) as repository:
+            artifacts = ArtifactStore(
+                repository.run_directory(first.run_id), create=False
+            )
+            reference = artifacts.reference_path(_reference(first.submission_id))
+        if damage == "missing":
+            reference.unlink()
+        else:
+            reference.write_bytes(b"PRIVATE_CORRUPT_RECEIPT_CANARY")
+        return result
+
+    monkeypatch.setattr(lifecycle, "export_run_results", damage_evidence)
+    arguments = _Authorization(
+        authorized_plan_sha256=bytes_digest(canonical_bytes(plan)),
+        authorized_source_commit=plan.source_commit,
+        accept_billable_calls=True,
+    )
+    report = await q.execute_plan(directory, **arguments)
+    assert len(sent) == report["physical_send_attempts"] == 1
+    row = cast(list[dict[str, object]], report["calls"])[0]
+    assert row["evidence_integrity_failure"] is True
+    assert row["outcome"] == row["acceptance_outcome"] == "evidence_integrity_failure"
+    assert row["assessment_continuation_allowed"] is False
+    assert row["recovery_required"] is True
+    assert "PRIVATE_CORRUPT_RECEIPT_CANARY" not in json.dumps(report)
+    assert _readonly_report(directory, monkeypatch)["calls"] == report["calls"]
+    # A fresh adapter is never constructed to repair corrupt evidence by calling.
+    assert (await q.execute_plan(directory, **arguments))["calls"] == report["calls"]
+    assert len(sent) == 1
+
+
+@pytest.mark.asyncio
+async def test_evidence_publication_failure_stops_without_replacing_forward(
+    planned: tuple[Path, q._QualificationPlan],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import judgmentllm.execution.durable_evidence as durable
+
+    directory, plan = planned
+    sent = _install_transport(monkeypatch, plan)
+
+    def cannot_publish(*_args: Any, **_kwargs: Any) -> Any:
+        raise OSError("PRIVATE_PUBLICATION_FAILURE_CANARY")
+
+    monkeypatch.setattr(durable, "publish_evidence_receipt", cannot_publish)
+    arguments = _Authorization(
+        authorized_plan_sha256=bytes_digest(canonical_bytes(plan)),
+        authorized_source_commit=plan.source_commit,
+        accept_billable_calls=True,
+    )
+    with pytest.raises(ExceptionGroup):
+        await q.execute_plan(directory, **arguments)
+    report = _readonly_report(directory, monkeypatch)
+    assert len(sent) == report["physical_send_attempts"] == 1
+    assert (
+        cast(list[dict[str, object]], report["calls"])[0][
+            "assessment_continuation_allowed"
+        ]
+        is False
+    )
+    assert "PRIVATE_PUBLICATION_FAILURE_CANARY" not in json.dumps(report)
+    # Failed local publication never replenishes the allocation. A fresh
+    # adapter cannot reconstruct the lost response by submitting again.
+    resumed = await q.execute_plan(directory, **arguments)
+    assert resumed["physical_send_attempts"] == 1
+    assert (
+        cast(list[dict[str, object]], resumed["calls"])[0][
+            "assessment_continuation_allowed"
+        ]
+        is False
+    )
+    assert len(sent) == 1
+
+
+@pytest.mark.asyncio
+async def test_native_rejection_stops_after_successful_text_without_fallback(
+    planned: tuple[Path, q._QualificationPlan],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    directory, plan = planned
+    native = plan.calls[1]
+    assert plan.calls[0].mode == "text" and native.mode == "native"
+    sent = _install_transport(
+        monkeypatch, plan, rejection_status=400, reject_case_id=native.case_id
+    )
+    report = await q.execute_plan(
+        directory,
+        authorized_plan_sha256=bytes_digest(canonical_bytes(plan)),
+        authorized_source_commit=plan.source_commit,
+        accept_billable_calls=True,
+    )
+    assert len(sent) == report["physical_send_attempts"] == 2
+    rows = cast(list[dict[str, object]], report["calls"])
+    assert rows[0]["assessment_behavior_verified"] is True
+    assert rows[1]["acceptance_outcome"] == "rejected"
+    assert rows[1]["assessment_continuation_allowed"] is False
+    assert all(row["physical_send_attempted"] is False for row in rows[2:])
+    assert [bytes_digest(body) for body in sent] == [
+        c.payload_sha256 for c in plan.calls[:2]
+    ]
+
+
+@pytest.mark.asyncio
+async def test_connection_drop_after_forwarding_stops_and_cannot_repeat(
+    planned: tuple[Path, q._QualificationPlan],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    directory, plan = planned
+    sent = _install_transport(monkeypatch, plan, connection_drop=True)
+    arguments = _Authorization(
+        authorized_plan_sha256=bytes_digest(canonical_bytes(plan)),
+        authorized_source_commit=plan.source_commit,
+        accept_billable_calls=True,
+    )
+    report = await q.execute_plan(directory, **arguments)
+    assert len(sent) == report["physical_send_attempts"] == 1
+    row = cast(list[dict[str, object]], report["calls"])[0]
+    assert row["invocation_acceptance"] == "unresolved"
+    assert row["assessment_continuation_allowed"] is False
+    assert "PRIVATE_CONNECTION_DROP_CANARY" not in json.dumps(report)
+    await q.execute_plan(directory, **arguments)
+    assert len(sent) == 1
+
+
+@pytest.mark.parametrize("damage", ["deleted", "altered"])
+@pytest.mark.asyncio
+async def test_damaged_shared_ledger_cannot_replenish_or_continue(
+    planned: tuple[Path, q._QualificationPlan],
+    monkeypatch: pytest.MonkeyPatch,
+    damage: str,
+) -> None:
+    directory, plan = planned
+    sent = _install_transport(monkeypatch, plan, timeout=True)
+    arguments = _Authorization(
+        authorized_plan_sha256=bytes_digest(canonical_bytes(plan)),
+        authorized_source_commit=plan.source_commit,
+        accept_billable_calls=True,
+    )
+    await q.execute_plan(directory, **arguments)
+    ledger = directory / "qualification.sqlite3"
+    if damage == "deleted":
+        ledger.unlink()
+    else:
+        with closing(sqlite3.connect(ledger)) as connection:
+            connection.execute("UPDATE calls SET payload_sha256=?", ("b" * 64,))
+            connection.commit()
+    with pytest.raises(q.QualificationError):
+        q.report_plan(directory)
+    with pytest.raises(q.QualificationError):
+        await q.execute_plan(directory, **arguments)
+    assert len(sent) == 1
+
+
+def test_duplicate_physical_submission_plan_is_not_admissible(
+    planned: tuple[Path, q._QualificationPlan],
+) -> None:
+    _, plan = planned
+    with pytest.raises(ValueError):
+        q._QualificationPlan.model_validate(
+            dict(plan) | {"calls": (plan.calls[0],) * 8}
+        )
+
+
+def test_terminal_invalid_harness_continues_in_fresh_process_without_resend(
+    planned: tuple[Path, q._QualificationPlan],
+) -> None:
+    directory, _ = planned
+    repository = Path(q.__file__).resolve().parents[2]
+    code = r"""
+import asyncio
+import json
+import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1] + "/src")
+sys.path.insert(0, sys.argv[1] + "/tests")
+import pytest
+from judgmentllm import qualification as q
+from test_openai_qualification import _install_transport
+
+async def main():
+    patch = pytest.MonkeyPatch()
+    directory = Path(sys.argv[2])
+    plan, digest = q._load_plan(directory)
+    patch.setattr(q, "_source_commit", lambda: plan.source_commit)
+    sent = _install_transport(patch, plan, assessment_output="{}")
+    if sys.argv[3] == "interrupt":
+        import judgmentllm.lifecycle as lifecycle
+        original = lifecycle.export_run_results
+        def stop_after_first(*args, **kwargs):
+            result = original(*args, **kwargs)
+            raise RuntimeError("synthetic terminal process interruption")
+        patch.setattr(lifecycle, "export_run_results", stop_after_first)
+    try:
+        try:
+            report = await q.execute_plan(
+                directory, authorized_plan_sha256=digest,
+                authorized_source_commit=plan.source_commit, accept_billable_calls=True,
+            )
+        except RuntimeError:
+            if sys.argv[3] != "interrupt":
+                raise
+            report = q.report_plan(directory)
+        print(json.dumps({"sent": len(sent), "report": report}))
+    finally:
+        patch.undo()
+asyncio.run(main())
+"""
+    first = subprocess.run(
+        [
+            sys.executable,
+            "-B",
+            "-c",
+            code,
+            str(repository),
+            str(directory),
+            "interrupt",
+        ],
+        cwd=directory.parent,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=60,
+    )
+    initial = json.loads(first.stdout)
+    assert initial["sent"] == initial["report"]["physical_send_attempts"] == 1
+    assert initial["report"]["calls"][0]["assessment_continuation_allowed"] is True
+    resumed = subprocess.run(
+        [sys.executable, "-B", "-c", code, str(repository), str(directory), "resume"],
+        cwd=directory.parent,
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=60,
+    )
+    final = json.loads(resumed.stdout)
+    assert final["sent"] == 7
+    assert final["report"]["physical_send_attempts"] == 8
+    assert all(
+        row["normalized_outcomes"] == ["invalid"] for row in final["report"]["calls"]
+    )
+    assert all(
+        row["assessment_continuation_allowed"] is True
+        for row in final["report"]["calls"]
+    )
+    assert all(row["live_qualified"] is False for row in final["report"]["calls"])
+
+
+@pytest.mark.asyncio
+async def test_legacy_plan_is_report_only_and_never_creates_execution_authority(
+    planned: tuple[Path, q._QualificationPlan],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import judgmentllm.providers.openai as provider
+    from judgmentllm.transport import physical_identity
+
+    directory, plan = planned
+    calls: list[q._PlannedCall] = []
+    for call in plan.calls:
+        run_id = "qualification-" + call.case_id
+        attempt_id = q.stable_id("attempt", run_id, call.request_uid, 1)
+        identity = physical_identity(run_id, call.request_uid, attempt_id)
+        calls.append(
+            q._PlannedCall.model_validate(
+                dict(call)
+                | {
+                    "run_id": run_id,
+                    "attempt_id": attempt_id,
+                    "submission_id": identity.submission_id,
+                    "correlation_id": identity.correlation_id,
+                }
+            )
+        )
+    legacy = q._QualificationPlan.model_validate(
+        dict(plan) | {"plan_version": 1, "calls": tuple(calls)}
+    )
+    original = canonical_bytes(legacy)
+    (directory / "plan.json").write_bytes(original)
+    report = _readonly_report(directory, monkeypatch)
+    assert report["physical_send_attempts"] == 0
+
+    def forbidden(*_args: Any, **_kwargs: Any) -> Any:
+        raise AssertionError("Historical plan must not construct an execution adapter")
+
+    monkeypatch.setattr(provider, "OpenAIAdapter", forbidden)
+    with pytest.raises(q.QualificationError):
+        await q.execute_plan(
+            directory,
+            authorized_plan_sha256=bytes_digest(original),
+            authorized_source_commit=legacy.source_commit,
+            accept_billable_calls=True,
+        )
+    assert not (directory / "execution-authorization.json").exists()
+    assert not (directory / "qualification.sqlite3").exists()
+    assert (directory / "plan.json").read_bytes() == original
+
+
+@pytest.mark.parametrize("window", ["before_forward", "after_forward"])
+@pytest.mark.asyncio
+async def test_harness_cancellation_stops_matrix_without_replacing_request(
+    planned: tuple[Path, q._QualificationPlan],
+    monkeypatch: pytest.MonkeyPatch,
+    window: str,
+) -> None:
+    directory, plan = planned
+    sent = _install_transport(
+        monkeypatch, plan, cancel_after_forward=window == "after_forward"
+    )
+    original = q._QualificationSubmissionGuard.__call__
+    if window == "before_forward":
+
+        def cancel_before_allocation(*_args: Any, **_kwargs: Any) -> Any:
+            raise asyncio.CancelledError
+
+        monkeypatch.setattr(
+            q._QualificationSubmissionGuard, "__call__", cancel_before_allocation
+        )
+    arguments = _Authorization(
+        authorized_plan_sha256=bytes_digest(canonical_bytes(plan)),
+        authorized_source_commit=plan.source_commit,
+        accept_billable_calls=True,
+    )
+    with pytest.raises(asyncio.CancelledError):
+        await q.execute_plan(directory, **arguments)
+    monkeypatch.setattr(q._QualificationSubmissionGuard, "__call__", original)
+    report = _readonly_report(directory, monkeypatch)
+    expected = int(window == "after_forward")
+    assert len(sent) == report["physical_send_attempts"] == expected
+    rows = cast(list[dict[str, object]], report["calls"])
+    assert rows[0]["assessment_continuation_allowed"] is False
+    assert all(row["physical_send_attempted"] is False for row in rows[1:])
+    await q.execute_plan(directory, **arguments)
+    assert len(sent) == expected

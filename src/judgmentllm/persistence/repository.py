@@ -1196,17 +1196,48 @@ class ReadOnlyRepository(Repository):
     No application directory, schema, ownership or assessment artifact is created.
     """
 
-    def __init__(self, root: str | Path, *, busy_timeout_ms: int = 5000) -> None:
+    def __init__(
+        self,
+        root: str | Path,
+        *,
+        busy_timeout_ms: int = 5000,
+        preserve_files: bool = False,
+    ) -> None:
         if type(busy_timeout_ms) is not int or busy_timeout_ms < 0:
             raise ValueError("busy timeout must be a nonnegative integer")
+        if type(preserve_files) is not bool:
+            raise ValueError("preserve_files must be a boolean")
         self.root = Path(root).resolve()
         database = self.root / "registry.sqlite3"
+        self._checkpointed_signature: tuple[int, int, int, int, int] | None = None
+        self._database = database
+        self._wal = database.with_name(database.name + "-wal")
+        immutable = preserve_files and not self._wal.exists()
         if not database.is_file():
             raise NotFoundError("durable registry was not found")
+        if preserve_files and any(
+            path.is_symlink()
+            for path in (
+                database,
+                self._wal,
+                database.with_name(database.name + "-shm"),
+            )
+        ):
+            raise IntegrityError("read-only registry cannot contain symbolic links")
+        if immutable:
+            self._checkpointed_signature = self._snapshot_signature()
+        elif (
+            preserve_files and not database.with_name(database.name + "-shm").is_file()
+        ):
+            raise IntegrityError("read-only WAL coordination is unavailable")
+        # A checkpointed immutable reader creates no SQLite WAL/SHM sidecars.
+        # Verify its snapshot again before returning inspection results; a new
+        # writer or checkpoint invalidates it rather than silently losing WAL.
+        # Active WAL readers retain the established committed-WAL behavior.
         # mode=ro forbids database creation, including a deletion race between
         # the existence check above and SQLite opening the URI.
         self.connection = sqlite3.connect(
-            database.as_uri() + "?mode=ro",
+            database.as_uri() + ("?mode=ro&immutable=1" if immutable else "?mode=ro"),
             uri=True,
             isolation_level=None,
             timeout=busy_timeout_ms / 1000,
@@ -1221,6 +1252,33 @@ class ReadOnlyRepository(Repository):
             self.connection.execute("BEGIN")
             verify(self.connection)
             self.connection.execute("ROLLBACK")
+            self._verify_snapshot()
         except BaseException:
             self.connection.close()
             raise
+
+    def _snapshot_signature(self) -> tuple[int, int, int, int, int]:
+        try:
+            stat = self._database.stat()
+            return (
+                stat.st_dev,
+                stat.st_ino,
+                stat.st_size,
+                stat.st_mtime_ns,
+                stat.st_ctime_ns,
+            )
+        except OSError:
+            raise IntegrityError("read-only registry snapshot is unavailable") from None
+
+    def _verify_snapshot(self) -> None:
+        signature = self._checkpointed_signature
+        if signature is not None and (
+            self._snapshot_signature() != signature or self._wal.exists()
+        ):
+            raise IntegrityError("read-only registry changed during inspection")
+
+    def close(self) -> None:
+        try:
+            self._verify_snapshot()
+        finally:
+            self.connection.close()

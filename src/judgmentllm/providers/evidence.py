@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import Field, model_validator
 
+from judgmentllm.assessment_diagnostics import AssessmentComponent
 from judgmentllm.evidence._base import EvidenceIdentity, EvidenceModel
 from judgmentllm.evidence.order import (
     OrderEvidence,
@@ -87,6 +88,9 @@ class ProviderEvidence(EvidenceModel):
     provenance: Literal["synthetic_fixture", "provider_documented"]
     usage: ReportedUsageInput | None = None
     observation_context: ProviderObservationContext | None = None
+    assessment_component: AssessmentComponent | None = Field(
+        default=None, exclude=True, repr=False
+    )
     output_text: bytes | None = Field(default=None, exclude=True, repr=False)
     output_source: OrderEvidence = "unavailable"
     reasoning: tuple[ProviderReasoningBlock, ...] = ()

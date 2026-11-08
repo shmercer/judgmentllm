@@ -287,3 +287,23 @@ cannot be reconstructed by a new call or presumed remotely retrievable. Producti
 reasoning-text retention is unavailable; reported reasoning counts remain usage.
 Implementation, offline qualification and independently authorized live acceptance
 are separate statuses; this change does not by itself establish live support.
+
+
+## Phase 5A correction: independent assessment diagnostics
+
+Separate extraction of a documented assessment-text component from whole-envelope
+privacy retention and canonical scoring. Retain exact recognized text under full
+capture, including malformed/invalid output, in a separately bounded protected
+artifact; minimal capture remains hash-only. Keep fixed content-free diagnostic
+codes and an additive version-1 receipt field, omitted when absent so historical
+bytes and normalized exports stay unchanged. Read-only metadata inspection never
+contacts a provider; explicit text inspection returns untrusted bytes without
+printing them. No JSON repair, reasoning capture, rescoring or inferred historical
+text is introduced.
+
+New qualification plans use version 2 and fresh source-bound physical identities.
+A positively terminal assessment failure can advance only to the next committed
+matrix case; ambiguous acceptance or incomplete durability stops. Old plans and
+first-live evidence remain immutable and reportable. Neither diagnostics nor
+harness reports promote qualification into the reviewed registry. This correction
+requires new exact-head offline/hosted qualification and separate live approval.

@@ -148,6 +148,48 @@ run's configuration deliberately. For native-admission errors, use text mode or
 wait for reviewed exact-scope qualification. Preserve unresolved runs and their
 evidence; a timeout does not prove that OpenAI rejected the request.
 
+## Inspect retained assessment output offline
+
+An accepted provider response can still fail local assessment validation. New
+OpenAI observations record a separate version-1 assessment diagnostic with safe
+component metadata, exact byte length/hash when available, and a fixed parser
+code. Syntax errors, duplicate keys, wrong root types and category/trait/winner
+errors remain distinct; provider completion, refusal and truncation are recorded
+separately from local parser validity. Nothing repairs output or creates a
+successful judgment from a diagnostic.
+
+Full capture retains the exact recognized assessment-text component, including
+invalid JSON or categories, as protected **unvalidated model output**. This
+diagnostic component has a separate 1 MiB limit; exceeding it withholds that
+component from the diagnostic without truncation. Minimal capture keeps metadata
+and hash/length only. This does not relax safe-field checks for retaining a whole provider envelope or
+permit reasoning, tool payloads or unknown provider fields into assessment text.
+The existing full-capture rule can still retain a separately proven-safe whole
+envelope within the unchanged 8 MiB HTTP bound.
+
+Inspection reads existing evidence without credentials, provider requests or
+resubmission. Metadata is the default:
+
+```python
+from judgmentllm.assessment_inspection import inspect_assessment_output
+
+inspection = inspect_assessment_output(
+    "RUN_ID", "OBSERVATION_ID", store="./openai-runs"
+)
+metadata = inspection.model_dump(mode="json")
+# Explicitly request protected bytes only when reviewing their content locally.
+review = inspect_assessment_output(
+    "RUN_ID", "OBSERVATION_ID", store="./openai-runs", include_text=True
+)
+```
+
+`review.output_text` is bytes or `None`; it is excluded from representations and
+serialization, so this example displays no generated text. Treat those bytes as
+untrusted data. Minimal capture never returns text. Historical receipts lacking
+the new diagnostic return `diagnostic=None`; omitted historical text cannot be
+reconstructed. Assessment diagnostics do not appear in normalized JSONL/CSV or
+R audit columns and do not grant retry, scoring or qualification authority.
+
 ## Qualification is separately authorized
 
 Ordinary tests and CI never call OpenAI. The repository harness
@@ -164,8 +206,14 @@ account terms, pricing changes and taxes can differ.
 
 After exact-head offline qualification and PR review, the reviewer must separately
 authorize the source commit and plan digest before the billable `execute` stage.
-The shared ledger consumes each planned request at most once. Continuation never
-adds replacement calls; reports cannot promote their own model-support status.
+The shared ledger consumes each planned request at most once. New version-2 plans
+bind physical identities to the source commit; historical version-1 plans remain
+reportable and cannot execute through the new executor. A completed provider
+response with a fully recorded complete or invalid assessment may advance to the next already planned case only when every durable
+identity, diagnostic and result check passes. Refusal, truncation, provider
+failure, uncertain acceptance or incomplete local durability stops execution.
+Continuation never adds replacement calls; reports cannot promote their own
+model-support status.
 Reports distinguish accepted, rejected and unresolved requests from completion
 status and local assessment validity. Missing acknowledgment never proves rejection.
 A successful sample qualifies only its independently reviewed exact feature scope.

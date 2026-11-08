@@ -12,6 +12,14 @@ offline/hosted qualification and separately authorized live qualification are
 independent acceptance stages; implementation alone establishes no live model
 support. See the OpenAI guide for first-use workflows and current limitations.
 
+The Phase 5A correction adds separate protected assessment-text diagnostics and
+read-only inspection. Full capture can retain a recognized invalid component
+without retaining unsafe envelope fields; minimal capture remains hash-only.
+Canonical validation, result/export schemas and historical evidence remain
+unchanged. Fresh source-bound version-2 qualification plans may continue across
+positively terminal assessment failures, while uncertainty stops the matrix.
+This implementation requires new exact-head acceptance and separate live approval.
+
 ## Milestone 3 output contracts and offline activation
 
 The [assessment output design](assessment-output-design.md) defines the complete

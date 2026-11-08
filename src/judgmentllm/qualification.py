@@ -26,7 +26,7 @@ from judgmentllm.config import RunSpecV3
 from judgmentllm.models import StrictModel
 from judgmentllm.output_contracts import decode_assessment_output
 from judgmentllm.persistence.hashing import bytes_digest, canonical_bytes
-from judgmentllm.persistence.models import SHA256, NotFoundError
+from judgmentllm.persistence.models import SHA256, NotFoundError, PersistenceError
 from judgmentllm.planning import stable_id
 from judgmentllm.providers.protocol import PreparedRequest
 
@@ -149,7 +149,7 @@ class _PlannedCall(_Frozen):
 
 
 class _QualificationPlan(_Frozen):
-    plan_version: Literal[1] = 1
+    plan_version: Literal[1, 2] = 2
     source_commit: _COMMIT
     sdk_package: Literal["openai"] = "openai"
     sdk_version: Literal["3.42.1"] = "3.42.1"
@@ -193,7 +193,12 @@ class _QualificationPlan(_Frozen):
         for call in self.calls:
             if (
                 call.case_id != f"{call.endpoint}-{call.task_kind}-{call.mode}"
-                or call.run_id != "qualification-" + call.case_id
+                or call.run_id
+                != (
+                    "qualification-" + call.case_id
+                    if self.plan_version == 1
+                    else f"qualification-{self.source_commit}-{call.case_id}"
+                )
                 or call.model != self.model
                 or call.max_output_tokens != self.max_output_tokens
                 or call.reserved_tokens
@@ -430,7 +435,7 @@ def build_plan(
         for task in ("rubric", "pairwise"):
             for mode in ("text", "native"):
                 case_id = f"{endpoint}-{task}-{mode}"
-                run_id = "qualification-" + case_id
+                run_id = f"qualification-{source_commit}-{case_id}"
                 spec = _specification(
                     directory, endpoint, model, task, mode, max_output_tokens
                 )
@@ -751,7 +756,8 @@ async def execute_plan(
     directory = directory.resolve()
     plan, digest = _load_plan(directory)
     if (
-        not accept_billable_calls
+        plan.plan_version != 2
+        or not accept_billable_calls
         or authorized_plan_sha256 != digest
         or authorized_source_commit != plan.source_commit
         or _source_commit() != plan.source_commit
@@ -765,6 +771,14 @@ async def execute_plan(
     for case in plan.calls:
         spec = _verify_case(directory, case)
         _consumed(directory)
+        existing = report_plan(directory)
+        prior = next(
+            item
+            for item in cast(list[dict[str, object]], existing["calls"])
+            if item["case_id"] == case.case_id
+        )
+        if prior["evidence_integrity_failure"]:
+            break
         context = _qualification_context(
             spec, source_commit=plan.source_commit, plan_sha256=digest
         )
@@ -803,7 +817,16 @@ async def execute_plan(
                     retry_policy=RetryPolicy(max_attempts=1),
                 )
             export_run_results(case.run_id, store=store)
-            if result.recovery_required or result.summary.state != "completed":
+            # Execution state alone cannot authorize the next physical call.
+            # A completed provider observation with a terminal invalid assessment
+            # is useful qualification evidence, but unresolved work is not.
+            retained = report_plan(directory)
+            row = next(
+                item
+                for item in cast(list[dict[str, object]], retained["calls"])
+                if item["case_id"] == case.case_id
+            )
+            if result.recovery_required or not row["assessment_continuation_allowed"]:
                 break
         finally:
             await adapter.aclose()
@@ -827,10 +850,15 @@ def report_plan(directory: Path) -> dict[str, object]:
     for case in plan.calls:
         item: dict[str, object] = {
             "case_id": case.case_id,
+            "run_id": case.run_id,
+            "request_uid": case.request_uid,
+            "attempt_id": case.attempt_id,
+            "submission_id": case.submission_id,
+            "correlation_id": case.correlation_id,
+            "task_ids": list(case.task_ids),
             "endpoint": case.endpoint,
             "requested_model": case.model,
             "mechanism": case.mechanism,
-            "request_uid": case.request_uid,
             "payload_sha256": case.payload_sha256,
             "actual_request_body_digest_verified": case.case_id in consumed,
             "max_output_tokens": case.max_output_tokens,
@@ -847,85 +875,226 @@ def report_plan(directory: Path) -> dict[str, object]:
             "provider_outcome": None,
             "invocation_failure_code": None,
             "completion_status": "not_attempted",
+            "http_response_received": False,
+            "durable_evidence_consistent": False,
+            "evidence_integrity_failure": False,
+            "evidence_error_code": None,
+            "local_assessment_valid": False,
+            "assessment_terminal": False,
+            "assessment_diagnostic_available": False,
+            "parser_diagnostic": None,
+            "canonical_valid": None,
+            "assessment_source": None,
+            "assessment_extraction_status": None,
+            "assessment_retention": None,
+            "assessment_sha256": None,
+            "assessment_byte_length": None,
+            "assessment_artifact": None,
+            "assessment_component_metadata": None,
+            "assessment_continuation_allowed": False,
+            "recovery_required": case.case_id in consumed,
         }
         store = directory / "execution" / case.case_id
         if (store / "registry.sqlite3").is_file():
-            with ReadOnlyRepository(store) as repository:
-                results = tuple(repository.iter_results(case.run_id))
-                receipts = tuple(repository.iter_evidence(case.run_id))
-                item["outcome"] = repository.get_run(case.run_id).state
-                try:
-                    submission = repository.get_submission(
-                        case.run_id, case.submission_id
+            try:
+                with ReadOnlyRepository(store, preserve_files=True) as repository:
+                    results = tuple(repository.iter_results(case.run_id))
+                    receipts = tuple(repository.iter_evidence(case.run_id))
+                    summary = repository.summary(case.run_id)
+                    item["outcome"] = summary.state
+                    item["recovery_required"] = bool(
+                        summary.unresolved_submissions
+                        or summary.state in {"created", "submitted", "running"}
                     )
-                except NotFoundError:
-                    submission = None
-                if submission is not None:
-                    item["submission_certainty"] = submission.certainty
-                item["normalized_outcomes"] = [r.status for r in results]
-                item["local_assessment_valid"] = bool(results) and all(
-                    r.status == "complete" for r in results
-                )
-                item["durable_evidence_consistent"] = (
-                    len(receipts) == 1
-                    and receipts[0].payload_sha256 == case.payload_sha256
-                )
-                if receipts:
-                    usage = receipts[0].usage
-                    item["reported_model"] = usage.reported_model
-                    item["provider_response_observed"] = (
-                        receipts[0].identity.observation_id is not None
-                    )
-                    item["invocation_acceptance"] = receipts[0].invocation_acceptance
-                    item["provider_outcome"] = usage.provider_outcome
-                    item["invocation_failure_code"] = usage.invocation_failure_code
-                    item["completion_status"] = usage.provider_outcome or "not_observed"
-                    item["observation_kind"] = usage.observation_kind
-                    item["observed_order"] = (
-                        receipts[0].order.model_dump(mode="json")
-                        if receipts[0].order is not None
-                        else None
-                    )
-                    if (
-                        usage.input_tokens is not None
-                        and usage.output_tokens is not None
-                    ):
-                        estimate = (
-                            Decimal(usage.input_tokens)
-                            * plan.pricing.input_usd_per_million
-                            + Decimal(usage.output_tokens)
-                            * plan.pricing.output_usd_per_million
-                        ) / Decimal(1_000_000)
-                        item["estimated_usd"] = str(estimate)
-                        if estimated_total is not None:
-                            estimated_total += estimate
-                    elif case.case_id in consumed:
-                        estimated_total = None
-                    item["usage"] = {
-                        name: getattr(usage, name)
-                        for name in (
-                            "usage_source",
-                            "input_tokens",
-                            "output_tokens",
-                            "total_tokens",
-                            "reasoning_tokens",
-                            "cache_read_tokens",
-                            "cache_write_tokens",
+                    try:
+                        submission = repository.get_submission(
+                            case.run_id, case.submission_id
                         )
-                    }
-                    for name in totals:
-                        value = getattr(usage, name)
-                        prior = totals[name]
-                        totals[name] = (
-                            None if value is None or prior is None else prior + value
+                    except NotFoundError:
+                        submission = None
+                    if submission is not None:
+                        item["submission_certainty"] = submission.certainty
+                    item["normalized_outcomes"] = [r.status for r in results]
+                    item["local_assessment_valid"] = bool(results) and all(
+                        r.status == "complete" for r in results
+                    )
+                    item["durable_evidence_consistent"] = len(receipts) == 1 and (
+                        receipts[0].identity.run_id,
+                        receipts[0].identity.request_uid,
+                        receipts[0].identity.attempt_id,
+                        receipts[0].identity.submission_id,
+                        receipts[0].correlation_id,
+                        receipts[0].payload_sha256,
+                    ) == (
+                        case.run_id,
+                        case.request_uid,
+                        case.attempt_id,
+                        case.submission_id,
+                        case.correlation_id,
+                        case.payload_sha256,
+                    )
+                    if receipts:
+                        diagnostic = receipts[0].assessment_diagnostic
+                        if diagnostic is not None:
+                            item.update(
+                                assessment_diagnostic_available=True,
+                                parser_diagnostic=diagnostic.parser_diagnostic,
+                                canonical_valid=diagnostic.canonical_valid,
+                                assessment_source=diagnostic.component.source,
+                                assessment_extraction_status=diagnostic.component.extraction_status,
+                                assessment_retention=diagnostic.retention,
+                                assessment_sha256=diagnostic.content_sha256,
+                                assessment_byte_length=diagnostic.byte_length,
+                                assessment_artifact=(
+                                    diagnostic.artifact.model_dump(mode="json")
+                                    if diagnostic.artifact is not None
+                                    else None
+                                ),
+                                assessment_component_metadata=diagnostic.component.model_dump(
+                                    mode="json"
+                                ),
+                            )
+                        usage = receipts[0].usage
+                        item["reported_model"] = usage.reported_model
+                        item["provider_response_observed"] = (
+                            receipts[0].identity.observation_id is not None
                         )
+                        item["http_response_received"] = (
+                            receipts[0].identity.observation_id is not None
+                        )
+                        item["invocation_acceptance"] = receipts[
+                            0
+                        ].invocation_acceptance
+                        item["provider_outcome"] = usage.provider_outcome
+                        item["invocation_failure_code"] = usage.invocation_failure_code
+                        item["completion_status"] = (
+                            usage.provider_outcome or "not_observed"
+                        )
+                        item["observation_kind"] = usage.observation_kind
+                        item["observed_order"] = (
+                            receipts[0].order.model_dump(mode="json")
+                            if receipts[0].order is not None
+                            else None
+                        )
+                        if (
+                            usage.input_tokens is not None
+                            and usage.output_tokens is not None
+                        ):
+                            estimate = (
+                                Decimal(usage.input_tokens)
+                                * plan.pricing.input_usd_per_million
+                                + Decimal(usage.output_tokens)
+                                * plan.pricing.output_usd_per_million
+                            ) / Decimal(1_000_000)
+                            item["estimated_usd"] = str(estimate)
+                            if estimated_total is not None:
+                                estimated_total += estimate
+                        elif case.case_id in consumed:
+                            estimated_total = None
+                        item["usage"] = {
+                            name: getattr(usage, name)
+                            for name in (
+                                "usage_source",
+                                "input_tokens",
+                                "output_tokens",
+                                "total_tokens",
+                                "reasoning_tokens",
+                                "cache_read_tokens",
+                                "cache_write_tokens",
+                            )
+                        }
+                        for name in totals:
+                            value = getattr(usage, name)
+                            prior = totals[name]
+                            totals[name] = (
+                                None
+                                if value is None or prior is None
+                                else prior + value
+                            )
+                    if results and not item["durable_evidence_consistent"]:
+                        raise QualificationError()
+                    # Positive terminal evidence is required. A partial run, HTTP
+                    # success, or a saved receipt by itself never grants continuation.
+                    terminal = (
+                        bool(results)
+                        and len(results) == len(case.task_ids)
+                        and {record.task_id for record in results} == set(case.task_ids)
+                        and all(
+                            (record.run_id, record.request_uid, record.attempt_id)
+                            == (case.run_id, case.request_uid, case.attempt_id)
+                            and record.status in {"complete", "invalid"}
+                            and repository.get_task(case.run_id, record.task_id).state
+                            == record.status
+                            for record in results
+                        )
+                        and summary.tasks == len(case.task_ids)
+                        and summary.attempts == 1
+                        and summary.results == len(case.task_ids)
+                        and summary.retry_operations == 0
+                        and summary.unresolved_submissions == 0
+                        and summary.state
+                        == (
+                            "completed"
+                            if all(record.status == "complete" for record in results)
+                            else "partial"
+                        )
+                        and repository.get_attempt(case.run_id, case.attempt_id).state
+                        == "normalized"
+                        and repository.attempt_task_ids(case.run_id, case.attempt_id)
+                        == case.task_ids
+                    )
+                    item["assessment_terminal"] = terminal
+                    item["assessment_continuation_allowed"] = bool(
+                        terminal
+                        and case.case_id in consumed
+                        and item["durable_evidence_consistent"]
+                        and item["assessment_diagnostic_available"]
+                        and item["canonical_valid"] == item["local_assessment_valid"]
+                        and item["provider_response_observed"]
+                        and submission is not None
+                        and submission.certainty == "accepted"
+                        and submission.state == "resolved"
+                        and item["provider_outcome"] == "completed"
+                        and item["invocation_acceptance"] is None
+                        and item["invocation_failure_code"] is None
+                        and not item["recovery_required"]
+                    )
+            except (PersistenceError, ValueError, OSError, sqlite3.Error):
+                # Local integrity failures are reportable, never continuation
+                # authority. Exception messages may contain untrusted bytes.
+                item.update(
+                    outcome="evidence_integrity_failure",
+                    evidence_integrity_failure=True,
+                    evidence_error_code="retained_evidence_unavailable_or_inconsistent",
+                    durable_evidence_consistent=False,
+                    local_assessment_valid=False,
+                    assessment_terminal=False,
+                    assessment_continuation_allowed=False,
+                    provider_accepted=None,
+                    provider_response_observed=False,
+                    http_response_received=None,
+                    invocation_acceptance=None,
+                    provider_outcome=None,
+                    invocation_failure_code=None,
+                    completion_status="not_observed",
+                    recovery_required=True,
+                )
+                item.pop("usage", None)
+                item.pop("estimated_usd", None)
+                estimated_total = None
+                for name in totals:
+                    totals[name] = None
         # An acknowledged executor observation is not itself successful
         # assessment acceptance. Keep explicit rejection, unresolved invocation,
         # failed provider response and ordinary completion outcomes distinct.
-        if item["invocation_failure_code"] is not None:
+        if item["evidence_integrity_failure"]:
+            item["acceptance_outcome"] = "evidence_integrity_failure"
+        elif item["invocation_failure_code"] is not None:
+            item["http_response_received"] = True
             item["provider_accepted"] = False
             item["acceptance_outcome"] = "rejected"
         elif item["invocation_acceptance"] == "unresolved":
+            item["http_response_received"] = None
             item["acceptance_outcome"] = "unresolved"
         elif item["provider_outcome"] == "provider_failure":
             item["acceptance_outcome"] = "provider_failure"
@@ -952,8 +1121,8 @@ def report_plan(directory: Path) -> dict[str, object]:
             for name in totals:
                 totals[name] = None
         item["assessment_behavior_verified"] = (
-            item.get("provider_accepted", False) is True
-            and item.get("local_assessment_valid", False) is True
+            item["assessment_continuation_allowed"] is True
+            and item["local_assessment_valid"] is True
         )
         reports.append(item)
     return {

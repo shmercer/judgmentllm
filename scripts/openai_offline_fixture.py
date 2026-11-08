@@ -18,6 +18,7 @@ from unittest.mock import patch
 
 import httpx2
 
+from judgmentllm.assessment_inspection import inspect_assessment_output
 from judgmentllm.config import RunSpecV3
 from judgmentllm.execution import execute_run, recover_run
 from judgmentllm.execution.retry import authorize_subset_retry
@@ -34,6 +35,9 @@ from judgmentllm.results import PairwiseResult, RubricResult
 # pyright: reportPrivateUsage=false
 
 Endpoint = Literal["responses", "chat.completions"]
+_INVALID_ASSESSMENT_TEXT = (
+    '```json\n{"scores":[{"trait_id":"01","category_label":"low"}]}\n```'
+)
 
 
 @contextmanager
@@ -139,11 +143,16 @@ def specification(
 
 class FixtureTransport:
     def __init__(
-        self, endpoint: Endpoint, *, invalid_first_group: bool = False
+        self,
+        endpoint: Endpoint,
+        *,
+        invalid_first_group: bool = False,
+        assessment_text: str | None = None,
     ) -> None:
         self.endpoint = endpoint
         self.calls = 0
         self.invalid_first_group = invalid_first_group
+        self.assessment_text = assessment_text
 
     def respond(self, request: httpx2.Request) -> httpx2.Response:
         prepared = _INVOKING.get()
@@ -168,7 +177,9 @@ class FixtureTransport:
         else:
             output = {"winner_id": contract.pair.presented_order[0]}
         self.calls += 1
-        text = json.dumps(output)
+        text = (
+            json.dumps(output) if self.assessment_text is None else self.assessment_text
+        )
         if self.endpoint == "responses":
             body: dict[str, Any] = {
                 "id": f"resp_synthetic_{self.calls}",
@@ -274,6 +285,106 @@ async def persist_openai(output: Path) -> None:
                     assert transport.calls == (2 if kind == "rubric" else 1)
                 finally:
                     await adapter.aclose()
+    await persist_assessment_diagnostics(output)
+
+
+async def persist_assessment_diagnostics(output: Path) -> None:
+    """Four fake-HTTP failures supplement, without changing, baseline exports."""
+    with offline():
+        for endpoint in ("responses", "chat.completions"):
+            for capture in ("full", "minimal"):
+                run_id = f"diagnostic-{endpoint}-{capture}"
+                spec = specification(
+                    output / "inputs" / run_id,
+                    endpoint,
+                    "rubric",
+                    traits=1,
+                    capture=capture,
+                )
+                transport = FixtureTransport(
+                    endpoint, assessment_text=_INVALID_ASSESSMENT_TEXT
+                )
+                adapter = transport.adapter(spec)
+                try:
+                    with prepare_run(
+                        spec,
+                        store=output / "diagnostic-store",
+                        run_id=run_id,
+                        transport_context=production_context(spec),
+                    ):
+                        pass
+                    await execute_run(
+                        run_id,
+                        store=output / "diagnostic-store",
+                        adapter=adapter,
+                        spec=spec,
+                    )
+                    assert transport.calls == 1
+                finally:
+                    await adapter.aclose()
+
+
+def export_assessment_diagnostics(output: Path) -> None:
+    expected = _INVALID_ASSESSMENT_TEXT.encode("utf-8")
+    records: list[dict[str, object]] = []
+    store = output / "diagnostic-store"
+    with offline(), ReadOnlyRepository(store) as repository:
+        for endpoint in ("responses", "chat.completions"):
+            for capture in ("full", "minimal"):
+                run_id = f"diagnostic-{endpoint}-{capture}"
+                results = tuple(repository.iter_results(run_id))
+                receipt = tuple(repository.iter_evidence(run_id))[0]
+                observation_id = receipt.identity.observation_id
+                assert observation_id is not None
+                metadata = inspect_assessment_output(
+                    run_id, observation_id, store=store
+                )
+                inspection = inspect_assessment_output(
+                    run_id, observation_id, store=store, include_text=True
+                )
+                diagnostic = inspection.diagnostic
+                assert diagnostic is not None
+                assert metadata.output_text is None
+                assert diagnostic.content_sha256 == bytes_digest(expected)
+                assert diagnostic.byte_length == len(expected)
+                assert inspection.output_text == (
+                    expected if capture == "full" else None
+                )
+                assert "output_text" not in inspection.model_dump()
+                assert _INVALID_ASSESSMENT_TEXT not in repr(inspection)
+                assert len(results) == 1 and results[0].status == "invalid"
+                records.append(
+                    {
+                        "inspection": inspection.model_dump(mode="json"),
+                        "metadata_only_has_text": metadata.output_text is not None,
+                        "explicit_inspection_has_text": inspection.output_text
+                        is not None,
+                        "expected_content_sha256": bytes_digest(expected),
+                        "expected_byte_length": len(expected),
+                        "normalized_result": results[0].model_dump(mode="json"),
+                        "receipt_identity": receipt.identity.model_dump(mode="json"),
+                    }
+                )
+    # The combined execution gate also has older mock receipts without this field.
+    legacy_store = output.parent / "store"
+    if legacy_store.is_dir():
+        with ReadOnlyRepository(legacy_store) as repository:
+            observation = repository.get_observation_for_submission(
+                "001", tuple(repository.iter_submissions("001"))[0].submission_id
+            )
+            assert observation is not None
+        absent = inspect_assessment_output(
+            "001", observation.observation_id, store=legacy_store
+        )
+        assert absent.diagnostic is None and absent.output_text is None
+        (output / "diagnostic-absent.json").write_text(
+            absent.model_dump_json(), encoding="utf-8"
+        )
+    with (output / "assessment-inspections.jsonl").open(
+        "w", encoding="utf-8"
+    ) as stream:
+        for record in records:
+            stream.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 
 def export_openai(output: Path) -> None:
@@ -299,6 +410,7 @@ def export_openai(output: Path) -> None:
     with (output / "evidence.jsonl").open("w", encoding="utf-8") as stream:
         for receipt in evidence:
             stream.write(json.dumps(receipt, ensure_ascii=False) + "\n")
+    export_assessment_diagnostics(output)
 
 
 def main() -> None:
