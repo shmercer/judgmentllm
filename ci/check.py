@@ -3,18 +3,20 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import subprocess
 import sys
 import tempfile
+import time
 from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def fast(changed_since: str, output: Path) -> int:
+def fast(changed_since: str, output: Path, focused: list[str], workers: int) -> int:
     output = output.resolve()
     if output.is_relative_to(ROOT):
         raise ValueError("Development evidence must be outside the source tree")
@@ -57,7 +59,24 @@ def fast(changed_since: str, output: Path) -> int:
             # Unknown dependencies must expand selection, rather than silently
             # claiming that a guessed component mapping establishes protection.
             expanded = True
-    targets = ["tests", "ci/local"] if expanded else sorted(selected)
+    # An explicit implementation-cycle target is a caller choice. Essential
+    # short regressions always remain; neither selection establishes PR acceptance.
+    if focused:
+        targets = sorted(
+            selected.intersection(
+                {
+                    "tests/test_models.py",
+                    "tests/test_config.py",
+                    "tests/test_results.py",
+                    "tests/test_package.py",
+                    "tests/test_public_lifecycle.py",
+                    "tests/test_auth_privacy.py",
+                }
+            )
+            | set(focused)
+        )
+    else:
+        targets = ["tests", "ci/local"] if expanded else sorted(selected)
     commands = [
         [str(python), "-m", "ruff", "check", "."],
         [str(python), "-m", "ruff", "format", "--check", "."],
@@ -71,7 +90,13 @@ def fast(changed_since: str, output: Path) -> int:
             *targets,
             "-m",
             "not resource and not serial",
+            "-n",
+            str(workers),
+            "--dist=loadfile",
+            "--max-worker-restart=0",
             f"--basetemp={output / 'tmp'}",
+            "-o",
+            f"cache_dir={output / 'cache'}",
         ],
     ]
     environment = {
@@ -98,6 +123,7 @@ def fast(changed_since: str, output: Path) -> int:
         PYTHONDONTWRITEBYTECODE="1",
     )
     records: list[dict[str, object]] = []
+    started = time.monotonic()
     for index, command in enumerate(commands):
         with (output / f"{index + 1}.log").open("w", encoding="utf-8") as stream:
             code = subprocess.run(
@@ -116,6 +142,9 @@ def fast(changed_since: str, output: Path) -> int:
         "profile": "fast",
         "qualification": False,
         "expanded_selection": expanded,
+        "explicit_targets": focused,
+        "workers": workers,
+        "wall_seconds": time.monotonic() - started,
         "targets": targets,
         "steps": records,
         "passed": all(record["exit_code"] == 0 for record in records),
@@ -131,6 +160,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--profile", choices=("fast", "pr", "release"), default="fast")
     parser.add_argument("--changed-since", default="origin/main")
+    parser.add_argument(
+        "--test",
+        action="append",
+        default=[],
+        help="Explicit fast-profile pytest target, repeatable; short core regressions remain",
+    )
+    parser.add_argument(
+        "--workers", type=int, default=4, help="Explicit fast-profile worker count"
+    )
     parser.add_argument("--ref")
     parser.add_argument("--mode", choices=("prepare", "check"), default="check")
     parser.add_argument(
@@ -139,14 +177,45 @@ def main() -> int:
         default="parallel",
     )
     parser.add_argument("--output", type=Path)
+    parser.add_argument(
+        "--baseline-python",
+        type=Path,
+        help="Release compatibility: genuine installed a2 interpreter",
+    )
+    parser.add_argument(
+        "--candidate-python",
+        type=Path,
+        help="Release compatibility: exact-head installed candidate interpreter",
+    )
+    parser.add_argument("--baseline-source-archive", type=Path)
+    parser.add_argument("--candidate-source-archive", type=Path)
+    parser.add_argument(
+        "--release-evidence",
+        type=Path,
+        help="External output for offline release compatibility and source/scale checklist",
+    )
     options = parser.parse_args()
+    if not 1 <= options.workers <= 32:
+        parser.error("--workers must be 1 through 32")
     if options.profile == "fast":
         output = options.output or Path(tempfile.gettempdir()) / (
             "judgmentllm-fast-" + datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
         )
-        return fast(options.changed_since, output)
+        return fast(options.changed_since, output, options.test, options.workers)
     if options.ref is None:
         parser.error("complete profiles require --ref FULL_COMMIT_SHA")
+    if options.profile == "release" and options.mode == "check":
+        for name in (
+            "baseline_python",
+            "candidate_python",
+            "baseline_source_archive",
+            "candidate_source_archive",
+            "release_evidence",
+        ):
+            if getattr(options, name) is None:
+                parser.error(
+                    f"release checks require --{name.replace('_', '-')}; see docs/ci-optimization.md"
+                )
     command = [
         sys.executable,
         str(ROOT / "ci/local/grid.py"),
@@ -161,12 +230,56 @@ def main() -> int:
         command.extend(["--result-root", str(options.output)])
     code = subprocess.run(command, cwd=ROOT, check=False).returncode
     if options.profile == "release" and code == 0 and options.mode == "check":
-        # Offline CI cannot establish outstanding provider families, independent
-        # usability review or authorization of exact release artifacts.
-        print(
-            "Offline matrix finished. Release acceptance remains pending the existing alpha-release-readiness checklist and exact-source compatibility/scale evidence. No provider call or publication was performed."
+        release = options.release_evidence.resolve()
+        if release.is_relative_to(ROOT):
+            raise ValueError("Release evidence must be outside the worktree")
+        release.mkdir(parents=True, exist_ok=False)
+        compatibility = [
+            sys.executable,
+            str(ROOT / "scripts/qualify_version_compatibility.py"),
+        ]
+        for name in (
+            "baseline_python",
+            "candidate_python",
+            "baseline_source_archive",
+            "candidate_source_archive",
+        ):
+            compatibility.extend(
+                ("--" + name.replace("_", "-"), str(getattr(options, name)))
+            )
+        compatibility.extend(("--output", str(release / "version-compatibility")))
+        with (release / "compatibility.log").open("x", encoding="utf-8") as stream:
+            compatible = subprocess.run(
+                compatibility,
+                cwd=ROOT,
+                stdout=stream,
+                stderr=subprocess.STDOUT,
+                check=False,
+            ).returncode
+        # The established scale protocol permits reviewed carry-forward, rather
+        # than repeating hours of scale work in routine CI. Retain explicit
+        # unresolved checklist entries; this command never grants publication.
+        report = {
+            "profile": "release",
+            "source_commit": options.ref,
+            "offline_matrix_passed": True,
+            "compatibility_exit_code": compatible,
+            "candidate_archive_sha256": hashlib.sha256(
+                options.candidate_source_archive.read_bytes()
+            ).hexdigest(),
+            "release_ready": False,
+            "pending": [
+                "Review exact-release scale/allocation/export evidence or its existing permitted source-equivalence mapping (docs/milestone-2-subphase-6-verification.md)",
+                "Complete exact-head hosted matrix and alpha-release-readiness checklist, artifact/tag review, independent usability and already authorized live qualification",
+            ],
+        }
+        (release / "summary.json").write_text(
+            json.dumps(report, indent=2) + "\n", encoding="utf-8"
         )
-        return 2
+        print(
+            f"Offline release evidence: {release}. Publication remains separately gated by the existing release checklist."
+        )
+        return compatible
     return code
 
 
