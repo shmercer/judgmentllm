@@ -7,9 +7,11 @@ import os
 import shutil
 import subprocess
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from fixture_artifacts import immutable_exports
 
 from judgmentllm.io import read_results, read_results_csv
 
@@ -29,11 +31,20 @@ def generate(output: Path) -> None:
         assert completed.returncode == 0, completed.stderr
 
 
-def test_execution_reopens_without_duplicate_acceptances(tmp_path: Path) -> None:
-    generate(tmp_path)
+@pytest.fixture(scope="module")
+def generated_exports(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
+    # Both readers consume one real persist/export pipeline. The helper verifies
+    # every artifact remains byte-identical after all readers finish.
+    with immutable_exports(tmp_path_factory.mktemp("rf"), generate) as output:
+        yield output
+
+
+def test_execution_reopens_without_duplicate_acceptances(
+    generated_exports: Path,
+) -> None:
     rows = [
         json.loads(line)
-        for line in (tmp_path / "execution.jsonl").read_text().splitlines()
+        for line in (generated_exports / "execution.jsonl").read_text().splitlines()
     ]
     assert [row["run_id"] for row in rows] == ["001", "002", "003", "004"]
     assert [row["capture"] for row in rows] == ["full", "minimal"] * 2
@@ -48,13 +59,13 @@ def test_execution_reopens_without_duplicate_acceptances(tmp_path: Path) -> None
         assert len(row["acceptances"]) == 2
         assert all(accepted["acceptance_count"] == 1 for accepted in row["acceptances"])
     for name in ("rubric", "pairwise"):
-        records = list(read_results(tmp_path / f"{name}.jsonl"))
+        records = list(read_results(generated_exports / f"{name}.jsonl"))
         assert len(records) == 4
-        assert list(read_results_csv(tmp_path / f"{name}.csv")) == records
+        assert list(read_results_csv(generated_exports / f"{name}.csv")) == records
         assert all(record.status == "complete" for record in records)
 
 
-def test_execution_outputs_pass_required_r_assertions(tmp_path: Path) -> None:
+def test_execution_outputs_pass_required_r_assertions(generated_exports: Path) -> None:
     executable = shutil.which("Rscript")
     if executable is None:
         if os.environ.get("JUDGMENTLLM_R_STRICT") == "1":
@@ -75,9 +86,8 @@ def test_execution_outputs_pass_required_r_assertions(tmp_path: Path) -> None:
         if os.environ.get("JUDGMENTLLM_R_STRICT") == "1":
             pytest.fail("Required jsonlite is unavailable")
         pytest.skip("jsonlite unavailable locally; required Ubuntu CI does not skip")
-    generate(tmp_path)
     completed = subprocess.run(
-        [executable, "--vanilla", str(R_SCRIPT), str(tmp_path)],
+        [executable, "--vanilla", str(R_SCRIPT), str(generated_exports)],
         capture_output=True,
         text=True,
         timeout=30,

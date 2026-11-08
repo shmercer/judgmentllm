@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 from typing import cast
 
+import pytest
 from test_execution_resources import FIXTURE, MIB
 
 
@@ -60,6 +61,7 @@ def measured(directory: Path, responses: int, traits: int) -> dict[str, int | fl
     return result
 
 
+@pytest.mark.resource
 def test_grouped_memory_and_buffers_ignore_total_pending_product(
     tmp_path: Path,
 ) -> None:

@@ -208,6 +208,7 @@ def test_storage_budget_failure_keeps_structured_evidence(tmp_path: Path) -> Non
         controller.summarize(tmp_path / "raw")
 
 
+@pytest.mark.resource
 @pytest.mark.parametrize("scope", ["whole", "execution"])
 def test_tiny_scale_allocation_diagnostics(tmp_path: Path, scope: str) -> None:
     process = subprocess.run(

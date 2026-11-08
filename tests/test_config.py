@@ -20,6 +20,8 @@ from judgmentllm.config import (
 )
 from judgmentllm.models import Exemplar, Level, PairwiseCriterion, Rubric, Trait
 
+pytestmark = pytest.mark.smoke
+
 
 def _rubric() -> Rubric:
     return Rubric(

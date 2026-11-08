@@ -68,6 +68,7 @@ def execution_baseline(
     return MappingProxyType(measurement(directory, 200, 20))
 
 
+@pytest.mark.resource
 def test_execution_memory_does_not_grow_with_response_count(
     tmp_path: Path, execution_baseline: Mapping[str, int | float]
 ) -> None:
@@ -89,6 +90,7 @@ def test_execution_memory_does_not_grow_with_response_count(
     )
 
 
+@pytest.mark.resource
 def test_execution_memory_does_not_materialize_response_trait_product(
     tmp_path: Path, execution_baseline: Mapping[str, int | float]
 ) -> None:

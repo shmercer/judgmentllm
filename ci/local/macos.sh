@@ -8,6 +8,12 @@ REF=
 STATE_ROOT=/mnt/VM_Fast/judgmentllm-ci/macos
 MODE=check
 PYTHON_VERSION=all
+WORKERS=0
+MAX_LANES=2
+RESOURCE_SLOTS=2
+SUITE_STAGE=full
+BENCHMARK_WORKERS=''
+DISTRIBUTION=loadfile
 UV_ARCHIVE=
 UV_SHA256=
 UV_RELEASE_ARCHIVE_SHA256=63ba17fdda55ad1a230d4b37fc6017ffa10c23688c83818bd3bfdf914c652a02
@@ -53,10 +59,13 @@ HELP
 fail() { printf 'ERROR: %s\n' "$*" >&2; exit 2; }
 while (($#)); do
   case "$1" in
-    --repo|--ref|--state-root|--mode|--python-version|--uv-archive|--uv-sha256)
+    --repo|--ref|--state-root|--mode|--python-version|--uv-archive|--uv-sha256|--workers|--max-lanes|--resource-slots|--suite-stage|--benchmark-workers|--distribution)
       (($# >= 2)) || fail "$1 requires a value"
       option=$1; value=$2; shift 2
       case "$option" in
+        --workers) WORKERS=$value ;; --max-lanes) MAX_LANES=$value ;;
+        --resource-slots) RESOURCE_SLOTS=$value ;; --suite-stage) SUITE_STAGE=$value ;;
+        --benchmark-workers) BENCHMARK_WORKERS=$value ;; --distribution) DISTRIBUTION=$value ;;
         --repo) REPO=$value ;; --ref) REF=$value ;; --state-root) STATE_ROOT=$value ;;
         --mode) MODE=$value ;; --python-version) PYTHON_VERSION=$value ;;
         --uv-archive) UV_ARCHIVE=$value ;; --uv-sha256) UV_SHA256=$value ;;
@@ -66,6 +75,10 @@ while (($#)); do
     *) fail "unknown option: $1" ;;
   esac
 done
+[[ $WORKERS =~ ^[0-9]+$ ]] && (( WORKERS <= 6 )) || fail 'Workers exceed the unchanged six-CPU guest'
+[[ $MAX_LANES =~ ^[1-2]$ ]] || fail 'Invalid macOS lane limit'
+[[ $RESOURCE_SLOTS =~ ^[1-2]$ ]] || fail 'Invalid macOS resource slots'
+[[ $SUITE_STAGE =~ ^(full|ordinary|resource)$ ]] || fail 'Invalid suite stage'
 [[ "$MODE" == doctor || "$MODE" == prepare || "$MODE" == check ]] || fail 'invalid --mode'
 [[ "$MODE" == doctor || "$REF" =~ ^[0-9a-f]{40}$ ]] || fail '--ref must be a full lowercase 40-character commit SHA'
 [[ -z "$REF" || "$REF" =~ ^[0-9a-f]{40}$ ]] || fail 'invalid --ref'
@@ -308,9 +321,11 @@ if [[ "$MODE" == prepare ]]; then
 fi
 
 GUEST_SPAWNING=1
-ssh_guest /bin/bash -s -- "$RUN_ID" "$MODE" "$PYTHON_VERSION" "$REF" "$ARCHIVE_SHA256" "$UV_BINARY_SHA256" "${UV_SHA256:-none}" <<'GUEST' &
+ssh_guest /bin/bash -s -- "$RUN_ID" "$MODE" "$PYTHON_VERSION" "$REF" "$ARCHIVE_SHA256" "$UV_BINARY_SHA256" "${UV_SHA256:-none}" "$WORKERS" "$MAX_LANES" "$RESOURCE_SLOTS" "$SUITE_STAGE" "$BENCHMARK_WORKERS" "$DISTRIBUTION" <<'GUEST' &
 set -euo pipefail
 RUN_ID=$1 MODE=$2 PYTHON_VERSION=$3 REF=$4 ARCHIVE_SHA256=$5 UV_BINARY_SHA256=$6 UV_ARCHIVE_SHA256=$7
+WORKERS=$8 MAX_LANES=$9 RESOURCE_SLOTS=${10} SUITE_STAGE=${11}
+BENCHMARK_WORKERS=${12} DISTRIBUTION=${13}
 ROOT="$HOME/judgmentllm-ci"
 RUN="$ROOT/runs/$RUN_ID"
 SOURCE="$RUN/source"
@@ -472,6 +487,7 @@ for minor in $versions; do
   tar -xf "$RUN/source.tar" -C "$RUN/python-$minor/source"
   cp "$RUN/manifest.json" "$RUN/python-$minor/source/.judgmentllm-source.json"
 done
+status=0
 for minor in $versions; do
   if [[ "$minor" == 3.11 ]]; then patch=3.11.18; else patch=3.12.16; fi
   spawning_lane=1
@@ -483,7 +499,10 @@ for minor in $versions; do
     if [[ "$MODE" == check ]]; then export UV_OFFLINE=1; fi
     exec /usr/bin/python3 - "$RUN/python-$minor/group.pid" "$UV" run --no-project --python "$patch" --offline python \
       "$SOURCE/ci/local/gates.py" --source "$SOURCE" --output "$RUN/results/python-$minor" \
-      --commit "$REF" --archive-sha256 "$ARCHIVE_SHA256" --python-version "$minor" --mode "$MODE" --uv "$UV" <<'PY'
+      --commit "$REF" --archive-sha256 "$ARCHIVE_SHA256" --python-version "$minor" --mode "$MODE" --uv "$UV" \
+      --workers "$WORKERS" --resource-slots "$RESOURCE_SLOTS" \
+      --resource-root "$RUN/resource-budget" --suite-stage "$SUITE_STAGE" \
+      "--benchmark-workers=$BENCHMARK_WORKERS" --distribution "$DISTRIBUTION" <<'PY'
 import os
 from pathlib import Path
 import sys
@@ -496,9 +515,17 @@ PY
   lane_minors+=("$minor")
   spawning_lane=0
   if ((pending_signal)); then exit "$pending_signal"; fi
-  printf 'macOS Python %s %s: running (parallel lane)\n' "$minor" "$MODE"
+  printf 'macOS Python %s %s: running (bounded lane)\n' "$minor" "$MODE"
+  if (( MAX_LANES == 1 )); then
+    index=$((${#lane_pids[@]} - 1))
+    lane_status=0
+    wait "${lane_pids[index]}" || lane_status=$?
+    lane_pids[index]=''
+    rm -f "$RUN/python-$minor/group.pid"
+    printf '%s\n' "$lane_status" >"$RUN/results/python-$minor-exit-code"
+    (( lane_status == 0 )) || status=1
+  fi
 done
-status=0
 for index in "${!lane_pids[@]}"; do
   pid=${lane_pids[index]}
   [[ -n "$pid" ]] || continue

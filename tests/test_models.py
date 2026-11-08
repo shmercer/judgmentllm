@@ -17,6 +17,8 @@ from judgmentllm.models import (
     validate_exemplars,
 )
 
+pytestmark = pytest.mark.smoke
+
 
 def trait(labels: list[Any], codes: list[float] | None = None) -> Trait:
     return Trait(

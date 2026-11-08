@@ -62,12 +62,15 @@ dev = [
     "click>=8.5,<9",
     "hatchling>=1.33,<2",
     "packaging>=26.1,<27",
+    "psutil>=7,<9",
     "pyright[nodejs]>=1.1.414,<2",
     "pytest>=9.2,<10",
     "pytest-asyncio>=1.4.1.post1,<2",
     "pytest-cov>=7.1,<8",
+    "pytest-xdist>=3.8,<4",
     "ruff>=0.17.3,<0.18",
     "twine>=7,<8",
+    "types-psutil>=7.2.2.20260906",
     "types-PyYAML>=6,<7",
 ]
 
@@ -104,7 +107,7 @@ target-version = "py311"
 select = ["E4", "E7", "E9", "F", "I", "B", "UP"]
 
 [tool.pyright]
-include = ["src", "tests", "scripts", "benchmarks", "ci/local"]
+include = ["src", "tests", "scripts", "benchmarks", "ci"]
 venvPath = "."
 venv = ".venv"
 pythonVersion = "3.11"
@@ -112,6 +115,11 @@ typeCheckingMode = "strict"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "resource: resource measurements run in bounded, process-isolated batches",
+    "serial: tests requiring a single pytest process",
+    "smoke: short essential development regressions",
+]
 addopts = "--strict-config --strict-markers --cov=judgmentllm --cov-branch --cov-report=term-missing --cov-report=xml --cov-fail-under=90"
 asyncio_mode = "strict"
 asyncio_default_fixture_loop_scope = "function"

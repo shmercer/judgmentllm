@@ -8,6 +8,7 @@ import socket
 import sqlite3
 import subprocess
 import sys
+from collections.abc import Generator
 from contextlib import closing
 from datetime import date
 from decimal import Decimal
@@ -15,6 +16,7 @@ from pathlib import Path
 from typing import Any, TypedDict, cast
 
 import pytest
+from fixture_artifacts import snapshot
 
 from judgmentllm import qualification as q
 from judgmentllm.persistence.hashing import bytes_digest, canonical_bytes
@@ -42,14 +44,8 @@ def pricing() -> q._PricingProfile:
     )
 
 
-@pytest.fixture
-def planned(
-    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
-) -> tuple[Path, q._QualificationPlan]:
-    monkeypatch.setattr(q, "_source_commit", lambda: "a" * 40)
-    # All eight durable stores must fit within Windows filesystem path limits.
-    directory = tmp_path_factory.mktemp("oq") / "plan"
-    plan = q.build_plan(
+def _build_plan(directory: Path) -> q._QualificationPlan:
+    return q.build_plan(
         directory=directory,
         source_commit="a" * 40,
         provider="openai",
@@ -61,13 +57,47 @@ def planned(
         max_total_tokens=802_048,
         max_estimated_usd=Decimal("1"),
     )
-    return directory, plan
+
+
+@pytest.fixture
+def planned(
+    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
+) -> tuple[Path, q._QualificationPlan]:
+    monkeypatch.setattr(q, "_source_commit", lambda: "a" * 40)
+    directory = tmp_path_factory.mktemp("oq") / "plan"
+    return directory, _build_plan(directory)
+
+
+@pytest.fixture(scope="module")
+def unsubmitted_plan(
+    tmp_path_factory: pytest.TempPathFactory,
+) -> tuple[Path, q._QualificationPlan]:
+    # The complete eight-case builder still runs under its original offline guard.
+    # Only tests proven to leave every file/model unchanged share this artifact.
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setattr(q, "_source_commit", lambda: "a" * 40)
+        directory = tmp_path_factory.mktemp("oq") / "plan"
+        return directory, _build_plan(directory)
+
+
+@pytest.fixture
+def readonly_plan(
+    unsubmitted_plan: tuple[Path, q._QualificationPlan], monkeypatch: pytest.MonkeyPatch
+) -> Generator[tuple[Path, q._QualificationPlan]]:
+    monkeypatch.setattr(q, "_source_commit", lambda: "a" * 40)
+    directory, plan = unsubmitted_plan
+    before, model = snapshot(directory), canonical_bytes(plan)
+    try:
+        yield directory, plan
+    finally:
+        assert snapshot(directory) == before
+        assert canonical_bytes(plan) == model
 
 
 def test_plan_is_offline_exact_and_has_no_execution_authority(
-    planned: tuple[Path, q._QualificationPlan],
+    readonly_plan: tuple[Path, q._QualificationPlan],
 ) -> None:
-    directory, plan = planned
+    directory, plan = readonly_plan
     assert len(plan.calls) == 8
     assert not (directory / "qualification.sqlite3").exists()
     assert not (directory / "execution-authorization.json").exists()
@@ -95,9 +125,9 @@ def test_plan_is_offline_exact_and_has_no_execution_authority(
 @pytest.mark.parametrize("changed", ["source", "digest", "consent"])
 @pytest.mark.asyncio
 async def test_execute_requires_exact_explicit_authorization(
-    planned: tuple[Path, q._QualificationPlan], changed: str
+    readonly_plan: tuple[Path, q._QualificationPlan], changed: str
 ) -> None:
-    directory, plan = planned
+    directory, plan = readonly_plan
     with pytest.raises(q.QualificationError):
         await q.execute_plan(
             directory,
@@ -190,7 +220,6 @@ def _install_transport(
     assessment_output: str | None = None,
 ) -> list[bytes]:
     import httpx
-
     import judgmentllm.providers.openai as provider
 
     sent: list[bytes] = []
@@ -489,9 +518,9 @@ async def test_changed_synthetic_sources_or_configuration_never_submit(
 
 
 def test_caller_cannot_create_private_guard_without_executor_token(
-    planned: tuple[Path, q._QualificationPlan],
+    readonly_plan: tuple[Path, q._QualificationPlan],
 ) -> None:
-    directory, plan = planned
+    directory, plan = readonly_plan
     with pytest.raises(q.QualificationError):
         q._QualificationSubmissionGuard(directory, plan, plan.calls[0], token=object())
 
@@ -1008,9 +1037,9 @@ async def test_damaged_shared_ledger_cannot_replenish_or_continue(
 
 
 def test_duplicate_physical_submission_plan_is_not_admissible(
-    planned: tuple[Path, q._QualificationPlan],
+    readonly_plan: tuple[Path, q._QualificationPlan],
 ) -> None:
-    _, plan = planned
+    _, plan = readonly_plan
     with pytest.raises(ValueError):
         q._QualificationPlan.model_validate(
             dict(plan) | {"calls": (plan.calls[0],) * 8}
@@ -1026,10 +1055,12 @@ def test_terminal_invalid_harness_continues_in_fresh_process_without_resend(
 import asyncio
 import json
 import sys
+from collections.abc import Generator
 from pathlib import Path
 sys.path.insert(0, sys.argv[1] + "/src")
 sys.path.insert(0, sys.argv[1] + "/tests")
 import pytest
+from fixture_artifacts import snapshot
 from judgmentllm import qualification as q
 from test_openai_qualification import _install_transport
 
@@ -1107,6 +1138,7 @@ async def test_legacy_plan_is_report_only_and_never_creates_execution_authority(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import judgmentllm.providers.openai as provider
+
     from judgmentllm.transport import physical_identity
 
     directory, plan = planned
@@ -1196,10 +1228,11 @@ async def test_legacy_terminal_assessment_reporting_never_grants_continuation(
     valid: bool,
 ) -> None:
     import judgmentllm.providers.openai as provider
+    from judgmentllm.production_transport import production_context_for_identity
+
     from judgmentllm.execution import execute_run
     from judgmentllm.execution.retry import RetryPolicy
     from judgmentllm.preparation import prepare_run
-    from judgmentllm.production_transport import production_context_for_identity
     from judgmentllm.transport import physical_identity
 
     directory, current = planned

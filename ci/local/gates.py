@@ -24,6 +24,8 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, cast
 
+from telemetry import ProcessSampler
+
 MANIFEST = ".judgmentllm-source.json"
 PYTHON_VERSIONS = {
     "Linux": {"3.11": "3.11.18", "3.12": "3.12.16", "3.15": "3.15.2"},
@@ -75,6 +77,12 @@ class Options:
     python_version: str
     mode: str
     uv: str
+    workers: int = 0
+    resource_slots: int = 1
+    resource_root: Path | None = None
+    suite_stage: str = "full"
+    benchmark_workers: str = ""
+    distribution: str = "loadfile"
 
 
 def digest(path: Path) -> str:
@@ -216,6 +224,12 @@ class Runner:
         self.output.mkdir(parents=True, exist_ok=False)
         (self.output / "logs").mkdir()
         self.options = options
+        if options.benchmark_workers and options.suite_stage != "ordinary":
+            raise ValueError(
+                "Worker benchmarks require an explicitly partial ordinary stage"
+            )
+        if not 0 <= options.workers <= 32 or not 1 <= options.resource_slots <= 7:
+            raise ValueError("Invalid pytest worker/resource allocation")
         self.windows = os.name == "nt"
         self.data_root = self.output
         self.uv = shutil.which(options.uv) or options.uv
@@ -265,6 +279,9 @@ class Runner:
         self.summary: dict[str, Any] = {
             "schema_version": 1,
             "mode": options.mode,
+            "suite_stage": options.suite_stage,
+            "workers": options.workers,
+            "resource_slots": options.resource_slots,
             "status": "running",
             "commit": options.commit,
             "archive_sha256": options.archive_sha256,
@@ -308,10 +325,12 @@ class Runner:
             "status": "running",
             "started_at": datetime.now(UTC).isoformat(),
         }
-        is_pytest = command[1:3] == ["-m", "pytest"]
+        is_suite = len(command) > 1 and Path(command[1]).name == "suite.py"
+        is_pytest = command[1:3] == ["-m", "pytest"] or is_suite
         if is_pytest:
             record.update(
-                coverage_enabled="--no-cov" not in command,
+                coverage_enabled="--no-cov" not in command
+                and "--no-coverage" not in command,
                 coverage_percent=None,
                 pytest_elapsed_seconds=None,
                 tests={
@@ -330,15 +349,17 @@ class Runner:
                 )
             with log.open("w", encoding="utf-8", newline="\n") as stream:
                 try:
-                    result = subprocess.run(
-                        command,
-                        cwd=self.source,
-                        env=self.environment,
-                        stdout=stream,
-                        stderr=subprocess.STDOUT,
-                        timeout=timeout,
-                        check=False,
-                    )
+                    with ProcessSampler() as sampler:
+                        result = subprocess.run(
+                            command,
+                            cwd=self.source,
+                            env=self.environment,
+                            stdout=stream,
+                            stderr=subprocess.STDOUT,
+                            timeout=timeout,
+                            check=False,
+                        )
+                    record["process_metrics"] = sampler.report()
                     record["exit_code"] = result.returncode
                     record["status"] = "passed" if result.returncode == 0 else "failed"
                 except (OSError, subprocess.TimeoutExpired) as error:
@@ -382,6 +403,64 @@ class Runner:
             coverage = re.search(r"Total coverage:\s*([\d.]+)%", text)
             if record["coverage_enabled"] and coverage:
                 record["coverage_percent"] = float(coverage.group(1))
+        if is_suite:
+            suite_output = Path(command[command.index("--output") + 1])
+            suite_report = suite_output / "summary.json"
+            try:
+                receipt = json.loads(suite_report.read_text(encoding="utf-8"))
+                complete = receipt.get("selection_complete") is True
+                complete = (
+                    complete
+                    and receipt.get("source", {}).get("commit") == self.options.commit
+                )
+                if self.options.suite_stage == "full":
+                    complete = complete and receipt.get("manifest_complete") is True
+                if not complete or receipt.get("status") != "passed":
+                    record["status"] = "failed"
+                record["suite"] = {
+                    key: receipt.get(key)
+                    for key in (
+                        "status",
+                        "stage",
+                        "workers",
+                        "manifest_complete",
+                        "selection_complete",
+                        "expected_cases",
+                        "reused_preflight_cases",
+                        "counts",
+                        "partitions",
+                        "coverage",
+                    )
+                }
+                record["suite_report_sha256"] = digest(suite_report)
+                # Windows uses a short private scratch directory. Preserve the
+                # complete receipts before adapter cleanup; omit synthetic stores.
+                evidence = self.output / "suite"
+                evidence.mkdir(exist_ok=True)
+                for pattern in ("*.json", "*.log"):
+                    for path in suite_output.glob(pattern):
+                        shutil.copyfile(path, evidence / path.name)
+                for trial in suite_output.glob("w[0-9]*"):
+                    if trial.is_dir():
+                        destination = evidence / trial.name
+                        destination.mkdir(exist_ok=True)
+                        for pattern in ("*.json", "*.log"):
+                            for path in trial.glob(pattern):
+                                shutil.copyfile(path, destination / path.name)
+                if record["coverage_enabled"]:
+                    for name in (
+                        "coverage.xml",
+                        ".coverage",
+                        "coverage-comparison.json",
+                    ):
+                        if (suite_output / name).exists():
+                            shutil.copyfile(suite_output / name, self.output / name)
+            except (OSError, ValueError, TypeError) as error:
+                record.update(
+                    status="failed",
+                    failure_kind="missing_suite_receipt",
+                    receipt_error=str(error),
+                )
         if record["status"] != "passed":
             record.setdefault(
                 "failure_kind",
@@ -432,6 +511,15 @@ class Runner:
 
     def pytest_command(self, *arguments: str, scratch_name: str) -> list[str]:
         command = self.module("pytest", *arguments)
+        if scratch_name in {"d", "l"}:
+            command.extend(
+                (
+                    "-p",
+                    "ci.local.pytest_report",
+                    "--ci-report",
+                    str(self.output / f"preflight-{scratch_name}.json"),
+                )
+            )
         if self.windows:
             command.extend(("--basetemp", str(self.data_root / scratch_name)))
         return command
@@ -588,7 +676,53 @@ class Runner:
             self.save()
         return 0 if self.summary["status"] == "passed" else 1
 
+    def check_suite(self) -> None:
+        coverage_enabled = (
+            platform.system() == "Linux"
+            and self.options.python_version == "3.11"
+            and self.options.suite_stage == "full"
+        )
+        command = [
+            str(self.python),
+            str(self.source / "ci/local/suite.py"),
+            "--source",
+            str(self.source),
+            "--output",
+            str(self.data_root / "p"),
+            "--workers",
+            str(self.options.workers),
+            "--resource-slots",
+            str(self.options.resource_slots),
+            "--stage",
+            self.options.suite_stage,
+            "--contract",
+            str(self.source / "ci/test-contract.json"),
+        ]
+        if self.windows and self.options.suite_stage == "full":
+            for name in ("d", "l"):
+                command.extend(
+                    ("--preflight-report", str(self.output / f"preflight-{name}.json"))
+                )
+        command.extend(("--distribution", self.options.distribution))
+        if self.options.benchmark_workers:
+            command.extend(("--benchmark-workers", self.options.benchmark_workers))
+        if self.options.resource_root is not None:
+            command.extend(("--resource-root", str(self.options.resource_root)))
+        if coverage_enabled:
+            command.extend(("--baseline", str(self.source / "ci/coverage-floor.json")))
+        else:
+            command.append("--no-coverage")
+        command.extend(
+            ("tests", "ci/local/test_gates.py", "ci/local/test_optimization.py")
+        )
+        self.step(
+            "pytest-coverage" if coverage_enabled else "pytest-no-coverage", command
+        )
+
     def check(self, rscript: str) -> None:
+        if self.options.suite_stage != "full":
+            self.check_suite()
+            return
         self.step("ruff-lint", self.module("ruff", "check", "."))
         self.step("ruff-format", self.module("ruff", "format", "--check", "."))
         self.step("strict-pyright", self.module("pyright"))
@@ -626,25 +760,7 @@ class Runner:
                     scratch_name="l",
                 ),
             )
-        coverage_enabled = (
-            platform.system() == "Linux" and self.options.python_version == "3.11"
-        )
-        coverage_arguments = (
-            [f"--cov-report=xml:{self.output / 'coverage.xml'}"]
-            if coverage_enabled
-            else ["--no-cov"]
-        )
-        self.step(
-            "pytest-coverage" if coverage_enabled else "pytest-no-coverage",
-            self.pytest_command(
-                "-ra",
-                "tests",
-                "ci/local/test_gates.py",
-                *coverage_arguments,
-                *warnings,
-                scratch_name="p",
-            ),
-        )
+        self.check_suite()
         for name, fixture, assertions in R_GATES:
             target = self.data_root / "r" / name
             phases = (None,) if name == "exports" else ("persist", "export")
@@ -679,6 +795,16 @@ def main() -> int:
     )
     parser.add_argument("--mode", choices=("prepare", "check"), required=True)
     parser.add_argument("--uv", required=True)
+    parser.add_argument("--workers", type=int, default=0)
+    parser.add_argument("--benchmark-workers", default="")
+    parser.add_argument(
+        "--distribution", choices=("loadfile", "worksteal"), default="loadfile"
+    )
+    parser.add_argument("--resource-slots", type=int, default=1)
+    parser.add_argument("--resource-root", type=Path)
+    parser.add_argument(
+        "--suite-stage", choices=("full", "ordinary", "resource"), default="full"
+    )
     options = parser.parse_args()
     if (
         re.fullmatch(r"[0-9a-f]{40}", options.commit) is None

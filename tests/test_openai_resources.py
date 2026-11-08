@@ -12,6 +12,7 @@ from typing import cast
 import pytest
 
 
+@pytest.mark.resource
 @pytest.mark.parametrize("endpoint", ["responses", "chat.completions"])
 @pytest.mark.parametrize("kind", ["rubric", "pairwise"])
 def test_openai_sdk_workload_is_bounded(

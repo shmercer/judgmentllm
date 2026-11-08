@@ -25,6 +25,9 @@ from types import FrameType
 from typing import Any, cast
 
 from gates import R_GATES
+from override_recovery import require_restored
+from resource_specs import read_resources
+from scheduling import SCHEDULES, get_schedule
 from source import stage
 
 UV_ASSETS = {
@@ -60,7 +63,9 @@ PYTHON_VERSIONS = {
 }
 
 
-def required_gates(platform: str, version: str, mode: str) -> set[str]:
+def required_gates(
+    platform: str, version: str, mode: str, suite_stage: str = "full"
+) -> set[str]:
     """Require complete native gate evidence, rather than only a completion flag."""
     names = {
         "uv-version",
@@ -75,6 +80,15 @@ def required_gates(platform: str, version: str, mode: str) -> set[str]:
     }
     if mode == "prepare":
         return names | {"warm-pyright-node"}
+    if suite_stage != "full":
+        return {
+            "uv-version",
+            "locked-sync",
+            "dependency-versions",
+            "bundled-type-checker",
+            "r-jsonlite-versions",
+            "pytest-no-coverage",
+        }
     names.update(("ruff-lint", "ruff-format", "strict-pyright"))
     names.add(
         "pytest-coverage"
@@ -140,6 +154,7 @@ def admission_errors(
     mode: str,
     archive_sha256: str,
     lockfile_sha256: str,
+    suite_stage: str = "full",
 ) -> list[str]:
     """Admit only the platform's exact Python/OS/source results from this run."""
     errors: list[str] = []
@@ -238,7 +253,24 @@ def admission_errors(
                     errors.append(
                         f"Summary {index + 1} has incompatible coverage evidence"
                     )
-        expected_names = required_gates(platform, str(version), mode)
+        if item.get("suite_stage", "full") != suite_stage:
+            errors.append(f"Summary {index + 1} has incompatible suite scope")
+        for raw_step in steps:
+            if not isinstance(raw_step, dict):
+                continue
+            step = cast(dict[str, Any], raw_step)
+            receipt = step.get("suite")
+            if receipt is not None:
+                if not isinstance(receipt, dict):
+                    errors.append(f"Summary {index + 1} has invalid partition evidence")
+                else:
+                    detail = cast(dict[str, Any], receipt)
+                    if detail.get("selection_complete") is not True or (
+                        suite_stage == "full"
+                        and detail.get("manifest_complete") is not True
+                    ):
+                        errors.append(f"Summary {index + 1} is missing required cases")
+        expected_names = required_gates(platform, str(version), mode, suite_stage)
         if passed_names != expected_names:
             errors.append(
                 f"Summary {index + 1} has incomplete or unexpected gates: "
@@ -370,6 +402,14 @@ def main() -> int:
         "--mode", choices=("doctor", "prepare", "check"), default="check"
     )
     parser.add_argument("--platform", choices=(*STATES, "all"), default="all")
+    parser.add_argument("--schedule", choices=tuple(SCHEDULES), default="parallel")
+    parser.add_argument("--benchmark-workers", default="")
+    parser.add_argument(
+        "--distribution", choices=("loadfile", "worksteal"), default="loadfile"
+    )
+    parser.add_argument(
+        "--suite-stage", choices=("full", "ordinary", "resource"), default="full"
+    )
     parser.add_argument(
         "--asset-root", type=Path, default=Path("/mnt/VM_Fast/judgmentllm-ci/assets")
     )
@@ -381,6 +421,20 @@ def main() -> int:
         parser.error("--ref must be the complete proposed commit SHA")
     repo = args.repo.resolve(strict=True)
     platforms = list(STATES) if args.platform == "all" else [args.platform]
+    schedule = get_schedule(args.schedule)
+    host = read_resources()
+    if host["memory_bytes"] is None:
+        parser.error("Host memory budget cannot be established")
+    budget = schedule.budget(platforms, host["logical_cpus"], host["memory_bytes"])
+    if args.benchmark_workers and args.suite_stage != "ordinary":
+        parser.error(
+            "worker sweeps require --suite-stage ordinary and never qualify a commit"
+        )
+    # An incomplete allocation experiment is never silently cleared by a new run.
+    # Only the recorded supported control, held under the existing guest lock,
+    # can inspect/restore actual settings and mark its journal verified.
+    if any(platform in {"windows", "macos"} for platform in platforms):
+        require_restored(Path("/mnt/VM_Fast/judgmentllm-ci/overrides"), set(platforms))
     harness = repo / "ci/local"
     # Do not qualify committed source using an accidentally edited host harness.
     for path in sorted(harness.iterdir()):
@@ -407,7 +461,11 @@ def main() -> int:
         "commit": args.ref,
         "mode": args.mode,
         "platforms": platforms,
-        "scheduling": "parallel platforms and Python versions",
+        "scheduling": schedule.report(),
+        "host_resources": host,
+        "allocation_budget": budget,
+        "suite_stage": args.suite_stage,
+        "resource_policy": "bounded independent allocations; explicit shared-guest slots",
         "status": "running",
         "started_at": datetime.now(UTC).isoformat(),
         "lanes": [],
@@ -441,6 +499,29 @@ def main() -> int:
                 "--mode",
                 args.mode,
             ]
+            allocation = getattr(schedule, platform)
+            command.extend(
+                (
+                    "--workers",
+                    str(allocation.workers),
+                    "--max-lanes",
+                    str(allocation.lanes),
+                    "--resource-slots",
+                    str(allocation.resource_slots),
+                    "--suite-stage",
+                    args.suite_stage,
+                )
+            )
+            command.extend(
+                (
+                    "--benchmark-workers",
+                    args.benchmark_workers,
+                    "--distribution",
+                    args.distribution,
+                )
+            )
+            if platform == "linux":
+                command.extend(("--cpus", str(allocation.cpus)))
             if args.mode == "prepare":
                 name, sha = UV_ASSETS[platform]
                 uv = asset(
@@ -492,6 +573,7 @@ def main() -> int:
                     mode=args.mode,
                     archive_sha256=archive_sha256,
                     lockfile_sha256=lockfile_sha256,
+                    suite_stage=args.suite_stage,
                 )
                 lane["admission_errors"] = errors
                 valid = valid and not errors
@@ -502,13 +584,23 @@ def main() -> int:
             print(f"{platform} {args.mode}: {lane['status']}", flush=True)
             save(output / "summary.json", report)
 
-        print(f"Starting {len(platforms)} platform adapters in parallel", flush=True)
-        run_parallel(
-            report["lanes"],
-            output,
-            finish,
-            on_started=lambda: save(output / "summary.json", report),
+        print(
+            f"Starting {len(platforms)} platform adapters with {schedule.name} scheduling",
+            flush=True,
         )
+        groups = (
+            [[lane] for lane in report["lanes"]]
+            if schedule.platforms == 1
+            else [report["lanes"]]
+        )
+        for group in groups:
+            run_parallel(
+                group,
+                output,
+                finish,
+                on_started=lambda: save(output / "summary.json", report),
+            )
+
     except (
         OSError,
         ValueError,
@@ -527,6 +619,7 @@ def main() -> int:
         report["qualification"] = (
             args.mode == "check"
             and args.platform == "all"
+            and args.suite_stage == "full"
             and report["status"] == "passed"
         )
         report["duration_seconds"] = time.monotonic() - started

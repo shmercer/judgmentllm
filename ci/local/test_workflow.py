@@ -158,9 +158,11 @@ def test_exactly_one_full_suite_with_correct_coverage(
     # The two complementary conditions select exactly one complete suite in
     # routine and optional manual configurations; no targets/filters are added.
     chosen = coverage if primary else plain
-    expected = "uv run --offline --no-sync pytest " + ("" if primary else "--no-cov ")
+    expected = 'uv run --offline --no-sync python ci/local/suite.py --output "${{ runner.temp }}/judgmentllm-suite" --workers 4 --bound-workers --contract ci/test-contract.json '
     expected += (
-        "-ra -Werror::ResourceWarning -Werror::pytest.PytestUnraisableExceptionWarning"
+        "--baseline ci/coverage-floor.json tests"
+        if primary
+        else '--no-coverage --preflight-root "${{ runner.temp }}/judgmentllm-preflights" tests'
     )
     assert chosen["run"] == expected
     assert all(step.get("continue-on-error", "false") == "false" for step in full_tests)
@@ -173,14 +175,16 @@ def test_coverage_configuration_and_failed_primary_evidence() -> None:
         artifact["if"]
         == "always() && matrix.os == 'ubuntu-latest' && matrix.python == '3.11'"
     )
-    assert artifact["with"]["path"] == "coverage.xml"
+    assert (
+        artifact["with"]["path"] == "${{ runner.temp }}/judgmentllm-suite/coverage.xml"
+    )
     codecov = steps["Upload coverage to Codecov when connected"]
     assert (
         codecov["if"]
         == "runner.os == 'Linux' && matrix.python == '3.11' && vars.CODECOV_ENABLED == 'true'"
     )
     assert codecov["with"] == {
-        "files": "coverage.xml",
+        "files": "${{ runner.temp }}/judgmentllm-suite/coverage.xml",
         "disable_search": "true",
         "fail_ci_if_error": "false",
         "token": "${{ secrets.CODECOV_TOKEN }}",

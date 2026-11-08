@@ -7,9 +7,11 @@ import os
 import shutil
 import subprocess
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from fixture_artifacts import immutable_exports
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "scripts" / "generation_r_fixture.py"
@@ -27,11 +29,22 @@ def generate(output: Path) -> None:
         assert completed.returncode == 0, completed.stderr
 
 
-def test_generation_sections_reopened_in_a_separate_process(tmp_path: Path) -> None:
-    generate(tmp_path)
+@pytest.fixture(scope="module")
+def generated_exports(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
+    # Both readers consume one real persist/export pipeline. The helper verifies
+    # every artifact remains byte-identical after all readers finish.
+    with immutable_exports(tmp_path_factory.mktemp("rf"), generate) as output:
+        yield output
+
+
+def test_generation_sections_reopened_in_a_separate_process(
+    generated_exports: Path,
+) -> None:
     rows = [
         json.loads(line)
-        for line in (tmp_path / "generation_manifests.jsonl").read_text().splitlines()
+        for line in (generated_exports / "generation_manifests.jsonl")
+        .read_text()
+        .splitlines()
     ]
     assert len(rows) == 6
     assert all(row["kind"] == "generation_manifest_fixture" for row in rows)
@@ -41,7 +54,7 @@ def test_generation_sections_reopened_in_a_separate_process(tmp_path: Path) -> N
     assert len({row["configuration_source_sha256"] for row in rows[2:]}) == 4
 
 
-def test_generation_outputs_pass_required_r_assertions(tmp_path: Path) -> None:
+def test_generation_outputs_pass_required_r_assertions(generated_exports: Path) -> None:
     executable = shutil.which("Rscript")
     if executable is None:
         if os.environ.get("JUDGMENTLLM_R_STRICT") == "1":
@@ -66,9 +79,8 @@ def test_generation_outputs_pass_required_r_assertions(tmp_path: Path) -> None:
         pytest.skip(
             "jsonlite unavailable locally; required Ubuntu CI step does not skip"
         )
-    generate(tmp_path)
     completed = subprocess.run(
-        [executable, "--vanilla", str(R_SCRIPT), str(tmp_path)],
+        [executable, "--vanilla", str(R_SCRIPT), str(generated_exports)],
         capture_output=True,
         text=True,
         timeout=30,

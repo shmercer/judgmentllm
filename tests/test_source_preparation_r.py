@@ -7,9 +7,11 @@ import os
 import shutil
 import subprocess
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from fixture_artifacts import immutable_exports
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "scripts" / "source_preparation_r_fixture.py"
@@ -27,11 +29,22 @@ def generate(output: Path) -> None:
         assert completed.returncode == 0, completed.stderr
 
 
-def test_source_preparation_reopens_in_independent_processes(tmp_path: Path) -> None:
-    generate(tmp_path)
+@pytest.fixture(scope="module")
+def generated_exports(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
+    # Both readers consume one real persist/export pipeline. The helper verifies
+    # every artifact remains byte-identical after all readers finish.
+    with immutable_exports(tmp_path_factory.mktemp("rf"), generate) as output:
+        yield output
+
+
+def test_source_preparation_reopens_in_independent_processes(
+    generated_exports: Path,
+) -> None:
     rows = [
         json.loads(line)
-        for line in (tmp_path / "source_preparation.jsonl").read_text().splitlines()
+        for line in (generated_exports / "source_preparation.jsonl")
+        .read_text()
+        .splitlines()
     ]
     assert [row["run_id"] for row in rows] == ["001", "002", "003", "004"]
     assert [row["capture"] for row in rows] == ["full", "minimal"] * 2
@@ -48,7 +61,9 @@ def test_source_preparation_reopens_in_independent_processes(tmp_path: Path) -> 
     assert rows[3]["pairs"][1]["presented_order"] == ["002", "001"]
 
 
-def test_source_preparation_outputs_pass_required_r_assertions(tmp_path: Path) -> None:
+def test_source_preparation_outputs_pass_required_r_assertions(
+    generated_exports: Path,
+) -> None:
     executable = shutil.which("Rscript")
     if executable is None:
         if os.environ.get("JUDGMENTLLM_R_STRICT") == "1":
@@ -69,9 +84,8 @@ def test_source_preparation_outputs_pass_required_r_assertions(tmp_path: Path) -
         if os.environ.get("JUDGMENTLLM_R_STRICT") == "1":
             pytest.fail("Required jsonlite is unavailable")
         pytest.skip("jsonlite unavailable locally; required Ubuntu CI does not skip")
-    generate(tmp_path)
     completed = subprocess.run(
-        [executable, "--vanilla", str(R_SCRIPT), str(tmp_path)],
+        [executable, "--vanilla", str(R_SCRIPT), str(generated_exports)],
         capture_output=True,
         text=True,
         timeout=30,
