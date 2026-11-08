@@ -10,6 +10,7 @@ import argparse
 import ctypes
 import gc
 import json
+import os
 import sys
 import time
 import tracemalloc
@@ -19,9 +20,41 @@ from typing import Any, cast
 
 from judgmentllm.preparation import prepare_run
 
+_linux_process_peak: tuple[int, int] | None = None
+
 
 def native_peak_bytes() -> int:
-    """Use the OS process high-water mark, including non-Python allocations."""
+    """Measure the fresh workload process, including non-Python allocations.
+
+    Linux getrusage can retain the RSS high-water mark from the forked parent's
+    address space across exec. /proc/self/status reports the new address space's
+    VmHWM instead. Never replace a missing/malformed measurement with a fabricated
+    zero or the inherited counter. All existing acceptance bounds stay unchanged.
+    """
+    if sys.platform == "linux":
+        global _linux_process_peak
+        with Path("/proc/self/status").open("r", encoding="ascii") as stream:
+            for line in stream:
+                if line.startswith("VmHWM:"):
+                    parts = line.split()
+                    if len(parts) == 3 and parts[2] == "kB" and parts[1].isdecimal():
+                        peak_kib = int(parts[1])
+                        if peak_kib > 0:
+                            process_id = os.getpid()
+                            measured = peak_kib * 1024
+                            # Kernel RSS accounting is asynchronous on SMP. Keep
+                            # the largest observed high-water mark for this PID;
+                            # forked children never inherit a Python-side peak.
+                            if (
+                                _linux_process_peak is not None
+                                and _linux_process_peak[0] == process_id
+                            ):
+                                measured = max(measured, _linux_process_peak[1])
+                            _linux_process_peak = process_id, measured
+                            return measured
+                    break
+        raise OSError("native process memory measurement failed")
+
     if sys.platform != "win32":
         import resource
 

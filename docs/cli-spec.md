@@ -464,3 +464,25 @@ ordinary status/JSON/diagnostics never include provider reasoning text. Existing
 nullable result token columns stay unchanged. No `usage export` or `reasoning
 export` command is added before Phase 6. Historical schema-1 stores are inspected
 and exported without migration or fabricated evidence.
+
+## OpenAI Phase 5A non-generative diagnostics
+
+`auth verify --provider openai [--json]` now performs exactly one protected
+OpenAI models-list read through the shared credential resolver. It never generates
+an assessment, paginates, retries or qualifies a model. Its typed
+`AuthVerification` includes provider, logical source, operation, UTC `checked_at`,
+`verification_status` and a fixed nullable diagnostic code. Existing version-1
+control envelopes and the verification exit-code table above apply.
+
+`providers models --provider openai [--model EXACT_MODEL_ID] [--json]` returns a
+bounded model-list snapshot with `models`, requested-model visibility, completion
+state and actual SDK-call count. `not_visible` means absent from a complete list;
+a failed or incomplete read leaves missing-model visibility unknown. Account and
+owner fields are excluded. Successful authentication/listing does not establish
+endpoint, parameter, native schema or assessment support. Other providers remain
+unsupported by these commands in Phase 5A. Offline `auth status` is unchanged.
+
+The earlier general `providers smoke` command remains deferred. Phase 5A uses a
+separate reproducible qualification harness requiring explicit source, endpoint,
+model, mechanism, synthetic data, consent, evidence location and shared request,
+token and spending limits. It never runs from ordinary CI or implicitly after CI.

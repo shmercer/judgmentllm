@@ -63,6 +63,7 @@ from judgmentllm.preparation.manifest import (
     ExecutableRunManifest,
     ExecutableRunManifestV2,
     ExecutableRunManifestV3,
+    ExecutableRunManifestV4,
     ExemplarCommitment,
     FrozenSnapshotAuthorization,
     SourceDiscrepancy,
@@ -79,6 +80,7 @@ from judgmentllm.preparation.session import PreparedRun as PreparedRun
 from judgmentllm.preparation.session import RequestDependency as RequestDependency
 
 if TYPE_CHECKING:
+    from judgmentllm.production_transport import ProductionContext
     from judgmentllm.transport import TransportContext
 
 
@@ -113,7 +115,7 @@ def _manifest(
     origin: Path | None,
     template: str | None,
     capabilities: CapabilityProfile | None,
-    transport_context: TransportContext | None = None,
+    transport_context: TransportContext | ProductionContext | None = None,
 ) -> ExecutableManifest:
     plan = plan_run(spec, capabilities=capabilities)
     raw = canonical_bytes(spec)
@@ -145,8 +147,13 @@ def _manifest(
             TraitCommitment(trait_id=c.trait_id, sha256=semantic_digest("criterion", c))
             for c in spec.criteria
         )
+    from judgmentllm.transport_dispatch import context_protocol
+
     manifest_type = (
-        ExecutableRunManifestV3
+        ExecutableRunManifestV4
+        if transport_context is not None
+        and context_protocol(transport_context) == "production"
+        else ExecutableRunManifestV3
         if spec.schema_version == 3
         else ExecutableRunManifestV2
         if spec.schema_version == 2
@@ -201,14 +208,14 @@ def _manifest(
     if spec.schema_version == 2:
         manifest_data["output_selection"] = resolve_schema_selection(spec, capabilities)
     if spec.schema_version == 3:
-        from judgmentllm.transport import transport_context_digest
+        from judgmentllm.transport_dispatch import context_digest
 
         if transport_context is None:
             raise PreparationError(
                 "native-capable preparation requires transport context"
             )
         manifest_data.update(
-            transport_context_sha256=transport_context_digest(transport_context),
+            transport_context_sha256=context_digest(transport_context),
             initial_transport_count=0,
             initial_transport_sha256="0" * 64,
         )
@@ -222,7 +229,7 @@ def prepare_run(
     run_id: str,
     capabilities: CapabilityProfile | None = None,
     exhaustive_rendering: bool = False,
-    transport_context: TransportContext | None = None,
+    transport_context: TransportContext | ProductionContext | None = None,
 ) -> PreparedRun:
     """Freeze, validate, index and seal a new run under exclusive OS ownership.
 
@@ -286,6 +293,10 @@ def prepare_run(
             raise PreparationError(
                 "historical preparation cannot acquire native transport"
             )
+        if transport_context is not None:
+            from judgmentllm.transport_dispatch import context_protocol
+
+            context_protocol(transport_context)
         plan_run(spec, capabilities=profile)
         repository.create_run(
             RunRecord(
@@ -346,7 +357,7 @@ def prepare_run(
             manifest = _manifest(
                 builder, spec, origin, template, profile, transport_context
             )
-            if isinstance(manifest, ExecutableRunManifestV3):
+            if isinstance(manifest, (ExecutableRunManifestV3, ExecutableRunManifestV4)):
                 from judgmentllm.preparation.native import preseal_transports
 
                 assert transport_context is not None and isinstance(spec, RunSpecV3)
@@ -598,7 +609,7 @@ def open_prepared_run(
     capabilities: CapabilityProfile | None = None,
     use_frozen_snapshot: bool = False,
     owner_token: str | None = None,
-    transport_context: TransportContext | None = None,
+    transport_context: TransportContext | ProductionContext | None = None,
 ) -> PreparedRun:
     """Verify and reopen; explicit snapshot permission is scoped to this call.
 

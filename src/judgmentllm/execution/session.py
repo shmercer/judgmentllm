@@ -15,6 +15,7 @@ from typing import cast
 
 from judgmentllm.config import RunSpecification
 from judgmentllm.evidence import ReportedUsageInput
+from judgmentllm.evidence.usage import InvocationFailureCode
 from judgmentllm.execution.durable_evidence import DurableEvidence
 from judgmentllm.execution.processing import Result, interpret, unsuccessful
 from judgmentllm.execution.retry import (
@@ -189,7 +190,7 @@ class ExecutionSession:
     ) -> PreparedRequest:
         """Reconstruct pinned V3 bytes; historical rendering keeps its old path."""
         assert self.prepared is not None
-        if self.spec.schema_version == 3:
+        if self.prepared.manifest.schema_version in (3, 4):
             from judgmentllm.transport import physical_identity
 
             if (
@@ -238,9 +239,10 @@ class ExecutionSession:
     ) -> None:
         """Create intent only for independently verified pre-seal initial work."""
         assert self.prepared is not None
+        from judgmentllm.production_transport import PreparedRequestV4
         from judgmentllm.transport import PreparedRequestV3, physical_identity
 
-        if not isinstance(prepared, PreparedRequestV3):
+        if not isinstance(prepared, (PreparedRequestV3, PreparedRequestV4)):
             raise IntegrityError("initial native preparation is unavailable")
         receipt = self.prepared.transport_for_attempt(attempt.attempt_id)
         identity = physical_identity(
@@ -295,7 +297,7 @@ class ExecutionSession:
         while True:
             existing = next(self.existing, None)
             if existing is not None:
-                if self.spec.schema_version == 3:
+                if self.prepared.manifest.schema_version in (3, 4):
                     self.verify_native_attempt(existing)
                 results = self.repository.get_results_for_attempt(
                     self.run_id, existing.attempt_id
@@ -334,7 +336,7 @@ class ExecutionSession:
                 dependency = next(self.dependencies, None)
                 if dependency is None:
                     return None
-                if self.spec.schema_version == 3:
+                if self.prepared.manifest.schema_version in (3, 4):
                     raise IntegrityError("sealed native request was scheduled twice")
                 ordinal = self.ordinal
                 self.ordinal += 1
@@ -443,7 +445,10 @@ class ExecutionSession:
                 submission = self.repository.get_submission_for_attempt(
                     self.run_id, attempt_id
                 )
-                if submission is None and self.spec.schema_version == 3:
+                if submission is None and self.prepared.manifest.schema_version in (
+                    3,
+                    4,
+                ):
                     self.initial_submission(existing, prepared)
                     submission = self.repository.get_submission_for_attempt(
                         self.run_id, attempt_id
@@ -472,7 +477,7 @@ class ExecutionSession:
     def repair_committed(self, attempt: AttemptRecord, status: str) -> None:
         """Committed records are authoritative, including a lost final report."""
         assert self.prepared is not None
-        if self.spec.schema_version == 3:
+        if self.prepared.manifest.schema_version in (3, 4):
             self.verify_native_attempt(attempt)
         for digest in (attempt.prompt_sha256, attempt.payload_sha256):
             self.prepared.store.verify(
@@ -577,6 +582,9 @@ class ExecutionSession:
         current = self.prepare_attempt(work.dependency, work.attempt_id)
         if current != work.prepared:
             raise IntegrityError("payload changed before submission")
+        readiness = getattr(self.adapter, "validate_credentials", None)
+        if readiness is not None:
+            readiness()
         with self.transaction():
             self.repository.transition(
                 "attempt", self.run_id, work.attempt_id, "submitting"
@@ -624,7 +632,43 @@ class ExecutionSession:
                 )
         self.checkpoint("after_acknowledgment", work.prepared.request_uid)
 
-    def uncertain(self, work: ExecutionWork) -> None:
+    def cancelled_invocation(
+        self,
+        work: ExecutionWork,
+        *,
+        acknowledgment: ProviderAcknowledgment | None,
+        response: ProviderResponse | None,
+        known_invoked: bool,
+    ) -> None:
+        """Drain received OpenAI evidence without submitting or retrieving work."""
+        if self.repository.get_results_for_attempt(self.run_id, work.attempt_id):
+            return
+        previous = self.evidence.restore(work)
+        if previous is not None and previous.identity.observation_id is None:
+            # A definitive failure or unresolved invocation is already durable;
+            # cancellation never upgrades or overwrites those immutable facts.
+            if previous.invocation_acceptance == "unresolved":
+                self.uncertain(work)
+            return
+        if acknowledgment is not None and response is not None:
+            self.acknowledge(work, acknowledgment)
+            self.process(work, response)
+        elif previous is None and known_invoked:
+            self.uncertain(work, invoked=True)
+
+    def uncertain(
+        self,
+        work: ExecutionWork,
+        *,
+        invoked: bool = False,
+        usage: ReportedUsageInput | None = None,
+    ) -> None:
+        evidence = self.evidence.uncertain(work, usage, known_invoked=invoked)
+        verified = (
+            self.repository.prepare_evidence_commit(evidence)
+            if evidence is not None
+            else None
+        )
         with self.transaction():
             attempt = self.repository.get_attempt(self.run_id, work.attempt_id)
             submission = self.repository.get_submission(self.run_id, work.submission_id)
@@ -637,6 +681,10 @@ class ExecutionSession:
                     "attempt", self.run_id, work.attempt_id, "uncertain"
                 )
             self.block(work)
+            if evidence is not None:
+                self.repository.record_evidence(
+                    evidence, owner_token=self.token, prepared=verified
+                )
 
     def block(self, work: ExecutionWork) -> None:
         request_uid = work.prepared.request_uid
@@ -654,10 +702,15 @@ class ExecutionSession:
         transient: bool = False,
         retry_after: float | None = None,
         usage: ReportedUsageInput | None = None,
+        diagnostic_code: InvocationFailureCode | None = None,
     ) -> None:
         evidence = (
             self.evidence.failure(
-                work, usage, transient=transient, retry_after=retry_after
+                work,
+                usage,
+                transient=transient,
+                retry_after=retry_after,
+                diagnostic_code=diagnostic_code,
             )
             if invoked
             else None
@@ -794,6 +847,9 @@ class ExecutionSession:
         assert self.prepared is not None
         evidence = self.evidence.restore(work)
         if evidence is not None and evidence.identity.observation_id is None:
+            if evidence.invocation_acceptance == "unresolved":
+                self.uncertain(work)
+                return None
             self.not_submitted(work, invoked=True)
             return None
         receipt = read_receipt(self.prepared.store, work.submission_id)
@@ -909,10 +965,11 @@ class ExecutionSession:
             parsed = None
         self.checkpoint("before_validation", work.prepared.request_uid)
         contract = None
-        if self.spec.schema_version == 3:
+        if self.prepared.manifest.schema_version in (3, 4):
+            from judgmentllm.production_transport import PreparedRequestV4
             from judgmentllm.transport import PreparedRequestV3
 
-            if not isinstance(work.prepared, PreparedRequestV3):
+            if not isinstance(work.prepared, (PreparedRequestV3, PreparedRequestV4)):
                 raise IntegrityError("native execution requires its committed output")
             current = self.prepare_attempt(work.dependency, work.attempt_id)
             if current != work.prepared:

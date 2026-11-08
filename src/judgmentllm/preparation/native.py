@@ -30,8 +30,12 @@ if TYPE_CHECKING:
     from judgmentllm.config import RunSpecV3
     from judgmentllm.persistence.repository import Repository
     from judgmentllm.preparation.capture import SourceBuilder
-    from judgmentllm.preparation.manifest import ExecutableRunManifestV3
+    from judgmentllm.preparation.manifest import (
+        ExecutableRunManifestV3,
+        ExecutableRunManifestV4,
+    )
     from judgmentllm.preparation.session import PreparedRun
+    from judgmentllm.production_transport import PreparedRequestV4, ProductionContext
     from judgmentllm.transport import PreparedRequestV3, TransportContext
 
 
@@ -75,7 +79,7 @@ class InitialTransportDigest:
 def publish_prepared_transport(
     repository: Repository,
     store: ArtifactStore,
-    wire: PreparedRequestV3,
+    wire: PreparedRequestV3 | PreparedRequestV4,
     capture: Literal["full", "minimal"],
 ) -> tuple[ArtifactIdentity, ...]:
     """Publish bytes before a transaction; caller registers returned identities.
@@ -120,13 +124,14 @@ def preseal_transports(
     builder: SourceBuilder,
     spec: RunSpecV3,
     template: str | None,
-    manifest: ExecutableRunManifestV3,
-    context: TransportContext,
+    manifest: ExecutableRunManifestV3 | ExecutableRunManifestV4,
+    context: TransportContext | ProductionContext,
     checkpoint: Callable[[str, str | None], None],
 ) -> tuple[int, str]:
     """Prepare first attempts while created; submission remains impossible."""
     from judgmentllm.preparation.session import _request_dependency  # pyright: ignore[reportPrivateUsage]
-    from judgmentllm.transport import physical_identity, prepare_transport_request
+    from judgmentllm.transport import physical_identity
+    from judgmentllm.transport_dispatch import prepare_request
 
     repository = builder.repository
     digest = InitialTransportDigest()
@@ -155,7 +160,7 @@ def preseal_transports(
                 manifest.run_id, planned.request_uid, attempt_id
             )
             checkpoint("before_transport_preparation", planned.request_uid)
-            wire = prepare_transport_request(
+            wire = prepare_request(
                 spec,
                 dependency,
                 identity,
@@ -216,11 +221,14 @@ def preseal_transports(
 
 def verify_initial_transports(prepared: PreparedRun) -> None:
     """Prove plan/request/first-attempt/receipt bijection before any execution."""
-    from judgmentllm.preparation.manifest import ExecutableRunManifestV3
+    from judgmentllm.preparation.manifest import (
+        ExecutableRunManifestV3,
+        ExecutableRunManifestV4,
+    )
     from judgmentllm.transport import physical_identity
 
     manifest = prepared.manifest
-    if not isinstance(manifest, ExecutableRunManifestV3):
+    if not isinstance(manifest, (ExecutableRunManifestV3, ExecutableRunManifestV4)):
         return
     repository = prepared.repository
     run_id = manifest.run_id

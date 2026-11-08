@@ -9,13 +9,14 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.hashing import bytes_digest, canonical_bytes
 from judgmentllm.persistence.models import ArtifactIdentity, ArtifactIntegrityError
 
 if TYPE_CHECKING:
+    from judgmentllm.production_transport import TransportCommitmentV2
     from judgmentllm.transport import TransportCommitmentV1
 
 _MAX_RECEIPT_BYTES = 1_048_576
@@ -26,13 +27,12 @@ def transport_reference(attempt_id: str) -> str:
 
 
 def publish_transport_commitment(
-    store: ArtifactStore, commitment: TransportCommitmentV1
+    store: ArtifactStore, commitment: TransportCommitmentV1 | TransportCommitmentV2
 ) -> ArtifactIdentity:
     """Publish exact immutable metadata before registry preparation commits."""
-    from judgmentllm.transport import TransportCommitmentV1
 
     try:
-        checked = TransportCommitmentV1.model_validate_json(canonical_bytes(commitment))
+        checked = _parse_transport_commitment(canonical_bytes(commitment))
         raw = canonical_bytes(checked)
         if len(raw) > _MAX_RECEIPT_BYTES:
             raise ValueError("oversized transport metadata")
@@ -45,9 +45,8 @@ def publish_transport_commitment(
 
 def read_transport_commitment(
     store: ArtifactStore, attempt_id: str
-) -> TransportCommitmentV1 | None:
+) -> TransportCommitmentV1 | TransportCommitmentV2 | None:
     """Read the original receipt; absence is never repaired by reconstruction."""
-    from judgmentllm.transport import TransportCommitmentV1
 
     path = store.reference_path(transport_reference(attempt_id))
     try:
@@ -58,7 +57,7 @@ def read_transport_commitment(
     except OSError:
         raise ArtifactIntegrityError("transport metadata is unavailable") from None
     try:
-        checked = TransportCommitmentV1.model_validate_json(raw)
+        checked = _parse_transport_commitment(raw)
         if (
             len(raw) > _MAX_RECEIPT_BYTES
             or canonical_bytes(checked) != raw
@@ -79,9 +78,10 @@ def read_transport_commitment(
     return checked
 
 
-def iter_transport_commitments(store: ArtifactStore) -> Iterator[TransportCommitmentV1]:
+def iter_transport_commitments(
+    store: ArtifactStore,
+) -> Iterator[TransportCommitmentV1 | TransportCommitmentV2]:
     """Inspect named safe references in bounded memory, including orphan attempts."""
-    from judgmentllm.transport import TransportCommitmentV1
 
     directory = store.reference_path("transports/.guard").parent
     try:
@@ -99,7 +99,7 @@ def iter_transport_commitments(store: ArtifactStore) -> Iterator[TransportCommit
             try:
                 with open(entry.path, "rb") as stream:
                     raw = stream.read(_MAX_RECEIPT_BYTES + 1)
-                receipt = TransportCommitmentV1.model_validate_json(raw)
+                receipt = _parse_transport_commitment(raw)
                 if (
                     len(raw) > _MAX_RECEIPT_BYTES
                     or entry.name
@@ -112,3 +112,19 @@ def iter_transport_commitments(store: ArtifactStore) -> Iterator[TransportCommit
             except (OSError, ValueError, TypeError):
                 raise ArtifactIntegrityError("transport reference is invalid") from None
             yield checked
+
+
+def _parse_transport_commitment(
+    raw: bytes,
+) -> TransportCommitmentV1 | TransportCommitmentV2:
+    from judgmentllm.output_contracts import decode_assessment_output
+    from judgmentllm.production_transport import TransportCommitmentV2
+    from judgmentllm.transport import TransportCommitmentV1
+
+    value = decode_assessment_output(raw)
+    if not isinstance(value, dict):
+        raise ValueError("invalid transport commitment")
+    version = cast(dict[str, object], value).get("transport_commitment_version", 1)
+    if type(version) is int and version == 2:
+        return TransportCommitmentV2.model_validate_json(raw)
+    return TransportCommitmentV1.model_validate_json(raw)

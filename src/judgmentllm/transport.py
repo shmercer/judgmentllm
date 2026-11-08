@@ -195,6 +195,10 @@ def _preparation_token(
     if type(value) is date:
         return (date, value.isoformat())
     kind = type(value)
+    if kind in (type(None), bool, int, float, str, bytes):
+        # Most leaves are primitives. Preserve the exact shared token semantics
+        # without repeating model/dataclass discovery for every scalar leaf.
+        return exact_token(value)
     if kind is FunctionType:
         function = cast(FunctionType, value)
         if (
@@ -980,7 +984,12 @@ class PreparedRequestV3(PreparedRequest, _TransportModel):
             or plan.context_sha256 != output.context_sha256
             or plan.membership_sha256
             != semantic_digest("attempt-membership", list(self.task_ids))
-            or plan.output_commitment_sha256 != output.commitment_sha256
+            # The output field has independently validated its complete current
+            # representation before this after-validator. Hash its detached
+            # primitive snapshot rather than reconstructing it a second time
+            # through the public export boundary. No snapshot escapes this call.
+            or plan.output_commitment_sha256
+            != semantic_digest("output-commitment-v3", output.model_dump(mode="json"))
             or plan.parent_commitment_sha256
             != output.selection.parent_commitment_sha256
             or plan.dependency_sha256 != self.dependency_sha256

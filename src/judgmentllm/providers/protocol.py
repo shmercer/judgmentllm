@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping
 from typing import Any, Literal, Protocol, Self
 
@@ -9,7 +10,7 @@ from pydantic import Field, JsonValue, field_validator, model_validator
 
 from judgmentllm.config import GenerationSpec, RunSpecification
 from judgmentllm.evidence._base import EvidenceModel
-from judgmentllm.evidence.usage import ReportedUsageInput
+from judgmentllm.evidence.usage import InvocationFailureCode, ReportedUsageInput
 from judgmentllm.models import ID
 from judgmentllm.output_commitments import OutputCommitmentV2
 from judgmentllm.persistence.hashing import bytes_digest
@@ -37,8 +38,19 @@ class TransportNotSubmitted(ProviderError):
         message: str = "transport conclusively did not submit",
         *,
         usage: ReportedUsageInput | None = None,
+        diagnostic_code: InvocationFailureCode | None = None,
     ):
         super().__init__(message)
+        if diagnostic_code not in (
+            None,
+            "request_rejected",
+            "credentials_rejected",
+            "permission_denied",
+            "model_or_endpoint_unavailable",
+            "rate_limited",
+        ):
+            raise ValueError("invalid invocation failure code")
+        self.diagnostic_code: InvocationFailureCode | None = diagnostic_code
         self.usage = (
             ReportedUsageInput.model_validate(usage) if usage is not None else None
         )
@@ -63,7 +75,32 @@ class TransientNotSubmitted(TransportNotSubmitted):
 
 
 class SubmissionUncertain(ProviderError):
-    """The caller lacks acceptance evidence; authoritative lookup is required."""
+    """Acceptance is unresolved; optional facts establish an invoked SDK call only."""
+
+    def __init__(
+        self,
+        message: str = "submission acceptance is unresolved",
+        *,
+        invoked: bool = False,
+        usage: ReportedUsageInput | None = None,
+    ):
+        super().__init__(message)
+        if type(invoked) is not bool:
+            raise ValueError("invalid invocation certainty")
+        self.invoked = invoked
+        self.usage = (
+            ReportedUsageInput.model_validate(usage) if usage is not None else None
+        )
+
+
+class ProviderInvocationCancelled(asyncio.CancelledError):
+    """Cancellation with a known forwarding fact, never acceptance authority."""
+
+    def __init__(self, *, invoked: bool) -> None:
+        super().__init__("provider invocation was cancelled")
+        if type(invoked) is not bool:
+            raise ValueError("invalid invocation certainty")
+        self.invoked = invoked
 
 
 class RetrievalUnavailable(ProviderError):

@@ -39,6 +39,7 @@ from .usage import (
     OpenAIChatUsageInput,
     OpenAIInputTokenDetails,
     OpenAIOutputTokenDetails,
+    OpenAIResponsesUsageInput,
     ProviderUsage,
     ReportedCost,
     ReportedUsageInput,
@@ -46,6 +47,7 @@ from .usage import (
     UsageContext,
     extract_anthropic_messages_usage,
     extract_openai_chat_usage,
+    extract_openai_responses_usage,
     extract_provider_usage,
 )
 
@@ -75,6 +77,7 @@ __all__ = [
     "AnthropicMessagesUsageInput",
     "EstimatedCost",
     "OpenAIChatUsageInput",
+    "OpenAIResponsesUsageInput",
     "OpenAIInputTokenDetails",
     "OpenAIOutputTokenDetails",
     "ProviderUsage",
@@ -84,5 +87,6 @@ __all__ = [
     "UsageContext",
     "extract_anthropic_messages_usage",
     "extract_openai_chat_usage",
+    "extract_openai_responses_usage",
     "extract_provider_usage",
 ]

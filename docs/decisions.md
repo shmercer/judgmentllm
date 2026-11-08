@@ -255,3 +255,35 @@ remain explicit. Private synthetic profile authority is mandatory for the new
 execution seam; translators/evidence alone cannot activate a real adapter. Phase
 5 owns full provider wire builders and authentication. Implementation acceptance
 remains pending the exact-head qualification record.
+
+
+## Milestone 3 Phase 5A: production OpenAI boundary
+
+New OpenAI executions require explicit RunSpecV3, including text mode. The run
+configuration version never identifies a physical protocol. A trusted synthetic
+context selects historical manifest 3; an explicit production context selects
+manifest 4 with `transport_protocol: openai-production-v1`. Reopening dispatches
+from the sealed manifest before validating context and source reconstruction.
+Neither protocol can migrate implicitly into the other.
+
+Production output commitment 4, prepared request 4 and transport commitment 2
+are additive. RenderedProductionPromptV1 reuses renderer 3's protected behavior;
+RenderedPromptV3 remains attached exclusively to OutputCommitmentV3. OpenAI
+projection 1, canonical contract 2, physical identity 1, registry schema 2 and
+normalized exports remain unchanged. The transport plan remains outside the API
+body; complete endpoint-owned JSON bytes are committed and checked before HTTP
+forwarding. No credentials enter commitments.
+
+Native production authority comes only from private reviewed exact-scope registry
+records. The initial registry has no qualified models. Qualification contexts
+permit offline compilation, not execution. Only the dedicated qualification
+executor can consume an exact-plan/source/request-bound grant and shared budget.
+Candidate reports cannot promote themselves. Ordinary production run/resume
+cannot use qualification seals, contexts, or grants.
+
+The SDK has zero retries and bounded nonstreaming HTTP. HTTP rejection and
+uncertain acceptance remain separate. With store=false, a missing local response
+cannot be reconstructed by a new call or presumed remotely retrievable. Production
+reasoning-text retention is unavailable; reported reasoning counts remain usage.
+Implementation, offline qualification and independently authorized live acceptance
+are separate statuses; this change does not by itself establish live support.

@@ -192,3 +192,54 @@ not fabricate observed property order or serving enforcement. Synthetic response
 use explicitly identified fixture provenance, no reported real cost/usage and no
 reasoning grant. Unsafe or malformed body capture fails closed under established
 policy. Full/minimal replay preserves append-only receipts and tamper detection.
+
+
+## Phase 5A OpenAI privacy boundary
+
+OpenAI credentials use only the shared OPENAI_API_KEY resolver at explicit online
+boundaries. Pure validation, plan and preview need neither SDK clients nor keys.
+The protected SDK client suppresses ambient authentication/routing/header effects,
+uses fixed API destinations, disables redirects/retries, and verifies selected
+bearer authentication and sealed body bytes before forwarding. The pinned SDK may
+internally parse ambient custom headers; those values cannot affect requests.
+No key, key fingerprint, authentication header or account identifier is evidence.
+
+Both endpoints commit store=false. This controls response storage for API
+retrieval; it is not a claim about every provider retention policy. No tools,
+conversation history or background generation are enabled. Provider reasoning
+text is discarded before persistence; full capture does not authorize it. Safe
+response derivatives are labelled distinctly from original bytes. Minimal capture
+retains safe evidence metadata and authorized normalized results, including any
+requested assessment explanations.
+
+Qualification plans contain only fixed synthetic inputs. Reports omit response
+bodies and account/credential data. Probe authority is neither durable production
+support nor a caller-importable qualification record. All mandatory tests use
+fake HTTP transport and synthetic credentials, including when a real key exists
+in the surrounding environment.
+
+### OpenAI Phase 5A invocation and response metadata
+
+OpenAI adds documented Responses usage independently from Chat usage. Optional
+safe context records requested/reported model distinctions, SDK version, remote
+response identity, invocation kind and a fixed completion-status code. These
+members add no assessment text to control output. Known invoked calls whose
+acceptance is unresolved retain null token counts without a fabricated failure,
+observation, zero usage or retry permission. The additive unresolved-invocation
+companion marker is omitted from historical records. A missing crash-window
+receipt remains missing rather than becoming proof that a call occurred.
+
+Full capture keeps an exact original API envelope only after strict documented
+root/nested safe-field checks. Unknown extensions, nonempty metadata, reasoning
+items, tool/audio content and annotations require a labeled assessment-only
+derivative. Native schema echoes must match committed request configuration.
+The assessment text is preserved exactly for duplicate-safe local decoding;
+reasoning is never used as the assessment output. Minimal capture publishes no
+provider body. SDK ambient custom headers are ignored and cleared, and the HTTP
+boundary verifies the explicitly resolved bearer credential without retaining it.
+
+Known invoked cancellation uses the same conservative invocation semantics.
+When an accepted response is already available in the bounded in-memory handoff,
+cleanup preserves it through the existing receipt/normalization path. A forwarded
+call without a returned response records unresolved usage; cancellation before
+forwarding does not fabricate an invocation.

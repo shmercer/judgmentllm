@@ -468,3 +468,29 @@ replace the synthetic physical builder with endpoint-owned complete builders,
 without treating a converted fragment as final wire bytes. Represented, SDK
 retained, documented support and independently verified enforcement remain four
 facts. Synthetic acceptance never changes `enforcement_verified=None`.
+
+
+## Phase5A production implementation and qualification status
+
+The locked OpenAI3.42.1 SDK is exercised through injected offline HTTP transports
+for both generative endpoints. These probes verify complete outgoing bytes,
+including endpoint-specific schema wrappers and token bounds; they establish no
+serving-model acceptance. Production manifest4, transport receipt2 and an exact
+body guard are separate from the historical synthetic manifest3 protocol.
+
+Responses usage has its own source `openai.responses.usage`, with input/output/
+total counters and included cached-input/reasoning-output details. Chat retains
+`openai.chat.usage`. Both preserve reported model and safe completion outcomes.
+Known forwarded calls with unavailable responses retain unresolved invocation
+usage with null counters, without a fabricated observation or definitivefailure.
+Provider reasoning text is excluded before retention. See the
+[OpenAI guide](openai.md) and [privacy boundary](evidence-privacy.md).
+
+The private reviewed qualification registry starts empty. Native production
+selection consults only exact-scope reviewed records; qualification probes carry
+unknown serving support and cannot update the registry. The dedicated offline
+plan/authorized execute/read-only report harness produces candidate evidence only.
+No live provider calls have been authorized or performed during implementation.
+Exact-head offline/hosted results and any later independently reviewed live
+findings belong in the retained qualification report, not inferred from these
+implementation notes.

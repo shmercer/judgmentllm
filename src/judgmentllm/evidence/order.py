@@ -20,6 +20,7 @@ from judgmentllm.output_contracts import (
 )
 
 if TYPE_CHECKING:
+    from judgmentllm.production_transport import OutputCommitmentV4
     from judgmentllm.transport import OutputCommitmentV3
 
 OrderEvidence = Literal[
@@ -161,7 +162,7 @@ def _sequence_status(observed: tuple[str, ...], expected: tuple[str, ...]) -> st
 
 
 def extract_observation_metadata(
-    commitment: OutputCommitmentV2 | OutputCommitmentV3,
+    commitment: OutputCommitmentV2 | OutputCommitmentV3 | OutputCommitmentV4,
     *,
     identity: EvidenceIdentity,
     output: str | bytes | None,
@@ -176,7 +177,13 @@ def extract_observation_metadata(
     All limits and failures produce fixed safe codes, with no response fragment.
     """
     try:
-        if commitment.commitment_version == 3:
+        if commitment.commitment_version == 4:
+            from judgmentllm.production_transport import OutputCommitmentV4
+
+            commitment = OutputCommitmentV4.model_validate_json(
+                commitment.model_dump_json()
+            )
+        elif commitment.commitment_version == 3:
             from judgmentllm.transport import OutputCommitmentV3
 
             commitment = OutputCommitmentV3.model_validate_json(

@@ -123,6 +123,19 @@ class ExecutionPlan(ExecutionModel):
         default=None, exclude_if=lambda value: value is None
     )
 
+    transport_protocol: Literal["openai-production-v1"] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    selected_transports: (
+        dict[
+            Literal[
+                "text", "openai.responses.text.format", "openai.chat.response_format"
+            ],
+            Count,
+        ]
+        | None
+    ) = Field(default=None, exclude_if=lambda value: value is None)
+
 
 class ArtifactPaths(PublicModel):
     """Absolute durable paths; unavailable artifacts are explicitly null."""

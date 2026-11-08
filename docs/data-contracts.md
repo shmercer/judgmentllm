@@ -1,9 +1,9 @@
 # Data contracts and scoring semantics
 
-**RunSpec versions 1/2 remain historical; explicit version 3 adds the offline native transport boundary. Document and normalized-result schemas remain version 1.** Assessment models live in
+**RunSpec versions 1/2 remain historical; explicit version 3 supports independently dispatched synthetic and production transport boundaries. Document and normalized-result schemas remain version 1.** Assessment models live in
 `judgmentllm.models`, run configuration in `judgmentllm.config`, and normalized
 outputs in `judgmentllm.results`. Public lifecycle services execute synthetic
-assessments through the mock provider. Real provider integrations remain later milestones. The internal
+assessments through the mock provider; explicit V3 also selects the Phase5A OpenAI production boundary. Other provider integrations remain later milestones. The internal
 [persistence foundation](persistence-contracts.md) is implemented separately.
 Subphase 6 scale tooling uses these same contracts without adding public result
 fields or changing schema version 1. Benchmark reports are development evidence,
@@ -565,3 +565,26 @@ changed nested values and conflicting rehashed records cannot replace immutable
 manifest/attempt bindings. Normalized results, outcome semantics, schema 1
 exports and R contracts are unchanged. Production execution still has no real
 generative adapters; native preparation uses private synthetic context only.
+
+
+## Phase 5A production records
+
+RunSpecV3 is required for OpenAI `responses` and `chat.completions`, even with
+`prompt.structured_output: text`. Existing V1/V2 configurations never gain
+production execution or migrate sealed runs. V3 is shared configuration syntax;
+its transport context and sealed manifest distinguish synthetic from production.
+
+Production manifest 4 identifies `openai-production-v1`; output commitment 4,
+PreparedRequestV4, and transport commitment 2 have independent version tokens.
+RenderedProductionPromptV1 carries output commitment 4 with renderer 3 text.
+Historical RenderedPromptV3/output commitment 3 remain unchanged. Production
+receipts bind original physical IDs, ordered membership, authority/context,
+configuration and generation, exact prompt/schema/body hashes and lengths, SDK
+scope, explicit storage=false, and retry lineage. API bodies contain no local
+transport-plan or identity fields.
+
+New Responses usage has source `openai.responses.usage`; cached input and
+reasoning output counters are included in parent counters, never summed twice.
+Optional observation metadata preserves reported model, SDK and completion outcome
+separately from requested configuration. Absent metadata retains historical
+serialization. Existing result/CSV/JSONL schemas and IDs are unchanged.

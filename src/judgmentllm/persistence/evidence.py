@@ -86,6 +86,9 @@ class EvidenceReceipt(EvidenceModel):
     original: ArtifactIdentity | None = None
     retained: ArtifactIdentity | None = None
     response_retention: Literal["exact", "redacted", "omitted"]
+    invocation_acceptance: Literal["unresolved"] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     failure_transient: bool = False
     failure_retry_after: Annotated[float, Field(ge=0, allow_inf_nan=False)] | None = (
         None
@@ -94,6 +97,20 @@ class EvidenceReceipt(EvidenceModel):
     @model_validator(mode="after")
     def consistent(self) -> EvidenceReceipt:
         identity = self.identity
+        if self.invocation_acceptance == "unresolved" and (
+            identity.observation_id is not None
+            or self.failure_transient
+            or self.failure_retry_after is not None
+            or self.usage.definitive_failure_id is not None
+            or self.usage.invocation_failure_code is not None
+            or self.original is not None
+            or self.response_retention != "omitted"
+            or (self.usage.provider, self.usage.endpoint)
+            not in {("openai", "responses"), ("openai", "chat.completions")}
+        ):
+            raise ValueError(
+                "unresolved invocation cannot claim failure or observation"
+            )
         if self.failure_retry_after is not None and not self.failure_transient:
             raise ValueError("retry delay requires transient failure")
         if identity.observation_id is not None and (
@@ -483,6 +500,9 @@ def _validate_commit_links(
         response.verify_submission(submission)
         if observation != response.observation():
             raise IntegrityError("evidence observation relationship does not match")
+    elif receipt.invocation_acceptance == "unresolved":
+        if submission.state != "uncertain" or submission.certainty != "unknown":
+            raise IntegrityError("unresolved invocation requires uncertain submission")
     else:
         failure = repository.connection.execute(
             "SELECT 1 FROM submission_failures WHERE run_id=? AND submission_id=? AND attempt_id=?",

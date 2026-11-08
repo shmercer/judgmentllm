@@ -62,11 +62,13 @@ def rendered_case(
     ) as prepared:
         dependency = next(prepared.iter_request_dependencies())
         attempt = next(prepared.repository.iter_attempts("001"))
-        return prepared.prepare_transport_attempt(
+        wire = prepared.prepare_transport_attempt(
             dependency,
             physical_identity("001", attempt.request_uid, attempt.attempt_id),
             frozen=prepared.transport_for_attempt(attempt.attempt_id),
         )
+        assert isinstance(wire, PreparedRequestV3)
+        return wire
 
 
 @pytest.mark.parametrize("mechanism", MECHANISMS)

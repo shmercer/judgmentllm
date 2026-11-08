@@ -472,3 +472,44 @@ allocations; it does not warm schemas, prompts or payloads. Retain both raw and
 incremental allocation measurements, the original raw memory bounds, both request
 counts and the subprocess deadline. Whole-process native memory includes the
 metadata setup.
+
+
+## Phase 5A offline provider acceptance
+
+The ordinary gates remain credential-free and make no provider calls. OpenAI
+production tests instantiate the locked SDK using injected HTTP transports and
+compare actual outgoing body bytes with sealed preparation. Historical converter
+and synthetic guard tests remain mandatory and unchanged. Production lifecycle,
+privacy, interruption and qualification-harness tests run offline in every lane.
+OpenAI-generated synthetic outputs/evidence extend existing R acceptance; no
+Phase 6 companion export command is introduced. Preserve all resource limits,
+49 strict R executions and primary-only branch coverage.
+
+Live qualification is a separate reviewed plan/execute/report operation and is
+never triggered by passing local or hosted CI. Every changed source head requires
+new exact-head acceptance. See the OpenAI user guide and dedicated qualification
+harness for the subsequent explicit authorization boundary.
+
+### Post-merge main timing failure investigated during Phase 5A
+
+The final Phase4C3 PR head `f0f9c83fb0e8eb9d2f6dd8b73d49878551cace7b`
+and merge `7cae32927fe11b5e75c365f221f7035e3b31b6e1` have the identical tree
+`64404cf4a21a065515332c1f7fc650ec79b2a52f`. The
+[pre-merge run](https://github.com/shmercer/judgmentllm/actions/runs/42429386077)
+passed five jobs; the [main push run](https://github.com/shmercer/judgmentllm/actions/runs/42437713978)
+failed the unchanged native pre-seal 256-request child deadline on Ubuntu3.11
+and Windows3.12. Other jobs passed; Ubuntu coverage was94%.
+
+The Phase5A fix removes redundant scalar-token traversal and a second reconstruction
+of an already validated output representation inside physical-request validation.
+It preserves every integrity check, exact serialized identity, nested mutation
+rejection and historical fixture. Targeted development verification passed the
+unchanged32/256 resource test in63.31s, including54.385s for the large child.
+Exact-head local and hosted qualification remain mandatory; these development
+measurements do not replace them. The90-second child limit,180-second general
+resource limit,50-minute hosted timeout and all memory thresholds remain unchanged.
+
+The four supplemental OpenAI SDK workloads retain numeric memory, queue and
+serialization measurements under each local lane's `openai-resources/` evidence
+and the hosted `openai-resources-OS-PYTHON` artifact, including measurements
+available on failing jobs. All70 standard measurements remain mandatory.

@@ -1,13 +1,14 @@
 # JudgmentLLM
 
-**Milestone 3, Phase 4B — durable provider evidence integration with offline synthetic execution. Development version 0.1.0a3; exact-head qualification is recorded separately.**
+**Milestone 3, Phase 5A candidate — OpenAI Responses and Chat Completions production adapters. Development version 0.1.0a3; exact-head offline and separately authorized live qualification are recorded separately.**
 
 Milestone 2 adds an [internal preparation foundation](docs/persistence-contracts.md)
 for SQLite state, immutable source snapshots, indexed input access, complete run
 manifests, generation commitments, and local executor ownership.
 Public Python services and the versioned CLI provide complete validation, planning,
 mock live execution, durable status, conservative recovery, explicit subset retries,
-and immutable all-attempt exports. Real provider adapters remain later milestones.
+and immutable all-attempt exports. OpenAI production runs require explicit RunSpecV3;
+see the [OpenAI user guide](docs/openai.md). Native serving qualification remains pending.
 The [approved Milestone 2 plan](docs/milestone-2-execution-plan.md) records the boundaries.
 Subphase 6 adds reproducible complete-run benchmarks, focused resource checks and
 practical examples. The [qualification protocol](docs/milestone-2-subphase-6-verification.md)
@@ -15,7 +16,7 @@ identifies the external exact-source ledger that records acceptance, measured
 workloads, exclusions and remaining conditions. Tooling availability alone does
 not establish milestone acceptance.
 
-JudgmentLLM provides typed, provider-independent contracts for ordinal rubric scoring and pairwise judgments. It loads synthetic assessments, validates category coding, prepares deterministic task groups, renders prompts, and normalizes supplied categorical or probability results. Synthetic mock execution is available; real provider execution arrives in later milestones.
+JudgmentLLM provides typed, provider-independent contracts for ordinal rubric scoring and pairwise judgments. It loads synthetic assessments, validates category coding, prepares deterministic task groups, renders prompts, and normalizes supplied categorical or probability results. Synthetic mock execution and OpenAI generative adapters are available; model/feature qualification is scoped separately.
 
 Python 3.11+, Linux, Windows, and macOS are supported. The core uses Pydantic 2, PyYAML, Jinja2, and Typer; pandas and PyArrow are not required.
 
@@ -44,8 +45,8 @@ submissions and observations through immutable companion receipts and registry
 schema 2. Full and minimal capture retain safe metadata; reasoning text requires
 an explicit immutable synthetic-fixture grant. Existing result and R exports
 remain unchanged. See the [Python API](docs/python-api.md#internal-durable-evidence-inspection-phase-4b)
-for internal inspection and compatibility. Real providers, native transport,
-companion exports and live qualification remain deferred.
+for internal inspection and compatibility. OpenAI production transport is additive;
+companion exports remain deferred and live qualification requires separate consent.
 
 ## Offline credential status
 
@@ -64,13 +65,15 @@ credential and is not probed. Required providers must be configured or not
 required: unmet requirements exit 2 while retaining all status rows. See the
 [Python API](docs/python-api.md#credential-diagnostics-phase-3-implemented) and
 [CLI specification](docs/cli-spec.md#offline-authentication-status-phase-3-implemented).
-`auth verify` remains unimplemented.
+OpenAI `auth verify` and `providers models` are explicit non-generative online
+operations; neither command qualifies a serving model or runs automatically.
 
 ## Offline execution lifecycle
 
 `examples/mock-run.yaml` declares the deterministic mock provider. The existing
 OpenAI examples remain valid for offline validation/preview; execution rejects
-unimplemented providers and never substitutes the mock.
+unimplemented providers and never substitutes the mock. New production examples
+in the OpenAI guide use V3; older V1/V2 examples do not acquire production execution.
 
 ```bash
 judgmentllm validate --config examples/mock-run.yaml --json

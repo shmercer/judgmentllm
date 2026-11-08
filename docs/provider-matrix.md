@@ -4,8 +4,8 @@
 
 | Adapter | Live | Native provider batch | Managed bulk-live | Rubric | Pairwise | Notes |
 |---|---|---|---|---|---|---|
-| OpenAI Chat Completions | target | target | yes | generative | generative | Use official OpenAI SDK; model-dependent structured output and tiers |
-| OpenAI Responses | target | target | yes | generative | generative | Use official OpenAI SDK; model-dependent structured output and tiers |
+| OpenAI Chat Completions | implemented; live acceptance pending | target | later milestone | generative | generative | Phase 5A, SDK 3.42.1; exact-model capability unknown until qualified |
+| OpenAI Responses | implemented; live acceptance pending | target | later milestone | generative | generative | Phase 5A, SDK 3.42.1; exact-model capability unknown until qualified |
 | OpenAI Decisions | target | not available | yes | typed score, 2-10 levels | typed choice | Currently GPT-6 Luna; no generated explanations; 1-400 questions/request; cache policy handled separately |
 | Anthropic Messages | target | target | yes | generative | generative | Official SDK; token counting/batch/caching controls may vary |
 | Gemini Developer | target | target | yes | generative | generative | `google-genai` SDK; batch via generateContent |
@@ -27,7 +27,8 @@ normative extension. Its [provider evidence ledger](assessment-provider-evidence
 distinguishes documented behavior, planned integration policy and pending
 qualification. Phases 1–3 implement neutral output contracts, v2 mock execution
 and offline authentication diagnostics. Phase 4A adds standalone strict evidence
-records and pure extractors; real integrations remain proposed. No endpoint/model
+records and pure extractors. Phase 5A adds production OpenAI Responses and Chat
+adapters; other real integrations remain proposed. No endpoint/model
 acquires runtime support or live qualification from those records.
 
 - Shared credential resolution uses official SDK mechanisms: provider-specific
@@ -40,9 +41,10 @@ acquires runtime support or live qualification from those records.
   (not instead of) ADC. This is not implemented by Phase 3; a stored `vertex`
   keyring entry is not automatically used. See the
   [provider evidence](assessment-provider-evidence.md#planned-vertex-authorization-key-route).
-- `auth status` and its Python API are implemented in Phase 3. Separate opt-in `auth verify`
-  implementations remain deferred and will use documented protected non-generative operations where
-  available; authentication acceptance does not qualify an assessment model.
+- `auth status` and its Python API remain offline. Phase 5A adds explicit OpenAI
+  `auth verify` and model discovery through a protected, non-generative models-list
+  request. Other providers remain deferred; authentication acceptance and model
+  visibility do not qualify an assessment endpoint or mechanism.
 - Native structured outputs are preferred where compatible. Generated schemas
   and local validators remain provider-neutral; each adapter reports the native
   subset actually enforced and any locally enforced constraints. Property order
@@ -132,3 +134,23 @@ native acceptance. All serving enforcement stays unknown; complete canonical
 local validation remains mandatory. Implementation acceptance requires retained
 exact-head qualification; real endpoint construction/authentication and separately
 authorized serving qualification remain Phase 5 and later work.
+
+### Phase 5A OpenAI production boundary
+
+Both generative routes use the official asynchronous SDK, pinned to 3.42.1 for
+qualification. Production transport commitments describe actual nonsecret HTTP
+body bytes, verified before forwarding. Historical synthetic transports and
+OpenAI V1/provider-neutral V2 projections remain unchanged. `store=false`,
+nonstreaming requests, bounded timeouts and `max_retries=0` are fixed policies.
+
+Text mode and local assessment validation are implemented. Native mode requires
+controlled exact-scope evidence; auto selects native only when eligible and obeys
+the configured strict capability policy. A separately authorized repository
+qualification harness can probe unknown native scopes. Its grants never authorize
+ordinary run/resume or populate the production support registry.
+
+The initial live matrix has eight requests: each endpoint × rubric/forced-choice
+pairwise × text/native. No serving model is advertised as independently qualified
+by the implementation or fixture evidence. The Phase 5A PR must remain open with
+**offline-qualified; live qualification pending explicit authorization** after
+all offline/hosted gates pass. See the [OpenAI guide](openai.md).

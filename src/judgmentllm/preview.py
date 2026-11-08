@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from judgmentllm.config import (
     RunSpec,
@@ -18,6 +19,33 @@ from judgmentllm.planning import CapabilityProfile, plan_record, plan_run
 from judgmentllm.prompts import RenderedAssessmentPrompt
 from judgmentllm.request_rendering import render_request
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from typing import Literal
+
+    from judgmentllm.planning import PlannedRequest
+    from judgmentllm.production_prompts import RenderedProductionPromptV1
+
+
+def _preview_render(
+    spec: RunSpecification,
+    template: str | None,
+    request: PlannedRequest,
+    lookup: Callable[[Literal["response", "pair"], str], ResponseItem | PairTask],
+) -> RenderedAssessmentPrompt | RenderedProductionPromptV1:
+    if isinstance(spec, RunSpecV3):
+        from judgmentllm.production_prompts import render_production_request
+        from judgmentllm.production_transport import (
+            build_production_output_commitment,
+            production_context,
+        )
+
+        output = build_production_output_commitment(
+            spec, request, production_context(spec)
+        )
+        return render_production_request(spec, template, request, lookup, output)
+    return render_request(spec, template, request, lookup)
+
 
 def preview_prompt(
     spec: RunSpecification | str | Path,
@@ -26,7 +54,7 @@ def preview_prompt(
     trait_id: str | None = None,
     pair_uid: str | None = None,
     capabilities: CapabilityProfile | None = None,
-) -> RenderedAssessmentPrompt:
+) -> RenderedAssessmentPrompt | RenderedProductionPromptV1:
     """Render one planned request without credentials, networking, or execution.
 
     For grouped rubric requests, selecting a trait previews its entire fixed
@@ -38,9 +66,9 @@ def preview_prompt(
         else load_run_spec(spec)
     )
     if isinstance(spec, RunSpecV3):
-        raise ValueError(
-            "native-capable preview requires a committed transport context"
-        )
+        from judgmentllm.lifecycle import _profile  # pyright: ignore[reportPrivateUsage]
+
+        capabilities = _profile(spec, capabilities)
     plan = plan_run(spec, capabilities=capabilities)
     template = (
         spec.prompt.file.read_text(encoding="utf-8") if spec.prompt.file else None
@@ -65,7 +93,7 @@ def preview_prompt(
             )
             if request.trait_ids == group
         )
-        return render_request(
+        return _preview_render(
             spec, template, request, lambda kind, identifier: responses[identifier]
         )
     if pair_uid is None or item_id is not None or trait_id is not None:
@@ -97,7 +125,7 @@ def preview_prompt(
     def lookup(kind: str, identifier: str) -> ResponseItem | PairTask:
         return pair if kind == "pair" else responses[identifier]
 
-    return render_request(spec, template, request, lookup)
+    return _preview_render(spec, template, request, lookup)
 
 
 def _responses(spec: RunSpecification, needed: set[str]) -> dict[str, ResponseItem]:

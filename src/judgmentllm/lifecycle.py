@@ -13,7 +13,7 @@ import uuid
 from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal, cast
 
 from pydantic import Field
 
@@ -72,6 +72,84 @@ from judgmentllm.planning import (
 from judgmentllm.preparation import PreparationError, prepare_run
 from judgmentllm.providers import MockAdapter, MockScenario, ProviderError
 
+if TYPE_CHECKING:
+    from judgmentllm.production_transport import ProductionContext
+    from judgmentllm.providers.protocol import ProviderAdapter
+
+
+def _production_context(spec: RunSpecification) -> ProductionContext | None:
+    if spec.provider != "openai":
+        return None
+    if not isinstance(spec, RunSpecV3):
+        raise LifecycleError(
+            "unsupported_capability",
+            "OpenAI production execution requires explicit RunSpec version 3, including text mode",
+        )
+    if spec.endpoint not in ("responses", "chat.completions"):
+        raise LifecycleError(
+            "unsupported_capability",
+            "OpenAI endpoint must be responses or chat.completions; Decisions is unavailable",
+        )
+    from judgmentllm.production_transport import production_context
+
+    return production_context(spec)
+
+
+def _offline_context(spec: RunSpecification) -> ProductionContext | None:
+    return _production_context(spec) if isinstance(spec, RunSpecV3) else None
+
+
+def _execution_adapter(
+    provider: str,
+    endpoint: str,
+    model: str,
+    store: Path,
+    options: MockExecutionOptions | None,
+    *,
+    resume: bool,
+    concurrency: int = 4,
+) -> ProviderAdapter:
+    if provider == "openai":
+        if options is not None:
+            raise LifecycleError(
+                "validation",
+                "mock execution controls cannot authorize OpenAI execution",
+            )
+        if endpoint not in ("responses", "chat.completions"):
+            raise LifecycleError(
+                "unsupported_capability",
+                "OpenAI endpoint must be responses or chat.completions",
+            )
+        from judgmentllm.providers.openai import OpenAIAdapter
+
+        return OpenAIAdapter(endpoint, model, concurrency=concurrency)
+    return _mock_adapter(provider, endpoint, store, options, resume=resume)
+
+
+async def _close_adapter(adapter: ProviderAdapter) -> None:
+    close = getattr(adapter, "aclose", None)
+    if close is None:
+        return
+
+    async def owned_close() -> None:
+        try:
+            await asyncio.wait_for(close(), timeout=10.0)
+        except Exception:
+            raise LifecycleError(
+                "execution", "provider client cleanup failed"
+            ) from None
+
+    pending = asyncio.create_task(owned_close())
+    cancelled = False
+    while not pending.done():
+        try:
+            await asyncio.shield(pending)
+        except asyncio.CancelledError:
+            cancelled = True
+    pending.result()
+    if cancelled:
+        raise asyncio.CancelledError
+
 
 class _MockFixture(VersionedModel):
     """Synthetic adapter scenarios, never arbitrary provider request bodies."""
@@ -86,6 +164,29 @@ def _checked_spec(spec_or_path: RunSpecification | str | Path) -> RunSpecificati
         if isinstance(spec_or_path, (RunSpec, RunSpecV2, RunSpecV3))
         else load_run_spec(spec_or_path)
     )
+
+
+def _readiness_failure(error: BaseException) -> tuple[ErrorCategory, str] | None:
+    """Unwrap only fixed adapter readiness diagnostics, never arbitrary text."""
+    from judgmentllm.providers.openai import OpenAIReadinessError
+
+    if isinstance(error, OpenAIReadinessError):
+        return (
+            "validation"
+            if error.diagnostic_code == "missing_credentials"
+            else "unsupported_capability",
+            str(error),
+        )
+    if isinstance(error, BaseExceptionGroup):
+        group = cast(BaseExceptionGroup[BaseException], error)
+        failures = tuple(_readiness_failure(child) for child in group.exceptions)
+        if (
+            failures
+            and failures[0] is not None
+            and all(item == failures[0] for item in failures)
+        ):
+            return failures[0]
+    return None
 
 
 @contextmanager
@@ -104,7 +205,10 @@ def _errors(run_id: str | None = None, store: Path | None = None) -> Generator[N
     except Exception as error:
         category: ErrorCategory
         message: str
-        if isinstance(error, NotFoundError):
+        readiness_failure = _readiness_failure(error)
+        if readiness_failure is not None:
+            category, message = readiness_failure
+        elif isinstance(error, NotFoundError):
             category, message = "not_found", "durable run or resource was not found"
         elif isinstance(error, OwnershipError):
             category, message = "execution", "run executor ownership is unavailable"
@@ -180,6 +284,9 @@ def _mock_adapter(
 
 def _require_presentation(spec: RunSpecification) -> None:
     """Reject unavailable v2 mechanisms before creating a runtime store."""
+    if isinstance(spec, RunSpecV3) and spec.provider == "openai":
+        _production_context(spec)
+        return
     if isinstance(spec, RunSpecV3):
         raise LifecycleError(
             "unsupported_capability",
@@ -216,6 +323,16 @@ def _profile(
             raise LifecycleError(
                 "unsupported_capability", "synthetic provider settings are unsupported"
             ) from None
+    if spec.provider == "openai" and isinstance(spec, RunSpecV3):
+        _production_context(spec)
+        from judgmentllm.providers.openai import OpenAIAdapter
+
+        profile = OpenAIAdapter.capabilities_for(
+            spec.provider, spec.endpoint, spec.model
+        )
+        OpenAIAdapter(
+            spec.endpoint, spec.model, concurrency=spec.execution.concurrency
+        ).validate(spec)
     return profile
 
 
@@ -249,6 +366,7 @@ def validate_inputs(
                 run_id="validation",
                 capabilities=profile,
                 exhaustive_rendering=exhaustive_rendering,
+                transport_context=_offline_context(spec),
             ) as prepared:
                 sources = prepared.manifest.sources
                 return InputValidationReport(
@@ -304,6 +422,7 @@ def estimate_run(
             store=Path(temporary) / "store",
             run_id="plan",
             capabilities=profile,
+            transport_context=_offline_context(spec),
         ) as prepared:
             manifest = prepared.manifest
             responses = sum(
@@ -311,6 +430,28 @@ def estimate_run(
             )
             pairs = sum(s.record_count for s in manifest.sources if s.role == "pair")
             mock = (spec.provider, spec.endpoint) == ("mock", "synthetic")
+            selected: (
+                dict[
+                    Literal[
+                        "text",
+                        "openai.responses.text.format",
+                        "openai.chat.response_format",
+                    ],
+                    int,
+                ]
+                | None
+            ) = None
+            if manifest.schema_version == 4:
+                from judgmentllm.persistence.transport_receipts import (
+                    iter_transport_commitments,
+                )
+                from judgmentllm.production_transport import TransportCommitmentV2
+
+                selected = {}
+                for receipt in iter_transport_commitments(prepared.store):
+                    if not isinstance(receipt, TransportCommitmentV2):
+                        raise ValueError("production plan contains a synthetic receipt")
+                    selected[receipt.mechanism] = selected.get(receipt.mechanism, 0) + 1
             return ExecutionPlan(
                 task_kind=spec.task_kind,
                 response_count=responses,
@@ -327,6 +468,10 @@ def estimate_run(
                 cache_policy=spec.execution.cache_policy or "auto",
                 cache_report="uncached" if mock else "unknown",
                 pricing="not_applicable" if mock else "unknown",
+                transport_protocol="openai-production-v1"
+                if selected is not None
+                else None,
+                selected_transports=selected,
                 output_selection=resolve_schema_selection(spec, profile)
                 if isinstance(spec, RunSpecV2)
                 else None,
@@ -369,47 +514,73 @@ async def arun_live(
     """Execute in this process until drained; cancellation preserves durable work."""
     with _errors():
         spec = _checked_spec(spec_or_path)
+        if spec.provider == "openai":
+            _production_context(spec)
         _require_presentation(spec)
         root = discover_store(store, spec)
-        adapter = _mock_adapter(spec.provider, spec.endpoint, root, mock, resume=False)
-        try:
-            adapter.validate(spec)
-        except ProviderError:
-            raise LifecycleError(
-                "unsupported_capability", "synthetic provider settings are unsupported"
-            ) from None
-    run_id = uuid.uuid4().hex
-    with _errors(run_id, root):
-        _progress(progress, "started", run_id, root)
-        # Source preparation stays on its own thread. Shield cancellation until
-        # its durable writes and ownership release finish; never orphan a writer.
-        preparation = asyncio.create_task(
-            asyncio.to_thread(
-                _prepare,
-                spec_or_path,
-                root,
-                run_id,
-                adapter.capabilities(spec),
-            )
+        adapter = _execution_adapter(
+            spec.provider,
+            spec.endpoint,
+            spec.model,
+            root,
+            mock,
+            resume=False,
+            concurrency=spec.execution.concurrency,
         )
         try:
-            await asyncio.shield(preparation)
-        except asyncio.CancelledError:
-            while not preparation.done():
-                try:
-                    await asyncio.shield(preparation)
-                except asyncio.CancelledError:
-                    continue
-                except Exception:
-                    break
-            if not preparation.cancelled():
-                preparation.exception()
-            raise
-        _progress(progress, "prepared", run_id, root)
-        await execute_run(run_id, store=root, adapter=adapter, spec=spec)
-        result = _summary(run_id, root)
-        _progress(progress, "finished", run_id, root)
-        return result
+            adapter.validate(spec)
+            readiness = getattr(adapter, "validate_credentials", None)
+            if readiness is not None:
+                readiness()
+        except ProviderError as error:
+            from judgmentllm.providers.openai import OpenAIReadinessError
+
+            if isinstance(error, OpenAIReadinessError):
+                raise LifecycleError(
+                    "validation"
+                    if error.diagnostic_code == "missing_credentials"
+                    else "unsupported_capability",
+                    str(error),
+                ) from None
+            raise LifecycleError(
+                "unsupported_capability", "provider settings are unsupported"
+            ) from None
+    run_id = uuid.uuid4().hex
+    try:
+        with _errors(run_id, root):
+            _progress(progress, "started", run_id, root)
+            # Source preparation stays on its own thread. Shield cancellation until
+            # its durable writes and ownership release finish; never orphan a writer.
+            preparation = asyncio.create_task(
+                asyncio.to_thread(
+                    _prepare,
+                    spec_or_path,
+                    root,
+                    run_id,
+                    adapter.capabilities(spec),
+                    _production_context(spec),
+                )
+            )
+            try:
+                await asyncio.shield(preparation)
+            except asyncio.CancelledError:
+                while not preparation.done():
+                    try:
+                        await asyncio.shield(preparation)
+                    except asyncio.CancelledError:
+                        continue
+                    except Exception:
+                        break
+                if not preparation.cancelled():
+                    preparation.exception()
+                raise
+            _progress(progress, "prepared", run_id, root)
+            await execute_run(run_id, store=root, adapter=adapter, spec=spec)
+            result = _summary(run_id, root)
+            _progress(progress, "finished", run_id, root)
+            return result
+    finally:
+        await _close_adapter(adapter)
 
 
 def _prepare(
@@ -417,8 +588,15 @@ def _prepare(
     root: Path,
     run_id: str,
     profile: CapabilityProfile,
+    context: ProductionContext | None = None,
 ) -> None:
-    with prepare_run(spec_or_path, store=root, run_id=run_id, capabilities=profile):
+    with prepare_run(
+        spec_or_path,
+        store=root,
+        run_id=run_id,
+        capabilities=profile,
+        transport_context=context,
+    ):
         pass
 
 
@@ -465,50 +643,55 @@ async def aresume_run(
         # execution/retry services perform complete source and context checks.
         with ReadOnlyRepository(root) as repository:
             run = repository.get_run(identifier)
-        adapter = _mock_adapter(run.provider, run.endpoint, root, mock, resume=True)
-        _progress(progress, "started", identifier, root)
-        if retry is not None:
-            selection = RetrySelection.model_validate(dict(retry))
-            authorization = asyncio.create_task(
-                asyncio.to_thread(
-                    authorize_subset_retry,
-                    identifier,
-                    store=root,
-                    adapter=adapter,
-                    task_ids=selection.task_ids,
-                    operation_id=selection.operation_id,
-                    spec=spec,
-                    allow_completed=selection.allow_completed,
-                    use_frozen_snapshot=use_frozen_snapshot,
+        adapter = _execution_adapter(
+            run.provider, run.endpoint, run.model, root, mock, resume=True
+        )
+        try:
+            _progress(progress, "started", identifier, root)
+            if retry is not None:
+                selection = RetrySelection.model_validate(dict(retry))
+                authorization = asyncio.create_task(
+                    asyncio.to_thread(
+                        authorize_subset_retry,
+                        identifier,
+                        store=root,
+                        adapter=adapter,
+                        task_ids=selection.task_ids,
+                        operation_id=selection.operation_id,
+                        spec=spec,
+                        allow_completed=selection.allow_completed,
+                        use_frozen_snapshot=use_frozen_snapshot,
+                    )
                 )
+                try:
+                    await asyncio.shield(authorization)
+                except asyncio.CancelledError:
+                    while not authorization.done():
+                        try:
+                            await asyncio.shield(authorization)
+                        except asyncio.CancelledError:
+                            continue
+                        except Exception:
+                            break
+                    if not authorization.cancelled():
+                        authorization.exception()
+                    raise
+            await recover_run(
+                identifier,
+                store=root,
+                adapter=adapter,
+                spec=spec,
+                use_frozen_snapshot=use_frozen_snapshot,
             )
-            try:
-                await asyncio.shield(authorization)
-            except asyncio.CancelledError:
-                while not authorization.done():
-                    try:
-                        await asyncio.shield(authorization)
-                    except asyncio.CancelledError:
-                        continue
-                    except Exception:
-                        break
-                if not authorization.cancelled():
-                    authorization.exception()
-                raise
-        await recover_run(
-            identifier,
-            store=root,
-            adapter=adapter,
-            spec=spec,
-            use_frozen_snapshot=use_frozen_snapshot,
-        )
-        result = _summary(
-            identifier,
-            root,
-            retry_operation_id=retry.operation_id if retry is not None else None,
-        )
-        _progress(progress, "finished", identifier, root)
-        return result
+            result = _summary(
+                identifier,
+                root,
+                retry_operation_id=retry.operation_id if retry is not None else None,
+            )
+            _progress(progress, "finished", identifier, root)
+            return result
+        finally:
+            await _close_adapter(adapter)
 
 
 def resume_run(

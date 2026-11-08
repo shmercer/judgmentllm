@@ -567,3 +567,14 @@ Changing instructions, template, exemplars, membership, order or mechanism chang
 the exact prompt hash and fails replay of an earlier commitment. Native rendering
 and durable execution are available only to controlled offline fixtures pending
 Phase 5 real adapters and separate qualification.
+
+
+## Phase 5A production prompt representation
+
+RunSpecV3 production previews use RenderedProductionPromptV1 with output
+commitment4. This independently versioned wrapper reuses renderer3's exact
+protected instructions, sandbox, source/exemplar checks and prompt limits.
+Historical RenderedPromptV3 remains paired with OutputCommitmentV3; its fixtures
+are unchanged. Production text includes the complete neutral schema. OpenAI
+native presentation omits full schema repetition while retaining all protected
+requirements. Qualification and serving-model support are separate from rendering.

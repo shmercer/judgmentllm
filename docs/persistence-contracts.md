@@ -639,3 +639,45 @@ selected route, links its parent receipt hash, and publishes its own exact schem
 prompt and payload before submission. An incompatible subset fails. Completion,
 refusal, invalid output, uncertainty, cancellation and duplicate observation keep
 the existing status/reconciliation rules; none authorize transport fallback.
+
+
+## Phase 5A production sealing and recovery
+
+The trusted preparation context chooses manifest 4 for production before sealing;
+RunSpec version 3 alone cannot choose it. Manifest 3 remains synthetic. Receipt
+readers dispatch transport commitment versions 1/2 explicitly. Missing, mismatched,
+or rehashed cross-protocol records fail without migration or repair.
+
+The existing bounded pre-seal request/attempt journal and initial streaming digest
+also cover production. Full capture retains committed content; minimal capture
+registers hashes without staging content. Reopening verifies manifest/context,
+source policy, receipt/attempt bindings, artifact identities and pinned body
+reconstruction. Retry subsets inherit the original family/route and commit new
+physical bytes before submission.
+
+OpenAI submit performs one SDK invocation. Its bounded in-memory response handoff
+is transient, not a second durable provider ledger. Actual returned remote IDs
+can acknowledge acceptance; absent IDs are never invented. Trustworthy retained
+safe response bytes support recovery after persistence. With store=false, lost
+bytes or ambiguous acceptance remain unresolved. Ordinary resume never recreates
+an assessment. Qualification seals can continue only through their original
+plan-bound qualification executor and durable shared call ledger.
+
+### Phase 5A unresolved OpenAI invocation evidence
+
+A companion may add `invocation_acceptance="unresolved"` for a known invoked
+OpenAI SDK call with no returned authoritative observation. The optional member is
+omitted from all historical receipts. It requires an uncertain submission on the
+Responses or Chat route, null observation identity and definitive-failure ID,
+unknown or explicitly reported usage, omitted body retention, and no retry flags.
+It is never interpreted as definitive nonacceptance. Existing evidence readers
+retain one usage fact for this physical submission; replay verifies the original
+immutable receipt without adding a second usage revision or issuing another call.
+
+The adapter records a known invocation only after the guarded HTTP forwarding
+boundary is reached. Missing evidence in a process termination or cancellation
+window does not manufacture a known invocation or provider acceptance. Initial
+`store=false` OpenAI adapters cannot retrieve those lost completions remotely.
+An unresolved companion cannot be replaced by a failure receipt or promote an
+unknown call to an assessment observation. Later server-retained retrieval is a
+separate future capability requiring its own evidence transition design.
