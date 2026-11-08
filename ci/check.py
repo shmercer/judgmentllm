@@ -85,6 +85,9 @@ def fast(changed_since: str, output: Path, focused: list[str], workers: int) -> 
             str(python),
             "-m",
             "pytest",
+            "-p",
+            "ci.local.pytest_report",
+            f"--ci-report={output / 'cases.json'}",
             "--no-cov",
             "-ra",
             *targets,
@@ -144,6 +147,15 @@ def fast(changed_since: str, output: Path, focused: list[str], workers: int) -> 
         "expanded_selection": expanded,
         "explicit_targets": focused,
         "workers": workers,
+        "source_commit": subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=ROOT, text=True
+        ).strip(),
+        "working_tree_dirty": bool(
+            subprocess.check_output(
+                ["git", "status", "--porcelain"], cwd=ROOT, text=True
+            ).strip()
+        ),
+        "lockfile_sha256": hashlib.sha256((ROOT / "uv.lock").read_bytes()).hexdigest(),
         "wall_seconds": time.monotonic() - started,
         "targets": targets,
         "steps": records,

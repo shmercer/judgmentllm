@@ -9,11 +9,22 @@ import subprocess
 import sys
 import threading
 import time
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import psutil
 from scheduling import SCHEDULES
+
+
+def total_cpu(value: Sequence[float]) -> float:
+    # Linux already includes guest/guest_nice in user/nice. Adding the separate
+    # guest fields again would overstate utilization during VM experiments.
+    return (
+        sum(value)
+        - cast(float, getattr(value, "guest", 0.0))
+        - cast(float, getattr(value, "guest_nice", 0.0))
+    )
 
 
 def main() -> int:
@@ -115,7 +126,7 @@ def main() -> int:
         if thread.is_alive():
             raise RuntimeError("Host sampler failed to stop")
         cpu_end = psutil.cpu_times()
-        total_cpu = sum(cpu_end) - sum(cpu_start)
+        total_cpu_seconds = total_cpu(cpu_end) - total_cpu(cpu_start)
         idle_cpu = (
             cpu_end.idle
             - cpu_start.idle
@@ -125,9 +136,9 @@ def main() -> int:
         disk_end = psutil.disk_io_counters()
         record.update(
             wall_seconds=time.monotonic() - started,
-            host_busy_cpu_seconds=total_cpu - idle_cpu,
-            host_cpu_percent=100 * (total_cpu - idle_cpu) / total_cpu
-            if total_cpu
+            host_busy_cpu_seconds=total_cpu_seconds - idle_cpu,
+            host_cpu_percent=100 * (total_cpu_seconds - idle_cpu) / total_cpu_seconds
+            if total_cpu_seconds
             else 0,
             peak_host_used_bytes=max(
                 (s["memory_used_bytes"] for s in samples), default=0

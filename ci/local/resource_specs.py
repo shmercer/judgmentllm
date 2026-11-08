@@ -43,14 +43,27 @@ def read_resources() -> Resources:
         memory, available = values["MemTotal"], values["MemAvailable"]
         limit = Path("/sys/fs/cgroup/memory.max")
         if limit.is_file() and limit.read_text().strip() != "max":
-            memory = min(memory, int(limit.read_text()))
-            available = min(available, memory)
+            ceiling = int(limit.read_text())
+            memory = min(memory, ceiling)
+            current = limit.with_name("memory.current")
+            remaining = (
+                max(0, ceiling - int(current.read_text()))
+                if current.is_file()
+                else ceiling
+            )
+            available = min(available, remaining)
     elif sys.platform == "darwin":
         memory = int(
             subprocess.check_output(
                 ["/usr/sbin/sysctl", "-n", "hw.memsize"], text=True
             ).strip()
         )
+        try:
+            import psutil
+        except ModuleNotFoundError:
+            pass  # Bare bootstrap; installed suite runners have locked psutil.
+        else:
+            available = psutil.virtual_memory().available
     elif sys.platform == "win32":
         import ctypes
 

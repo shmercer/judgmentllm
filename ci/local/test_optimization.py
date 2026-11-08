@@ -8,9 +8,10 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 
 import pytest
+from benchmark import total_cpu
 from coverage_equivalence import compare
 from override_recovery import Allocation, Observation, RecoveryJournal, require_restored
 from resource_budget import ResourceLease
@@ -565,3 +566,14 @@ def test_schedule_accounts_for_shared_guests_and_host_headroom() -> None:
     assert budget["ram_cap_total_gib"] == 76
     with pytest.raises(ValueError, match="exceeds host"):
         schedule.budget(["linux", "windows", "macos"], 16, 128 * 1024**3)
+
+
+def test_host_cpu_total_does_not_count_guest_time_twice() -> None:
+    class Times(NamedTuple):
+        user: float
+        idle: float
+        guest: float
+        guest_nice: float
+
+    assert total_cpu(Times(10, 20, 5, 1)) == 30
+    assert total_cpu((10, 20)) == 30
