@@ -68,6 +68,35 @@ _PROTOCOL = "judgmentllm-openai-observation-v1"
 _MAX_RESPONSE_BYTES = 8_388_608
 
 
+class OpenAIConfigurationError(ProviderError):
+    """Actionable fixed field names without provider or assessment text."""
+
+    def __init__(self, fields: tuple[str, ...]) -> None:
+        allowed = {
+            "schema_version",
+            "execution.mode",
+            "execution.grouping",
+            "execution.explanations",
+            "execution.cache_policy",
+            "execution.tier",
+            "allow_ties",
+            "generation",
+            "generation.temperature",
+            "generation.top_p",
+            "generation.max_output_tokens",
+            "prompt.structured_output",
+            "prompt.output_order",
+        }
+        selected = sorted(
+            {field if field in allowed else "configuration" for field in fields}
+        )
+        super().__init__(
+            "Unsupported or unverified OpenAI settings: "
+            + ", ".join(selected)
+            + "; revise these settings or obtain reviewed exact-scope evidence"
+        )
+
+
 class OpenAIReadinessError(ProviderError):
     """Fixed actionable errors before creating a run or submitting a request."""
 
@@ -253,17 +282,30 @@ class OpenAIAdapter:
         ):
             raise ProviderIntegrityError("OpenAI adapter configuration scope differs")
         if spec.schema_version != 3 or spec.execution.mode != "live":
-            raise ProviderError(
-                "OpenAI production transport requires schema_version 3 and live mode"
-            )
+            raise OpenAIConfigurationError(("schema_version", "execution.mode"))
         if (
             spec.execution.cache_policy not in (None, "auto", "off")
             or spec.execution.tier is not None
         ):
-            raise ProviderError("OpenAI cache and service-tier controls are deferred")
-        if not validate_run(spec, capabilities=self.capabilities(spec)).valid:
-            raise ProviderError(
-                "OpenAI configuration has unsupported or unknown strict capabilities"
+            raise OpenAIConfigurationError(
+                tuple(
+                    field
+                    for field, invalid in (
+                        (
+                            "execution.cache_policy",
+                            spec.execution.cache_policy == "explicit",
+                        ),
+                        ("execution.tier", spec.execution.tier is not None),
+                    )
+                    if invalid
+                )
+            )
+        report = validate_run(spec, capabilities=self.capabilities(spec))
+        if not report.valid:
+            raise OpenAIConfigurationError(
+                tuple(
+                    issue.field for issue in report.issues if issue.severity == "error"
+                )
             )
         concurrency = spec.execution.concurrency
         if self._client is not None and concurrency != self._concurrency:

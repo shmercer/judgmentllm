@@ -1211,3 +1211,10 @@ Until a narrower public capability interface exists, strict runs can therefore
 remain blocked by partial explanation qualification. Native transport selection
 still checks the precise requested feature set. `modes=("live",)` describes the
 implemented local execution path and makes no model-access or serving claim.
+
+Strict OpenAI capability failures preserve specific `ValidationIssue` records in
+`validate_inputs()` and CLI `validate --json` (validation exit2). Plan, preview,
+and run reject before submission with safe setting names such as
+`generation.temperature`; provider response text, model values and assessment
+content never enter these diagnostics. Invalid capability intent is not reported
+as a network or execution failure.

@@ -166,9 +166,15 @@ def _checked_spec(spec_or_path: RunSpecification | str | Path) -> RunSpecificati
     )
 
 
-def _readiness_failure(error: BaseException) -> tuple[ErrorCategory, str] | None:
-    """Unwrap only fixed adapter readiness diagnostics, never arbitrary text."""
-    from judgmentllm.providers.openai import OpenAIReadinessError
+def _safe_provider_diagnostic(error: BaseException) -> tuple[ErrorCategory, str] | None:
+    """Unwrap only fixed adapter diagnostics, never arbitrary exception text."""
+    from judgmentllm.providers.openai import (
+        OpenAIConfigurationError,
+        OpenAIReadinessError,
+    )
+
+    if isinstance(error, OpenAIConfigurationError):
+        return "unsupported_capability", str(error)
 
     if isinstance(error, OpenAIReadinessError):
         return (
@@ -179,7 +185,7 @@ def _readiness_failure(error: BaseException) -> tuple[ErrorCategory, str] | None
         )
     if isinstance(error, BaseExceptionGroup):
         group = cast(BaseExceptionGroup[BaseException], error)
-        failures = tuple(_readiness_failure(child) for child in group.exceptions)
+        failures = tuple(_safe_provider_diagnostic(child) for child in group.exceptions)
         if (
             failures
             and failures[0] is not None
@@ -205,7 +211,7 @@ def _errors(run_id: str | None = None, store: Path | None = None) -> Generator[N
     except Exception as error:
         category: ErrorCategory
         message: str
-        readiness_failure = _readiness_failure(error)
+        readiness_failure = _safe_provider_diagnostic(error)
         if readiness_failure is not None:
             category, message = readiness_failure
         elif isinstance(error, NotFoundError):
@@ -301,7 +307,10 @@ def _require_presentation(spec: RunSpecification) -> None:
 
 
 def _profile(
-    spec: RunSpecification, capabilities: CapabilityProfile | None
+    spec: RunSpecification,
+    capabilities: CapabilityProfile | None,
+    *,
+    allow_invalid: bool = False,
 ) -> CapabilityProfile | None:
     profile = (
         CapabilityProfile.model_validate(dict(capabilities))
@@ -330,9 +339,16 @@ def _profile(
         profile = OpenAIAdapter.capabilities_for(
             spec.provider, spec.endpoint, spec.model
         )
-        OpenAIAdapter(
-            spec.endpoint, spec.model, concurrency=spec.execution.concurrency
-        ).validate(spec)
+        if allow_invalid and not validate_run(spec, capabilities=profile).valid:
+            return profile
+        from judgmentllm.providers.openai import OpenAIConfigurationError
+
+        try:
+            OpenAIAdapter(
+                spec.endpoint, spec.model, concurrency=spec.execution.concurrency
+            ).validate(spec)
+        except OpenAIConfigurationError as error:
+            raise LifecycleError("unsupported_capability", str(error)) from None
     return profile
 
 
@@ -350,7 +366,7 @@ def validate_inputs(
             tempfile.TemporaryDirectory(prefix="judgmentllm-validation-") as temporary,
         ):
             spec = _checked_spec(spec_or_path)
-            profile = _profile(spec, capabilities)
+            profile = _profile(spec, capabilities, allow_invalid=True)
             structural = validate_run(spec, capabilities=profile)
             issues = structural.issues
             if not structural.valid:
@@ -533,15 +549,9 @@ async def arun_live(
             if readiness is not None:
                 readiness()
         except ProviderError as error:
-            from judgmentllm.providers.openai import OpenAIReadinessError
-
-            if isinstance(error, OpenAIReadinessError):
-                raise LifecycleError(
-                    "validation"
-                    if error.diagnostic_code == "missing_credentials"
-                    else "unsupported_capability",
-                    str(error),
-                ) from None
+            safe = _safe_provider_diagnostic(error)
+            if safe is not None:
+                raise LifecycleError(safe[0], safe[1]) from None
             raise LifecycleError(
                 "unsupported_capability", "provider settings are unsupported"
             ) from None
