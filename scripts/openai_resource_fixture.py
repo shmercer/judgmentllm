@@ -41,33 +41,37 @@ def main() -> None:
     gc.collect()
     tracemalloc.start()
     started = time.monotonic()
-    with offline():
-        with prepare_run(
-            spec,
-            store=store,
-            run_id="001",
-            capabilities=adapter.capabilities(spec),
-            transport_context=production_context(spec),
-        ):
-            pass
+    # Windows creates its private loopback self-pipe while entering Runner.
+    # Initialize it before the full socket/DNS denial guard; all assessment
+    # preparation, SDK calls and client cleanup still run under that guard.
+    with asyncio.Runner() as runner:
+        with offline():
+            with prepare_run(
+                spec,
+                store=store,
+                run_id="001",
+                capabilities=adapter.capabilities(spec),
+                transport_context=production_context(spec),
+            ):
+                pass
 
-        async def execute() -> dict[str, int | float]:
-            try:
-                report = await execute_run(
-                    "001", store=store, adapter=adapter, spec=spec
-                )
-                return {
-                    "calls": adapter.actual_call_count,
-                    "serialization_seconds": adapter.serialization_seconds,
-                    "worker_count": report.worker_count,
-                    "request_queue_high_water": report.request_queue_high_water,
-                    "result_queue_high_water": report.result_queue_high_water,
-                    "successful_results": report.summary.successful_results,
-                }
-            finally:
-                await adapter.aclose()
+            async def execute() -> dict[str, int | float]:
+                try:
+                    report = await execute_run(
+                        "001", store=store, adapter=adapter, spec=spec
+                    )
+                    return {
+                        "calls": adapter.actual_call_count,
+                        "serialization_seconds": adapter.serialization_seconds,
+                        "worker_count": report.worker_count,
+                        "request_queue_high_water": report.request_queue_high_water,
+                        "result_queue_high_water": report.result_queue_high_water,
+                        "successful_results": report.summary.successful_results,
+                    }
+                finally:
+                    await adapter.aclose()
 
-        result = asyncio.run(execute())
+            result = runner.run(execute())
     _, peak = tracemalloc.get_traced_memory()
     gc.collect()
     remaining = tracemalloc.get_traced_memory()[0]

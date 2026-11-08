@@ -129,7 +129,9 @@ and known invocation evidence where storage remains writable, while retaining th
 original failure. Preserve the original store and inspect the recorded status
 before authorizing any explicit new attempt.
 
-Keep the SQLite runtime store on a local disk. Full capture retains prompts,
+Keep the SQLite runtime store on a local disk. On Windows, choose a short store
+and qualification directory, such as `C:\jllm`, to leave room for immutable
+artifact paths under the platform path limit. Full capture retains prompts,
 nonsecret request bodies and sanitized responses locally. Minimal capture omits
 these bodies but retains normalized results, which may include requested
 explanations. Provider reasoning requires separate authorization and is excluded

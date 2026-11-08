@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import socket
 import sqlite3
+from contextlib import closing
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
@@ -40,10 +41,11 @@ def pricing() -> q._PricingProfile:
 
 @pytest.fixture
 def planned(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch
 ) -> tuple[Path, q._QualificationPlan]:
     monkeypatch.setattr(q, "_source_commit", lambda: "a" * 40)
-    directory = tmp_path / "qualification"
+    # All eight durable stores must fit within Windows filesystem path limits.
+    directory = tmp_path_factory.mktemp("oq") / "plan"
     plan = q.build_plan(
         directory=directory,
         source_commit="a" * 40,
@@ -369,7 +371,7 @@ async def test_timeout_consumes_allocation_without_replacement(
     again = await q.execute_plan(directory, **arguments)
     assert len(sent) == 1
     assert again["physical_send_attempts"] == 1
-    with sqlite3.connect(directory / "qualification.sqlite3") as connection:
+    with closing(sqlite3.connect(directory / "qualification.sqlite3")) as connection:
         assert (
             connection.execute(
                 "SELECT count(*) FROM calls WHERE consumed_at IS NOT NULL"
@@ -426,8 +428,9 @@ async def test_ledger_mutation_cannot_replenish_a_consumed_allocation(
         accept_billable_calls=True,
     )
     await q.execute_plan(directory, **arguments)
-    with sqlite3.connect(directory / "qualification.sqlite3") as connection:
+    with closing(sqlite3.connect(directory / "qualification.sqlite3")) as connection:
         connection.execute("UPDATE calls SET consumed_at=NULL")
+        connection.commit()
     # An independent append-only forwarding intent conservatively preserves the
     # spent allocation even if an otherwise well-formed SQLite row is reset.
     assert q.report_plan(directory)["physical_send_attempts"] == 1
