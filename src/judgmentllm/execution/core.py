@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
 from typing import ParamSpec, TypeVar
@@ -34,6 +35,16 @@ from judgmentllm.providers import (
     TransientNotSubmitted,
     TransportNotSubmitted,
 )
+from judgmentllm.providers.protocol import ProviderInvocationCancelled
+
+
+@dataclass
+class _CancellationWork:
+    work: _Work
+    acknowledgment: ProviderAcknowledgment | None = None
+    response: ProviderResponse | None = None
+    invoked: bool = False
+
 
 T = TypeVar("T")
 P = ParamSpec("P")
@@ -65,12 +76,18 @@ async def execute_run(
     exceptions; a later call reopens and reconciles original work under ownership.
     """
     loop = asyncio.get_running_loop()
+    execution_task = asyncio.current_task()
     io = ThreadPoolExecutor(max_workers=1, thread_name_prefix="judgmentllm-io")
 
     async def call(function: Callable[P, T], *args: P.args, **kwargs: P.kwargs) -> T:
         return await loop.run_in_executor(io, partial(function, *args, **kwargs))
 
     holder: list[_Session] = []
+    # Only the OpenAI adapter exposes this synchronous, in-memory-only handoff.
+    # Values below alias worker/queue objects and disappear after processing;
+    # the map is bounded by those existing buffers, never the corpus size.
+    cancellation_handoff = getattr(adapter, "_received_response_for_cancellation", None)
+    cancellation_work: dict[str, _CancellationWork] = {}
 
     def initialize() -> _Session:
         created = _Session(run_id, store, adapter, spec, use_frozen_snapshot, fault)
@@ -96,6 +113,41 @@ async def execute_run(
                 continue
         pending_cleanup.result()
 
+    async def retain_known_work(*, preserve_original_error: bool = False) -> None:
+        """Drain bounded OpenAI handoffs after TaskGroup has stopped workers.
+
+        A worker fault can cancel another already invoked request just as caller
+        cancellation can. Cleanup never submits work or invents an invocation.
+        If durable storage itself failed, keep the original worker error while
+        attempting independent retained work where possible.
+        """
+        if not holder or cancellation_handoff is None:
+            return
+        session = holder[0]
+        for retained in tuple(cancellation_work.values()):
+            try:
+                work = retained.work
+                response = retained.response
+                if response is None and retained.acknowledgment is not None:
+                    response = cancellation_handoff(
+                        work.prepared,
+                        submission_id=work.submission_id,
+                        correlation_id=work.correlation_id,
+                    )
+                await drain(
+                    partial(
+                        session.cancelled_invocation,
+                        work,
+                        acknowledgment=retained.acknowledgment,
+                        response=response,
+                        known_invoked=retained.invoked,
+                    )
+                )
+            except Exception:
+                if not preserve_original_error:
+                    raise
+        cancellation_work.clear()
+
     try:
         session = await call(initialize)
         session.retry_policy = retry_policy
@@ -117,6 +169,13 @@ async def execute_run(
         async def worker() -> None:
             nonlocal result_high
             while (work := await pending.get()) is not None:
+                retained = (
+                    _CancellationWork(work)
+                    if cancellation_handoff is not None
+                    else None
+                )
+                if retained is not None:
+                    cancellation_work[work.submission_id] = retained
                 try:
                     if await call(session.boundary, work):
                         acknowledgment = await adapter.submit(
@@ -124,6 +183,9 @@ async def execute_run(
                             submission_id=work.submission_id,
                             correlation_id=work.correlation_id,
                         )
+                        if retained is not None:
+                            retained.acknowledgment = acknowledgment
+                            retained.invoked = True
                         await call(
                             session.checkpoint,
                             "after_submit",
@@ -139,10 +201,14 @@ async def execute_run(
                                     "retained response lacks acknowledgment evidence"
                                 )
                             await call(session.acknowledge, work, saved_ack)
+                            if retained is not None:
+                                retained.acknowledgment = saved_ack
+                                retained.response = saved
                             await responses.put((work, saved))
                             result_high = max(result_high, responses.qsize())
                             continue
                         if await call(session.has_results, work):
+                            cancellation_work.pop(work.submission_id, None)
                             continue
                         acknowledgment = await call(session.saved_acknowledgment, work)
                         if acknowledgment is None:
@@ -153,9 +219,11 @@ async def execute_run(
                             )
                             if evidence.outcome == "not_submitted":
                                 await call(session.not_submitted, work, invoked=False)
+                                cancellation_work.pop(work.submission_id, None)
                                 continue
                             if evidence.outcome == "unresolved":
                                 await call(session.uncertain, work)
+                                cancellation_work.pop(work.submission_id, None)
                                 continue
                             if (
                                 evidence.remote_id is None
@@ -169,17 +237,30 @@ async def execute_run(
                                 observation_key=evidence.observation_key,
                             )
                         await call(session.acknowledge, work, acknowledgment)
+                    if retained is not None:
+                        retained.acknowledgment = acknowledgment
                     response = await adapter.retrieve(
                         work.prepared,
                         submission_id=work.submission_id,
                         correlation_id=work.correlation_id,
                     )
+                    if retained is not None:
+                        retained.response = response
                     if response.observation_key != acknowledgment.observation_key:
                         raise IntegrityError(
                             "retrieved observation differs from accepted identity"
                         )
                     await responses.put((work, response))
                     result_high = max(result_high, responses.qsize())
+                except ProviderInvocationCancelled as exc:
+                    if retained is not None:
+                        retained.invoked = exc.invoked
+                    # A provider task may itself be cancelled. TaskGroup treats
+                    # child cancellation as normal, so propagate it to the owning
+                    # execution task rather than leaving its consumer waiting.
+                    if execution_task is not None and not execution_task.cancelling():
+                        execution_task.cancel()
+                    raise
                 except TransientNotSubmitted as exc:
                     await call(
                         session.not_submitted,
@@ -188,13 +269,26 @@ async def execute_run(
                         transient=True,
                         retry_after=exc.retry_after,
                         usage=exc.usage,
+                        diagnostic_code=exc.diagnostic_code,
                     )
+                    cancellation_work.pop(work.submission_id, None)
                 except TransportNotSubmitted as exc:
                     await call(
-                        session.not_submitted, work, invoked=True, usage=exc.usage
+                        session.not_submitted,
+                        work,
+                        invoked=True,
+                        usage=exc.usage,
+                        diagnostic_code=exc.diagnostic_code,
                     )
-                except (SubmissionUncertain, RetrievalUnavailable, TimeoutError):
+                    cancellation_work.pop(work.submission_id, None)
+                except SubmissionUncertain as exc:
+                    await call(
+                        session.uncertain, work, invoked=exc.invoked, usage=exc.usage
+                    )
+                    cancellation_work.pop(work.submission_id, None)
+                except (RetrievalUnavailable, TimeoutError):
                     await call(session.uncertain, work)
+                    cancellation_work.pop(work.submission_id, None)
             await responses.put(None)
 
         async def consume() -> None:
@@ -205,6 +299,7 @@ async def execute_run(
                     finished += 1
                 else:
                     await call(session.process, *item)
+                    cancellation_work.pop(item[0].submission_id, None)
 
         while True:
             async with asyncio.TaskGroup() as group:
@@ -226,7 +321,14 @@ async def execute_run(
             result_queue_high_water=result_high,
         )
     except asyncio.CancelledError:
+        await retain_known_work()
         await drain(cancel)
+        raise
+    except ExceptionGroup:
+        # Ordinary worker errors also cancel sibling SDK calls. Preserve their
+        # established evidence without changing the original failure into a
+        # successful report or classifying the run as caller-cancelled.
+        await retain_known_work(preserve_original_error=True)
         raise
     finally:
         # Queued behind any initialization/in-flight write on the same thread.

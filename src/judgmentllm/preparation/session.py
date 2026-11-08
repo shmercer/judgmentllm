@@ -53,6 +53,7 @@ from judgmentllm.preparation.manifest import (
     ExecutableManifest,
     ExecutableRunManifestV2,
     ExecutableRunManifestV3,
+    ExecutableRunManifestV4,
     configuration_digest,
 )
 from judgmentllm.preparation.records import (  # pyright: ignore[reportPrivateUsage]
@@ -65,6 +66,12 @@ from judgmentllm.prompts import RenderedAssessmentPrompt
 
 if TYPE_CHECKING:
     from judgmentllm.native_prompts import RenderedPromptV3
+    from judgmentllm.production_prompts import RenderedProductionPromptV1
+    from judgmentllm.production_transport import (
+        PreparedRequestV4,
+        ProductionContext,
+        TransportCommitmentV2,
+    )
     from judgmentllm.transport import (
         PhysicalRequestIdentityV1,
         PreparedRequestV3,
@@ -150,7 +157,7 @@ class PreparedRun:
         *,
         authorized_sources: frozenset[str] = frozenset(),
         record_reader: RecordReader = read_record,
-        transport_context: TransportContext | None = None,
+        transport_context: TransportContext | ProductionContext | None = None,
     ) -> None:
         self._read_record = record_reader
         self.repository = repository
@@ -285,12 +292,16 @@ class PreparedRun:
         if self._closed:
             raise PreparationError("prepared run session is closed")
         template = self.template
-        if isinstance(self.manifest, ExecutableRunManifestV3):
-            from judgmentllm.transport import transport_context_digest
+        if isinstance(
+            self.manifest, (ExecutableRunManifestV3, ExecutableRunManifestV4)
+        ):
+            from judgmentllm.transport_dispatch import context_digest, verify_protocol
+
+            verify_protocol(self.manifest, self.transport_context)
 
             if (
                 self.transport_context is None
-                or transport_context_digest(self.transport_context)
+                or context_digest(self.transport_context)
                 != self.manifest.transport_context_sha256
             ):
                 raise PreparationError("committed transport context is incompatible")
@@ -408,17 +419,18 @@ class PreparedRun:
 
     def _render_verified_request(
         self, request: PlannedRequest
-    ) -> RenderedAssessmentPrompt | RenderedPromptV3:
+    ) -> RenderedAssessmentPrompt | RenderedPromptV3 | RenderedProductionPromptV1:
         context = self._context
         spec = context.spec if context is not None else self.spec
         template = context.template if context is not None else self.template
-        if isinstance(self.manifest, ExecutableRunManifestV3):
-            from judgmentllm.native_prompts import render_request_v3
+        if isinstance(
+            self.manifest, (ExecutableRunManifestV3, ExecutableRunManifestV4)
+        ):
             from judgmentllm.planning import stable_id
             from judgmentllm.transport import (
                 physical_identity,
-                prepare_transport_request,
             )
+            from judgmentllm.transport_dispatch import prepare_request, render_request
 
             if self.transport_context is None or not isinstance(spec, RunSpecV3):
                 raise PreparationError(
@@ -432,7 +444,7 @@ class PreparedRun:
                 raise PreparationError(
                     "native rendering requires exact physical membership"
                 )
-            wire = prepare_transport_request(
+            wire = prepare_request(
                 spec,
                 dependency,
                 physical_identity(
@@ -443,9 +455,7 @@ class PreparedRun:
                 lookup=self._get,
                 frozen=self.transport_for_attempt(attempt_id),
             )
-            rendered = render_request_v3(
-                spec, template, request, self._get, wire.output_commitment
-            )
+            rendered = render_request(spec, template, request, self._get, wire)
         elif isinstance(self.manifest, ExecutableRunManifestV2):
             rendered = _render_request(
                 spec,
@@ -462,13 +472,17 @@ class PreparedRun:
                 raise PreparationError("configuration changed while rendering")
         return rendered
 
-    def transport_for_attempt(self, attempt_id: str) -> TransportCommitmentV1:
+    def transport_for_attempt(
+        self, attempt_id: str
+    ) -> TransportCommitmentV1 | TransportCommitmentV2:
         """Read original safe metadata; missing commitments are never repaired."""
         from judgmentllm.persistence.transport_receipts import read_transport_commitment
         from judgmentllm.planning import stable_id
         from judgmentllm.transport import physical_identity
 
-        if not isinstance(self.manifest, ExecutableRunManifestV3):
+        if not isinstance(
+            self.manifest, (ExecutableRunManifestV3, ExecutableRunManifestV4)
+        ):
             raise PreparationError("historical preparation has no native transport")
         attempt = self.repository.get_attempt(self.manifest.run_id, attempt_id)
         receipt = read_transport_commitment(self.store, attempt_id)
@@ -493,6 +507,13 @@ class PreparedRun:
             or receipt.payload_sha256 != attempt.payload_sha256
         ):
             raise PreparationError("committed transport identity is inconsistent")
+        from judgmentllm.transport_dispatch import manifest_protocol
+
+        expected_version = 2 if manifest_protocol(self.manifest) == "production" else 1
+        if receipt.transport_commitment_version != expected_version:
+            raise PreparationError(
+                "transport receipt protocol differs from sealed manifest"
+            )
         raw = canonical_bytes(receipt)
         artifact = self.repository.get_artifact(self.manifest.run_id, bytes_digest(raw))
         if (
@@ -510,17 +531,19 @@ class PreparedRun:
         dependency: RequestDependency,
         identity: PhysicalRequestIdentityV1,
         *,
-        frozen: TransportCommitmentV1 | None = None,
-        parent: TransportCommitmentV1 | None = None,
-    ) -> PreparedRequestV3:
+        frozen: TransportCommitmentV1 | TransportCommitmentV2 | None = None,
+        parent: TransportCommitmentV1 | TransportCommitmentV2 | None = None,
+    ) -> PreparedRequestV3 | PreparedRequestV4:
         """Reconstruct pinned bytes or prepare an authorized ordered retry subset."""
         from judgmentllm.execution.retry import subset_dependency
         from judgmentllm.planning import stable_id
-        from judgmentllm.transport import prepare_transport_request
+        from judgmentllm.transport_dispatch import prepare_request
 
         self.verify_compatibility(capabilities=self.capabilities)
         if (
-            not isinstance(self.manifest, ExecutableRunManifestV3)
+            not isinstance(
+                self.manifest, (ExecutableRunManifestV3, ExecutableRunManifestV4)
+            )
             or self.transport_context is None
             or not isinstance(self.spec, RunSpecV3)
         ):
@@ -590,7 +613,7 @@ class PreparedRun:
             raise PreparationError(
                 "initial native transport must be prepared before sealing"
             )
-        wire = prepare_transport_request(
+        wire = prepare_request(
             self.spec,
             dependency,
             identity,
@@ -619,7 +642,9 @@ class PreparedRun:
     def verify_transport_index(self) -> None:
         """Verify the complete initial index once, never select a replacement."""
         if (
-            isinstance(self.manifest, ExecutableRunManifestV3)
+            isinstance(
+                self.manifest, (ExecutableRunManifestV3, ExecutableRunManifestV4)
+            )
             and not self._transport_index_verified
         ):
             from judgmentllm.preparation.native import verify_initial_transports
@@ -729,7 +754,7 @@ class PreparedRun:
 
     def render_attempt(
         self, dependency: RequestDependency
-    ) -> RenderedAssessmentPrompt | RenderedPromptV3:
+    ) -> RenderedAssessmentPrompt | RenderedPromptV3 | RenderedProductionPromptV1:
         """Render an exact ordered subset while retaining its parent identity."""
         selected = tuple(t.task_id for t in dependency.request.tasks)
         if selected == self.repository.request_task_ids(
@@ -765,10 +790,12 @@ class PreparedRun:
             or canonical_bytes(expected) != canonical_bytes(dependency)
         ):
             raise PreparationError("attempt membership differs from its parent")
-        if isinstance(self.manifest, ExecutableRunManifestV3):
+        if isinstance(
+            self.manifest, (ExecutableRunManifestV3, ExecutableRunManifestV4)
+        ):
             from judgmentllm.native_prompts import render_request_v3
             from judgmentllm.planning import stable_id
-            from judgmentllm.transport import build_output_commitment_v3
+            from judgmentllm.transport_dispatch import build_output
 
             if self.transport_context is None or not isinstance(self.spec, RunSpecV3):
                 raise PreparationError(
@@ -777,12 +804,20 @@ class PreparedRun:
             first_id = stable_id(
                 "attempt", self.manifest.run_id, dependency.request.request_uid, 1
             )
-            output = build_output_commitment_v3(
+            output = build_output(
                 self.spec,
                 dependency.request,
                 self.transport_context,
-                inherited_commitment=self.transport_for_attempt(first_id),
+                self.transport_for_attempt(first_id),
             )
+            from judgmentllm.production_transport import OutputCommitmentV4
+
+            if isinstance(output, OutputCommitmentV4):
+                from judgmentllm.production_prompts import render_production_request
+
+                return render_production_request(
+                    self.spec, self.template, dependency.request, self._get, output
+                )
             return render_request_v3(
                 self.spec, self.template, dependency.request, self._get, output
             )
@@ -790,7 +825,7 @@ class PreparedRun:
 
     def render(
         self, dependency: RequestDependency
-    ) -> RenderedAssessmentPrompt | RenderedPromptV3:
+    ) -> RenderedAssessmentPrompt | RenderedPromptV3 | RenderedProductionPromptV1:
         """Render with the established renderer; never retain text in minimal mode."""
         self.verify_compatibility(capabilities=self.capabilities)
         try:

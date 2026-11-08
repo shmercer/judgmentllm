@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import Field, model_validator
 
+from judgmentllm.assessment_diagnostics import AssessmentComponent
 from judgmentllm.evidence._base import EvidenceIdentity, EvidenceModel
 from judgmentllm.evidence.order import (
     OrderEvidence,
@@ -36,6 +37,7 @@ from judgmentllm.output_commitments import OutputCommitmentV2
 from judgmentllm.persistence.hashing import bytes_digest
 
 if TYPE_CHECKING:
+    from judgmentllm.production_transport import OutputCommitmentV4, ProductionContext
     from judgmentllm.providers.protocol import ProviderResponse
     from judgmentllm.transport import OutputCommitmentV3, TransportContext
 
@@ -45,6 +47,32 @@ class ProviderReasoningBlock(EvidenceModel):
 
     metadata: ReasoningBlockMetadata
     text: bytes | None = Field(default=None, exclude=True, repr=False)
+
+
+class ProviderObservationContext(EvidenceModel):
+    """Documented safe observation metadata, independent of request identity."""
+
+    reported_model: str | None = None
+    provider_outcome: (
+        Literal[
+            "completed",
+            "refusal",
+            "content_filter",
+            "output_limit",
+            "incomplete",
+            "provider_failure",
+            "missing_output",
+            "multiple_outputs",
+            "unsupported_output",
+            "tool_call",
+        ]
+        | None
+    ) = Field(default=None, exclude_if=lambda value: value is None)
+    sdk_version: str | None = None
+    remote_response_id: str | None = None
+    invocation_kind: Literal["live", "managed_bulk_live", "native_batch", "unknown"] = (
+        "unknown"
+    )
 
 
 class ProviderEvidence(EvidenceModel):
@@ -59,6 +87,10 @@ class ProviderEvidence(EvidenceModel):
 
     provenance: Literal["synthetic_fixture", "provider_documented"]
     usage: ReportedUsageInput | None = None
+    observation_context: ProviderObservationContext | None = None
+    assessment_component: AssessmentComponent | None = Field(
+        default=None, exclude=True, repr=False
+    )
     output_text: bytes | None = Field(default=None, exclude=True, repr=False)
     output_source: OrderEvidence = "unavailable"
     reasoning: tuple[ProviderReasoningBlock, ...] = ()
@@ -95,11 +127,11 @@ def prepare_evidence(
     *,
     identity: EvidenceIdentity,
     context: UsageContext,
-    commitment: OutputCommitmentV2 | OutputCommitmentV3 | None,
+    commitment: OutputCommitmentV2 | OutputCommitmentV3 | OutputCommitmentV4 | None,
     response: ProviderResponse,
     capture: Literal["full", "minimal"],
     authorization: ReasoningAuthorization | None = None,
-    transport_context: TransportContext | None = None,
+    transport_context: TransportContext | ProductionContext | None = None,
 ) -> PreparedEvidence:
     """Prepare safe facts before publishing any response or reasoning artifact.
 
@@ -120,7 +152,7 @@ def prepare_evidence(
             # caller must supply the same reviewed private runtime authority.
             if (
                 transport_context is None
-                or not transport_context.trusted_synthetic
+                or not getattr(transport_context, "trusted_synthetic", False)
                 or (
                     transport_context.scope.provider,
                     transport_context.scope.endpoint,
@@ -135,6 +167,11 @@ def prepare_evidence(
         or evidence.provenance != "synthetic_fixture"
     ):
         raise ValueError("reasoning authorization requires a synthetic fixture")
+    if evidence is not None and evidence.observation_context is not None:
+        metadata = evidence.observation_context
+        context = UsageContext.model_validate(
+            {**context.model_dump(), **metadata.model_dump()}
+        )
     usage = extract_provider_usage(
         identity, context, evidence.usage if evidence is not None else None
     )

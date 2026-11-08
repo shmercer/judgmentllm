@@ -227,6 +227,9 @@ class Runner:
             "UV_PYTHON": sys.executable,
             "JUDGMENTLLM_R_STRICT": "1",
             "JUDGMENTLLM_REQUIRE_NATIVE_SDK_PROBES": "1",
+            "JUDGMENTLLM_OPENAI_RESOURCE_EVIDENCE": str(
+                self.output / "openai-resources"
+            ),
             "COVERAGE_RCFILE": str(self.source / "pyproject.toml"),
             "COVERAGE_FILE": str(self.output / ".coverage"),
             "PYTHONDONTWRITEBYTECODE": "1",

@@ -263,3 +263,14 @@ test thresholds or replace genuine provider qualification with mocks.
 - [Python Packaging User Guide: versioning](https://packaging.python.org/en/latest/discussions/versioning/)
 - [PyPI: Trusted Publishing](https://docs.pypi.org/trusted-publishers/using-a-publisher/)
 - [PyPI: creating a project through a pending publisher](https://docs.pypi.org/trusted-publishers/creating-a-project-through-oidc/)
+
+
+## Phase 5A alpha integration
+
+The OpenAI user guide documents Python>=3.11, the `[openai]` extra, explicit V3
+configuration, credentials, offline preview/validation, both generative endpoints,
+run/resume/export, and storage/recovery limits. Native production eligibility
+requires separately reviewed exact-model feature evidence. Model visibility,
+installation and successful authentication are not qualification. No PyPI
+publication is authorized by Phase 5A; exact-head offline/hosted acceptance and
+separately authorized synthetic live qualification remain required before merge.

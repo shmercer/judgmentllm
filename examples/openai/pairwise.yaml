@@ -1,0 +1,18 @@
+schema_version: 3
+task_kind: pairwise
+input: responses.jsonl
+pairs: pairs.jsonl
+provider: openai
+endpoint: chat.completions
+model: YOUR_EXACT_MODEL
+generation:
+  max_output_tokens: 256
+prompt:
+  structured_output: text
+execution:
+  explanations: false
+  concurrency: 1
+criteria:
+  - trait_id: '01'
+    name: Clarity
+    description: Choose the response that states its idea more clearly.

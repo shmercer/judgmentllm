@@ -105,10 +105,14 @@ jobs:
 
       - name: Run offline tests with coverage
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
+        env:
+          JUDGMENTLLM_OPENAI_RESOURCE_EVIDENCE: ${{ runner.temp }}/judgmentllm-openai-resources
         run: uv run --offline --no-sync pytest -ra -Werror::ResourceWarning -Werror::pytest.PytestUnraisableExceptionWarning
 
       - name: Run offline tests without coverage
         if: matrix.os != 'ubuntu-latest' || matrix.python != '3.11'
+        env:
+          JUDGMENTLLM_OPENAI_RESOURCE_EVIDENCE: ${{ runner.temp }}/judgmentllm-openai-resources
         run: uv run --offline --no-sync pytest --no-cov -ra -Werror::ResourceWarning -Werror::pytest.PytestUnraisableExceptionWarning
 
       - name: Verify required Python-to-R interoperability
@@ -194,6 +198,14 @@ jobs:
       - name: Verify clean core source distribution installation
         if: runner.os == 'Linux'
         run: uv run --offline --no-sync python scripts/smoke_install.py dist/*.tar.gz
+
+      - name: Preserve offline OpenAI resource measurements
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: openai-resources-${{ matrix.os }}-${{ matrix.python }}
+          path: ${{ runner.temp }}/judgmentllm-openai-resources/*.json
+          if-no-files-found: warn
 
       - name: Preserve coverage report
         if: always() && matrix.os == 'ubuntu-latest' && matrix.python == '3.11'

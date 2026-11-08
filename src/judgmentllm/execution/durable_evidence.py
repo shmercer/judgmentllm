@@ -4,6 +4,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+from judgmentllm.assessment_diagnostics import (
+    AssessmentComponentMetadata,
+    diagnose_assessment_output,
+)
 from judgmentllm.evidence import (
     EvidenceIdentity,
     ReasoningAuthorization,
@@ -11,6 +15,8 @@ from judgmentllm.evidence import (
     UsageContext,
     extract_provider_usage,
 )
+from judgmentllm.evidence.assessment import AssessmentDiagnosticV1
+from judgmentllm.evidence.usage import InvocationFailureCode
 from judgmentllm.execution.evidence import committed_authorization
 from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.evidence import (
@@ -156,10 +162,14 @@ class DurableEvidence:
             if isinstance(work.prepared, PreparedRequestV2)
             else None
         )
-        if session.spec.schema_version == 3:
+        if (
+            session.prepared is not None
+            and session.prepared.manifest.schema_version in (3, 4)
+        ):
+            from judgmentllm.production_transport import PreparedRequestV4
             from judgmentllm.transport import PreparedRequestV3
 
-            if not isinstance(work.prepared, PreparedRequestV3):
+            if not isinstance(work.prepared, (PreparedRequestV3, PreparedRequestV4)):
                 raise IntegrityError("native evidence lacks its output commitment")
             commitment = work.prepared.output_commitment
 
@@ -209,7 +219,8 @@ class DurableEvidence:
             capture=session.spec.capture,
             authorization=self.authorization,
             transport_context=session.prepared.transport_context
-            if session.prepared is not None and session.spec.schema_version == 3
+            if session.prepared is not None
+            and session.prepared.manifest.schema_version in (3, 4)
             else None,
         )
         session.checkpoint("after_evidence_extraction", work.prepared.request_uid)
@@ -256,6 +267,60 @@ class DurableEvidence:
             raise IntegrityError("received observation conflicts with durable receipt")
         companion = None
         if self.enabled:
+            diagnostic = None
+            adapter_evidence = response.evidence
+            if (
+                adapter_evidence is not None
+                and adapter_evidence.provenance == "provider_documented"
+                and adapter_evidence.assessment_component is not None
+                and commitment is not None
+                and session.spec.provider == "openai"
+                and session.prepared is not None
+                and session.prepared.manifest.schema_version == 4
+            ):
+                from judgmentllm.assessment_diagnostics import AssessmentComponent
+
+                component = AssessmentComponent.model_validate(
+                    dict(adapter_evidence.assessment_component)
+                )
+                parsed = diagnose_assessment_output(
+                    component,
+                    commitment.contract,
+                )
+                text = component.output_text
+                text_artifact = None
+                digest = None
+                if text is not None:
+                    digest = bytes_digest(text)
+                    text_artifact = (
+                        self.store.put(text, "text/plain; charset=utf-8")
+                        if session.spec.capture == "full"
+                        else ArtifactStore.hash_only(
+                            digest, len(text), "text/plain; charset=utf-8"
+                        )
+                    )
+                diagnostic = AssessmentDiagnosticV1(
+                    identity=self.identity(work, observation_id),
+                    endpoint=component.endpoint,
+                    requested_model=session.spec.model,
+                    provider_outcome=prepared.usage.provider_outcome,
+                    reported_model=prepared.usage.reported_model,
+                    remote_response_id=response.observation_key,
+                    component=AssessmentComponentMetadata.model_validate_json(
+                        component.model_dump_json()
+                    ),
+                    parser_diagnostic=parsed.code,
+                    canonical_valid=parsed.canonical_valid,
+                    capture=session.spec.capture,
+                    retention="withheld"
+                    if text is None
+                    else "retained"
+                    if session.spec.capture == "full"
+                    else "hash_only",
+                    artifact=text_artifact,
+                    content_sha256=digest,
+                    byte_length=component.byte_length,
+                )
             ack = read_acknowledgment(self.store, work.submission_id)
             assert ack is not None and self.authorization_sha256 is not None
             companion = EvidenceReceipt(
@@ -271,6 +336,7 @@ class DurableEvidence:
                 authorization=self.authorization,
                 authorization_sha256=self.authorization_sha256,
                 usage=prepared.usage,
+                assessment_diagnostic=diagnostic,
                 order=prepared.order,
                 reasoning=prepared.reasoning,
                 original=ArtifactStore.hash_only(
@@ -291,6 +357,79 @@ class DurableEvidence:
         session.checkpoint("after_receipt", work.prepared.request_uid)
         return raw, receipt, companion
 
+    def uncertain(
+        self,
+        work: ExecutionWork,
+        reported: ReportedUsageInput | None = None,
+        *,
+        known_invoked: bool = False,
+    ) -> EvidenceReceipt | None:
+        """Retain unknown usage only for an established OpenAI store=false call.
+
+        Missing crash-window evidence never manufactures a known invocation.
+        This receipt is immutable and cannot turn into definitive nonacceptance.
+        """
+        if not self.enabled:
+            return None
+        session = self.session
+        previous = read_evidence_receipt(self.store, work.submission_id)
+        if previous is not None:
+            self.verify(previous, work)
+            if previous.invocation_acceptance != "unresolved":
+                if known_invoked:
+                    raise IntegrityError(
+                        "uncertain invocation conflicts with existing evidence"
+                    )
+                return None
+            if reported is not None:
+                original = ReportedUsageInput.model_validate(
+                    {
+                        key: getattr(previous.usage, key)
+                        for key in ReportedUsageInput.model_fields
+                    }
+                )
+                if original != reported:
+                    raise IntegrityError("uncertain invocation usage conflicts")
+            return previous
+        if not known_invoked:
+            return None
+        if (session.spec.provider, session.spec.endpoint) not in {
+            ("openai", "responses"),
+            ("openai", "chat.completions"),
+        }:
+            return None
+        identity = self.identity(work, None)
+        usage = extract_provider_usage(
+            identity,
+            UsageContext.model_validate(
+                {
+                    "provider": session.spec.provider,
+                    "endpoint": session.spec.endpoint,
+                    "requested_model": session.spec.model,
+                    "observation_kind": "invocation",
+                    "invocation_kind": "live",
+                }
+            ),
+            reported,
+        )
+        assert self.authorization_sha256 is not None
+        evidence = EvidenceReceipt(
+            identity=identity,
+            correlation_id=work.correlation_id,
+            payload_sha256=work.prepared.payload_sha256,
+            capture=session.spec.capture,
+            authorization=self.authorization,
+            authorization_sha256=self.authorization_sha256,
+            usage=usage,
+            response_retention="omitted",
+            invocation_acceptance="unresolved",
+        )
+        publish_evidence_receipt(self.store, evidence)
+        session.checkpoint(
+            "after_uncertain_evidence_receipt", work.prepared.request_uid
+        )
+        return evidence
+
     def failure(
         self,
         work: ExecutionWork,
@@ -298,6 +437,7 @@ class DurableEvidence:
         *,
         transient: bool = False,
         retry_after: float | None = None,
+        diagnostic_code: InvocationFailureCode | None = None,
     ) -> EvidenceReceipt | None:
         """Invoked definitive nonacceptance has no invented provider observation."""
         if not self.enabled:
@@ -306,8 +446,13 @@ class DurableEvidence:
         previous = read_evidence_receipt(self.store, work.submission_id)
         if previous is not None:
             self.verify(previous, work)
-            if previous.identity.observation_id is not None:
-                raise IntegrityError("failure conflicts with observation evidence")
+            if (
+                previous.identity.observation_id is not None
+                or previous.invocation_acceptance is not None
+            ):
+                raise IntegrityError(
+                    "failure conflicts with observation or unresolved invocation evidence"
+                )
             if reported is not None:
                 original = ReportedUsageInput.model_validate(
                     {
@@ -317,6 +462,11 @@ class DurableEvidence:
                 )
                 if original != reported:
                     raise IntegrityError("failure usage conflicts")
+            if (
+                diagnostic_code is not None
+                and previous.usage.invocation_failure_code != diagnostic_code
+            ):
+                raise IntegrityError("failure classification conflicts")
             return previous
         identity = self.identity(work, None)
         usage = extract_provider_usage(
@@ -328,6 +478,7 @@ class DurableEvidence:
                     "requested_model": session.spec.model,
                     "observation_kind": "invocation",
                     "definitive_failure_id": stable_id("failure", work.submission_id),
+                    "invocation_failure_code": diagnostic_code,
                 }
             ),
             reported,

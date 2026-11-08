@@ -12,6 +12,8 @@ import json
 from pathlib import Path
 from typing import Literal
 
+from openai_offline_fixture import export_openai, persist_openai
+
 from judgmentllm.config import load_run_spec
 from judgmentllm.execution import execute_run, recover_run
 from judgmentllm.io import export_results_csv, write_results_jsonl
@@ -241,11 +243,16 @@ def main() -> None:
     parser.add_argument("--phase", choices=("persist", "export"), required=True)
     parser.add_argument("--output", type=Path, required=True)
     options = parser.parse_args()
-    asyncio.run(
-        persist(options.output)
-        if options.phase == "persist"
-        else export(options.output)
-    )
+
+    async def run_phase() -> None:
+        if options.phase == "persist":
+            await persist(options.output)
+            await persist_openai(options.output / "openai")
+        else:
+            await export(options.output)
+            export_openai(options.output / "openai")
+
+    asyncio.run(run_phase())
 
 
 if __name__ == "__main__":

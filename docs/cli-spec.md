@@ -464,3 +464,42 @@ ordinary status/JSON/diagnostics never include provider reasoning text. Existing
 nullable result token columns stay unchanged. No `usage export` or `reasoning
 export` command is added before Phase 6. Historical schema-1 stores are inspected
 and exported without migration or fabricated evidence.
+
+## OpenAI Phase 5A non-generative diagnostics
+
+`auth verify --provider openai [--json]` now performs exactly one protected
+OpenAI models-list read through the shared credential resolver. It never generates
+an assessment, paginates, retries or qualifies a model. Its typed
+`AuthVerification` includes provider, logical source, operation, UTC `checked_at`,
+`verification_status` and a fixed nullable diagnostic code. Existing version-1
+control envelopes and the verification exit-code table above apply.
+
+`providers models --provider openai [--model EXACT_MODEL_ID] [--json]` returns a
+bounded model-list snapshot with `models`, requested-model visibility, completion
+state and actual SDK-call count. `not_visible` means absent from a complete list;
+a failed or incomplete read leaves missing-model visibility unknown. Account and
+owner fields are excluded. Successful authentication/listing does not establish
+endpoint, parameter, native schema or assessment support. Other providers remain
+unsupported by these commands in Phase 5A. Offline `auth status` is unchanged.
+
+The earlier general `providers smoke` command remains deferred. Phase 5A uses a
+separate reproducible qualification harness requiring explicit source, endpoint,
+model, mechanism, synthetic data, consent, evidence location and shared request,
+token and spending limits. It never runs from ordinary CI or implicitly after CI.
+
+
+Phase 5A assessment-output diagnostics are available through the separate
+read-only Python inspection service documented in `python-api.md`; this adds no
+CLI command or control-envelope field. Ordinary status and result exports never
+display protected unvalidated assessment text. The qualification harness reports
+safe diagnostic metadata, keeps historical plan reports readable, and requires a
+fresh source-bound version-2 plan for new execution. Positively terminal invalid
+assessments can advance within that fixed matrix; uncertainty cannot.
+
+
+The repository qualification report adds `case_status` to distinguish pending,
+unresolved, rejected, accepted without usable observation, completed valid or
+invalid assessment, refusal, truncation, and local evidence-integrity failure.
+`matrix_execution_complete`, `all_assessments_valid`, `valid_assessment_count`, and
+`invalid_assessment_count` distinguish completing the planned matrix from passing
+its assessment checks; independent live qualification review remains required.

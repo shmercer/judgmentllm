@@ -195,6 +195,28 @@ updates its tests and user documentation and passes applicable R acceptance.
    provider-specific `auth verify` only where documented suitable protected
    non-generative operations exist; unsupported mechanisms remain explicit.
    Unknown-model pass-through does not establish support.
+   **5A, implemented pending exact-head offline and authorized live acceptance:**
+   production OpenAI Responses/Chat use additive actual-body transport records,
+   SDK 3.42.1 byte verification, shared credentials, bounded zero-retry calls,
+   durable assessment/evidence/recovery and explicit non-generative diagnostics.
+   The repository `scripts/qualify_openai.py` harness prepares an immutable eight-call
+   synthetic text/native matrix offline. Its dedicated executor requires explicit
+   plan-digest/source-commit billable consent and shares one durable budget ledger;
+   its grants are unavailable to ordinary production run/resume. Reporting is read-only.
+   The correction adds protected assessment-component diagnostics and read-only
+   inspection without changing normalized exports or repairing invalid judgments.
+   New version-2 plans bind fresh physical identities to their source; accepted,
+   positively terminal invalid assessments may advance within the fixed matrix,
+   while uncertainty stops execution. Historical plans/evidence remain immutable
+   and reportable. The corrected head requires all existing offline/R/hosted gates
+   and a separately reviewed new live plan; no previous live approval transfers.
+   This advances only the narrowly scoped OpenAI qualification harness from Phase 7;
+   general `providers smoke`, companion exports and other providers remain deferred.
+   Merge recommendation requires all seven local configurations, 49 R gates,
+   existing resource measurements plus OpenAI SDK workloads, five hosted jobs, and
+   independently reviewed live evidence for both exact-model endpoint scopes.
+   Until separately authorized calls pass, label the PR **offline-qualified; live
+   qualification pending explicit authorization** only after offline gates succeed.
    **Vertex authentication follow-up (required for the Vertex adapter PR):**
    support explicitly selected Google Cloud authorization API keys alongside
    ADC wherever the exact Agent Platform/Vertex endpoint and SDK route qualify.

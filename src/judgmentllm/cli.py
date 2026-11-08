@@ -16,7 +16,7 @@ from judgmentllm.cli_controls import (
     present_auth_status,
     progress,
 )
-from judgmentllm.config import RunSpecV2, load_run_spec
+from judgmentllm.config import RunSpecV2, RunSpecV3, load_run_spec
 from judgmentllm.lifecycle import (
     LifecycleError,
     MockExecutionOptions,
@@ -32,7 +32,11 @@ from judgmentllm.lifecycle import (
 )
 from judgmentllm.planning import validate_run
 from judgmentllm.preview import preview_prompt
+from judgmentllm.production_prompts import RenderedProductionPromptV1
 from judgmentllm.prompts import RenderedAssessmentPrompt, init_template, list_templates
+from judgmentllm.providers.openai_cli import (
+    register_commands as _register_openai_commands,
+)
 
 app = typer.Typer(
     name="judgmentllm",
@@ -106,7 +110,7 @@ def templates_preview(
     """Print one complete prompt locally; no credentials or provider calls."""
     if json_output:
 
-        def operation() -> RenderedAssessmentPrompt:
+        def operation() -> RenderedAssessmentPrompt | RenderedProductionPromptV1:
             spec = load_run_spec(config)
             rendered = preview_prompt(
                 spec, item_id=item_id, trait_id=trait_id, pair_uid=pair_uid
@@ -130,14 +134,14 @@ def templates_preview(
         for issue in validate_run(spec).issues:
             if issue.severity == "warning":
                 typer.echo(f"Warning [{issue.code}]: {issue.message}", err=True)
-        if isinstance(spec, RunSpecV2):
+        if isinstance(spec, (RunSpecV2, RunSpecV3)):
             typer.echo(rendered.text.encode("utf-8"), nl=False)
         else:
             typer.echo(rendered.text)
     except (ValueError, OSError) as error:
         message = (
             "Invalid configuration or prompt selection."
-            if spec is None or isinstance(spec, RunSpecV2)
+            if spec is None or isinstance(spec, (RunSpecV2, RunSpecV3))
             else str(error)
         )
         typer.echo(f"Error: {message}", err=True)
@@ -409,3 +413,8 @@ def results_export(
             high_water_mark=high_water_mark,
         )
     )
+
+
+# Register explicit online diagnostics; ordinary auth status remains offline.
+
+_register_openai_commands(app, auth_app)

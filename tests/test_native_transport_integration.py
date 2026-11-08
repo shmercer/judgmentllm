@@ -411,6 +411,7 @@ async def test_auto_freezes_mixed_transports_for_group_and_single_remainder(
         receipts = tuple(prepared.transport_for_attempt(a.attempt_id) for a in attempts)
         assert tuple(r.mechanism for r in receipts) == ("text", mechanism)
         assert all(r.selection.policy == "auto" for r in receipts)
+        assert isinstance(receipts[0], TransportCommitmentV1)
         group_decision = (
             receipts[0].selection.openai_decision
             or receipts[0].selection.provider_decision

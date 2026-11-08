@@ -3,8 +3,10 @@
 **Status: Phases 1–3 and 4A/4B implement provider-neutral contracts, offline
 mock execution, credential diagnostics and durable synthetic evidence
 integration. Phase 4C3 completes offline durable native transport integration
-through private synthetic fixtures. Real-provider integrations and
-qualification remain deferred.**
+through private synthetic fixtures. Phase 5A adds production OpenAI Responses
+and Chat adapters, exact SDK HTTP body verification, and a separate authorized
+synthetic qualification harness. Live acceptance remains pending explicit
+authorization and exact-model evidence; other provider integrations remain deferred.**
 This authoritative Milestone 3 design
 was originally prepared on 2026-11-05. The working contracts are described in
 [data contracts](data-contracts.md), [persistence contracts](persistence-contracts.md)
@@ -1003,3 +1005,30 @@ services using private exact-scope synthetic authority and an independent
 acceptance ledger. It is not a real provider request. Phase 5 must supply complete
 endpoint request builders, commit their exact final payload bytes, preserve all
 receipt/recovery invariants, and qualify authentication and serving separately.
+
+## Phase 5A production OpenAI activation
+
+Explicit version-3 OpenAI configurations use an additive production representation:
+version-4 prepared requests/manifests and version-2 transport receipts. The
+assessment contract, normalized outputs, RunSpec V1/V2/V3, synthetic V3 payloads,
+and standalone OpenAI V1/provider-neutral V2 projection records keep their existing
+versions and identities. Synthetic fixture authority cannot authorize provider HTTP.
+
+Responses uses `text.format` and `max_output_tokens`; Chat uses `response_format`,
+`max_completion_tokens` and one choice. Both commit the complete nonsecret request
+body before submission and verify the SDK's outgoing bytes before forwarding.
+`store=false` and zero SDK retries are explicit. A provider rejection cannot change
+an already selected mechanism or trigger an unrequested replacement request.
+
+Original generated text remains the input to strict local decoding, duplicate-key
+rejection, member validation and grouped sibling salvage. Refusal, incompleteness,
+unsupported output components and transport uncertainty remain distinct failures.
+Usage is attached once to each physical invocation, including failed assessments;
+Responses and Chat retain separate documented usage sources. Provider reasoning
+is excluded from ordinary retained bodies.
+
+Native production admission remains exact-scope and controlled. The repository
+qualification executor has a separate immutable plan/source/membership grant for
+probing unqualified synthetic cases, with a shared durable call/budget ledger.
+Ordinary run/resume rejects those grants and seals. Harness reports do not promote
+capability evidence; independent review is still required.

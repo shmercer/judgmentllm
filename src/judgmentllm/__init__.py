@@ -26,6 +26,14 @@ from judgmentllm.models import (
     Rubric,
     Trait,
 )
+from judgmentllm.openai_diagnostics import (
+    AuthVerification,
+    ModelDiscovery,
+    adiscover_models,
+    averify_authentication,
+    discover_models,
+    verify_authentication,
+)
 from judgmentllm.planning import (
     CapabilityProfile,
     iter_requests,
@@ -54,6 +62,12 @@ from judgmentllm.results import (
 
 __all__ = [
     "__version__",
+    "AuthVerification",
+    "ModelDiscovery",
+    "adiscover_models",
+    "averify_authentication",
+    "discover_models",
+    "verify_authentication",
     "CredentialStatus",
     "credential_status",
     "ResponseItem",

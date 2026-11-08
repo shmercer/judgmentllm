@@ -96,8 +96,14 @@ class RenderedPromptV2(StrictModel):
 
 if TYPE_CHECKING:
     from judgmentllm.native_prompts import RenderedPromptV3
+    from judgmentllm.production_prompts import RenderedProductionPromptV1
 
-    RenderedAssessmentPrompt = RenderedPrompt | RenderedPromptV2 | RenderedPromptV3
+    RenderedAssessmentPrompt = (
+        RenderedPrompt
+        | RenderedPromptV2
+        | RenderedPromptV3
+        | RenderedProductionPromptV1
+    )
 else:
     # Historical runtime imports stay independent of native orchestration.
     RenderedAssessmentPrompt = RenderedPrompt | RenderedPromptV2

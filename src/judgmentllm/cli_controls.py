@@ -84,7 +84,16 @@ class Invocation:
 
 
 _invocation: ContextVar[Invocation | None] = ContextVar("lifecycle_cli", default=None)
-_LIFECYCLE = {"validate", "plan", "run", "resume", "runs", "results", "auth"}
+_LIFECYCLE = {
+    "validate",
+    "plan",
+    "run",
+    "resume",
+    "runs",
+    "results",
+    "auth",
+    "providers",
+}
 _USAGE = {"usage", "validation", "unsupported_capability", "not_found"}
 
 
@@ -93,9 +102,11 @@ def _command_name(args: Sequence[str]) -> str:
         return "templates preview"
     if not args or args[0] not in _LIFECYCLE:
         return "unknown"
-    if args[0] in {"runs", "results", "auth"}:
+    if args[0] in {"runs", "results", "auth", "providers"}:
         if len(args) > 1 and (args[0], args[1]) in {
             ("auth", "status"),
+            ("auth", "verify"),
+            ("providers", "models"),
             ("runs", "list"),
             ("runs", "status"),
             ("runs", "resume"),
@@ -331,7 +342,7 @@ def perform(
         fail(
             "execution",
             "Offline authentication status inspection failed."
-            if invocation.command.startswith("auth")
+            if invocation.command == "auth status"
             else "The local execution storage operation failed.",
         )
         return

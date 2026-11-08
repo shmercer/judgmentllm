@@ -3,7 +3,7 @@
 Milestone 1 supports offline preparation and normalization of supplied synthetic outputs.
 Milestone 2 Subphase 2 adds provider-free immutable source preparation, indexed
 input access, complete manifests, and generation compatibility validation.
-All examples below run without credentials. Public assessment models, common
+Historical mock examples below run without credentials; explicitly labelled OpenAI execution examples require credentials and incur API charges. Public assessment models, common
 normalization functions, planning functions, and preview are also exported from
 `judgmentllm`. Subphases 3–4 provide mock execution/recovery, grouped outcomes,
 retry/cancellation and immutable exports. Subphase 5 exposes the shared public
@@ -23,7 +23,7 @@ grouped rubric execution, inspection and canonical/R exports) and
 explicit failed-member retries and immutable old exports). Pairwise execution
 uses `examples/mock-pairwise.yaml`. See the [scale guide](scale-qualification.md)
 for local storage and separate benchmark commands. These examples use synthetic
-inputs and the mock adapter; real providers remain unimplemented.
+inputs and the mock adapter. Phase5A OpenAI examples are documented separately in the [OpenAI guide](openai.md).
 
 The top-level `judgmentllm` package and `judgmentllm.lifecycle` expose:
 
@@ -42,7 +42,7 @@ export_run_results(run_id, *, store=None, format="jsonl", view="canonical",
                    na_string="NA", high_water_mark=None) -> ResultManifest
 ```
 
-`spec_or_path` accepts a `RunSpec`, `RunSpecV2`, string path or `Path`. Synchronous execution
+`spec_or_path` accepts a `RunSpec`, `RunSpecV2`, `RunSpecV3`, string path or `Path`. Synchronous execution
 wrappers reject calls inside an active event loop before doing any I/O, with
 instructions to call their async equivalent. Both execute in the calling process;
 no background service continues after that process exits. Cancellation of async
@@ -51,9 +51,11 @@ Coarse synchronous progress observers receive frozen `ProgressEvent` records wit
 `stage` (`started`, `prepared`, `finished`), durable `run_id` and absolute `store`.
 Progress contains no prompt, assessment text, raw response or exception dump.
 
-Only the exact combination `provider="mock"`, `endpoint="synthetic"` executes in
-this release. Other provider identities fail with `unsupported_capability` before
-mock construction or submission. Offline validation/planning continue to accept
+V1/V2 execute only the exact combination `provider="mock"`, `endpoint="synthetic"`.
+Phase5A adds `provider="openai"` with `endpoint="responses"` or
+`endpoint="chat.completions"` through explicit RunSpecV3 production transport.
+Other provider identities fail with `unsupported_capability` before mock
+construction or submission. Offline validation/planning continue to accept
 other valid configurations with explicit capability unknowns; validity does not
 claim that a real adapter is implemented. The provider-owned pure mock preflight
 rejects unsupported mock modes, tiers and explicit caching before execution.
@@ -1132,3 +1134,126 @@ the original family/route and create new exact commitments. The synthetic fixtur
 adapter exposes the same context to existing execute/recover/retry services;
 it is test-only, never a registered production provider. Phase 5 must supply
 complete real endpoint builders and commit their final wire payload bytes.
+
+## OpenAI production adapters (Milestone 3 Phase 5A)
+
+Install the optional SDK with `pip install 'judgmentllm[openai]'` on Python 3.11
+or later. Explicit `RunSpecV3` configurations select `provider="openai"` and
+`endpoint="responses"` or `endpoint="chat.completions"`. The shared public
+`validate_inputs`, `estimate_run`, `preview_prompt`, `run_live`/`arun_live`,
+`resume_run`/`aresume_run`, status and export services use the existing durable
+lifecycle. Only run/resume execute assessment requests and may incur charges.
+Set `OPENAI_API_KEY` in the process environment; credentials are resolved only at
+an explicit execution or online-diagnostic boundary. No `.env` is loaded.
+
+Both endpoints use official asynchronous SDK calls, explicit `store=false`,
+nonstreaming generation, bounded clients and zero SDK retries. Responses maps the
+output bound to `max_output_tokens`; Chat maps it to `max_completion_tokens`.
+Unspecified generation settings stay omitted. Model names never establish
+parameter or native-schema support. Ordinary `native` requires reviewed exact
+scope authority; `auto` uses native only when eligible and otherwise follows the
+existing text/strict-capability policy. A rejected committed request never changes
+its output mechanism or silently retries with different parameters.
+
+The production transport commits the complete nonsecret SDK request body before
+submission and verifies the actual outgoing HTTP bytes and selected bearer
+credential before forwarding. SDK 3.42.1 internally inspects ambient custom-header
+configuration; the adapter ignores and clears it, overrides its default header
+construction, explicitly disables alternate credential options and verifies the
+selected key at the HTTP boundary. Ambient headers cannot select credentials,
+organization/project routing or alternate API hosts.
+
+Full capture retains exact original response bytes only when the documented
+envelope passes strict safe-field checks. Unknown extensions, reasoning items,
+nonempty metadata, tool/audio payloads or annotations produce a labeled filtered
+derivative retaining the original assessment string when eligible. A separate
+protected assessment component can retain exact invalid output under full capture
+without retaining unsafe envelope fields. Unauthorized reasoning text
+is never retained. Minimal capture retains safe identifiers, hashes and evidence;
+it does not retain provider bodies or student inputs. Provider usage has one record
+per physical invocation, with requested/reported models separate, unknown counters
+null, cache/reasoning overlap explicit and no invented prices. Safe
+`usage.provider_outcome` distinguishes completion, refusal, content filtering,
+output limits, missing/multiple/unsupported output, tools and provider failures.
+
+### Read-only assessment diagnostics
+
+```python
+from judgmentllm.assessment_inspection import (
+    AssessmentOutputInspection,
+    inspect_assessment_output,
+)
+
+inspect_assessment_output(
+    run_id, observation_id, *, store, include_text=False
+) -> AssessmentOutputInspection
+```
+
+The service verifies an existing observation and companion receipt using the
+read-only repository. A running store is inspected through a private, temporary
+registry snapshot; protected text artifacts remain in the original run store.
+A changing snapshot is rejected. It performs no provider operation and requires no
+credentials. The default result contains `label` and nullable `diagnostic`.
+`include_text=True` additionally reads exact UTF-8 bytes only for an existing
+full-capture artifact. `output_text` is excluded from `repr`, `model_dump()` and
+JSON serialization. Minimal capture and unavailable historical artifacts return
+no text; no decoding repair, rescoring, recovery or new request occurs.
+
+`AssessmentDiagnosticV1` lives in `judgmentllm.evidence.assessment`. It has its
+own `diagnostic_version=1` inside the unchanged evidence schema 1. It binds
+`identity`, endpoint, requested/reported model, remote response ID and provider
+outcome to `component`, `parser_diagnostic`, `canonical_valid`, capture/retention,
+and nullable artifact/hash/length. `component` records allowlisted source/type
+metadata and extraction status without generated values. Recognized text has a
+separate 1,048,576-byte cap. Full capture stores the entire exact component;
+minimal capture records a hash-only artifact; withheld components have no content
+hash or artifact. A diagnostic never supplies assessment or retry authority.
+The canonical validators still reject invalid outputs without normalization or
+repair. Existing normalized result/export contracts are unchanged.
+
+### Recovery and provider diagnostics
+
+A bounded in-memory handoff joins submission acknowledgment to response retrieval.
+No remote retrieval is enabled with `store=false`. A new process can recover a
+trustworthy retained full-capture response, but lost minimal-capture output or an
+interruption before durable response receipt can remain unresolved. Resume never
+issues replacement assessments to resolve uncertainty. An interruption does not
+establish provider cancellation or nonacceptance.
+
+Explicit non-generative diagnostics are available separately:
+
+```python
+from judgmentllm import discover_models, verify_authentication
+
+verification = verify_authentication(provider="openai")
+models = discover_models(provider="openai", model="EXACT_MODEL_ID")
+```
+
+Their asynchronous counterparts are `averify_authentication` and
+`adiscover_models`. Each makes at most one protected `models.list` SDK request,
+without pagination or retries, and returns sanitized typed records. Model listing
+reports visibility only. Authentication acceptance, visibility, SDK fixture tests
+and actual serving qualification remain distinct. Offline `credential_status`
+continues to make no network requests. Live assessment qualification uses only the
+separate authorized harness; ordinary CI never invokes real providers.
+
+Production `estimate_run()` includes optional `transport_protocol` and
+`selected_transports` counts derived from frozen receipts; historical plan output
+omits these fields. These describe prepared intent, not serving acceptance.
+
+Model-dependent explanation, grouped-output and tie support remains unknown in
+generic capability profiles until reviewed exact-model/endpoint evidence exists.
+Nonstrict validation reports unknowns as warnings; strict validation rejects them.
+The generic explanation flag covers all rubric layouts and pairwise explanations,
+so a record qualifying only one explanation layout does not set that broad flag.
+Until a narrower public capability interface exists, strict runs can therefore
+remain blocked by partial explanation qualification. Native transport selection
+still checks the precise requested feature set. `modes=("live",)` describes the
+implemented local execution path and makes no model-access or serving claim.
+
+Strict OpenAI capability failures preserve specific `ValidationIssue` records in
+`validate_inputs()` and CLI `validate --json` (validation exit2). Plan, preview,
+and run reject before submission with safe setting names such as
+`generation.temperature`; provider response text, model values and assessment
+content never enter these diagnostics. Invalid capability intent is not reported
+as a network or execution failure.

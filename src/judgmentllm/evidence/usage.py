@@ -20,6 +20,7 @@ TokenCount = Annotated[int, Field(ge=0)]
 UsageSource = Literal[
     "unknown",
     "openai.chat.usage",
+    "openai.responses.usage",
     "anthropic.messages.usage",
     "synthetic.reported_usage",
 ]
@@ -36,6 +37,8 @@ UsageField = Literal[
     "completion_tokens",
     "total_tokens",
     "prompt_tokens_details.cached_tokens",
+    "input_tokens_details.cached_tokens",
+    "output_tokens_details.reasoning_tokens",
     "completion_tokens_details.reasoning_tokens",
     "input_tokens",
     "output_tokens",
@@ -83,6 +86,17 @@ class UsageBreakdown(_UsageSemantics):
 _SEMANTICS: dict[
     tuple[UsageSource, UsageField], tuple[UsageRelationship, UsageCounter | None]
 ] = {
+    ("openai.responses.usage", "input_tokens"): ("reported", None),
+    ("openai.responses.usage", "output_tokens"): ("reported", None),
+    ("openai.responses.usage", "total_tokens"): ("reported", None),
+    ("openai.responses.usage", "input_tokens_details.cached_tokens"): (
+        "included_in",
+        "input_tokens",
+    ),
+    ("openai.responses.usage", "output_tokens_details.reasoning_tokens"): (
+        "included_in",
+        "output_tokens",
+    ),
     ("openai.chat.usage", "prompt_tokens"): ("reported", None),
     ("openai.chat.usage", "completion_tokens"): ("reported", None),
     ("openai.chat.usage", "total_tokens"): ("reported", None),
@@ -154,6 +168,15 @@ class EstimatedCost(EvidenceModel):
         return self
 
 
+InvocationFailureCode = Literal[
+    "request_rejected",
+    "credentials_rejected",
+    "permission_denied",
+    "model_or_endpoint_unavailable",
+    "rate_limited",
+]
+
+
 class UsageContext(EvidenceModel):
     """Explicit invocation metadata supplied independently of assessment traits."""
 
@@ -170,6 +193,24 @@ class UsageContext(EvidenceModel):
     endpoint: ID
     requested_model: ID
     reported_model: ID | None = None
+    provider_outcome: (
+        Literal[
+            "completed",
+            "refusal",
+            "content_filter",
+            "output_limit",
+            "incomplete",
+            "provider_failure",
+            "missing_output",
+            "multiple_outputs",
+            "unsupported_output",
+            "tool_call",
+        ]
+        | None
+    ) = Field(default=None, exclude_if=lambda value: value is None)
+    invocation_failure_code: InvocationFailureCode | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     sdk_version: ID | None = None
     observation_kind: Literal[
         "response", "refusal", "provider_error", "confirmed_cancellation", "invocation"
@@ -246,7 +287,7 @@ class ReportedUsageInput(_UsageSemantics):
             raise ValueError(
                 "reported cost semantics are not established for this source"
             )
-        if self.usage_source == "openai.chat.usage":
+        if self.usage_source in {"openai.chat.usage", "openai.responses.usage"}:
             if self.cache_write_tokens is not None:
                 raise ValueError("4A mapping does not establish cache write tokens")
             for component, parent in (
@@ -266,6 +307,8 @@ class ReportedUsageInput(_UsageSemantics):
             "input_tokens": "input_tokens",
             "output_tokens": "output_tokens",
             "prompt_tokens_details.cached_tokens": "cache_read_tokens",
+            "input_tokens_details.cached_tokens": "cache_read_tokens",
+            "output_tokens_details.reasoning_tokens": "reasoning_tokens",
             "completion_tokens_details.reasoning_tokens": "reasoning_tokens",
             "cache_read_input_tokens": "cache_read_tokens",
             "cache_creation_input_tokens": "cache_write_tokens",
@@ -318,6 +361,11 @@ class ProviderUsage(EvidenceIdentity, UsageContext, ReportedUsageInput):
             self.provider,
             self.endpoint,
         ) != ("openai", "chat.completions"):
+            raise ValueError("usage source does not match provider endpoint")
+        if self.usage_source == "openai.responses.usage" and (
+            self.provider,
+            self.endpoint,
+        ) != ("openai", "responses"):
             raise ValueError("usage source does not match provider endpoint")
         if self.usage_source == "anthropic.messages.usage" and (
             self.provider,
@@ -404,6 +452,11 @@ def extract_openai_chat_usage(
         raise ValueError("usage source does not match provider endpoint")
     if usage is None:
         return extract_provider_usage(identity, context, None)
+    return extract_provider_usage(identity, context, interpret_openai_chat_usage(usage))
+
+
+def interpret_openai_chat_usage(usage: OpenAIChatUsageInput) -> ReportedUsageInput:
+    """Map documented Chat counters before executor identities are available."""
     cached = (
         usage.prompt_tokens_details.cached_tokens
         if usage.prompt_tokens_details
@@ -414,7 +467,7 @@ def extract_openai_chat_usage(
         if usage.completion_tokens_details
         else None
     )
-    reported = ReportedUsageInput(
+    return ReportedUsageInput(
         usage_source="openai.chat.usage",
         input_tokens=usage.prompt_tokens,
         output_tokens=usage.completion_tokens,
@@ -432,7 +485,6 @@ def extract_openai_chat_usage(
             ),
         ),
     )
-    return extract_provider_usage(identity, context, reported)
 
 
 def extract_anthropic_messages_usage(
@@ -470,3 +522,58 @@ def extract_anthropic_messages_usage(
         ),
     )
     return extract_provider_usage(identity, context, reported)
+
+
+class OpenAIResponsesUsageInput(EvidenceModel):
+    """Documented Responses counters; details overlap their parent counts."""
+
+    input_tokens: TokenCount | None = None
+    output_tokens: TokenCount | None = None
+    total_tokens: TokenCount | None = None
+    input_tokens_details: OpenAIInputTokenDetails | None = None
+    output_tokens_details: OpenAIOutputTokenDetails | None = None
+
+
+def interpret_openai_responses_usage(
+    usage: OpenAIResponsesUsageInput,
+) -> ReportedUsageInput:
+    """Preserve Responses counters without fabricating unknown values."""
+    cached = (
+        usage.input_tokens_details.cached_tokens if usage.input_tokens_details else None
+    )
+    reasoning = (
+        usage.output_tokens_details.reasoning_tokens
+        if usage.output_tokens_details
+        else None
+    )
+    return ReportedUsageInput(
+        usage_source="openai.responses.usage",
+        input_tokens=usage.input_tokens,
+        output_tokens=usage.output_tokens,
+        total_tokens=usage.total_tokens,
+        cache_read_tokens=cached,
+        reasoning_tokens=reasoning,
+        breakdown=_breakdown(
+            "openai.responses.usage",
+            (
+                ("input_tokens", usage.input_tokens),
+                ("output_tokens", usage.output_tokens),
+                ("total_tokens", usage.total_tokens),
+                ("input_tokens_details.cached_tokens", cached),
+                ("output_tokens_details.reasoning_tokens", reasoning),
+            ),
+        ),
+    )
+
+
+def extract_openai_responses_usage(
+    identity: EvidenceIdentity,
+    context: UsageContext,
+    usage: OpenAIResponsesUsageInput | None,
+) -> ProviderUsage:
+    """Extract only Responses usage under its exact provider/endpoint scope."""
+    if (context.provider, context.endpoint) != ("openai", "responses"):
+        raise ValueError("usage source does not match provider endpoint")
+    return extract_provider_usage(
+        identity, context, interpret_openai_responses_usage(usage) if usage else None
+    )

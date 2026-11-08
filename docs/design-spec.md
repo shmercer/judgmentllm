@@ -1,6 +1,24 @@
 # JudgmentLLM: functional design specification
 
-**Design:** 0.5 (2026-11-02). **Implementation status:** Milestone 1 provides schema-version-1 contracts, synthetic normalization, structural planning, input/output, and offline prompt tools. Milestone 2 has durable persistence, generation configuration, and complete provider-free immutable source preparation with indexed access and independent-process reopening. Subphase 4 adds grouped outcomes, retry/cancellation and immutable exports; Subphase 5 exposes the shared public Python lifecycle and versioned CLI. Subphase 6 is merged in PR #11; its final implementation head `db198aeb0a6387e6a3030c584c34bdd0b41e890f` has retained local and hosted qualification evidence, with the historical six-configuration scope described below. Execution is limited to the deterministic mock provider; real adapters remain later milestones. The sections below describe the full approved direction; [data contracts](data-contracts.md) and [Python API](python-api.md) describe the implemented subset.
+**Design:** 0.5 (2026-11-02). **Implementation status:** Milestone 1 provides schema-version-1 contracts, synthetic normalization, structural planning, input/output, and offline prompt tools. Milestone 2 has durable persistence, generation configuration, and complete provider-free immutable source preparation with indexed access and independent-process reopening. Subphase 4 adds grouped outcomes, retry/cancellation and immutable exports; Subphase 5 exposes the shared public Python lifecycle and versioned CLI. Subphase 6 is merged in PR #11; its final implementation head `db198aeb0a6387e6a3030c584c34bdd0b41e890f` has retained local and hosted qualification evidence, with the historical six-configuration scope described below. Historical V1/V2 execution remains limited to the deterministic mock provider. Phase5A adds production OpenAI execution through explicit V3 configurations and independently identified production manifests, pending exact-head and authorized live acceptance. The sections below describe the full approved direction; [data contracts](data-contracts.md) and [Python API](python-api.md) describe the implemented subset.
+
+## Phase 5A production candidate
+
+OpenAI Responses and Chat Completions now have additive production adapter
+implementation. New execution requires RunSpecV3 with a trusted production
+transport context and sealed manifest4, independently dispatched from synthetic
+manifest3. Historical records and normalized exports remain unchanged. Exact-head
+offline/hosted qualification and separately authorized live qualification are
+independent acceptance stages; implementation alone establishes no live model
+support. See the OpenAI guide for first-use workflows and current limitations.
+
+The Phase 5A correction adds separate protected assessment-text diagnostics and
+read-only inspection. Full capture can retain a recognized invalid component
+without retaining unsafe envelope fields; minimal capture remains hash-only.
+Canonical validation, result/export schemas and historical evidence remain
+unchanged. Fresh source-bound version-2 qualification plans may continue across
+positively terminal assessment failures, while uncertainty stops the matrix.
+This implementation requires new exact-head acceptance and separate live approval.
 
 ## Milestone 3 output contracts and offline activation
 
