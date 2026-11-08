@@ -113,6 +113,12 @@ Coverage append/xdist combination uses the original source/branch settings;
 `coverage-comparison.json` records lost line/branch sets and rejects them.
 No exclusion or omission setting is broadened.
 
+The floor records this unchanged-production-source optimization. A later
+production milestone must review and update the affected module's source/coverage
+contract with its new tests, retaining exact sets for unchanged modules and
+explaining denominator changes. Do not regenerate the floor merely to accept a
+test deletion, exclusion or missed branch.
+
 Windows early durability/privacy checks remain early and emit receipts. The full
 runner validates and accounts for those 69 cases, without rerunning them. Missing,
 failed, overlapping or resource-bearing preflight receipts fail closed.
