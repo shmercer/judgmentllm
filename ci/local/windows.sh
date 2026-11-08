@@ -109,6 +109,7 @@ fi
 # Share the established cross-project VM lock; leave the existing launcher intact.
 exec 9>"$share_root/windows-ci/.local-ci-windows.lock"
 flock -n 9 || fatal 'The Windows VM is already in use by a local CI launcher'
+python3 "$script_dir/override_recovery.py" --guest windows
 initial_state=$(docker inspect --format '{{.State.Status}}' "$container") || fatal 'Existing Windows container is unavailable'
 [[ $initial_state == running || $initial_state == exited || $initial_state == created ]] || fatal "Unsupported VM state: $initial_state"
 

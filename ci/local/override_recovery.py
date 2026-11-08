@@ -6,6 +6,7 @@ has been confirmed. There is deliberately no arbitrary shell/configuration API.
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
@@ -272,3 +273,13 @@ def require_restored(root: Path, guests: set[str] | None = None) -> None:
             raise RuntimeError(
                 f"Unrestored guest allocation: {path}. Reconcile actual settings using the recorded control under the existing guest lock before benchmarking."
             )
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--guest", choices=("windows", "macos"), required=True)
+    parser.add_argument(
+        "--root", type=Path, default=Path("/mnt/VM_Fast/judgmentllm-ci/overrides")
+    )
+    options = parser.parse_args()
+    require_restored(options.root, {options.guest})

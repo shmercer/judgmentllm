@@ -103,6 +103,7 @@ fi
 # The pairwise runner uses this same lock. Keep it through collection/shutdown.
 exec 9>"$SHARED_LOCK"
 flock -n 9 || fail 'another macOS CI operation holds the existing shared lock'
+python3 "$SCRIPT_DIR/override_recovery.py" --guest macos
 RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-${REF:0:12}-$MODE-$$"
 HOST_RUN="$STATE_ROOT/runs/$RUN_ID"
 mkdir -p "$STATE_ROOT/runs"
