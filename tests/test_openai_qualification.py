@@ -220,6 +220,7 @@ def _install_transport(
     assessment_output: str | None = None,
 ) -> list[bytes]:
     import httpx
+
     import judgmentllm.providers.openai as provider
 
     sent: list[bytes] = []
@@ -1138,7 +1139,6 @@ async def test_legacy_plan_is_report_only_and_never_creates_execution_authority(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     import judgmentllm.providers.openai as provider
-
     from judgmentllm.transport import physical_identity
 
     directory, plan = planned
@@ -1228,11 +1228,10 @@ async def test_legacy_terminal_assessment_reporting_never_grants_continuation(
     valid: bool,
 ) -> None:
     import judgmentllm.providers.openai as provider
-    from judgmentllm.production_transport import production_context_for_identity
-
     from judgmentllm.execution import execute_run
     from judgmentllm.execution.retry import RetryPolicy
     from judgmentllm.preparation import prepare_run
+    from judgmentllm.production_transport import production_context_for_identity
     from judgmentllm.transport import physical_identity
 
     directory, current = planned

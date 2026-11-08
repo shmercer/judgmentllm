@@ -260,6 +260,14 @@ def admission_errors(
                 continue
             step = cast(dict[str, Any], raw_step)
             receipt = step.get("suite")
+            if (
+                mode == "check"
+                and step.get("name") in {"pytest-coverage", "pytest-no-coverage"}
+                and receipt is None
+            ):
+                errors.append(
+                    f"Summary {index + 1} is missing the required partition receipt"
+                )
             if receipt is not None:
                 if not isinstance(receipt, dict):
                     errors.append(f"Summary {index + 1} has invalid partition evidence")

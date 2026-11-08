@@ -15,6 +15,55 @@ LOCAL = Path(__file__).parent
 PINS = {"3.11": "3.11.18", "3.12": "3.12.16", "3.15": "3.15.2"}
 
 
+@pytest.mark.parametrize("sweep", ["", "0,2,4,6"])
+def test_macos_ssh_argument_join_preserves_optional_worker_sweep(
+    tmp_path: Path, sweep: str
+) -> None:
+    source = (LOCAL / "macos.sh").read_text()
+    invocation = next(
+        line
+        for line in source.splitlines()
+        if line.startswith("ssh_guest /bin/bash -s --")
+    )
+    assignments = source.split("<<'GUEST' &\n", 1)[1].split(
+        'ROOT="$HOME/judgmentllm-ci"', 1
+    )[0]
+    values = {
+        "RUN_ID": "owned-run",
+        "MODE": "check",
+        "PYTHON_VERSION": "all",
+        "REF": "a" * 40,
+        "ARCHIVE_SHA256": "b" * 64,
+        "UV_BINARY_SHA256": "none",
+        "UV_SHA256": "none",
+        "WORKERS": "2",
+        "MAX_LANES": "1",
+        "RESOURCE_SLOTS": "1",
+        "SUITE_STAGE": "full",
+        "BENCHMARK_WORKERS": sweep,
+        "DISTRIBUTION": "loadfile",
+    }
+    setup = "\n".join(f"{key}={shlex.quote(value)}" for key, value in values.items())
+    program = (
+        "set -euo pipefail\n"
+        + setup
+        + '\nssh_guest() { bash -c "$*"; }\n'
+        + invocation
+        + "\n"
+        + assignments
+        + '\nprintf "%s|%s|%s\\n" "$WORKERS" "$BENCHMARK_WORKERS" "$DISTRIBUTION"\nGUEST\nwait\n'
+    )
+    completed = subprocess.run(
+        ["bash", "-c", program],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == f"2|{sweep}|loadfile"
+
+
 @pytest.mark.parametrize("selection", ["all", "3.11", "3.12", "3.15"])
 @pytest.mark.parametrize("failure", ["", "3.15"])
 def test_linux_launches_selected_lanes_together_and_joins_every_result(
