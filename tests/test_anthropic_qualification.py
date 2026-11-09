@@ -220,6 +220,10 @@ def _install_transport(
     completion_status: str | None = None,
     assessment_output: str | None = None,
     cache_counters: dict[str, int] | None = None,
+    reported_model: str | None = None,
+    missing_model: bool = False,
+    model_case_id: str | None = None,
+    stop_details: object = None,
 ) -> list[bytes]:
     import httpx2 as httpx
 
@@ -256,12 +260,19 @@ def _install_transport(
             "id": "msg_synthetic",
             "type": "message",
             "role": "assistant",
-            "model": "synthetic-reported-model",
+            "model": case.model,
             "stop_reason": "end_turn",
             "stop_sequence": None,
             "content": [{"type": "text", "text": output}],
             "usage": {"input_tokens": 100, "output_tokens": 10},
         }
+        if model_case_id is None or case.case_id == model_case_id:
+            if missing_model:
+                body.pop("model")
+            elif reported_model is not None:
+                body["model"] = reported_model
+        if stop_details is not None:
+            body["stop_details"] = stop_details
         if cache_counters is not None:
             body["usage"].update(cache_counters)
         if completion_status is not None:
@@ -1579,3 +1590,152 @@ async def test_truthy_values_cannot_replace_explicit_billable_boolean(
             accept_billable_calls=consent,
         )
     assert not (directory / "authorization.json").exists()
+
+
+@pytest.mark.parametrize(
+    "reported_model,missing_model,case_index",
+    [
+        ("claude-sonnet-4-6", False, 0),
+        (None, True, 0),
+        (None, True, 3),
+        ("claude-sonnet-4-6-20260217", False, 0),
+        ("claude-sonnet-4-7", False, 3),
+        ("PRIVATE_MODEL_IDENTITY_CANARY", False, 0),
+    ],
+)
+@pytest.mark.asyncio
+async def test_exact_model_identity_gates_continuation_and_matrix_qualification(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    reported_model: str | None,
+    missing_model: bool,
+    case_index: int,
+) -> None:
+    monkeypatch.setattr(q, "_source_commit", lambda: "a" * 40)
+    directory = tmp_path / "exact-model-plan"
+    plan = q.build_plan(
+        directory=directory,
+        source_commit="a" * 40,
+        provider="anthropic",
+        endpoints=("messages",),
+        model="claude-sonnet-4-6",
+        pricing=pricing().model_copy(update={"model": "claude-sonnet-4-6"}),
+        max_requests=4,
+        max_output_tokens=256,
+        max_total_tokens=802_048,
+        max_estimated_usd=Decimal("1"),
+    )
+    sent = _install_transport(
+        monkeypatch,
+        plan,
+        reported_model=reported_model,
+        missing_model=missing_model,
+        model_case_id=plan.calls[case_index].case_id,
+    )
+    arguments = _Authorization(
+        authorized_plan_sha256=bytes_digest(canonical_bytes(plan)),
+        authorized_source_commit=plan.source_commit,
+        accept_billable_calls=True,
+    )
+    report = await q.execute_plan(directory, **arguments)
+    matched = not missing_model and reported_model == plan.model
+    expected_sends = 4 if matched else case_index + 1
+    rows = cast(list[dict[str, object]], report["calls"])
+    row = rows[case_index]
+    assert len(sent) == report["physical_send_attempts"] == expected_sends
+    assert report["report_version"] == 2
+    assert row["local_assessment_valid"] is row["canonical_valid"] is True
+    assert row["assessment_terminal"] is True
+    assert row["response_model_identity_verified"] is matched
+    assert row["assessment_continuation_allowed"] is matched
+    assert row["assessment_behavior_verified"] is matched
+    assert row["response_model_diagnostic"] == (
+        None
+        if matched
+        else "reported_model_missing"
+        if missing_model
+        else "reported_model_mismatch"
+    )
+    assert row["reported_model"] == (plan.model if matched else None)
+    assert row["reported_model_sha256"] == (
+        None if missing_model else bytes_digest(cast(str, reported_model).encode())
+    )
+    assert row["case_status"] == (
+        "provider_completed_assessment_valid"
+        if matched
+        else "provider_response_model_unverified"
+    )
+    assert row["provider_accepted"] is True
+    assert row["recovery_required"] is False
+    assert report["all_response_models_verified"] is matched
+    assert report["all_assessments_valid"] is matched
+    assert report["matrix_execution_complete"] is matched
+    assert report["valid_assessment_count"] == (4 if matched else case_index)
+    assert report["invalid_assessment_count"] == 0
+    assert report["unverified_model_response_count"] == int(not matched)
+    assert all(r["live_qualified"] is False for r in rows)
+    assert all(r["case_status"] == "not_attempted" for r in rows[expected_sends:])
+    assert "PRIVATE_MODEL_IDENTITY_CANARY" not in json.dumps(report)
+    readonly = _readonly_report(directory, monkeypatch)
+    assert readonly["calls"] == report["calls"]
+    # Consumed completed work is inspected, never replaced, including a missing
+    # model or a similar-looking dated ID with no reviewed equivalence rule.
+    repeated = await q.execute_plan(directory, **arguments)
+    assert len(sent) == expected_sends
+    assert repeated["calls"] == report["calls"]
+
+
+@pytest.mark.parametrize(
+    "details,expected_status,refusal",
+    [
+        (
+            {"type": "refusal", "explanation": "PRIVATE_REFUSAL_CANARY"},
+            "provider_refused",
+            True,
+        ),
+        (
+            {"type": "future", "explanation": "PRIVATE_DETAILS_CANARY"},
+            "provider_accepted_no_usable_observation",
+            False,
+        ),
+        ({}, "provider_accepted_no_usable_observation", False),
+        (["PRIVATE_DETAILS_CANARY"], "provider_accepted_no_usable_observation", False),
+    ],
+)
+@pytest.mark.asyncio
+async def test_structured_stop_details_cannot_qualify_valid_assessment_text(
+    planned: tuple[Path, q._QualificationPlan],
+    monkeypatch: pytest.MonkeyPatch,
+    details: object,
+    expected_status: str,
+    refusal: bool,
+) -> None:
+    directory, plan = planned
+    sent = _install_transport(monkeypatch, plan, stop_details=details)
+    arguments = _Authorization(
+        authorized_plan_sha256=bytes_digest(canonical_bytes(plan)),
+        authorized_source_commit=plan.source_commit,
+        accept_billable_calls=True,
+    )
+    report = await q.execute_plan(directory, **arguments)
+    row = cast(list[dict[str, object]], report["calls"])[0]
+    assert len(sent) == report["physical_send_attempts"] == 1
+    assert row["case_status"] == expected_status
+    assert row["local_assessment_valid"] is row["canonical_valid"] is False
+    assert row["assessment_continuation_allowed"] is False
+    assert row["assessment_behavior_verified"] is False
+    assert report["all_assessments_valid"] is False
+    assert report["matrix_execution_complete"] is False
+    metadata = cast(dict[str, object], row["assessment_component_metadata"])
+    assert metadata["refusal_present"] is refusal
+    assert metadata["unsupported_present"] is (not refusal)
+    assert "PRIVATE" not in json.dumps(report)
+    assert all(
+        b"PRIVATE_REFUSAL_CANARY" not in p.read_bytes()
+        and b"PRIVATE_DETAILS_CANARY" not in p.read_bytes()
+        for p in directory.rglob("*")
+        if p.is_file()
+    )
+    assert _readonly_report(directory, monkeypatch)["calls"] == report["calls"]
+    await q.execute_plan(directory, **arguments)
+    assert len(sent) == 1

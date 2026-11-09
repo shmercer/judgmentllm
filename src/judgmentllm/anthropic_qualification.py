@@ -915,6 +915,10 @@ def report_plan(directory: Path) -> dict[str, object]:
             "task_ids": list(case.task_ids),
             "endpoint": case.endpoint,
             "requested_model": case.model,
+            "reported_model": None,
+            "reported_model_sha256": None,
+            "response_model_identity_verified": False,
+            "response_model_diagnostic": None,
             "mechanism": case.mechanism,
             "payload_sha256": case.payload_sha256,
             "actual_request_body_digest_verified": case.case_id in consumed,
@@ -954,6 +958,7 @@ def report_plan(directory: Path) -> dict[str, object]:
             "recovery_required": case.case_id in consumed,
         }
         terminal_assessment_observed = False
+        reported_model: str | None = None
         store = directory / "execution" / case.case_id
         if (store / "registry.sqlite3").is_file():
             try:
@@ -1015,7 +1020,18 @@ def report_plan(directory: Path) -> dict[str, object]:
                                 ),
                             )
                         usage = receipts[0].usage
-                        item["reported_model"] = usage.reported_model
+                        reported_model = usage.reported_model
+                        # Unverified provider strings never become public diagnostics.
+                        # Preserve their exact identity as a digest; the original
+                        # usage receipt remains available for read-only inspection.
+                        item["reported_model"] = (
+                            reported_model if reported_model == case.model else None
+                        )
+                        item["reported_model_sha256"] = (
+                            bytes_digest(reported_model.encode("utf-8"))
+                            if reported_model is not None
+                            else None
+                        )
                         item["provider_response_observed"] = (
                             receipts[0].identity.observation_id is not None
                         )
@@ -1119,9 +1135,24 @@ def report_plan(directory: Path) -> dict[str, object]:
                         and item["invocation_failure_code"] is None
                         and not item["recovery_required"]
                     )
+                    # No independently verified canonicalization rule exists.
+                    # Exact identity is a harness-only qualification requirement;
+                    # ordinary production model aliases remain unrestricted.
+                    if terminal_assessment_observed:
+                        item["response_model_identity_verified"] = (
+                            reported_model == case.model
+                        )
+                        item["response_model_diagnostic"] = (
+                            "reported_model_missing"
+                            if reported_model is None
+                            else "reported_model_mismatch"
+                            if reported_model != case.model
+                            else None
+                        )
                     item["assessment_continuation_allowed"] = bool(
                         plan.plan_version == 2
                         and terminal_assessment_observed
+                        and item["response_model_identity_verified"]
                         and item["assessment_diagnostic_available"]
                         and item["canonical_valid"] == item["local_assessment_valid"]
                     )
@@ -1137,6 +1168,8 @@ def report_plan(directory: Path) -> dict[str, object]:
                     local_assessment_valid=False,
                     assessment_terminal=False,
                     assessment_continuation_allowed=False,
+                    response_model_identity_verified=False,
+                    response_model_diagnostic=None,
                     provider_accepted=None,
                     provider_response_observed=False,
                     http_response_received=None,
@@ -1199,6 +1232,11 @@ def report_plan(directory: Path) -> dict[str, object]:
             status = "provider_refused"
         elif item["provider_outcome"] == "output_limit":
             status = "provider_truncated_output"
+        elif (
+            terminal_assessment_observed
+            and not item["response_model_identity_verified"]
+        ):
+            status = "provider_response_model_unverified"
         elif terminal_assessment_observed:
             status = (
                 "provider_completed_assessment_valid"
@@ -1211,7 +1249,9 @@ def report_plan(directory: Path) -> dict[str, object]:
             status = "not_attempted"
         item["case_status"] = status
         item["assessment_behavior_verified"] = (
-            terminal_assessment_observed and item["local_assessment_valid"] is True
+            terminal_assessment_observed
+            and item["response_model_identity_verified"] is True
+            and item["local_assessment_valid"] is True
         )
         reports.append(item)
     valid_count = sum(
@@ -1221,7 +1261,7 @@ def report_plan(directory: Path) -> dict[str, object]:
         row["case_status"] == "provider_completed_assessment_invalid" for row in reports
     )
     return {
-        "report_version": 1,
+        "report_version": 2,
         "source_commit": plan.source_commit,
         "plan_sha256": digest,
         "sdk_version": plan.sdk_version,
@@ -1246,6 +1286,13 @@ def report_plan(directory: Path) -> dict[str, object]:
         "calls": reports,
         "matrix_execution_complete": valid_count + invalid_count == len(plan.calls),
         "all_assessments_valid": valid_count == len(plan.calls),
+        "all_response_models_verified": all(
+            row["response_model_identity_verified"] is True for row in reports
+        ),
+        "unverified_model_response_count": sum(
+            row["case_status"] == "provider_response_model_unverified"
+            for row in reports
+        ),
         "valid_assessment_count": valid_count,
         "invalid_assessment_count": invalid_count,
         "independent_review_required": True,

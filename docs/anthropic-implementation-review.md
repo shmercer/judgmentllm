@@ -104,7 +104,7 @@ does not substitute for the mandatory clean exact-commit grid.
 | `anthropic_assessment.py` | 115/120 | 43/48 |
 | `anthropic_diagnostics.py` | 123/129 | 24/26 |
 | `anthropic_prompts.py` | 30/31 | 1/2 |
-| `anthropic_qualification.py` | 488/514 | 156/182 |
+| `anthropic_qualification.py` | 496/522 | 160/186 |
 | `anthropic_registry.py` | 59/61 | 9/10 |
 | `anthropic_transport.py` | 346/361 | 95/110 |
 | `assessment_diagnostics.py` | 65/68 | 19/22 |
@@ -127,7 +127,7 @@ does not substitute for the mandatory clean exact-commit grid.
 | `provider_diagnostics.py` | 16/16 | 0/0 |
 | `providers/anthropic.py` | 336/344 | 98/104 |
 | `providers/anthropic_cli.py` | 14/15 | 1/2 |
-| `providers/anthropic_response.py` | 125/126 | 72/74 |
+| `providers/anthropic_response.py` | 137/138 | 78/80 |
 | `providers/evidence.py` | 129/134 | 43/48 |
 | `providers/openai_cli.py` | 41/45 | 8/10 |
 | `transport_dispatch.py` | 67/90 | 30/48 |
@@ -159,3 +159,42 @@ connection; an explicit socketpair/external-IP test protects that distinction.
 No production transport, resource policy, test selection or acceptance requirement
 changes. The failed receipts remain retained; the corrected final commit requires
 fresh complete local and hosted qualification.
+
+## Focused PR #26 correctness review
+
+Review of `69de073a9087c2fa4c01d7f4bbc48962bbe5731e` requested two corrections.
+The qualification harness now requires an exact planned/reported model match in
+an accepted, completed, consistent durable observation before continuation,
+assessment qualification success or matrix acceptance. No independently verified
+canonicalization rule is available. Missing/mismatched identity produces a fixed
+diagnostic and digest in report V2; local JSON validity remains a separate fact.
+Ordinary production aliases and unknown model IDs retain their existing behavior.
+SDK/HTTP fixtures exercise matching, missing and different identities, including
+a mismatch on the final native case and read-only restart without replacement.
+
+Messages completion validation now examines structured `stop_details`. The pinned
+SDK's `RefusalStopDetails` and the official [Messages response example](https://platform.claude.com/docs/en/api/messages/create)
+confirm its refusal discriminator and free-text explanation. Refusal takes
+precedence over inconsistent `end_turn`; every other non-null stop-detail shape
+is unsupported. Component diagnostics withhold assessment text and retain only
+closed refusal/unsupported flags. Arbitrary explanations are excluded from saved
+response derivatives. Deterministic response and SDK/HTTP lifecycle cases prove
+that valid assessment JSON cannot override refusal/unsupported classification.
+
+The preceding source-bound live plan is superseded and remains unexecuted. A new
+plan must bind the corrected source, all four physical commitments and a fresh
+digest. Previous receipts remain attributed to their original commits. The
+corrected frozen source requires the complete seven-configuration local and
+five-job hosted acceptance matrix, without changing the approved CI schedule or
+repeating performance experiments. Final outcomes belong in the external
+verification report and PR, avoiding source changes after qualification.
+
+The focused review remeasured only the two changed production entries on
+Linux/Python 3.11 using 377 deterministic Anthropic cases. Qualification coverage
+is 496/522 lines and 160/186 branches; response coverage is 137/138 lines and 78/80
+branches. Every other coverage entry, original overall total and measurement
+setting remains literal. Mapped unchanged covered lines have no losses; one
+former terminal-classification edge now passes through the exact-model guard,
+with its entry and both outcomes covered. The external source-specific coverage
+and explicit contract-update audit are development evidence; full final-head
+coverage remains mandatory and is not replaced by this selection.

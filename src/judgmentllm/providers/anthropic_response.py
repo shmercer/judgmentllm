@@ -73,14 +73,30 @@ def _usage(endpoint: str, value: object) -> ReportedUsageInput | None:
     )
 
 
+def _stop_details_status(body: dict[str, Any]) -> str:
+    """Classify only the reviewed discriminator; never copy refusal details."""
+    details = body.get("stop_details")
+    if details is None:
+        return "absent"
+    if (
+        isinstance(details, dict)
+        and cast(dict[str, object], details).get("type") == "refusal"
+    ):
+        return "refusal"
+    return "unsupported"
+
+
 def _messages_output(body: dict[str, Any]) -> tuple[str, str | None, str]:
     if body.get("type") != "message" or body.get("role") != "assistant":
         return "provider_error", None, "unsupported_output"
     reason = body.get("stop_reason")
     if reason is not None and not isinstance(reason, str):
         reason = "unknown"
-    if reason == "refusal":
+    details = _stop_details_status(body)
+    if reason == "refusal" or details == "refusal":
         return "refusal", None, "refusal"
+    if details == "unsupported":
+        return "provider_error", None, "unsupported_output"
     if reason == "max_tokens":
         return "provider_error", None, "output_limit"
     if reason in {None, "pause_turn", "model_context_window_exceeded"}:
@@ -145,7 +161,9 @@ def _extract_assessment_component(
     reason = body.get("stop_reason")
     if reason is not None and not isinstance(reason, str):
         reason = "unknown"
-    refusal = reason == "refusal"
+    details = _stop_details_status(body)
+    refusal = reason == "refusal" or details == "refusal"
+    unsupported = unsupported or details == "unsupported"
     metadata: dict[str, object] = {
         "endpoint": "messages",
         "stop_reason": reason
@@ -168,7 +186,7 @@ def _extract_assessment_component(
         return AnthropicAssessmentComponentV2.model_validate(
             metadata | {"extraction_status": "multiple_outputs"}
         )
-    if not candidates or not is_message or refusal:
+    if not candidates or not is_message or refusal or details == "unsupported":
         return AnthropicAssessmentComponentV2.model_validate(
             metadata
             | {

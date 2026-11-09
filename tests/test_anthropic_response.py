@@ -376,3 +376,67 @@ def test_forged_component_cannot_smuggle_withheld_or_mismatched_text() -> None:
             dict(withheld) | {"output_text": b"PRIVATE_WITHHELD"}
         )
     assert "PRIVATE" not in str(error.value)
+
+
+@pytest.mark.parametrize(
+    "reason,details,outcome",
+    [
+        ("end_turn", None, "completed"),
+        ("refusal", None, "refusal"),
+        ("refusal", {"type": "refusal", "explanation": "PRIVATE_REFUSAL"}, "refusal"),
+        ("end_turn", {"type": "refusal", "explanation": "PRIVATE_REFUSAL"}, "refusal"),
+        ("max_tokens", {"type": "refusal"}, "refusal"),
+        ("end_turn", {}, "unsupported_output"),
+        (
+            "end_turn",
+            {"type": "future", "secret": "PRIVATE_DETAILS"},
+            "unsupported_output",
+        ),
+        ("end_turn", {"type": []}, "unsupported_output"),
+        ("end_turn", ["PRIVATE_DETAILS"], "unsupported_output"),
+        ("end_turn", "PRIVATE_DETAILS", "unsupported_output"),
+        ("end_turn", False, "unsupported_output"),
+        ("refusal", {"type": "future"}, "refusal"),
+    ],
+)
+def test_stop_details_override_json_and_never_enter_diagnostics(
+    tmp_path: Path,
+    reason: str,
+    details: object,
+    outcome: str,
+) -> None:
+    wire, *_ = wire_for(tmp_path, pairwise=True)
+    body = envelope("messages", '{"winner_id":"001"}')
+    body.update(stop_reason=reason, stop_details=details)
+    kind, text, observed = _messages_output(body)
+    assert observed == outcome
+    assert kind == (
+        "response"
+        if outcome == "completed"
+        else "refusal"
+        if outcome == "refusal"
+        else "provider_error"
+    )
+    assert (text is not None) is (outcome == "completed")
+    component = _extract_assessment_component(body, "messages")
+    diagnostic = diagnose_assessment_output(component, wire.output_commitment.contract)
+    assert diagnostic.canonical_valid is (outcome == "completed")
+    assert component.refusal_present is (outcome == "refusal")
+    assert component.unsupported_present is (
+        details is not None
+        and not (
+            isinstance(details, dict)
+            and cast(dict[str, object], details).get("type") == "refusal"
+        )
+    )
+    assert "PRIVATE" not in component.model_dump_json()
+    adapter = AnthropicAdapter("messages", "ordinary-model-alias")
+    response = adapter._response(json.dumps(body).encode(), body, "msg-offline")
+    parsed = adapter.parse(response)
+    assert parsed.kind == kind
+    assert (parsed.output is not None) is (outcome == "completed")
+    assert response.evidence is not None
+    safe = response.evidence.safe_response
+    assert safe is not None and b"PRIVATE" not in safe
+    if details is not None:
+        assert not response.evidence.original_body_safe

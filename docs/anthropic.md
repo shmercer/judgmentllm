@@ -105,8 +105,13 @@ queues follow sealed concurrency. Connect/write/pool timeouts are ten seconds,
 read timeout is sixty seconds and the SDK operation deadline is ninety seconds.
 The envelope limit is 8 MiB and assessment components are limited to 1 MiB.
 
-Only one nonblank text component with completed `end_turn` can become a successful
-judgment. Thinking/redacted-thinking is separate from assessment explanations.
+Only one nonblank text component with completed `end_turn` and absent/null
+`stop_details` can become a successful judgment. Structured
+`stop_details.type="refusal"` is a refusal even when `stop_reason="end_turn"`;
+other non-null stop details are unsupported. Valid JSON cannot override those
+completion classifications. Diagnostics retain only fixed refusal/unsupported
+flags, never arbitrary refusal explanations or stop-detail fields.
+Thinking/redacted-thinking is separate from assessment explanations.
 Refusal, tool use, pause, truncation, context limits, unsupported shapes, duplicate
 JSON members, unknown categories/IDs and invalid grouped outputs remain failures.
 Components are never concatenated or repaired.
@@ -164,8 +169,16 @@ service, cache off, full assessment capture and no reasoning retention. Read-onl
 `report --evidence-dir DIRECTORY` does not execute it. A later request for live
 qualification must explicitly authorize billable calls against the exact plan
 SHA-256 and source commit. OpenAI authorization does not apply. Uncertain or
-terminal-invalid cases never authorize a replacement submission. Reports cannot
-populate the production registry. This phase stops before live execution.
+terminal-invalid cases never authorize a replacement submission. The harness
+requires the completed durable response to report the exact planned model before
+continuing or counting model-specific assessment qualification. Missing or
+mismatched identities stop the matrix without replacing the consumed call; no
+canonicalization equivalence has been independently verified. Report V2 separates
+local assessment validity from model identity verification. Unverified identities
+are represented by fixed diagnostic codes and a SHA-256; the original usage
+receipt remains available for read-only inspection. This harness rule does not
+restrict ordinary unknown-model or alias pass-through. Reports cannot populate
+the production registry. This phase stops before live execution.
 
 A reviewer can reproduce preparation from a clean source commit and an external
 reviewed pricing profile without credentials:
