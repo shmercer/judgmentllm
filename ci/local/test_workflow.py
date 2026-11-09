@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import ast
 import json
+import os
 import re
+import shlex
+import shutil
+import subprocess
+import sys
 import tomllib
 from pathlib import Path
 from typing import Any, cast
@@ -199,3 +204,84 @@ def test_coverage_configuration_and_failed_primary_evidence() -> None:
         "--cov-report=xml",
         "--cov-fail-under=90",
     ]
+
+
+def test_preflights_import_reporter_from_uninstalled_checkout(tmp_path: Path) -> None:
+    launches: set[tuple[str, ...]] = set()
+    preflights = [
+        step
+        for step in workflow()["jobs"]["baseline"]["steps"]
+        if "--ci-report" in step.get("run", "")
+    ]
+    assert len(preflights) == 2
+    for step in preflights:
+        arguments = shlex.split(step["run"])
+        assert arguments[:4] == ["uv", "run", "--offline", "--no-sync"]
+        launches.add(tuple(arguments[4 : arguments.index("--ci-report")]))
+
+    checkout = tmp_path / "uninstalled-checkout"
+    plugin = checkout / "ci/local/pytest_report.py"
+    plugin.parent.mkdir(parents=True)
+    shutil.copyfile(REPOSITORY / "ci/local/pytest_report.py", plugin)
+    (checkout / "test_probe.py").write_text(
+        "from pathlib import Path\n"
+        "def test_reporter_is_from_checkout():\n"
+        "    import ci.local.pytest_report as reporter\n"
+        "    assert Path(reporter.__file__).resolve().is_relative_to(Path.cwd())\n"
+    )
+    environment = {
+        key: os.environ[key]
+        for key in (
+            "PATH",
+            "HOME",
+            "LANG",
+            "LC_ALL",
+            "SystemRoot",
+            "WINDIR",
+            "TEMP",
+            "TMP",
+        )
+        if key in os.environ
+    }
+    environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    # Equivalent launch prefixes need only one real child startup. The checkout
+    # is deliberately uninstalled and PYTHONPATH is absent, like hosted CI.
+    for index, launch in enumerate(sorted(launches)):
+        executable = (
+            Path(sys.executable)
+            if launch[0] == "python"
+            else Path(sys.executable).parent
+            / (launch[0] + (".exe" if os.name == "nt" else ""))
+        )
+        receipt = tmp_path / f"preflight-{index}.json"
+        completed = subprocess.run(
+            [
+                str(executable),
+                *launch[1:],
+                f"--ci-report={receipt}",
+                "-q",
+                "-o",
+                "addopts=",
+                "-o",
+                f"cache_dir={tmp_path / 'cache'}",
+                f"--basetemp={tmp_path / ('child-' + str(index))}",
+                "test_probe.py",
+            ],
+            cwd=checkout,
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stdout + completed.stderr
+        reported = json.loads(receipt.read_text())
+        assert reported["exit_code"] == 0
+        assert [item["nodeid"] for item in reported["collected"]] == [
+            "test_probe.py::test_reporter_is_from_checkout"
+        ]
+        assert [
+            report["outcome"]
+            for report in reported["reports"]
+            if report["phase"] == "call"
+        ] == ["passed"]

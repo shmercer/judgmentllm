@@ -142,6 +142,10 @@ test deletion, exclusion or missed branch.
 Windows early durability/privacy checks remain early and emit receipts. The full
 runner validates and accounts for those 69 cases, without rerunning them. Missing,
 failed, overlapping or resource-bearing preflight receipts fail closed.
+Hosted prechecks invoke `python -m pytest`, so their reporting plugin imports
+from the uninstalled checkout without depending on `PYTHONPATH` or console-script
+search paths. A functional workflow test checks that import and its case receipt
+in a fresh uninstalled checkout using the actual workflow launch prefixes.
 Full receipts/logs are copied out of short Windows scratch paths before cleanup.
 Hosted artifacts retain case/selection/allocation receipts and resource JSON;
 they omit the bulky synthetic runtime stores.
