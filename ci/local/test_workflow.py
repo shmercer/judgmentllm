@@ -236,7 +236,8 @@ def test_preflights_import_reporter_from_uninstalled_checkout(tmp_path: Path) ->
     plugin.parent.mkdir(parents=True)
     shutil.copyfile(REPOSITORY / "ci/local/pytest_report.py", plugin)
     shutil.copyfile(
-        REPOSITORY / "ci/local/provenance.py", plugin.with_name("provenance.py")
+        REPOSITORY / "ci/local/preflight_provenance.py",
+        plugin.with_name("preflight_provenance.py"),
     )
     (checkout / "test_probe.py").write_text(
         "from pathlib import Path\n"

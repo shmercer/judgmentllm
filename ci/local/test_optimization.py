@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import json
 import os
 import subprocess
@@ -17,7 +18,7 @@ import pytest
 from benchmark import total_cpu
 from coverage_equivalence import compare
 from override_recovery import Allocation, Observation, RecoveryJournal, require_restored
-from provenance import (
+from preflight_provenance import (
     RUN_ID_ENV,
     receipt_provenance,
     source_record,
@@ -304,6 +305,27 @@ def test_preflight_accepts_matching_actual_provenance(
     assert preflight_identity["interpreter"]["prefix"] == os.path.normcase(
         str(Path(sys.prefix).resolve())
     )
+
+
+def test_preflight_helper_preserves_existing_benchmark_import_namespace(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Both libraries are imported in native CI workers. Importing this CI
+    # helper must leave the established benchmark support module available.
+    import preflight_provenance
+
+    benchmark_root = Path(__file__).resolve().parents[2] / "benchmarks"
+    monkeypatch.setattr(sys, "path", [str(benchmark_root), *sys.path])
+    existing = importlib.import_module("provenance")
+    assert existing is not preflight_provenance
+    assert Path(existing.__file__ or "").resolve() == benchmark_root / "provenance.py"
+    for name in (
+        "host_identity",
+        "runtime_identity",
+        "source_fingerprint",
+        "fixture_fingerprint",
+    ):
+        assert callable(getattr(existing, name))
 
 
 @pytest.mark.parametrize(

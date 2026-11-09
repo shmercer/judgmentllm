@@ -15,7 +15,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, cast
 
-from provenance import (
+from preflight_provenance import (
     RUN_ID_ENV,
     receipt_provenance,
     source_record,

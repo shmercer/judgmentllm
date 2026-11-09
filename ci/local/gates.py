@@ -24,7 +24,7 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, cast
 
-from provenance import RUN_ID_ENV
+from preflight_provenance import RUN_ID_ENV
 from telemetry import ProcessSampler
 
 MANIFEST = ".judgmentllm-source.json"

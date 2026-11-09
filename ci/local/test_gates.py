@@ -11,7 +11,7 @@ from typing import Any
 
 import gates
 import pytest
-from provenance import RUN_ID_ENV
+from preflight_provenance import RUN_ID_ENV
 
 from judgmentllm import __version__
 

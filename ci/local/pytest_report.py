@@ -9,7 +9,7 @@ from typing import Any, cast
 
 import pytest
 
-from .provenance import RUN_ID_ENV, receipt_provenance, source_record
+from .preflight_provenance import RUN_ID_ENV, receipt_provenance, source_record
 
 _items: list[dict[str, object]] = []
 _reports: list[dict[str, object]] = []
