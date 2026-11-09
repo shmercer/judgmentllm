@@ -27,12 +27,17 @@ from judgmentllm.planning import plan_record, stable_id
 from judgmentllm.preparation.freezing import PreparationError
 
 if TYPE_CHECKING:
+    from judgmentllm.anthropic_transport import (
+        AnthropicProductionContext,
+        PreparedRequestV5,
+    )
     from judgmentllm.config import RunSpecV3
     from judgmentllm.persistence.repository import Repository
     from judgmentllm.preparation.capture import SourceBuilder
     from judgmentllm.preparation.manifest import (
         ExecutableRunManifestV3,
         ExecutableRunManifestV4,
+        ExecutableRunManifestV5,
     )
     from judgmentllm.preparation.session import PreparedRun
     from judgmentllm.production_transport import PreparedRequestV4, ProductionContext
@@ -79,7 +84,7 @@ class InitialTransportDigest:
 def publish_prepared_transport(
     repository: Repository,
     store: ArtifactStore,
-    wire: PreparedRequestV3 | PreparedRequestV4,
+    wire: PreparedRequestV3 | PreparedRequestV4 | PreparedRequestV5,
     capture: Literal["full", "minimal"],
 ) -> tuple[ArtifactIdentity, ...]:
     """Publish bytes before a transaction; caller registers returned identities.
@@ -124,8 +129,10 @@ def preseal_transports(
     builder: SourceBuilder,
     spec: RunSpecV3,
     template: str | None,
-    manifest: ExecutableRunManifestV3 | ExecutableRunManifestV4,
-    context: TransportContext | ProductionContext,
+    manifest: ExecutableRunManifestV3
+    | ExecutableRunManifestV4
+    | ExecutableRunManifestV5,
+    context: TransportContext | ProductionContext | AnthropicProductionContext,
     checkpoint: Callable[[str, str | None], None],
 ) -> tuple[int, str]:
     """Prepare first attempts while created; submission remains impossible."""
@@ -224,11 +231,15 @@ def verify_initial_transports(prepared: PreparedRun) -> None:
     from judgmentllm.preparation.manifest import (
         ExecutableRunManifestV3,
         ExecutableRunManifestV4,
+        ExecutableRunManifestV5,
     )
     from judgmentllm.transport import physical_identity
 
     manifest = prepared.manifest
-    if not isinstance(manifest, (ExecutableRunManifestV3, ExecutableRunManifestV4)):
+    if not isinstance(
+        manifest,
+        (ExecutableRunManifestV3, ExecutableRunManifestV4, ExecutableRunManifestV5),
+    ):
         return
     repository = prepared.repository
     run_id = manifest.run_id

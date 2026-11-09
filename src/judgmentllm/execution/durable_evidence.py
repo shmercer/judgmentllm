@@ -164,12 +164,15 @@ class DurableEvidence:
         )
         if (
             session.prepared is not None
-            and session.prepared.manifest.schema_version in (3, 4)
+            and session.prepared.manifest.schema_version in (3, 4, 5)
         ):
+            from judgmentllm.anthropic_transport import PreparedRequestV5
             from judgmentllm.production_transport import PreparedRequestV4
             from judgmentllm.transport import PreparedRequestV3
 
-            if not isinstance(work.prepared, (PreparedRequestV3, PreparedRequestV4)):
+            if not isinstance(
+                work.prepared, (PreparedRequestV3, PreparedRequestV4, PreparedRequestV5)
+            ):
                 raise IntegrityError("native evidence lacks its output commitment")
             commitment = work.prepared.output_commitment
 
@@ -220,7 +223,7 @@ class DurableEvidence:
             authorization=self.authorization,
             transport_context=session.prepared.transport_context
             if session.prepared is not None
-            and session.prepared.manifest.schema_version in (3, 4)
+            and session.prepared.manifest.schema_version in (3, 4, 5)
             else None,
         )
         session.checkpoint("after_evidence_extraction", work.prepared.request_uid)
@@ -274,13 +277,23 @@ class DurableEvidence:
                 and adapter_evidence.provenance == "provider_documented"
                 and adapter_evidence.assessment_component is not None
                 and commitment is not None
-                and session.spec.provider == "openai"
                 and session.prepared is not None
-                and session.prepared.manifest.schema_version == 4
+                and (session.spec.provider, session.prepared.manifest.schema_version)
+                in {("openai", 4), ("anthropic", 5)}
             ):
+                from judgmentllm.anthropic_assessment import (
+                    AnthropicAssessmentComponentMetadataV2,
+                    AnthropicAssessmentComponentV2,
+                    AnthropicAssessmentDiagnosticV2,
+                )
                 from judgmentllm.assessment_diagnostics import AssessmentComponent
 
-                component = AssessmentComponent.model_validate(
+                component_type = (
+                    AnthropicAssessmentComponentV2
+                    if session.spec.provider == "anthropic"
+                    else AssessmentComponent
+                )
+                component = component_type.model_validate(
                     dict(adapter_evidence.assessment_component)
                 )
                 parsed = diagnose_assessment_output(
@@ -299,27 +312,39 @@ class DurableEvidence:
                             digest, len(text), "text/plain; charset=utf-8"
                         )
                     )
-                diagnostic = AssessmentDiagnosticV1(
-                    identity=self.identity(work, observation_id),
-                    endpoint=component.endpoint,
-                    requested_model=session.spec.model,
-                    provider_outcome=prepared.usage.provider_outcome,
-                    reported_model=prepared.usage.reported_model,
-                    remote_response_id=response.observation_key,
-                    component=AssessmentComponentMetadata.model_validate_json(
-                        component.model_dump_json()
-                    ),
-                    parser_diagnostic=parsed.code,
-                    canonical_valid=parsed.canonical_valid,
-                    capture=session.spec.capture,
-                    retention="withheld"
-                    if text is None
-                    else "retained"
-                    if session.spec.capture == "full"
-                    else "hash_only",
-                    artifact=text_artifact,
-                    content_sha256=digest,
-                    byte_length=component.byte_length,
+                metadata_type = (
+                    AnthropicAssessmentComponentMetadataV2
+                    if session.spec.provider == "anthropic"
+                    else AssessmentComponentMetadata
+                )
+                diagnostic_type = (
+                    AnthropicAssessmentDiagnosticV2
+                    if session.spec.provider == "anthropic"
+                    else AssessmentDiagnosticV1
+                )
+                diagnostic = diagnostic_type.model_validate(
+                    dict(
+                        identity=self.identity(work, observation_id),
+                        endpoint=component.endpoint,
+                        requested_model=session.spec.model,
+                        provider_outcome=prepared.usage.provider_outcome,
+                        reported_model=prepared.usage.reported_model,
+                        remote_response_id=response.observation_key,
+                        component=metadata_type.model_validate_json(
+                            component.model_dump_json()
+                        ),
+                        parser_diagnostic=parsed.code,
+                        canonical_valid=parsed.canonical_valid,
+                        capture=session.spec.capture,
+                        retention="withheld"
+                        if text is None
+                        else "retained"
+                        if session.spec.capture == "full"
+                        else "hash_only",
+                        artifact=text_artifact,
+                        content_sha256=digest,
+                        byte_length=component.byte_length,
+                    )
                 )
             ack = read_acknowledgment(self.store, work.submission_id)
             assert ack is not None and self.authorization_sha256 is not None
@@ -396,6 +421,7 @@ class DurableEvidence:
         if (session.spec.provider, session.spec.endpoint) not in {
             ("openai", "responses"),
             ("openai", "chat.completions"),
+            ("anthropic", "messages"),
         }:
             return None
         identity = self.identity(work, None)

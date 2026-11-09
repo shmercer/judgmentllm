@@ -620,3 +620,26 @@ hashing unauthorized content. Reasoning, unknown fields, tools and provider
 metadata are excluded. Protected text is unvalidated output, not a scoring input
 replacement, retry grant or qualification claim. Historical omissions remain
 unavailable. See the read-only [inspection service](python-api.md#read-only-assessment-diagnostics).
+
+
+## Anthropic production additions (Phase 5B)
+
+New Messages execution uses `ExecutableRunManifestV5`, `OutputCommitmentV5`,
+`PreparedRequestV5` and `TransportCommitmentV3`, with distinct Anthropic digest
+domains and explicit SDK/API/model/endpoint/physical identity. Request policy
+records requested versus default4096 max tokens, tier and cache decisions without
+rewriting `GenerationSpec`. Configuration remains RunSpecV3. The independent
+`AnthropicProductionContext` never reinterprets an OpenAI production context.
+
+Assessment component/diagnostic V2 adds Messages endpoint and safe stop-reason
+metadata. Recognition, exact component hash/length and capture authorization stay
+separate from validity; no text is serialized in inspection metadata. Existing
+OpenAI diagnostics V1, manifests V1–V4, output commitments V1–V4, synthetic
+transport receipt1, OpenAI receipt2, SQLite schema and normalized result/export
+versions remain unchanged. Anthropic usage keeps total null and distinguishes
+uncached input from cache creation/read subdivisions. No distributions are added.
+
+The Anthropic qualification plan has its own provider namespace. Its exact source,
+complete request bytes, per-case input estimate evidence and plan digest are
+immutable; plan creation grants no physical submission authority. See the
+[adapter guide](anthropic.md) for controls and estimate limitations.

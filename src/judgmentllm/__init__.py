@@ -29,10 +29,6 @@ from judgmentllm.models import (
 from judgmentllm.openai_diagnostics import (
     AuthVerification,
     ModelDiscovery,
-    adiscover_models,
-    averify_authentication,
-    discover_models,
-    verify_authentication,
 )
 from judgmentllm.planning import (
     CapabilityProfile,
@@ -48,6 +44,12 @@ from judgmentllm.prompts import (
     RenderedPromptV2,
     RenderLimits,
     render_prompt,
+)
+from judgmentllm.provider_diagnostics import (
+    adiscover_models,
+    averify_authentication,
+    discover_models,
+    verify_authentication,
 )
 from judgmentllm.r_exports import export_pairwise_r_csv, export_rubric_r_csv
 from judgmentllm.results import (

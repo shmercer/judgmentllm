@@ -497,13 +497,22 @@ def extract_anthropic_messages_usage(
         raise ValueError("usage source does not match provider endpoint")
     if usage is None:
         return extract_provider_usage(identity, context, None)
+    return extract_provider_usage(
+        identity, context, interpret_anthropic_messages_usage(usage)
+    )
+
+
+def interpret_anthropic_messages_usage(
+    usage: AnthropicMessagesUsageInput,
+) -> ReportedUsageInput:
+    """Preserve the established Messages counter semantics without identity I/O."""
     short = (
         usage.cache_creation.ephemeral_5m_input_tokens if usage.cache_creation else None
     )
     long = (
         usage.cache_creation.ephemeral_1h_input_tokens if usage.cache_creation else None
     )
-    reported = ReportedUsageInput(
+    return ReportedUsageInput(
         usage_source="anthropic.messages.usage",
         input_tokens=usage.input_tokens,
         output_tokens=usage.output_tokens,
@@ -521,7 +530,6 @@ def extract_anthropic_messages_usage(
             ),
         ),
     )
-    return extract_provider_usage(identity, context, reported)
 
 
 class OpenAIResponsesUsageInput(EvidenceModel):

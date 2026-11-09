@@ -222,7 +222,7 @@ updates its tests and user documentation and passes applicable R acceptance.
    provider-specific `auth verify` only where documented suitable protected
    non-generative operations exist; unsupported mechanisms remain explicit.
    Unknown-model pass-through does not establish support.
-   **5A, implemented pending exact-head offline and authorized live acceptance:**
+   **5A, merged with retained offline qualification and accepted exact-model live scope:**
    production OpenAI Responses/Chat use additive actual-body transport records,
    SDK 3.42.1 byte verification, shared credentials, bounded zero-retry calls,
    durable assessment/evidence/recovery and explicit non-generative diagnostics.
@@ -242,8 +242,9 @@ updates its tests and user documentation and passes applicable R acceptance.
    Merge recommendation requires all seven local configurations, 49 R gates,
    existing resource measurements plus OpenAI SDK workloads, five hosted jobs, and
    independently reviewed live evidence for both exact-model endpoint scopes.
-   Until separately authorized calls pass, label the PR **offline-qualified; live
-   qualification pending explicit authorization** only after offline gates succeed.
+   The final acceptance of PR #24 records eight separately authorized valid calls
+   on `gpt-4.1-mini-2025-04-14` at source `b300a3e5f7fbd59d6ca2d3761d79a5660b9c2633`.
+   Earlier pending statements are historical; this does not grant Anthropic consent.
    **Vertex authentication follow-up (required for the Vertex adapter PR):**
    support explicitly selected Google Cloud authorization API keys alongside
    ADC wherever the exact Agent Platform/Vertex endpoint and SDK route qualify.
@@ -531,3 +532,30 @@ unimplemented. Phase 5 begins only in a separate task: endpoint-owned complete
 payload builders, credential boundary integration and independent serving
 qualification; companion exports, caching, batches and R wrappers remain at their
 assigned phases. Phase 4C3 does not complete all of Milestone 3.
+
+
+## Milestone 3 Phase 5B implementation and review boundary
+
+Anthropic Messages production execution now uses separate versioned authenticated
+transport authority, manifest5/request5/output5/receipt3, the pinned2.3.0 async SDK,
+and API2026-10-21. It reuses existing preparation, bounded scheduling, persistence,
+diagnostics, normalized outputs and R acceptance. Historical and OpenAI contract
+identities remain unchanged. The [user guide](anthropic.md) defines exact scope.
+
+Offline acceptance extends the actual-SDK byte/security/cancellation/recovery
+matrix and existing required execution R gate; all49 local R executions and five
+hosted jobs remain mandatory at the committed head. New Messages resource cases
+use existing deadlines and limits. No workflow scheduling or allocation changes
+are part of Phase5B. Changed/new coverage entries require explicit source and
+measured-set review while unchanged modules retain their exact baseline sets and
+overall coverage ratios remain blocking.
+
+The independently reviewable proposal contains exactly four short synthetic cases
+for one Messages endpoint, exact model/source/plan commitments, at most512 output
+tokens per call, and body-derived estimated input allowances initially8192 each.
+At reviewed $3/$15 rates this estimates $0.129024 total, with proposed $0.15
+estimated authorization ceiling; neither is a provider-enforced monetary cap.
+No credential retrieval, discovery, token-count, generation, live qualification,
+registry promotion, merge, publication or Phase6 exports occur in this workstream.
+The external verification report and open PR identify final source-bound results
+and the immutable unexecuted plan.

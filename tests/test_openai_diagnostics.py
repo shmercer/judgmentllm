@@ -165,7 +165,7 @@ def test_sync_diagnostics_and_cli_envelope(monkeypatch: pytest.MonkeyPatch) -> N
     assert result.exit_code == 0, result.output
     assert json.loads(result.stdout)["command"] == "providers models"
     unknown = CliRunner().invoke(
-        app, ["auth", "verify", "--provider", "anthropic", "--json"]
+        app, ["auth", "verify", "--provider", "gemini", "--json"]
     )
     assert unknown.exit_code == 2
 

@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import Field, model_validator
 
+from judgmentllm.anthropic_assessment import AnthropicAssessmentComponentV2
 from judgmentllm.assessment_diagnostics import AssessmentComponent
 from judgmentllm.evidence._base import EvidenceIdentity, EvidenceModel
 from judgmentllm.evidence.order import (
@@ -37,6 +38,10 @@ from judgmentllm.output_commitments import OutputCommitmentV2
 from judgmentllm.persistence.hashing import bytes_digest
 
 if TYPE_CHECKING:
+    from judgmentllm.anthropic_transport import (
+        AnthropicProductionContext,
+        OutputCommitmentV5,
+    )
     from judgmentllm.production_transport import OutputCommitmentV4, ProductionContext
     from judgmentllm.providers.protocol import ProviderResponse
     from judgmentllm.transport import OutputCommitmentV3, TransportContext
@@ -88,9 +93,9 @@ class ProviderEvidence(EvidenceModel):
     provenance: Literal["synthetic_fixture", "provider_documented"]
     usage: ReportedUsageInput | None = None
     observation_context: ProviderObservationContext | None = None
-    assessment_component: AssessmentComponent | None = Field(
-        default=None, exclude=True, repr=False
-    )
+    assessment_component: (
+        AssessmentComponent | AnthropicAssessmentComponentV2 | None
+    ) = Field(default=None, exclude=True, repr=False)
     output_text: bytes | None = Field(default=None, exclude=True, repr=False)
     output_source: OrderEvidence = "unavailable"
     reasoning: tuple[ProviderReasoningBlock, ...] = ()
@@ -127,11 +132,18 @@ def prepare_evidence(
     *,
     identity: EvidenceIdentity,
     context: UsageContext,
-    commitment: OutputCommitmentV2 | OutputCommitmentV3 | OutputCommitmentV4 | None,
+    commitment: OutputCommitmentV2
+    | OutputCommitmentV3
+    | OutputCommitmentV4
+    | OutputCommitmentV5
+    | None,
     response: ProviderResponse,
     capture: Literal["full", "minimal"],
     authorization: ReasoningAuthorization | None = None,
-    transport_context: TransportContext | ProductionContext | None = None,
+    transport_context: TransportContext
+    | ProductionContext
+    | AnthropicProductionContext
+    | None = None,
 ) -> PreparedEvidence:
     """Prepare safe facts before publishing any response or reasoning artifact.
 

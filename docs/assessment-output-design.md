@@ -1032,3 +1032,17 @@ qualification executor has a separate immutable plan/source/membership grant for
 probing unqualified synthetic cases, with a shared durable call/budget ledger.
 Ordinary run/resume rejects those grants and seals. Harness reports do not promote
 capability evidence; independent review is still required.
+
+
+## Phase 5B Messages activation
+
+The Anthropic production adapter implements the existing ordinal rubric, grouped
+trait and forced-choice output contracts with text JSON and controlled native
+`output_config.format`. Original text is strictly decoded and validated; thinking
+blocks never become assessment explanations. Only one nonblank text component
+with `end_turn` can succeed. Refusals, tools, paused/truncated/context-limited and
+ambiguous outputs remain unsuccessful. No JSON repair or component concatenation
+occurs. Diagnostic V2 preserves exact authorized component evidence independently
+of validity. The [Messages guide](anthropic.md) specifies the API2026-10-21
+controls, bounded capture, uncertainty and unexecuted qualification proposal.
+No model becomes live-qualified through these offline fixtures.

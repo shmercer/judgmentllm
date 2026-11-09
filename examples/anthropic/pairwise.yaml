@@ -1,0 +1,19 @@
+schema_version: 3
+task_kind: pairwise
+input: responses.jsonl
+pairs: pairs.jsonl
+provider: anthropic
+endpoint: messages
+model: YOUR_EXACT_MODEL
+generation:
+  max_output_tokens: 256
+prompt:
+  structured_output: text
+  native_mechanism: anthropic.messages.output_config.format
+execution:
+  explanations: false
+  concurrency: 1
+criteria:
+  - trait_id: '01'
+    name: Clarity
+    description: Choose the response that states its idea more clearly.

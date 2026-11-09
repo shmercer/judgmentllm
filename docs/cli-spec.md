@@ -503,3 +503,15 @@ invalid assessment, refusal, truncation, and local evidence-integrity failure.
 `matrix_execution_complete`, `all_assessments_valid`, `valid_assessment_count`, and
 `invalid_assessment_count` distinguish completing the planned matrix from passing
 its assessment checks; independent live qualification review remains required.
+
+
+## Phase 5B Anthropic Messages
+
+Existing validate/plan/preview/run/resume/status/export commands dispatch explicit
+RunSpecV3 Anthropic Messages configurations through the additive production
+protocol. Control JSON and normalized exports keep their versions. Required
+`prompt.native_mechanism` is `anthropic.messages.output_config.format`; text/native/
+auto admission is documented in the [Messages guide](anthropic.md).
+`auth verify --provider anthropic` and `providers models --provider anthropic`
+are separately invoked network reads; `auth status` remains offline. Development
+and qualification-plan preparation never run either read against Anthropic.

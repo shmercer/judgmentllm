@@ -12,6 +12,7 @@ import json
 from pathlib import Path
 from typing import Literal
 
+from anthropic_offline_fixture import export_anthropic, persist_anthropic
 from openai_offline_fixture import export_openai, persist_openai
 
 from judgmentllm.config import load_run_spec
@@ -248,9 +249,11 @@ def main() -> None:
         if options.phase == "persist":
             await persist(options.output)
             await persist_openai(options.output / "openai")
+            await persist_anthropic(options.output / "anthropic")
         else:
             await export(options.output)
             export_openai(options.output / "openai")
+            export_anthropic(options.output / "anthropic")
 
     asyncio.run(run_phase())
 

@@ -11,6 +11,13 @@ from typing import TYPE_CHECKING, Literal
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from judgmentllm.anthropic_prompts import RenderedAnthropicPromptV1
+    from judgmentllm.anthropic_transport import (
+        AnthropicProductionContext,
+        OutputCommitmentV5,
+        PreparedRequestV5,
+        TransportCommitmentV3,
+    )
     from judgmentllm.config import RunSpecV3
     from judgmentllm.models import PairTask, ResponseItem
     from judgmentllm.native_prompts import RenderedPromptV3
@@ -34,19 +41,32 @@ if TYPE_CHECKING:
 
 
 def context_protocol(
-    context: TransportContext | ProductionContext | None,
-) -> Literal["synthetic", "production"]:
+    context: TransportContext | ProductionContext | AnthropicProductionContext | None,
+) -> Literal["synthetic", "production", "anthropic"]:
+    from judgmentllm.anthropic_transport import AnthropicProductionContext
     from judgmentllm.production_transport import ProductionContext
     from judgmentllm.transport import TransportContext
 
     if type(context) is TransportContext:
         return "synthetic"
+    if type(context) is AnthropicProductionContext:
+        return "anthropic"
     if type(context) is ProductionContext:
         return "production"
     raise ValueError("an explicit trusted transport context is required")
 
 
-def context_digest(context: TransportContext | ProductionContext) -> str:
+def context_digest(
+    context: TransportContext | ProductionContext | AnthropicProductionContext,
+) -> str:
+    if context_protocol(context) == "anthropic":
+        from judgmentllm.anthropic_transport import (
+            AnthropicProductionContext,
+            production_context_digest,
+        )
+
+        assert isinstance(context, AnthropicProductionContext)
+        return production_context_digest(context)
     if context_protocol(context) == "production":
         from judgmentllm.production_transport import (
             ProductionContext,
@@ -63,14 +83,17 @@ def context_digest(context: TransportContext | ProductionContext) -> str:
 
 def manifest_protocol(
     manifest: ExecutableManifest,
-) -> Literal["historical", "synthetic", "production"]:
+) -> Literal["historical", "synthetic", "production", "anthropic"]:
     from judgmentllm.preparation.manifest import (
         ExecutableRunManifest,
         ExecutableRunManifestV2,
         ExecutableRunManifestV3,
         ExecutableRunManifestV4,
+        ExecutableRunManifestV5,
     )
 
+    if type(manifest) is ExecutableRunManifestV5:
+        return "anthropic"
     if type(manifest) is ExecutableRunManifestV4:
         return "production"
     if type(manifest) is ExecutableRunManifestV3:
@@ -81,7 +104,8 @@ def manifest_protocol(
 
 
 def verify_protocol(
-    manifest: ExecutableManifest, context: TransportContext | ProductionContext | None
+    manifest: ExecutableManifest,
+    context: TransportContext | ProductionContext | AnthropicProductionContext | None,
 ) -> None:
     protocol = manifest_protocol(manifest)
     if protocol == "historical":
@@ -95,14 +119,42 @@ def prepare_request(
     spec: RunSpecV3,
     dependency: RequestDependency,
     identity: PhysicalRequestIdentityV1,
-    context: TransportContext | ProductionContext,
+    context: TransportContext | ProductionContext | AnthropicProductionContext,
     *,
     template: str | None = None,
     lookup: Callable[[Literal["response", "pair"], str], ResponseItem | PairTask]
     | None = None,
-    frozen: TransportCommitmentV1 | TransportCommitmentV2 | None = None,
-    parent: TransportCommitmentV1 | TransportCommitmentV2 | None = None,
-) -> PreparedRequestV3 | PreparedRequestV4:
+    frozen: TransportCommitmentV1
+    | TransportCommitmentV2
+    | TransportCommitmentV3
+    | None = None,
+    parent: TransportCommitmentV1
+    | TransportCommitmentV2
+    | TransportCommitmentV3
+    | None = None,
+) -> PreparedRequestV3 | PreparedRequestV4 | PreparedRequestV5:
+    if context_protocol(context) == "anthropic":
+        from judgmentllm.anthropic_transport import (
+            AnthropicProductionContext,
+            TransportCommitmentV3,
+            prepare_production_request,
+        )
+
+        assert isinstance(context, AnthropicProductionContext)
+        if (frozen is not None and type(frozen) is not TransportCommitmentV3) or (
+            parent is not None and type(parent) is not TransportCommitmentV3
+        ):
+            raise ValueError("Anthropic preparation requires Anthropic commitments")
+        return prepare_production_request(
+            spec,
+            dependency,
+            identity,
+            context,
+            template=template,
+            lookup=lookup,
+            frozen=frozen,
+            parent=parent,
+        )
     if context_protocol(context) == "production":
         from judgmentllm.production_transport import (
             ProductionContext,
@@ -155,8 +207,16 @@ def render_request(
     template: str | None,
     request: PlannedRequest,
     lookup: Callable[[Literal["response", "pair"], str], ResponseItem | PairTask],
-    wire: PreparedRequestV3 | PreparedRequestV4,
-) -> RenderedPromptV3 | RenderedProductionPromptV1:
+    wire: PreparedRequestV3 | PreparedRequestV4 | PreparedRequestV5,
+) -> RenderedPromptV3 | RenderedProductionPromptV1 | RenderedAnthropicPromptV1:
+    from judgmentllm.anthropic_transport import PreparedRequestV5
+
+    if isinstance(wire, PreparedRequestV5):
+        from judgmentllm.anthropic_prompts import render_anthropic_request
+
+        return render_anthropic_request(
+            spec, template, request, lookup, wire.output_commitment
+        )
     from judgmentllm.production_transport import PreparedRequestV4
 
     if isinstance(wire, PreparedRequestV4):
@@ -173,10 +233,23 @@ def render_request(
 def build_output(
     spec: RunSpecV3,
     request: PlannedRequest,
-    context: TransportContext | ProductionContext,
-    parent: TransportCommitmentV1 | TransportCommitmentV2,
-) -> OutputCommitmentV3 | OutputCommitmentV4:
+    context: TransportContext | ProductionContext | AnthropicProductionContext,
+    parent: TransportCommitmentV1 | TransportCommitmentV2 | TransportCommitmentV3,
+) -> OutputCommitmentV3 | OutputCommitmentV4 | OutputCommitmentV5:
     """Render an ordered subset under its original protocol and selection."""
+    if context_protocol(context) == "anthropic":
+        from judgmentllm.anthropic_transport import (
+            AnthropicProductionContext,
+            TransportCommitmentV3,
+            build_output_commitment_v5,
+        )
+
+        assert isinstance(context, AnthropicProductionContext)
+        if type(parent) is not TransportCommitmentV3:
+            raise ValueError("Anthropic subsets require Anthropic parent commitments")
+        return build_output_commitment_v5(
+            spec, request, context, inherited_commitment=parent
+        )
     if context_protocol(context) == "production":
         from judgmentllm.production_transport import (
             ProductionContext,

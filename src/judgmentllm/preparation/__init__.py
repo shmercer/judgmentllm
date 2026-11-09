@@ -64,6 +64,7 @@ from judgmentllm.preparation.manifest import (
     ExecutableRunManifestV2,
     ExecutableRunManifestV3,
     ExecutableRunManifestV4,
+    ExecutableRunManifestV5,
     ExemplarCommitment,
     FrozenSnapshotAuthorization,
     SourceDiscrepancy,
@@ -80,6 +81,7 @@ from judgmentllm.preparation.session import PreparedRun as PreparedRun
 from judgmentllm.preparation.session import RequestDependency as RequestDependency
 
 if TYPE_CHECKING:
+    from judgmentllm.anthropic_transport import AnthropicProductionContext
     from judgmentllm.production_transport import ProductionContext
     from judgmentllm.transport import TransportContext
 
@@ -115,7 +117,10 @@ def _manifest(
     origin: Path | None,
     template: str | None,
     capabilities: CapabilityProfile | None,
-    transport_context: TransportContext | ProductionContext | None = None,
+    transport_context: TransportContext
+    | ProductionContext
+    | AnthropicProductionContext
+    | None = None,
 ) -> ExecutableManifest:
     plan = plan_run(spec, capabilities=capabilities)
     raw = canonical_bytes(spec)
@@ -150,7 +155,10 @@ def _manifest(
     from judgmentllm.transport_dispatch import context_protocol
 
     manifest_type = (
-        ExecutableRunManifestV4
+        ExecutableRunManifestV5
+        if transport_context is not None
+        and context_protocol(transport_context) == "anthropic"
+        else ExecutableRunManifestV4
         if transport_context is not None
         and context_protocol(transport_context) == "production"
         else ExecutableRunManifestV3
@@ -229,7 +237,10 @@ def prepare_run(
     run_id: str,
     capabilities: CapabilityProfile | None = None,
     exhaustive_rendering: bool = False,
-    transport_context: TransportContext | ProductionContext | None = None,
+    transport_context: TransportContext
+    | ProductionContext
+    | AnthropicProductionContext
+    | None = None,
 ) -> PreparedRun:
     """Freeze, validate, index and seal a new run under exclusive OS ownership.
 
@@ -357,7 +368,14 @@ def prepare_run(
             manifest = _manifest(
                 builder, spec, origin, template, profile, transport_context
             )
-            if isinstance(manifest, (ExecutableRunManifestV3, ExecutableRunManifestV4)):
+            if isinstance(
+                manifest,
+                (
+                    ExecutableRunManifestV3,
+                    ExecutableRunManifestV4,
+                    ExecutableRunManifestV5,
+                ),
+            ):
                 from judgmentllm.preparation.native import preseal_transports
 
                 assert transport_context is not None and isinstance(spec, RunSpecV3)
@@ -609,7 +627,10 @@ def open_prepared_run(
     capabilities: CapabilityProfile | None = None,
     use_frozen_snapshot: bool = False,
     owner_token: str | None = None,
-    transport_context: TransportContext | ProductionContext | None = None,
+    transport_context: TransportContext
+    | ProductionContext
+    | AnthropicProductionContext
+    | None = None,
 ) -> PreparedRun:
     """Verify and reopen; explicit snapshot permission is scoped to this call.
 

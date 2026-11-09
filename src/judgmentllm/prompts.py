@@ -95,6 +95,7 @@ class RenderedPromptV2(StrictModel):
 
 
 if TYPE_CHECKING:
+    from judgmentllm.anthropic_prompts import RenderedAnthropicPromptV1
     from judgmentllm.native_prompts import RenderedPromptV3
     from judgmentllm.production_prompts import RenderedProductionPromptV1
 
@@ -103,6 +104,7 @@ if TYPE_CHECKING:
         | RenderedPromptV2
         | RenderedPromptV3
         | RenderedProductionPromptV1
+        | RenderedAnthropicPromptV1
     )
 else:
     # Historical runtime imports stay independent of native orchestration.
