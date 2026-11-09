@@ -30,7 +30,9 @@ and the receipt states `qualification: false`.
 Ruff lint/format and strict Pyright precede bounded pytest. The default is four
 workers; choose an explicit smaller `--workers` value for a constrained machine.
 The measured CI-component checkpoint passed 403 cases with all quality checks
-in 33.536 seconds. Broader changed-component selections can exceed five minutes.
+in 33.536 seconds. Its source predates the final infrastructure additions;
+the exact final-head measurement is retained with the qualification report.
+Broader changed-component selections can exceed five minutes.
 Every profile keeps stdout/stderr and failure exits; development output defaults
 to a unique external temporary directory, or use `--output /external/new/path`.
 
@@ -116,6 +118,11 @@ workers. The CLI diagnostics retain the established short Windows path budget;
 adding xdist's worker-directory level caused failures in both Windows versions.
 Their inputs, assertions and deadlines are unchanged. No resource workload is
 removed or reduced by this classification.
+The Anthropic pinned SDK converter case also uses the resource partition: its
+cold import/AST probe took 22–24s on Windows 3.11 and exceeded the unchanged
+30s child deadline under four workers per lane. The actual pinned SDK, source
+hashes, offline guards and all sixteen fragments remain checked. Together and
+Ollama converters stay ordinary; no SDK verification or timeout is weakened.
 
 The runner verifies complete per-phase receipts, exactly one execution per case,
 documented skips, no xfail and failure propagation. Worker crashes are fatal;
@@ -178,6 +185,14 @@ quotas are caps, not reserved physical cores. Case receipts record actual affini
 cgroup quota and visible/available memory. Guest sharing, disk/memory bandwidth
 and non-CI host activity still require measurement.
 
+The parallel schedule is the leading final candidate. Its measured four-worker
+Windows allocation is retained; six workers per Windows lane have not been
+shown to improve the complete grid. Two simultaneous lanes share the same six
+guest CPUs, so the worker count is not an additional CPU reservation. Final
+acceptance requires a fresh complete run after the SDK isolation change, not
+the earlier failed parallel timing. The staged schedule is a demonstrated
+passing alternative when reduced contention is more useful than total speed.
+
 Use identical acceptance and source scope when comparing schedules:
 
 ```bash
@@ -197,7 +212,14 @@ disk counters, source/dependency/worker/budget records and every failed attempt.
 Suite records add partition CPU/process-tree RSS and complete test outcomes.
 Native resource fixtures retain their own authoritative fresh-process peaks,
 queue/process counts and child deadlines. Sampling is labeled and never replaces
-their measurements. Compare timing variability and repeat leading schedules
+their measurements. The command sampler rejects descendant births before its
+start window or in the future, allowing one second for OS timestamp precision.
+Windows boot-clock resynchronization can otherwise combine stale parent IDs
+with future process birth times and overstate a descendant tree. Original native
+workload peaks and whole-host counters are independent of these estimates.
+Historical pre-filter tree samples remain retained and must be interpreted as
+approximate rather than exact per-command attribution.
+Compare timing variability and repeat leading schedules
 where needed; no claim of stable speedup follows from a single favorable sample.
 
 An isolated nine-module, 709-case pilot at six CPUs / 16 GiB passed every case

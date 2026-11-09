@@ -8,8 +8,10 @@ import os
 import subprocess
 import sys
 import tarfile
+from contextlib import nullcontext
 from pathlib import Path
-from typing import Any, NamedTuple
+from types import SimpleNamespace
+from typing import Any, NamedTuple, cast
 
 import pytest
 from benchmark import total_cpu
@@ -572,6 +574,47 @@ def test_process_sampler_measures_owned_child_and_joins_its_thread() -> None:
     assert isinstance(total, int) and isinstance(available, int)
     assert 0 < available <= total
     assert sampler.thread is not None and not sampler.thread.is_alive()
+
+
+def test_sampler_excludes_parent_pid_aliases_and_future_births() -> None:
+    class Process:
+        def __init__(self, pid: int, created: float, rss: int) -> None:
+            self.pid = pid
+            self.created = created
+            self.rss = rss
+            self.descendants: list[Process] = []
+
+        def create_time(self) -> float:
+            return self.created
+
+        def children(self, recursive: bool = False) -> list[Process]:
+            return self.descendants
+
+        def oneshot(self) -> nullcontext[None]:
+            return nullcontext()
+
+        def cpu_times(self) -> SimpleNamespace:
+            return SimpleNamespace(user=1.0, system=0.0)
+
+        def memory_info(self) -> SimpleNamespace:
+            return SimpleNamespace(rss=self.rss)
+
+    root = Process(1, 90.0, 10)
+    root.descendants = [
+        Process(2, 50.0, 10000),  # Orphan with a reused parent PID.
+        Process(3, 200.0, 10000),  # Creation time before a clock correction.
+        Process(4, 100.0, 20),  # The current command's real child.
+    ]
+    sampler = ProcessSampler(wall_clock=lambda: 100.0)
+    sampler.root = cast(Any, root)
+    with sampler:
+        pass
+    report = sampler.report()
+    assert report["peak_tree_rss_bytes"] == 30
+    assert report["peak_descendant_rss_bytes"] == 20
+    assert report["peak_processes"] == 2
+    discarded = report["discarded_descendant_samples"]
+    assert isinstance(discarded, int) and discarded >= 4
 
 
 def test_schedule_accounts_for_shared_guests_and_host_headroom() -> None:

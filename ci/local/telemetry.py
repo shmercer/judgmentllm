@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import threading
 import time
+from collections.abc import Callable
 from contextlib import AbstractContextManager
 from pathlib import Path
 from types import TracebackType
@@ -26,10 +27,13 @@ class ProcessSampler(AbstractContextManager["ProcessSampler"]):
     fresh-process native/Python peak measurements and original limits.
     """
 
-    def __init__(self, *, interval: float = 0.25) -> None:
+    def __init__(
+        self, *, interval: float = 0.25, wall_clock: Callable[[], float] = time.time
+    ) -> None:
         if not 0.01 <= interval <= 5:
             raise ValueError("Invalid process sampling interval")
         self.interval = interval
+        self.wall_clock = wall_clock
         self.root = psutil.Process(os.getpid()) if psutil is not None else None
         self.stop = threading.Event()
         self.thread: threading.Thread | None = None
@@ -40,11 +44,13 @@ class ProcessSampler(AbstractContextManager["ProcessSampler"]):
         self.peak_processes = 0
         self.samples = 0
         self.races = 0
+        self.discarded_descendants = 0
         self.visible_memory_total = 0
         self.minimum_visible_available: int | None = None
         self.peak_visible_swap = 0
         self.peak_cgroup_memory = 0
         self.started = 0.0
+        self.started_wall = 0.0
         self.elapsed = 0.0
         self.own_cpu_started = 0.0
         self.own_cpu_elapsed = 0.0
@@ -89,6 +95,16 @@ class ProcessSampler(AbstractContextManager["ProcessSampler"]):
             try:
                 with process.oneshot():
                     identity = (process.pid, process.create_time())
+                    # Windows can retain future creation times after its boot
+                    # clock resynchronizes. Reused parent PIDs can then attach
+                    # older unrelated processes to psutil's descendant tree.
+                    # Only this command's new children contribute. Allow one
+                    # second for platform creation-time/boot-time precision.
+                    if process.pid != self.root.pid and not (
+                        self.started_wall - 1 <= identity[1] <= self.wall_clock() + 1
+                    ):
+                        self.discarded_descendants += 1
+                        continue
                     cpu = process.cpu_times()
                     used = cpu.user + cpu.system
                     memory = process.memory_info().rss
@@ -112,6 +128,7 @@ class ProcessSampler(AbstractContextManager["ProcessSampler"]):
 
     def __enter__(self) -> ProcessSampler:
         self.started = time.monotonic()
+        self.started_wall = self.wall_clock()
         self.own_cpu_started = time.process_time()
         self.children_started = self._children_cpu()
         self.sample(initial=True)
@@ -148,7 +165,7 @@ class ProcessSampler(AbstractContextManager["ProcessSampler"]):
             for identity, value in self.cpu.items()
         )
         result: dict[str, int | float | str] = {
-            "method": "sampled owned PID/birth-time tree; CPU lower bound; RSS includes shared-page duplication"
+            "method": "sampled command-created PID/birth-time tree; CPU lower bound; RSS includes shared-page duplication; preexisting/future descendant samples discarded"
             if psutil is not None
             else "bootstrap interpreter: wall/owner CPU and Unix waited-child CPU only; detailed sampling in installed suite",
             "interval_seconds": self.interval,
@@ -160,6 +177,7 @@ class ProcessSampler(AbstractContextManager["ProcessSampler"]):
             "observed_processes": len(self.cpu),
             "samples": self.samples,
             "process_exit_races": self.races,
+            "discarded_descendant_samples": self.discarded_descendants,
             "owner_cpu_seconds": self.own_cpu_elapsed,
             "visible_memory_scope": "OS-wide, shared guest counted once; Linux OS view may expose host memory; cgroup usage is separate",
             "visible_memory_total_bytes": self.visible_memory_total,

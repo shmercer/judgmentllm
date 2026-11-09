@@ -125,6 +125,7 @@ def fast(changed_since: str, output: Path, focused: list[str], workers: int) -> 
         PYRIGHT_PYTHON_GLOBAL_NODE="0",
         PYRIGHT_PYTHON_IGNORE_WARNINGS="1",
         PYTHONDONTWRITEBYTECODE="1",
+        RUFF_CACHE_DIR=str(output / "ruff-cache"),
     )
     records: list[dict[str, object]] = []
     started = time.monotonic()

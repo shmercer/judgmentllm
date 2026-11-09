@@ -52,6 +52,8 @@ passed all five routine jobs. Ubuntu 3.11: 2,416s job / 2,184s pytest;
 Ubuntu 3.15: 1,405 / 1,343; macOS 3.11: 1,153 / 1,097;
 macOS 3.15: 1,046 / 968; Windows 3.12: 2,745 / 2,621.
 These are recorded single-run observations, not a runtime distribution.
+Fresh warm baseline collection selected all 5,043 native cases in 3.05s
+(3.522s total interpreter/collection startup; 3.507 waited-child CPU seconds).
 Local Ruff took about 0.1s, Pyright 13s, build 1s, and clean install smokes 12s each.
 The installed CLI R gate cost about 100s hosted; the other R gates cost 1–7s.
 Pytest dominates, so cheap quality/platform installation gates remain intact.
@@ -64,6 +66,10 @@ raw records remain unchanged. Disposable Linux limits are explicit per schedule.
 Native/Python workload peaks remain independent fresh-process measurements;
 sampled aggregate RSS may double-count shared pages and miss transient processes.
 Host utilization includes all host activity. These measurement scopes are labeled.
+The accepted Phase 5A grid did not retain whole-host CPU/RAM counters. The
+additional sequential diagnostic trial supplies a separately labeled reference;
+it is not substituted for the accepted baseline or presented as original-suite
+CPU evidence.
 
 ## Necessity and implementation decisions
 
@@ -84,6 +90,7 @@ obsolete contract was demonstrated and no critical Cartesian matrix was reduced.
 | Large schema limits/cache-eviction/many-trait tests | Exact boundary, no hidden schema caps, compiler cache bounds | Retain | Scale is the property here; shrinking to a few records would remove protection. |
 | Crash helpers sleeping 30/60 seconds; short polling loops | Real owned child liveness/termination and durable-state synchronization | Retain | Long sleeps are deliberately interrupted, not normally awaited; polls already use bounded state checks. No evidence of costly unconditional sleeps. |
 | Fork-inheritance check and two small benchmark CLI diagnostics | Real fork ownership, fixture replacement refusal and genuine focused execution reports | Retain all cases in a serial partition | Fork must avoid execnet's threaded workers. The two CLI diagnostics failed at the added Windows worker path depth in both versions. Original inputs, assertions and deadlines remain. |
+| Anthropic pinned SDK fragment probe | Actual SDK/source hashes, anti-network/credential guards, all sixteen fragments and fixed 30s child deadline | Move only its existing parameter case to the resource partition | Windows 3.11 took 22.1s sequentially and 23.9s with two workers, then timed out under four workers per lane. Preserve the deadline and implementation; control contention rather than relaxing acceptance. Together/Ollama remain ordinary. |
 | Streaming 100-row examples, small query diagnostic | Incremental iteration, SQLite VM-step behavior | Retain | Negligible measured cost; deletion/reduction has no justified benefit. |
 | Repeated Ruff/Pyright/build/install/R gates | Platform tool/install/runtime acceptance | Retain current frequency | Static reuse is plausible but current savings are small; no acceptance-policy reduction is bundled. |
 
@@ -109,6 +116,69 @@ Its failed attempt is retained and excluded from qualification. The remaining
 895 cases were rerun successfully with corrected PATH and ordinary coverage;
 the retained Phase 5A full baseline remains the passing reference. Context
 instrumentation is not added to qualification or used to alter fault tests.
+
+## Measured execution improvements
+
+The isolated-versus-bounded resource experiment retained every workload,
+deadline and threshold in three Python 3.12 lanes, one per independently
+budgeted allocation. Both schedules passed 40 cases with two platform skips
+and sixteen mandatory numeric records per lane. Total adapter wall time fell
+from 1,475.470s to 565.106s (61.7%). Individual resource stages took 407/479/407s
+in isolation and 437/502/434s concurrently on Linux/Windows/macOS. Maximum native
+workload peaks remained approximately 96/99/95 MiB or less; traced peaks stayed
+within 9.19–9.26 MiB. Whole-host sampled peak RAM rose from 39.30 to 44.72 GiB,
+while measured memory-hours fell from 13.44 to 6.71. Host counters include
+background activity. These results support bounded independent resource
+execution rather than workstation-wide serialization; complete grids also
+exercise two resource batches sharing each guest.
+
+The 709-case worker pilot retained all cases at every worker count. Sequential,
+two-, four- and six-worker file distribution took 465.56, 388.20, 270.38 and
+266.28s. Six-worker work stealing took 169.77s, with four-worker work stealing
+at 235.33s. Waited-child CPU rose from 278.83s sequentially to 324.15s at six
+work-stealing workers, while sampled RSS rose from about 292 to 988 MiB. The
+pilot trades some additional process/collection CPU and RAM for lower latency;
+full-grid measurements determine the recommendation.
+
+The controlled complete-grid comparison and final qualification are recorded
+in the external report linked from the PR. All failed trials remain evidence.
+The first added-infrastructure trial exposed platform type narrowing and
+synthetic missing-Git failures; the initial two-worker trial exposed the two
+Windows CLI path-depth failures. The tuned parallel trial then exposed the
+Anthropic 30-second deadline under contention. Those failures resulted in
+platform-safe typing/source detection and the explicit serial/resource
+classifications above. No retry, timeout increase, hidden skip or acceptance
+reduction admits a failed run.
+
+### Complete-grid observations before the final freeze
+
+| Trial | Total seconds | Qualification | Whole-host busy CPU seconds | Sampled host peak GiB |
+|---|---:|---|---:|---:|
+| A: accepted original | 4249.327 | Passed | Not retained | Not retained |
+| A: added-infrastructure diagnostic | 4162.662 | Failed | 17641.21 | 49.68 |
+| B: initial two-worker parallel | 3429.564 | Failed | 24121.25 | 51.15 |
+| B: tuned parallel | 2214.878 | Failed | 18505.09 | 53.19 |
+| C: staged | 3756.544 | Passed | 16754.14 | 48.57 |
+| D: resource-aware | 2736.306 | Passed | 16183.58 | 48.55 |
+
+All seven configurations completed in each trial. B-tuned, C and D used the
+same `0e3baed0dd35824a31c08c21ea0c7b5a2eec65f8` source; A and initial B are
+explicitly different source/scheduling checkpoints. All trials retained all
+49 R assertion gates and 112 mandatory resource records, with no production
+covered-set loss. Failed trials are diagnostic observations, not acceptance.
+The original accepted A reference has the same production tree and acceptance
+as the starting merge. Whole-host counters include background activity and
+cannot establish original-suite CPU savings, because its counters were not
+retained. Peak values are sampled, not guaranteed instantaneous maxima.
+
+Staging improved individual configurations but queued the Linux lanes and
+increased total completion time. Resource-aware D reduced peak allocation but
+queued the third Linux version. The fastest observed parallel trial still
+failed the SDK deadline. The final parallel candidate retains its measured
+worker allocations and moves only that SDK case to the resource partition;
+fresh complete exact-head acceptance is mandatory before recommending it.
+Final timings, hosted results, exact coverage comparison and source SHA are
+recorded outside Git and in the PR description after the final commit is frozen.
 
 ## Per-module baseline coverage
 
