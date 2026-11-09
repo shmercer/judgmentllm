@@ -581,3 +581,18 @@ protected text is retained only for full capture. Existing result rows, complete
 category coding, leading-zero IDs, pair orientation, missing values and physical
 usage aggregation remain independently asserted. These fixture sidecars are test
 artifacts, not Phase 6 companion export interfaces or live qualification evidence.
+
+
+## Phase 5B Anthropic adapter acceptance
+
+The existing required execution gate now also generates Anthropic rubric and
+pairwise outputs through the actual pinned SDK with a simulated HTTP response.
+R/jsonlite checks full and minimal capture, character IDs with leading zeros,
+multiple traits, selected categorical scores with null expected scores and
+distributions, original/presented orientation, unsuccessful grouped siblings,
+explicit retry attempts, physical observations and durable diagnostic links.
+Known uncached/cache creation/read counters and missing usage remain distinct;
+totals stay null. Read-only reopened diagnostics retain their original identity
+and never expose assessment text in serialized metadata. The existing seven
+mandatory gates and49 local executions are preserved; no separate pipeline or
+Phase6 usage/reasoning export API is introduced. No real provider is contacted.

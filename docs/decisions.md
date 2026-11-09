@@ -307,3 +307,23 @@ matrix case; ambiguous acceptance or incomplete durability stops. Old plans and
 first-live evidence remain immutable and reportable. Neither diagnostics nor
 harness reports promote qualification into the reviewed registry. This correction
 requires new exact-head offline/hosted qualification and separate live approval.
+
+
+## Phase 5B: additive Anthropic Messages production scope (2026-11-09)
+
+Keep the pinned Anthropic2.3.0 SDK and API2026-10-21. Actual installed source
+confirms native `output_config.format`, Bearer API-key authentication, required
+max_tokens and removal of sampling controls. Source hashes accompany deterministic
+SDK fixtures; support in that SDK is not a serving-model qualification.
+
+Use separate Anthropic authority and versioned manifest5/output5/request5/receipt3
+contracts instead of broadening OpenAI V4. Reuse durable execution and evidence;
+keep HTTP bytes, privacy and Messages interpretation provider-specific. Omitted
+output limits seal an explicit4096 policy. No request-controlled thinking, tools,
+headers, URLs or generic JSON are added. No Messages retrieval is invented.
+
+Prepare four source-bound cases only. Reserve body-derived8192 estimated input
+tokens and512 requested output tokens each when the audit supports that allowance.
+At reviewed $3/$15 rates, $0.129024 reservation and proposed $0.15 estimated ceiling
+remain estimates, not a guaranteed bill. Separate plan/source-bound billable
+consent is mandatory; no Anthropic API operation occurs during this work.

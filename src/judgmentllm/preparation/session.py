@@ -54,6 +54,7 @@ from judgmentllm.preparation.manifest import (
     ExecutableRunManifestV2,
     ExecutableRunManifestV3,
     ExecutableRunManifestV4,
+    ExecutableRunManifestV5,
     configuration_digest,
 )
 from judgmentllm.preparation.records import (  # pyright: ignore[reportPrivateUsage]
@@ -65,6 +66,12 @@ from judgmentllm.preparation.records import (  # pyright: ignore[reportPrivateUs
 from judgmentllm.prompts import RenderedAssessmentPrompt
 
 if TYPE_CHECKING:
+    from judgmentllm.anthropic_prompts import RenderedAnthropicPromptV1
+    from judgmentllm.anthropic_transport import (
+        AnthropicProductionContext,
+        PreparedRequestV5,
+        TransportCommitmentV3,
+    )
     from judgmentllm.native_prompts import RenderedPromptV3
     from judgmentllm.production_prompts import RenderedProductionPromptV1
     from judgmentllm.production_transport import (
@@ -157,7 +164,10 @@ class PreparedRun:
         *,
         authorized_sources: frozenset[str] = frozenset(),
         record_reader: RecordReader = read_record,
-        transport_context: TransportContext | ProductionContext | None = None,
+        transport_context: TransportContext
+        | ProductionContext
+        | AnthropicProductionContext
+        | None = None,
     ) -> None:
         self._read_record = record_reader
         self.repository = repository
@@ -293,7 +303,8 @@ class PreparedRun:
             raise PreparationError("prepared run session is closed")
         template = self.template
         if isinstance(
-            self.manifest, (ExecutableRunManifestV3, ExecutableRunManifestV4)
+            self.manifest,
+            (ExecutableRunManifestV3, ExecutableRunManifestV4, ExecutableRunManifestV5),
         ):
             from judgmentllm.transport_dispatch import context_digest, verify_protocol
 
@@ -419,12 +430,18 @@ class PreparedRun:
 
     def _render_verified_request(
         self, request: PlannedRequest
-    ) -> RenderedAssessmentPrompt | RenderedPromptV3 | RenderedProductionPromptV1:
+    ) -> (
+        RenderedAssessmentPrompt
+        | RenderedPromptV3
+        | RenderedProductionPromptV1
+        | RenderedAnthropicPromptV1
+    ):
         context = self._context
         spec = context.spec if context is not None else self.spec
         template = context.template if context is not None else self.template
         if isinstance(
-            self.manifest, (ExecutableRunManifestV3, ExecutableRunManifestV4)
+            self.manifest,
+            (ExecutableRunManifestV3, ExecutableRunManifestV4, ExecutableRunManifestV5),
         ):
             from judgmentllm.planning import stable_id
             from judgmentllm.transport import (
@@ -474,14 +491,15 @@ class PreparedRun:
 
     def transport_for_attempt(
         self, attempt_id: str
-    ) -> TransportCommitmentV1 | TransportCommitmentV2:
+    ) -> TransportCommitmentV1 | TransportCommitmentV2 | TransportCommitmentV3:
         """Read original safe metadata; missing commitments are never repaired."""
         from judgmentllm.persistence.transport_receipts import read_transport_commitment
         from judgmentllm.planning import stable_id
         from judgmentllm.transport import physical_identity
 
         if not isinstance(
-            self.manifest, (ExecutableRunManifestV3, ExecutableRunManifestV4)
+            self.manifest,
+            (ExecutableRunManifestV3, ExecutableRunManifestV4, ExecutableRunManifestV5),
         ):
             raise PreparationError("historical preparation has no native transport")
         attempt = self.repository.get_attempt(self.manifest.run_id, attempt_id)
@@ -509,7 +527,13 @@ class PreparedRun:
             raise PreparationError("committed transport identity is inconsistent")
         from judgmentllm.transport_dispatch import manifest_protocol
 
-        expected_version = 2 if manifest_protocol(self.manifest) == "production" else 1
+        expected_version = (
+            3
+            if manifest_protocol(self.manifest) == "anthropic"
+            else 2
+            if manifest_protocol(self.manifest) == "production"
+            else 1
+        )
         if receipt.transport_commitment_version != expected_version:
             raise PreparationError(
                 "transport receipt protocol differs from sealed manifest"
@@ -531,9 +555,15 @@ class PreparedRun:
         dependency: RequestDependency,
         identity: PhysicalRequestIdentityV1,
         *,
-        frozen: TransportCommitmentV1 | TransportCommitmentV2 | None = None,
-        parent: TransportCommitmentV1 | TransportCommitmentV2 | None = None,
-    ) -> PreparedRequestV3 | PreparedRequestV4:
+        frozen: TransportCommitmentV1
+        | TransportCommitmentV2
+        | TransportCommitmentV3
+        | None = None,
+        parent: TransportCommitmentV1
+        | TransportCommitmentV2
+        | TransportCommitmentV3
+        | None = None,
+    ) -> PreparedRequestV3 | PreparedRequestV4 | PreparedRequestV5:
         """Reconstruct pinned bytes or prepare an authorized ordered retry subset."""
         from judgmentllm.execution.retry import subset_dependency
         from judgmentllm.planning import stable_id
@@ -542,7 +572,12 @@ class PreparedRun:
         self.verify_compatibility(capabilities=self.capabilities)
         if (
             not isinstance(
-                self.manifest, (ExecutableRunManifestV3, ExecutableRunManifestV4)
+                self.manifest,
+                (
+                    ExecutableRunManifestV3,
+                    ExecutableRunManifestV4,
+                    ExecutableRunManifestV5,
+                ),
             )
             or self.transport_context is None
             or not isinstance(self.spec, RunSpecV3)
@@ -643,7 +678,12 @@ class PreparedRun:
         """Verify the complete initial index once, never select a replacement."""
         if (
             isinstance(
-                self.manifest, (ExecutableRunManifestV3, ExecutableRunManifestV4)
+                self.manifest,
+                (
+                    ExecutableRunManifestV3,
+                    ExecutableRunManifestV4,
+                    ExecutableRunManifestV5,
+                ),
             )
             and not self._transport_index_verified
         ):
@@ -754,7 +794,12 @@ class PreparedRun:
 
     def render_attempt(
         self, dependency: RequestDependency
-    ) -> RenderedAssessmentPrompt | RenderedPromptV3 | RenderedProductionPromptV1:
+    ) -> (
+        RenderedAssessmentPrompt
+        | RenderedPromptV3
+        | RenderedProductionPromptV1
+        | RenderedAnthropicPromptV1
+    ):
         """Render an exact ordered subset while retaining its parent identity."""
         selected = tuple(t.task_id for t in dependency.request.tasks)
         if selected == self.repository.request_task_ids(
@@ -791,7 +836,8 @@ class PreparedRun:
         ):
             raise PreparationError("attempt membership differs from its parent")
         if isinstance(
-            self.manifest, (ExecutableRunManifestV3, ExecutableRunManifestV4)
+            self.manifest,
+            (ExecutableRunManifestV3, ExecutableRunManifestV4, ExecutableRunManifestV5),
         ):
             from judgmentllm.native_prompts import render_request_v3
             from judgmentllm.planning import stable_id
@@ -810,8 +856,15 @@ class PreparedRun:
                 self.transport_context,
                 self.transport_for_attempt(first_id),
             )
+            from judgmentllm.anthropic_transport import OutputCommitmentV5
             from judgmentllm.production_transport import OutputCommitmentV4
 
+            if isinstance(output, OutputCommitmentV5):
+                from judgmentllm.anthropic_prompts import render_anthropic_request
+
+                return render_anthropic_request(
+                    self.spec, self.template, dependency.request, self._get, output
+                )
             if isinstance(output, OutputCommitmentV4):
                 from judgmentllm.production_prompts import render_production_request
 
@@ -825,7 +878,12 @@ class PreparedRun:
 
     def render(
         self, dependency: RequestDependency
-    ) -> RenderedAssessmentPrompt | RenderedPromptV3 | RenderedProductionPromptV1:
+    ) -> (
+        RenderedAssessmentPrompt
+        | RenderedPromptV3
+        | RenderedProductionPromptV1
+        | RenderedAnthropicPromptV1
+    ):
         """Render with the established renderer; never retain text in minimal mode."""
         self.verify_compatibility(capabilities=self.capabilities)
         try:

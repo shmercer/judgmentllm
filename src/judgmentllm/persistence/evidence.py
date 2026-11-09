@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Annotated, Literal, TypeVar, cast
 
 from pydantic import Field, field_validator, model_validator
 
+from judgmentllm.anthropic_assessment import AnthropicAssessmentDiagnosticV2
 from judgmentllm.evidence._base import EvidenceIdentity, EvidenceModel
 from judgmentllm.evidence.assessment import AssessmentDiagnosticV1
 from judgmentllm.evidence.order import ProviderObservationMetadata
@@ -87,9 +88,9 @@ class EvidenceReceipt(EvidenceModel):
     original: ArtifactIdentity | None = None
     retained: ArtifactIdentity | None = None
     response_retention: Literal["exact", "redacted", "omitted"]
-    assessment_diagnostic: AssessmentDiagnosticV1 | None = Field(
-        default=None, exclude_if=lambda value: value is None
-    )
+    assessment_diagnostic: (
+        AssessmentDiagnosticV1 | AnthropicAssessmentDiagnosticV2 | None
+    ) = Field(default=None, exclude_if=lambda value: value is None)
     invocation_acceptance: Literal["unresolved"] | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
@@ -110,7 +111,7 @@ class EvidenceReceipt(EvidenceModel):
             or diagnostic.reported_model != self.usage.reported_model
             or diagnostic.provider_outcome != self.usage.provider_outcome
             or diagnostic.remote_response_id != self.remote_id
-            or self.usage.provider != "openai"
+            or self.usage.provider != diagnostic.provider
         ):
             raise ValueError("assessment diagnostic identities conflict")
         if self.invocation_acceptance == "unresolved" and (
@@ -122,7 +123,11 @@ class EvidenceReceipt(EvidenceModel):
             or self.original is not None
             or self.response_retention != "omitted"
             or (self.usage.provider, self.usage.endpoint)
-            not in {("openai", "responses"), ("openai", "chat.completions")}
+            not in {
+                ("openai", "responses"),
+                ("openai", "chat.completions"),
+                ("anthropic", "messages"),
+            }
         ):
             raise ValueError(
                 "unresolved invocation cannot claim failure or observation"

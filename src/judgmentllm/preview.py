@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
     from typing import Literal
 
+    from judgmentllm.anthropic_prompts import RenderedAnthropicPromptV1
     from judgmentllm.planning import PlannedRequest
     from judgmentllm.production_prompts import RenderedProductionPromptV1
 
@@ -32,7 +33,16 @@ def _preview_render(
     template: str | None,
     request: PlannedRequest,
     lookup: Callable[[Literal["response", "pair"], str], ResponseItem | PairTask],
-) -> RenderedAssessmentPrompt | RenderedProductionPromptV1:
+) -> RenderedAssessmentPrompt | RenderedProductionPromptV1 | RenderedAnthropicPromptV1:
+    if isinstance(spec, RunSpecV3) and spec.provider == "anthropic":
+        from judgmentllm.anthropic_prompts import render_anthropic_request
+        from judgmentllm.anthropic_transport import build_output_commitment_v5
+        from judgmentllm.anthropic_transport import (
+            production_context as anthropic_context,
+        )
+
+        output = build_output_commitment_v5(spec, request, anthropic_context(spec))
+        return render_anthropic_request(spec, template, request, lookup, output)
     if isinstance(spec, RunSpecV3):
         from judgmentllm.production_prompts import render_production_request
         from judgmentllm.production_transport import (
@@ -54,7 +64,7 @@ def preview_prompt(
     trait_id: str | None = None,
     pair_uid: str | None = None,
     capabilities: CapabilityProfile | None = None,
-) -> RenderedAssessmentPrompt | RenderedProductionPromptV1:
+) -> RenderedAssessmentPrompt | RenderedProductionPromptV1 | RenderedAnthropicPromptV1:
     """Render one planned request without credentials, networking, or execution.
 
     For grouped rubric requests, selecting a trait previews its entire fixed

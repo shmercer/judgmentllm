@@ -190,7 +190,7 @@ class ExecutionSession:
     ) -> PreparedRequest:
         """Reconstruct pinned V3 bytes; historical rendering keeps its old path."""
         assert self.prepared is not None
-        if self.prepared.manifest.schema_version in (3, 4):
+        if self.prepared.manifest.schema_version in (3, 4, 5):
             from judgmentllm.transport import physical_identity
 
             if (
@@ -239,10 +239,13 @@ class ExecutionSession:
     ) -> None:
         """Create intent only for independently verified pre-seal initial work."""
         assert self.prepared is not None
+        from judgmentllm.anthropic_transport import PreparedRequestV5
         from judgmentllm.production_transport import PreparedRequestV4
         from judgmentllm.transport import PreparedRequestV3, physical_identity
 
-        if not isinstance(prepared, (PreparedRequestV3, PreparedRequestV4)):
+        if not isinstance(
+            prepared, (PreparedRequestV3, PreparedRequestV4, PreparedRequestV5)
+        ):
             raise IntegrityError("initial native preparation is unavailable")
         receipt = self.prepared.transport_for_attempt(attempt.attempt_id)
         identity = physical_identity(
@@ -297,7 +300,7 @@ class ExecutionSession:
         while True:
             existing = next(self.existing, None)
             if existing is not None:
-                if self.prepared.manifest.schema_version in (3, 4):
+                if self.prepared.manifest.schema_version in (3, 4, 5):
                     self.verify_native_attempt(existing)
                 results = self.repository.get_results_for_attempt(
                     self.run_id, existing.attempt_id
@@ -336,7 +339,7 @@ class ExecutionSession:
                 dependency = next(self.dependencies, None)
                 if dependency is None:
                     return None
-                if self.prepared.manifest.schema_version in (3, 4):
+                if self.prepared.manifest.schema_version in (3, 4, 5):
                     raise IntegrityError("sealed native request was scheduled twice")
                 ordinal = self.ordinal
                 self.ordinal += 1
@@ -448,6 +451,7 @@ class ExecutionSession:
                 if submission is None and self.prepared.manifest.schema_version in (
                     3,
                     4,
+                    5,
                 ):
                     self.initial_submission(existing, prepared)
                     submission = self.repository.get_submission_for_attempt(
@@ -477,7 +481,7 @@ class ExecutionSession:
     def repair_committed(self, attempt: AttemptRecord, status: str) -> None:
         """Committed records are authoritative, including a lost final report."""
         assert self.prepared is not None
-        if self.prepared.manifest.schema_version in (3, 4):
+        if self.prepared.manifest.schema_version in (3, 4, 5):
             self.verify_native_attempt(attempt)
         for digest in (attempt.prompt_sha256, attempt.payload_sha256):
             self.prepared.store.verify(
@@ -965,11 +969,14 @@ class ExecutionSession:
             parsed = None
         self.checkpoint("before_validation", work.prepared.request_uid)
         contract = None
-        if self.prepared.manifest.schema_version in (3, 4):
+        if self.prepared.manifest.schema_version in (3, 4, 5):
+            from judgmentllm.anthropic_transport import PreparedRequestV5
             from judgmentllm.production_transport import PreparedRequestV4
             from judgmentllm.transport import PreparedRequestV3
 
-            if not isinstance(work.prepared, (PreparedRequestV3, PreparedRequestV4)):
+            if not isinstance(
+                work.prepared, (PreparedRequestV3, PreparedRequestV4, PreparedRequestV5)
+            ):
                 raise IntegrityError("native execution requires its committed output")
             current = self.prepare_attempt(work.dependency, work.attempt_id)
             if current != work.prepared:

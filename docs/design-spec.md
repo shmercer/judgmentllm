@@ -1,8 +1,8 @@
 # JudgmentLLM: functional design specification
 
-**Design:** 0.5 (2026-11-02). **Implementation status:** Milestone 1 provides schema-version-1 contracts, synthetic normalization, structural planning, input/output, and offline prompt tools. Milestone 2 has durable persistence, generation configuration, and complete provider-free immutable source preparation with indexed access and independent-process reopening. Subphase 4 adds grouped outcomes, retry/cancellation and immutable exports; Subphase 5 exposes the shared public Python lifecycle and versioned CLI. Subphase 6 is merged in PR #11; its final implementation head `db198aeb0a6387e6a3030c584c34bdd0b41e890f` has retained local and hosted qualification evidence, with the historical six-configuration scope described below. Historical V1/V2 execution remains limited to the deterministic mock provider. Phase5A adds production OpenAI execution through explicit V3 configurations and independently identified production manifests, pending exact-head and authorized live acceptance. The sections below describe the full approved direction; [data contracts](data-contracts.md) and [Python API](python-api.md) describe the implemented subset.
+**Design:** 0.5 (2026-11-02). **Implementation status:** Milestone 1 provides schema-version-1 contracts, synthetic normalization, structural planning, input/output, and offline prompt tools. Milestone 2 has durable persistence, generation configuration, and complete provider-free immutable source preparation with indexed access and independent-process reopening. Subphase 4 adds grouped outcomes, retry/cancellation and immutable exports; Subphase 5 exposes the shared public Python lifecycle and versioned CLI. Subphase 6 is merged in PR #11; its final implementation head `db198aeb0a6387e6a3030c584c34bdd0b41e890f` has retained local and hosted qualification evidence, with the historical six-configuration scope described below. Historical V1/V2 execution remains limited to the deterministic mock provider. Phase5A adds production OpenAI execution through explicit V3 configurations and independently identified production manifests, with offline acceptance separate from authorized live acceptance. Phase 5B adds independently versioned Anthropic Messages execution. The sections below describe the full approved direction; [data contracts](data-contracts.md) and [Python API](python-api.md) describe the implemented subset.
 
-## Phase 5A production candidate
+## Phase 5A production implementation
 
 OpenAI Responses and Chat Completions now have additive production adapter
 implementation. New execution requires RunSpecV3 with a trusted production
@@ -327,3 +327,25 @@ existing validation and reconciliation semantics. Nine mechanisms are exercised
 only through private exact-scope synthetic fixtures; real adapters and exact
 endpoint wire builders remain Phase 5. See the detailed
 [durable transport contracts](persistence-contracts.md#phase-4c3-native-capable-durable-boundary).
+
+
+## Phase 5B Anthropic Messages production implementation
+
+Messages has an additive exact-SDK/API transport with manifest5, output/prepared
+request5 and transport receipt3. OpenAI manifest4/request4/receipt2, synthetic
+manifest3 and historical normalized exports retain their identities and bytes.
+The shared scheduler, source sealing, SQLite evidence services and normalization
+remain provider-neutral. Anthropic formatting, stop reasons and usage stay in
+small provider-owned modules. See the [Anthropic guide](anthropic.md).
+
+Required `max_tokens` is sealed as requested or as explicit adapter default4096;
+the original omitted generation setting is preserved. API2026-10-21 sampling
+controls are rejected. Native probing uses a distinct source/plan-bound harness
+grant; ordinary execution cannot borrow it and no live-qualified model is added.
+The four-case proposal uses reviewable estimated input allowances, not full-model
+context reservations or guaranteed monetary caps. No live execution is part of
+this implementation or its standard CI.
+
+Phase5A completed its separately authorized eight-case OpenAI live scope at
+`b300a3e5f7fbd59d6ca2d3761d79a5660b9c2633`; the [final acceptance](https://github.com/shmercer/judgmentllm/pull/24#issuecomment-6726984126)
+is authoritative over earlier pending status. It grants no Anthropic authority.

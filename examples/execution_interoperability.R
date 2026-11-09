@@ -205,3 +205,45 @@ for (entry in inspections) {
 absent <- jsonlite::fromJSON(file.path(openai_root, "diagnostic-absent.json"), simplifyVector=FALSE)
 stopifnot(is.null(absent$diagnostic), !"output_text" %in% names(absent))
 cat("Assessment diagnostic interoperability passed: exact protected invalid text, hash-only minimal capture, unchanged exports\n")
+
+# Actual Anthropic SDK -> durable Python outputs -> independent R assertions.
+anthropic_root <- file.path(root, "anthropic")
+read_anthropic <- function(name) lapply(readLines(file.path(anthropic_root, name), encoding="UTF-8"), jsonlite::fromJSON, simplifyVector=FALSE)
+anthropic_rows <- read_anthropic("results.jsonl")
+anthropic_evidence <- read_anthropic("evidence.jsonl")
+stopifnot(length(anthropic_rows) == 8L, length(anthropic_evidence) == 6L)
+akeys <- vapply(anthropic_evidence, function(x) key(x$identity), character(1))
+stopifnot(!anyDuplicated(akeys))
+for (row in anthropic_rows) {
+  stopifnot(key(row) %in% akeys, row$provider == "anthropic", row$endpoint == "messages")
+  stopifnot(is.null(row$input_tokens), is.null(row$output_tokens))
+  stopifnot(is.null(row$probabilities), is.null(row$expected_value))
+  if (row$status != "complete") stopifnot(is.null(row$primary_score))
+}
+stopifnot(sum(vapply(anthropic_rows, function(x) x$status == "invalid", logical(1))) == 2L)
+known_usage <- Filter(function(x) !is.null(x$usage$input_tokens), anthropic_evidence)
+stopifnot(length(known_usage) == 5L)
+stopifnot(sum(vapply(known_usage, function(x) x$usage$input_tokens, integer(1))) == 500L)
+for (entry in anthropic_evidence) {
+  stopifnot(entry$usage$provider == "anthropic", is.null(entry$usage$total_tokens), is.null(entry$usage$reasoning_tokens))
+  stopifnot(entry$assessment_diagnostic$diagnostic_version == 2L)
+  stopifnot(entry$assessment_diagnostic$provider == "anthropic", entry$assessment_diagnostic$component$stop_reason == "end_turn")
+  stopifnot(identical(entry$identity, entry$assessment_diagnostic$identity))
+  if (!is.null(entry$usage$input_tokens)) {
+    stopifnot(entry$usage$input_tokens == 100L, entry$usage$output_tokens == 10L)
+    stopifnot(entry$usage$cache_read_tokens == 5L, entry$usage$cache_write_tokens == 4L)
+    counts <- setNames(lapply(entry$usage$breakdown, function(x) x$value), vapply(entry$usage$breakdown, function(x) x$field, character(1)))
+    stopifnot(counts[["cache_creation.ephemeral_5m_input_tokens"]] == 3L)
+    stopifnot(counts[["cache_creation.ephemeral_1h_input_tokens"]] == 1L)
+  }
+}
+ar <- read.csv(file.path(anthropic_root, "rubric.csv"), colClasses="character", na.strings="NA", check.names=FALSE)
+ap <- read.csv(file.path(anthropic_root, "pairs.csv"), colClasses="character", na.strings="NA", check.names=FALSE)
+stopifnot(nrow(ar) == 6L, all(ar$item_id == "001"), all(ar$trait_id %in% c("01", "02")))
+stopifnot(all(is.na(ar$probabilities_json)), all(is.na(ar$expected_value)))
+for (coding in ar$resolved_levels_json) stopifnot(identical(jsonlite::fromJSON(coding)$numeric_value, c(1,3,8)))
+stopifnot(nrow(ap) == 2L, all(ap$ID1 == "002"), all(ap$ID2 == "001"), all(ap$better_id == "002"))
+stopifnot(all(as.numeric(ap$result) == 1), all(is.na(ap$p_left)), all(is.na(ap$p_first)))
+for (order in ap$original_order) stopifnot(identical(jsonlite::fromJSON(order), c("001", "002")))
+for (order in ap$presented_order) stopifnot(identical(jsonlite::fromJSON(order), c("002", "001")))
+for (inspection in read_anthropic("inspections.jsonl")) stopifnot(!"output_text" %in% names(inspection))

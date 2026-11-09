@@ -4,10 +4,10 @@
 
 | Adapter | Live | Native provider batch | Managed bulk-live | Rubric | Pairwise | Notes |
 |---|---|---|---|---|---|---|
-| OpenAI Chat Completions | implemented; live acceptance pending | target | later milestone | generative | generative | Phase 5A, SDK 3.42.1; exact-model capability unknown until qualified |
-| OpenAI Responses | implemented; live acceptance pending | target | later milestone | generative | generative | Phase 5A, SDK 3.42.1; exact-model capability unknown until qualified |
+| OpenAI Chat Completions | implemented; reviewed live scope accepted | target | later milestone | generative | generative | Phase 5A, SDK 3.42.1; exact-model capability unknown until qualified |
+| OpenAI Responses | implemented; reviewed live scope accepted | target | later milestone | generative | generative | Phase 5A, SDK 3.42.1; exact-model capability unknown until qualified |
 | OpenAI Decisions | target | not available | yes | typed score, 2-10 levels | typed choice | Currently GPT-6 Luna; no generated explanations; 1-400 questions/request; cache policy handled separately |
-| Anthropic Messages | target | target | yes | generative | generative | Official SDK; token counting/batch/caching controls may vary |
+| Anthropic Messages | implemented; live acceptance pending | target | later milestone | generative | generative | Phase 5B; SDK 2.3.0 / API 2026-10-21; text JSON and controlled native output_config.format |
 | Gemini Developer | target | target | yes | generative | generative | `google-genai` SDK; batch via generateContent |
 | Vertex AI Gemini | target | target (Google Cloud setup required) | yes | generative | generative | `google-genai` SDK; Gemini focus; GCS/BigQuery source and cloud IAM considerations |
 | Together AI | target | target, subject to current API qualification | yes | generative | generative | Use official Together Python SDK v3 (`together>=3,<4`); endpoint/model feature coverage must be tested |
@@ -28,7 +28,7 @@ distinguishes documented behavior, planned integration policy and pending
 qualification. Phases 1–3 implement neutral output contracts, v2 mock execution
 and offline authentication diagnostics. Phase 4A adds standalone strict evidence
 records and pure extractors. Phase 5A adds production OpenAI Responses and Chat
-adapters; other real integrations remain proposed. No endpoint/model
+adapters; Phase 5B adds Anthropic Messages. Other real integrations remain proposed. No endpoint/model
 acquires runtime support or live qualification from those records.
 
 - Shared credential resolution uses official SDK mechanisms: provider-specific
@@ -43,7 +43,7 @@ acquires runtime support or live qualification from those records.
   [provider evidence](assessment-provider-evidence.md#planned-vertex-authorization-key-route).
 - `auth status` and its Python API remain offline. Phase 5A adds explicit OpenAI
   `auth verify` and model discovery through a protected, non-generative models-list
-  request. Other providers remain deferred; authentication acceptance and model
+  request. Phase 5B adds the separate protected Anthropic models-list operation; other providers remain deferred; authentication acceptance and model
   visibility do not qualify an assessment endpoint or mechanism.
 - Native structured outputs are preferred where compatible. Generated schemas
   and local validators remain provider-neutral; each adapter reports the native
@@ -154,3 +154,20 @@ pairwise × text/native. No serving model is advertised as independently qualifi
 by the implementation or fixture evidence. The Phase 5A PR must remain open with
 **offline-qualified; live qualification pending explicit authorization** after
 all offline/hosted gates pass. See the [OpenAI guide](openai.md).
+
+Phase 5A [final acceptance](https://github.com/shmercer/judgmentllm/pull/24#issuecomment-6726984126) verified eight
+text/native rubric/pairwise cases on `gpt-4.1-mini-2025-04-14` with SDK3.42.1.
+That limited acceptance does not populate the production native registry or
+authorize any Anthropic call.
+
+### Anthropic Phase 5B scope
+
+Text/native/auto policies, grouped ordinal rubrics and forced-choice pairs reuse
+existing result/evidence contracts. Exact native model support remains unqualified;
+installed SDK support, documented endpoint support and synthetic fixture coverage
+are separate facts. The [guide](anthropic.md) specifies the required4096 adapter
+output default, removed sampling controls, conservative cache/tier policies,
+unknown totals, thinking privacy and non-retrievable uncertainty.
+The four-case live proposal is prepared offline and requires separate consent
+against its exact source and plan digest; no model-list or token-count call is
+needed to prepare it.

@@ -32,7 +32,10 @@
         "tests/test_openai_responses_parsing.py",
         "tests/test_native_other_sdk.py",
         "tests/test_native_other_providers.py",
-        "tests/test_provider_evidence_boundary.py"
+        "tests/test_provider_evidence_boundary.py",
+        "tests/test_anthropic_sdk_adapter.py",
+        "tests/test_anthropic_response.py",
+        "tests/test_anthropic_invalid_utf8.py"
       ],
       "guarantees": "Pinned actual SDK serialization/parsing, synthetic HTTP transports and byte commitments; no live calls"
     },
@@ -43,7 +46,8 @@
         "tests/test_native_transport_integration.py",
         "tests/test_native_transport_integrity.py",
         "tests/test_production_transport.py",
-        "tests/test_durable_native_preparation.py"
+        "tests/test_durable_native_preparation.py",
+        "tests/test_anthropic_transport.py"
       ],
       "guarantees": "Authority, endpoint/protocol incompatibility, exact request and immutable selection/attempt identity"
     },
@@ -55,7 +59,10 @@
         "tests/test_native_transport_processes.py",
         "tests/test_evidence_recovery_integrity.py",
         "tests/test_openai_lifecycle.py",
-        "tests/test_openai_qualification.py"
+        "tests/test_openai_qualification.py",
+        "tests/test_anthropic_lifecycle.py",
+        "tests/test_anthropic_qualification.py",
+        "tests/test_anthropic_processes.py"
       ],
       "guarantees": "Every durable failure boundary, independent acceptance, conservative retry, no duplicate sends"
     },
@@ -65,7 +72,8 @@
         "tests/test_execution_cancellation_processes.py",
         "tests/test_cli_process_safety.py",
         "tests/test_openai_cancellation.py",
-        "tests/test_persistence_ownership.py"
+        "tests/test_persistence_ownership.py",
+        "tests/test_anthropic_cancellation.py"
       ],
       "guarantees": "Owned child exit, cancellation/recovery, lock ownership, bounded independent processes"
     },
@@ -79,7 +87,10 @@
         "tests/test_native_v2_privacy.py",
         "tests/test_assessment_capture.py",
         "tests/test_evidence_reasoning_scope.py",
-        "tests/test_durable_evidence_lifecycle.py"
+        "tests/test_durable_evidence_lifecycle.py",
+        "tests/test_anthropic_sdk_adapter.py",
+        "tests/test_anthropic_response.py",
+        "tests/test_anthropic_integrity.py"
       ],
       "guarantees": "No credential discovery/leakage, full/minimal capture, reasoning authorization, unsafe evidence rejection"
     },
@@ -89,7 +100,9 @@
         "tests/test_assessment_capture.py",
         "tests/test_readonly_inspection.py",
         "tests/test_readonly_diagnostic_repository.py",
-        "tests/test_openai_diagnostics.py"
+        "tests/test_openai_diagnostics.py",
+        "tests/test_anthropic_diagnostics.py",
+        "tests/test_anthropic_lifecycle.py"
       ],
       "guarantees": "Exact retained component, hash-only privacy, immutable read-only diagnostics and failure classification"
     },
@@ -101,7 +114,8 @@
         "tests/test_native_preseal_memory.py",
         "tests/test_native_memory_accounting.py",
         "tests/test_openai_resources.py",
-        "tests/test_scale_benchmarks.py::test_tiny_scale_allocation_diagnostics"
+        "tests/test_scale_benchmarks.py::test_tiny_scale_allocation_diagnostics",
+        "tests/test_anthropic_resources.py"
       ],
       "separate_release_protocol": "docs/milestone-2-subphase-6-verification.md",
       "guarantees": "Original workload sizes, 90/180-second child deadlines, 32/8/256 MiB limits and growth bounds, process/queue bounds"

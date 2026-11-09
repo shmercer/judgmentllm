@@ -18,6 +18,7 @@ from judgmentllm.assessment_errors import (
 from judgmentllm.evidence._base import EvidenceModel
 
 if TYPE_CHECKING:
+    from judgmentllm.anthropic_assessment import AnthropicAssessmentComponentV2
     from judgmentllm.output_contracts import AssessmentOutputContract
 
 MAX_ASSESSMENT_COMPONENT_BYTES = 1_048_576
@@ -161,7 +162,7 @@ class AssessmentParseDiagnostic:
 
 
 def diagnose_assessment_output(
-    component: AssessmentComponent,
+    component: AssessmentComponent | AnthropicAssessmentComponentV2,
     contract: AssessmentOutputContract,
 ) -> AssessmentParseDiagnostic:
     """Use the canonical complete-output validator without repair or rescoring."""

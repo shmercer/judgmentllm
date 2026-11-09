@@ -1,4 +1,4 @@
-"""Thin CLI registration for explicit OpenAI non-generative diagnostics."""
+"""Thin CLI registration for explicit OpenAI and Anthropic diagnostics."""
 
 from __future__ import annotations
 
@@ -71,7 +71,7 @@ def register_commands(app: typer.Typer, auth_app: typer.Typer) -> typer.Typer:
     @auth_app.command("verify")
     def auth_verify(
         provider: Annotated[
-            str, typer.Option(help="Exact provider; currently openai.")
+            str, typer.Option(help="Exact provider; openai or anthropic.")
         ],
         json_output: Annotated[
             bool, typer.Option("--json", help="Emit the version-1 control envelope.")
@@ -79,11 +79,20 @@ def register_commands(app: typer.Typer, auth_app: typer.Typer) -> typer.Typer:
     ) -> None:
         """Make one protected non-generative read; does not qualify a model."""
 
+        if provider == "anthropic":
+            from judgmentllm.anthropic_diagnostics import (
+                verify_authentication as verify_anthropic,
+            )
+            from judgmentllm.providers.anthropic_cli import present_anthropic
+
+            perform(lambda: verify_anthropic(), present=present_anthropic)
+            return
+
         def operation() -> AuthVerification:
             if provider != "openai":
                 raise LifecycleError(
                     "unsupported_capability",
-                    "Authentication verification currently supports provider openai only",
+                    "Authentication verification supports providers openai and anthropic",
                 )
             return verify_authentication(provider=provider)
 
@@ -92,7 +101,7 @@ def register_commands(app: typer.Typer, auth_app: typer.Typer) -> typer.Typer:
     @providers.command("models")
     def providers_models(
         provider: Annotated[
-            str, typer.Option(help="Exact provider; currently openai.")
+            str, typer.Option(help="Exact provider; openai or anthropic.")
         ],
         model: Annotated[
             str | None,
@@ -104,11 +113,20 @@ def register_commands(app: typer.Typer, auth_app: typer.Typer) -> typer.Typer:
     ) -> None:
         """List visible models with one read; no generation or pagination."""
 
+        if provider == "anthropic":
+            from judgmentllm.anthropic_diagnostics import (
+                discover_models as discover_anthropic,
+            )
+            from judgmentllm.providers.anthropic_cli import present_anthropic
+
+            perform(lambda: discover_anthropic(model=model), present=present_anthropic)
+            return
+
         def operation() -> ModelDiscovery:
             if provider != "openai":
                 raise LifecycleError(
                     "unsupported_capability",
-                    "Model discovery currently supports provider openai only",
+                    "Model discovery supports providers openai and anthropic",
                 )
             return discover_models(provider=provider, model=model)
 

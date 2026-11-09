@@ -1257,3 +1257,19 @@ and run reject before submission with safe setting names such as
 `generation.temperature`; provider response text, model values and assessment
 content never enter these diagnostics. Invalid capability intent is not reported
 as a network or execution failure.
+
+
+## Anthropic Messages production adapter (Milestone 3 Phase 5B)
+
+The existing `validate_inputs`, `estimate_run`, `preview_prompt`, `arun_live`,
+`run_live`, resume/status/result export and read-only assessment inspection
+services accept explicit RunSpecV3 `provider="anthropic"`, `endpoint="messages"`,
+and, for auto/native policies, native mechanism `anthropic.messages.output_config.format`. Their neutral
+control/result contracts are unchanged; new internal manifest5, output/request5
+and transport3 records preserve historical dispatch. See [the guide](anthropic.md).
+`verify_authentication(provider="anthropic")` and `discover_models(provider=
+"anthropic", model="EXACT_MODEL")`, with async counterparts, make one explicit
+non-generative protected GET and return separate provider-specific typed records.
+Default OpenAI calls retain their existing record classes. No diagnostic operation
+runs during ordinary offline validation, preview or `credential_status`.
+Native production support remains unqualified and requires reviewed exact scope.

@@ -490,7 +490,43 @@ The private reviewed qualification registry starts empty. Native production
 selection consults only exact-scope reviewed records; qualification probes carry
 unknown serving support and cannot update the registry. The dedicated offline
 plan/authorized execute/read-only report harness produces candidate evidence only.
-No live provider calls have been authorized or performed during implementation.
+No live provider calls were performed during adapter development. The later
+separately authorized OpenAI eight-case scope was accepted in the
+[PR #24 final review](https://github.com/shmercer/judgmentllm/pull/24#issuecomment-6726984126). This does not qualify additional scopes or authorize Anthropic.
 Exact-head offline/hosted results and any later independently reviewed live
 findings belong in the retained qualification report, not inferred from these
 implementation notes.
+
+
+## Phase 5B SDK and endpoint evidence (reviewed 2026-11-09)
+
+Installed `anthropic==2.3.0` / `httpx2==2.16.0` source hashes are retained in
+`tests/fixtures/production_anthropic/sdk-profile.json`. The constants, Messages
+resource, output config/JSON format and schema-transform hashes match retained
+Phase4C Anthropic projection evidence. No dependency change is required.
+
+The [migration guide](https://platform.claude.com/docs/en/api/migration-2026-10-21)
+confirms API2026-10-21, removed sampling fields and Bearer API-key authentication.
+Actual SDK request tests confirm omitted-parameter behavior, complete body bytes,
+`output_config.format` placement and `await AsyncAPIResponse.read()`. The SDK's
+default retries2, timeout600 and redirect behavior are explicitly replaced with
+zero retries, bounded timeouts/connections and no redirects. Explicit API key and
+protected default headers exclude other credential sources and ambient routing.
+
+Messages response envelopes, stop reasons, thinking/redacted-thinking and caching
+counters are interpreted separately from OpenAI. `input_tokens` excludes cache
+creation/read counters; no total is fabricated. Unknown provider extensions and
+reasoning are removed before retention. Pure usage extraction remains offline.
+The optional explicit models-list read is separately bounded and mocked in tests;
+this implementation never executes it against Anthropic. Token counting and model
+discovery are not prerequisites for offline validation or plan preparation.
+
+Exact candidate `claude-sonnet-4-6` is documented for Messages/native output with
+1M context, 128K maximum output and $3/$15 standard input/output pricing;
+[model documentation](https://platform.claude.com/docs/en/models/sonnet-4-6/overview)
+and [pricing](https://platform.claude.com/docs/en/about-claude/pricing) remain
+mutable and must be rechecked before consent. The short four-case proposal
+separately audits full body/schema bytes and estimated overhead. Its8192 input
+allowance is not an exact tokenizer result or request input cap. Endpoint docs,
+fixture tests and independent live support remain three separate evidence scopes;
+the production native registry remains empty.
