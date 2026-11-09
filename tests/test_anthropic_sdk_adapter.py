@@ -42,9 +42,21 @@ def offline(monkeypatch: pytest.MonkeyPatch) -> None:
     def deny(*args: Any, **kwargs: Any) -> Any:
         raise AssertionError("External provider access forbidden")
 
+    original_connect = socket.socket.connect
+
+    def connect(current: socket.socket, address: Any) -> Any:
+        # Windows ProactorEventLoop creates a private loopback socket pair.
+        # Permit that local control channel while denying every external IP.
+        if current.family in {socket.AF_INET, socket.AF_INET6} and address[0] not in {
+            "127.0.0.1",
+            "::1",
+        }:
+            return deny()
+        return original_connect(current, address)
+
     monkeypatch.setattr(socket, "getaddrinfo", deny)
     monkeypatch.setattr(socket, "create_connection", deny)
-    monkeypatch.setattr(socket.socket, "connect", deny)
+    monkeypatch.setattr(socket.socket, "connect", connect)
 
 
 def invocation(wire: PreparedRequestV5) -> dict[str, str]:
@@ -466,3 +478,16 @@ async def test_provider_requests_and_recovery_authority_cannot_cross(
     finally:
         await anthropic.aclose()
         await openai.aclose()
+
+
+def test_offline_guard_allows_event_loop_socketpair_and_denies_external_ips() -> None:
+    first, second = socket.socketpair()
+    try:
+        first.sendall(b"local control")
+        assert second.recv(13) == b"local control"
+    finally:
+        first.close()
+        second.close()
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as current:
+        with pytest.raises(AssertionError, match="External provider access forbidden"):
+            current.connect(("203.0.113.1", 443))

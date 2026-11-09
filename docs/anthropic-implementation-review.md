@@ -151,3 +151,11 @@ input limit or guaranteed monetary cap. Exact bodies, identities, source/plan
 digests and pricing assumptions must be independently reviewed before separate
 billable consent. No Anthropic endpoint, credential retrieval, live execution,
 registry promotion, package publication or merge is part of this work.
+
+The first final-head Windows run exposed a test guard that denied asyncio's
+private loopback socket pair before the Proactor loop could initialize. The
+correction permits local control sockets and still denies every external IP/DNS
+connection; an explicit socketpair/external-IP test protects that distinction.
+No production transport, resource policy, test selection or acceptance requirement
+changes. The failed receipts remain retained; the corrected final commit requires
+fresh complete local and hosted qualification.
