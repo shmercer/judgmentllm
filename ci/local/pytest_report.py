@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any, cast
 
 import pytest
 
+from .provenance import RUN_ID_ENV, receipt_provenance, source_record
+
 _items: list[dict[str, object]] = []
 _reports: list[dict[str, object]] = []
+_provenance: pytest.StashKey[dict[str, Any]] = pytest.StashKey()
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -20,6 +24,10 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 def pytest_configure(config: pytest.Config) -> None:
     _items.clear()
     _reports.clear()
+    if config.getoption("--ci-report") and not hasattr(config, "workerinput"):
+        config.stash[_provenance] = receipt_provenance(
+            source_record(config.rootpath), os.environ.get(RUN_ID_ENV)
+        )
 
 
 @pytest.hookimpl(trylast=True)
@@ -95,6 +103,7 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
         json.dumps(
             {
                 "schema_version": 1,
+                "provenance": session.config.stash[_provenance],
                 "exit_code": int(exitstatus),
                 "collected": _items,
                 "reports": _reports,

@@ -17,6 +17,12 @@ import pytest
 from benchmark import total_cpu
 from coverage_equivalence import compare
 from override_recovery import Allocation, Observation, RecoveryJournal, require_restored
+from provenance import (
+    RUN_ID_ENV,
+    receipt_provenance,
+    source_record,
+    verify_preflight_provenance,
+)
 from resource_budget import ResourceLease
 from scheduling import get_schedule
 from suite import outcomes, partition, verify_contract, verify_skips
@@ -278,9 +284,102 @@ def test_case_failure_and_dependency_skip_are_not_lost() -> None:
     assert outcomes(receipt, {"failed", "skipped"}) == {"failed": 1, "skipped": 1}
 
 
+@pytest.fixture
+def preflight_identity(tmp_path: Path) -> dict[str, Any]:
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / ".judgmentllm-source.json").write_text(
+        json.dumps({"commit": "a" * 40, "archive_sha256": "b" * 64})
+    )
+    (source / "uv.lock").write_bytes(b"synthetic locked environment\n")
+    return receipt_provenance(source_record(source), "current-qualification-run")
+
+
+def test_preflight_accepts_matching_actual_provenance(
+    preflight_identity: dict[str, Any],
+) -> None:
+    receipt = json.loads(json.dumps({"provenance": preflight_identity}))
+    verify_preflight_provenance(receipt, preflight_identity)
+    assert preflight_identity["interpreter"]["version"] == sys.version
+    assert preflight_identity["interpreter"]["prefix"] == os.path.normcase(
+        str(Path(sys.prefix).resolve())
+    )
+
+
+@pytest.mark.parametrize(
+    "field,key,value",
+    [
+        ("source", "commit", "c" * 40),
+        ("source", "archive_sha256", "c" * 64),
+        ("source", "manifest_sha256", "c" * 64),
+        ("source", "dirty", 0),
+        ("lockfile_sha256", None, "c" * 64),
+        ("interpreter", "implementation", "different-python"),
+        ("interpreter", "version", "different-version"),
+        ("interpreter", "executable", "/different/python"),
+        ("interpreter", "prefix", "/different/venv"),
+        ("interpreter", "platform", "different-platform"),
+        ("interpreter", "dependencies", {"pytest": "different-version"}),
+        ("qualification_run_id", None, "previous-qualification-run"),
+    ],
+)
+def test_preflight_rejects_foreign_or_stale_provenance(
+    preflight_identity: dict[str, Any], field: str, key: str | None, value: Any
+) -> None:
+    receipt = json.loads(json.dumps({"provenance": preflight_identity}))
+    if key is None:
+        receipt["provenance"][field] = value
+    else:
+        receipt["provenance"][field][key] = value
+    with pytest.raises(ValueError, match=f"provenance differs: {field}"):
+        verify_preflight_provenance(receipt, preflight_identity)
+
+
+@pytest.mark.parametrize(
+    "missing",
+    [None, "source", "lockfile_sha256", "interpreter", "qualification_run_id"],
+)
+def test_preflight_rejects_missing_provenance(
+    preflight_identity: dict[str, Any], missing: str | None
+) -> None:
+    receipt = json.loads(json.dumps({"provenance": preflight_identity}))
+    if missing is None:
+        receipt.pop("provenance")
+    else:
+        receipt["provenance"].pop(missing)
+    with pytest.raises(ValueError, match="missing or invalid provenance"):
+        verify_preflight_provenance(receipt, preflight_identity)
+
+
+@pytest.mark.parametrize(
+    "field,key,value",
+    [
+        ("source", "commit", None),
+        ("source", "dirty", True),
+        ("lockfile_sha256", None, None),
+        ("qualification_run_id", None, None),
+        ("qualification_run_id", None, ""),
+    ],
+)
+def test_preflight_cannot_credit_matching_unknown_or_dirty_identity(
+    preflight_identity: dict[str, Any], field: str, key: str | None, value: Any
+) -> None:
+    if key is None:
+        preflight_identity[field] = value
+    else:
+        preflight_identity[field][key] = value
+    with pytest.raises(ValueError, match="known, clean source/lock/run identities"):
+        verify_preflight_provenance(
+            {"provenance": preflight_identity}, preflight_identity
+        )
+
+
 @pytest.mark.parametrize(
     "fault,distribution",
-    [(fault, "loadfile") for fault in ("none", "failed", "worker_crash", "preflight")]
+    [
+        (fault, "loadfile")
+        for fault in ("none", "failed", "worker_crash", "preflight", "stale_preflight")
+    ]
     + [(fault, "worksteal") for fault in ("none", "failed")],
 )
 def test_real_distributed_runner_accounts_for_every_partition(
@@ -309,9 +408,15 @@ def test_resource(tmp_path):
         code += "\ndef test_crash():\n    os._exit(7)\n"
     (source / "test_contract.py").write_text(code)
     preflights: list[str] = []
-    if fault == "preflight":
+    run_identity = f"synthetic-run-{fault}-{distribution}"
+    if fault in {"preflight", "stale_preflight"}:
+        (source / ".judgmentllm-source.json").write_text(
+            json.dumps({"commit": "a" * 40, "archive_sha256": "b" * 64})
+        )
+        (source / "uv.lock").write_bytes(b"synthetic locked environment\n")
         receipt = tmp_path / "preflight.json"
         environment = dict(os.environ)
+        environment[RUN_ID_ENV] = run_identity
         environment["PATH"] = ""
         environment.pop("PYTEST_XDIST_WORKER", None)
         environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[2])
@@ -334,6 +439,13 @@ def test_resource(tmp_path):
             timeout=30,
         )
         assert preflight.returncode == 0, preflight.stdout + preflight.stderr
+        recorded = json.loads(receipt.read_text())
+        assert recorded["provenance"] == receipt_provenance(
+            source_record(source), run_identity
+        )
+        if fault == "stale_preflight":
+            recorded["provenance"]["qualification_run_id"] = "previous-run"
+            receipt.write_text(json.dumps(recorded))
         preflights = ["--preflight-report", str(receipt)]
     output = tmp_path / "evidence"
     result = subprocess.run(
@@ -355,17 +467,27 @@ def test_resource(tmp_path):
         capture_output=True,
         text=True,
         timeout=30,
-        env={**os.environ, "PYTEST_XDIST_WORKER": "outer-worker", "PATH": ""},
+        env={
+            **os.environ,
+            RUN_ID_ENV: run_identity,
+            "PYTEST_XDIST_WORKER": "outer-worker",
+            "PATH": "",
+        },
     )
     assert (output / "summary.json").is_file(), result.stdout + result.stderr
     summary = json.loads((output / "summary.json").read_text())
-    assert summary["source"]["commit"] is None
+    assert summary["source"]["commit"] == ("a" * 40 if preflights else None)
     assert (result.returncode == 0) == (fault in {"none", "preflight"}), (
         result.stdout + result.stderr
     )
-    if fault == "worker_crash":
+    if fault in {"worker_crash", "stale_preflight"}:
         assert summary["status"] == "failed"
         assert summary["manifest_complete"] is False
+        if fault == "stale_preflight":
+            assert "qualification_run_id" in summary["error"]["message"]
+            assert summary["counts"]["passed"] == 0
+            assert summary["partitions"] == []
+            assert not (output / "ordinary.log").exists()
     else:
         assert summary["manifest_complete"] is True
         assert summary["counts"]["passed"] == 3

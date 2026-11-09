@@ -81,6 +81,18 @@ def test_matrix_contract(
     assert len(actual) == len(selected)
 
 
+def test_hosted_preflights_share_only_the_current_job_attempt_identity() -> None:
+    job = workflow()["jobs"]["baseline"]
+    assert job["env"]["JUDGMENTLLM_CI_RUN_ID"] == (
+        "${{ github.run_id }}:${{ github.run_attempt }}:${{ matrix.os }}:${{ matrix.python }}"
+    )
+    for step in job["steps"]:
+        if "--ci-report" in step.get("run", "") or "ci/local/suite.py" in step.get(
+            "run", ""
+        ):
+            assert "JUDGMENTLLM_CI_RUN_ID" not in step.get("env", {})
+
+
 def test_full_job_quality_r_and_resource_gates_are_preserved() -> None:
     job = workflow()["jobs"]["baseline"]
     # Fifty minutes is the approved hosted ceiling; the target stays under twenty.
@@ -223,6 +235,9 @@ def test_preflights_import_reporter_from_uninstalled_checkout(tmp_path: Path) ->
     plugin = checkout / "ci/local/pytest_report.py"
     plugin.parent.mkdir(parents=True)
     shutil.copyfile(REPOSITORY / "ci/local/pytest_report.py", plugin)
+    shutil.copyfile(
+        REPOSITORY / "ci/local/provenance.py", plugin.with_name("provenance.py")
+    )
     (checkout / "test_probe.py").write_text(
         "from pathlib import Path\n"
         "def test_reporter_is_from_checkout():\n"
@@ -244,6 +259,7 @@ def test_preflights_import_reporter_from_uninstalled_checkout(tmp_path: Path) ->
         if key in os.environ
     }
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    environment["JUDGMENTLLM_CI_RUN_ID"] = "workflow-reporter-regression"
     # Equivalent launch prefixes need only one real child startup. The checkout
     # is deliberately uninstalled and PYTHONPATH is absent, like hosted CI.
     for index, launch in enumerate(sorted(launches)):
@@ -277,6 +293,10 @@ def test_preflights_import_reporter_from_uninstalled_checkout(tmp_path: Path) ->
         assert completed.returncode == 0, completed.stdout + completed.stderr
         reported = json.loads(receipt.read_text())
         assert reported["exit_code"] == 0
+        assert (
+            reported["provenance"]["qualification_run_id"]
+            == environment["JUDGMENTLLM_CI_RUN_ID"]
+        )
         assert [item["nodeid"] for item in reported["collected"]] == [
             "test_probe.py::test_reporter_is_from_checkout"
         ]

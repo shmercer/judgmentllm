@@ -7,6 +7,11 @@ the reviewed redundancies; [the requirement map](../ci/verification-map.json)
 locates every mandatory verification category. No platform, R gate frequency,
 resource size/threshold/deadline or security guarantee is removed.
 
+The completed performance study and its final measurements belong to qualified
+commit `6f9e2d6d765106a85968ddf3404d633748246874`. The receipt-provenance
+correction preserves that evidence and runs only targeted correctness checks
+and mandatory final-head acceptance; it makes no new performance claim.
+
 ## Development feedback
 
 Prepare the locked environment with `uv sync --locked --all-extras --group dev`.
@@ -142,6 +147,11 @@ test deletion, exclusion or missed branch.
 Windows early durability/privacy checks remain early and emit receipts. The full
 runner validates and accounts for those 69 cases, without rerunning them. Missing,
 failed, overlapping or resource-bearing preflight receipts fail closed.
+Receipts also bind the clean source commit/archive/manifest, raw lockfile digest,
+actual interpreter/environment and qualification-run identity. The full runner
+rejects missing, stale or mismatched provenance before crediting any cases.
+Native gates create a fresh lane identity; hosted jobs bind the workflow run,
+attempt and platform/Python matrix lane. Old receipts cannot qualify a new run.
 Hosted prechecks invoke `python -m pytest`, so their reporting plugin imports
 from the uninstalled checkout without depending on `PYTHONPATH` or console-script
 search paths. A functional workflow test checks that import and its case receipt

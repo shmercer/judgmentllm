@@ -4,17 +4,23 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import importlib.metadata
 import json
 import os
 import shutil
 import subprocess
 import sys
 import time
+import uuid
 from collections import Counter
 from pathlib import Path
 from typing import Any, cast
 
+from provenance import (
+    RUN_ID_ENV,
+    receipt_provenance,
+    source_record,
+    verify_preflight_provenance,
+)
 from resource_budget import ResourceLease
 from resource_specs import read_resources
 from telemetry import ProcessSampler
@@ -23,65 +29,6 @@ WARNINGS = [
     "-Werror::ResourceWarning",
     "-Werror::pytest.PytestUnraisableExceptionWarning",
 ]
-
-
-def source_record(source: Path) -> dict[str, Any]:
-    manifest = source / ".judgmentllm-source.json"
-    if manifest.is_file():
-        recorded = cast(
-            dict[str, Any], json.loads(manifest.read_text(encoding="utf-8"))
-        )
-        identity: dict[str, Any] = {
-            "commit": recorded["commit"],
-            "archive_sha256": recorded["archive_sha256"],
-            "manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
-            "dirty": False,
-        }
-    elif shutil.which("git") is not None:
-        commit = subprocess.run(
-            ["git", "rev-parse", "HEAD"],
-            cwd=source,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        state = subprocess.run(
-            ["git", "status", "--porcelain=v1"],
-            cwd=source,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        identity = {
-            "commit": commit.stdout.strip() if commit.returncode == 0 else None,
-            "dirty": bool(state.stdout.strip()) if state.returncode == 0 else None,
-        }
-    else:
-        # Synthetic runner acceptance uses unversioned temporary projects. The
-        # native guest needs no Git installation when qualifying manifest-bound
-        # archives; unknown identity here must not prevent a failure receipt.
-        identity = {"commit": None, "dirty": None}
-    lock = source / "uv.lock"
-    identity["lockfile_sha256"] = (
-        hashlib.sha256(lock.read_bytes()).hexdigest() if lock.exists() else None
-    )
-    versions: dict[str, str | None] = {}
-    for name in (
-        "pytest",
-        "pytest-xdist",
-        "pytest-cov",
-        "coverage",
-        "openai",
-        "pydantic",
-        "psutil",
-    ):
-        try:
-            versions[name] = importlib.metadata.version(name)
-        except importlib.metadata.PackageNotFoundError:
-            versions[name] = None
-    identity["dependencies"] = versions
-    identity["python"] = sys.version
-    return identity
 
 
 def outcomes(receipt: dict[str, Any], expected: set[str]) -> Counter[str]:
@@ -234,6 +181,7 @@ def run(
         [plugin_root, environment.get("PYTHONPATH", "")]
     ).rstrip(os.pathsep)
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
+    qualification_run_id = environment.setdefault(RUN_ID_ENV, uuid.uuid4().hex)
     resources = read_resources()
     requested_workers = workers
     if bound_workers:
@@ -252,7 +200,9 @@ def run(
         "selection_complete": False,
         "stage": stage,
         "source": source_record(source),
+        "qualification_run_id": qualification_run_id,
     }
+    summary["provenance"] = receipt_provenance(summary["source"], qualification_run_id)
     totals: Counter[str] = Counter()
 
     def save() -> None:
@@ -355,6 +305,7 @@ def run(
             raise ValueError("Preflight reuse requires a complete noncoverage lane")
         for path in preflight_reports or []:
             receipt = cast(dict[str, Any], json.loads(path.read_text(encoding="utf-8")))
+            verify_preflight_provenance(receipt, summary["provenance"])
             nodes = {item["nodeid"] for item in receipt["collected"]}
             if (
                 not nodes

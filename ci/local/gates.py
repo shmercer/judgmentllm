@@ -24,6 +24,7 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, cast
 
+from provenance import RUN_ID_ENV
 from telemetry import ProcessSampler
 
 MANIFEST = ".judgmentllm-source.json"
@@ -235,6 +236,7 @@ class Runner:
         self.uv = shutil.which(options.uv) or options.uv
         self.environment = {
             **os.environ,
+            RUN_ID_ENV: secrets.token_hex(16),
             "UV_OFFLINE": "1" if options.mode == "check" else "0",
             "UV_PYTHON_DOWNLOADS": "never",
             "UV_PROJECT_ENVIRONMENT": str(self.source / ".venv"),
@@ -284,6 +286,7 @@ class Runner:
             "resource_slots": options.resource_slots,
             "status": "running",
             "commit": options.commit,
+            "qualification_run_id": self.environment[RUN_ID_ENV],
             "archive_sha256": options.archive_sha256,
             "source": str(self.source),
             "output": str(self.output),

@@ -11,6 +11,7 @@ from typing import Any
 
 import gates
 import pytest
+from provenance import RUN_ID_ENV
 
 from judgmentllm import __version__
 
@@ -94,6 +95,18 @@ def test_existing_or_overlapping_output_is_rejected(
         gates.Runner(options(staged, output))
     with pytest.raises(ValueError, match="separate directory"):
         gates.Runner(options(staged, staged / "output"))
+
+
+def test_native_preflights_share_a_fresh_lane_run_identity(
+    staged: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(RUN_ID_ENV, "inherited-run-must-not-be-reused")
+    first = gates.Runner(options(staged, tmp_path / "first-run"))
+    second = gates.Runner(options(staged, tmp_path / "second-run"))
+    assert first.environment[RUN_ID_ENV] != second.environment[RUN_ID_ENV]
+    for runner in (first, second):
+        assert runner.environment[RUN_ID_ENV] != "inherited-run-must-not-be-reused"
+        assert runner.summary["qualification_run_id"] == runner.environment[RUN_ID_ENV]
 
 
 def fake_commands(
