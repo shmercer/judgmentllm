@@ -99,13 +99,23 @@ change their scope or authorize provider usage/PyPI publication.
 ## Pytest partitions and failure reproduction
 
 `ci/local/suite.py` collects the entire selected suite into exact node IDs before
-execution. Ordinary cases use explicit `pytest-xdist` workers and `loadfile`
-distribution. Immutable module fixtures stay in one worker. A `serial` marker
+execution. Ordinary cases use explicit `pytest-xdist` workers and measured `worksteal`
+distribution. Immutable module fixtures cache within each worker; each owns its
+artifacts. The `--distribution loadfile` alternative maximizes module reuse.
+Work stealing may rebuild a fixture in another worker, but reduces expensive
+file tails without sharing mutable objects or changing case identities. A `serial` marker
 reserves a test that needs one pytest process; a `resource` marker selects tests
 whose memory/timing acceptance needs controlled allocation. Resource batches
 never use xdist. Current process/SQLite/concurrency correctness tests use unique
 temporary stores and owned children and can remain ordinary; process creation
 alone is not a reason to serialize an entire suite.
+
+The three serial cases retain the actual fork-inheritance ownership check and
+two small benchmark CLI diagnostics. Fork stays outside execnet's threaded
+workers. The CLI diagnostics retain the established short Windows path budget;
+adding xdist's worker-directory level caused failures in both Windows versions.
+Their inputs, assertions and deadlines are unchanged. No resource workload is
+removed or reduced by this classification.
 
 The runner verifies complete per-phase receipts, exactly one execution per case,
 documented skips, no xfail and failure propagation. Worker crashes are fatal;
@@ -146,18 +156,19 @@ platform failures; a host-only rerun is not replacement platform acceptance.
 
 ## Allocation budgets and experiments
 
-The host has sixteen physical / thirty-two logical CPUs and 128 GB RAM. Windows
-and macOS each share six guest CPUs across their Python lanes; they retain 12 and
-16 GiB respectively. Linux containers receive explicit per-container CPU-time
+The host has sixteen physical / thirty-two logical CPUs and 128 GB RAM. Windows shares six guest CPUs and 12 GiB across its Python lanes. macOS
+shares four visible guest CPUs and 16 GiB. Its existing configuration requests
+six cores, but Quickemu rounds down to four for macOS; both the boot topology
+and in-guest telemetry confirm four. No guest setting is changed. Linux containers receive explicit per-container CPU-time
 quotas and 16 GiB limits. Slots coordinate resource batches within each owned
 allocation; no workstation-wide resource semaphore is imposed.
 
 | Schedule | Linux workers × active configurations / CPU quota each | Windows workers × active configurations | macOS workers × active configurations | Maximum resource batches Linux / Windows / macOS |
 |---|---|---|---|---|
 | baseline (A) | 0 × 3 / 6 | 0 × 2 | 0 × 2 | 3 / 2 / 2 |
-| parallel (B) | 2 × 3 / 4 | 2 × 2 | 2 × 2 | 2 / 1 / 1 |
-| staged (C) | 4 × 1 / 6 | 4 × 1 | 4 × 1 | 1 / 1 / 1 |
-| resource-aware (D) | 3 × 2 / 3 | 4 × 1 | 4 × 1 | 2 / 1 / 1 |
+| parallel (B, tuned) | 6 × 3 / 6 | 4 × 2 | 2 × 2 | 3 / 2 / 2 |
+| staged (C) | 6 × 1 / 6 | 4 × 1 | 4 × 1 | 1 / 1 / 1 |
+| resource-aware (D) | 6 × 2 / 6 | 4 × 2 | 2 × 2 | 2 / 2 / 2 |
 | isolated reference | 4 × 1 / 6 | 4 × 1 | 4 × 1 | One platform at a time |
 
 Zero workers means sequential pytest. Guests retain their actual CPU/RAM
@@ -172,7 +183,7 @@ Use identical acceptance and source scope when comparing schedules:
 ```bash
 uv run --offline --no-sync python ci/local/benchmark.py --ref "$REF" \
   --schedule parallel --output /mnt/VM_Fast/judgmentllm-ci-optimization-evidence/new-B
-python3 ci/local/grid.py --ref "$REF" --suite-stage ordinary \
+python3 ci/local/grid.py --ref "$REF" --platform linux --suite-stage ordinary \
   --schedule staged --benchmark-workers 0,2,4,6
 python3 ci/local/grid.py --ref "$REF" --suite-stage resource --schedule isolated
 python3 ci/local/grid.py --ref "$REF" --suite-stage resource --schedule parallel
@@ -189,10 +200,26 @@ queue/process counts and child deadlines. Sampling is labeled and never replaces
 their measurements. Compare timing variability and repeat leading schedules
 where needed; no claim of stable speedup follows from a single favorable sample.
 
+An isolated nine-module, 709-case pilot at six CPUs / 16 GiB passed every case
+with 0/2/4/6 workers. File distribution took 465.56 / 388.20 / 270.38 / 266.28s
+including collection. Work stealing took 235.33s with four and 169.77s with six.
+These are focused observations, not full qualification. The six-worker file and
+work-stealing passes used 320.19 and 324.15 waited-child CPU seconds respectively.
+Sampled tree RSS increased from about 879 to 988 MiB (shared pages can be counted
+more than once). The full-grid trials validate whether that tradeoff remains
+useful with other configurations active.
+
+Linux starts another selected configuration as soon as any owned container
+finishes. A slow coverage lane does not leave a completed sibling's slot idle.
+Every lane still contributes its exit status; a failed peer never cancels the
+remaining configurations. Deterministic scheduling tests cover both successful
+and failed early completion without depending on favorable timing ratios.
+
 Begin resource experiments with isolated measurements, then compare identical
 workloads at bounded concurrency across separately allocated containers/guests.
-The focused three-platform resource comparison uses Python 3.12, one six-CPU
-lane in each allocation (16/12/16 GiB). Complete-grid A–D measurements subsequently
+The focused three-platform resource comparison uses Python 3.12 with one lane
+per allocation: six Linux CPUs / 16 GiB, six Windows CPUs / 12 GiB, and four
+visible macOS CPUs / 16 GiB. Complete-grid A–D measurements subsequently
 exercise all seven versions and original resource acceptance. Choose the fastest
 reliable measured schedule; serialize globally only if measurements show that
 concurrency invalidates measurements or causes sensitive failures. The original

@@ -413,7 +413,7 @@ def main() -> int:
     parser.add_argument("--schedule", choices=tuple(SCHEDULES), default="parallel")
     parser.add_argument("--benchmark-workers", default="")
     parser.add_argument(
-        "--distribution", choices=("loadfile", "worksteal"), default="loadfile"
+        "--distribution", choices=("loadfile", "worksteal"), default="worksteal"
     )
     parser.add_argument(
         "--suite-stage", choices=("full", "ordinary", "resource"), default="full"

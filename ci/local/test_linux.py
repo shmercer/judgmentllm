@@ -37,7 +37,7 @@ def test_worker_options_fail_before_any_host_or_guest_control(
     assert message in result.stderr
 
 
-@pytest.mark.parametrize("sweep", ["", "0,2,4,6"])
+@pytest.mark.parametrize("sweep", ["", "0,2,4"])
 def test_macos_ssh_argument_join_preserves_optional_worker_sweep(
     tmp_path: Path, sweep: str
 ) -> None:
@@ -84,6 +84,26 @@ def test_macos_ssh_argument_join_preserves_optional_worker_sweep(
     )
     assert completed.returncode == 0, completed.stderr
     assert completed.stdout.strip() == f"2|{sweep}|loadfile"
+
+
+@pytest.mark.parametrize(
+    "option,value,message",
+    [
+        ("--workers", "6", "Workers exceed the measured four-CPU guest"),
+        ("--benchmark-workers", "0,2,4,6", "Invalid worker sweep"),
+    ],
+)
+def test_macos_worker_cap_uses_runtime_topology_before_guest_startup(
+    option: str, value: str, message: str
+) -> None:
+    result = subprocess.run(
+        ["bash", str(LOCAL / "macos.sh"), "--mode", "doctor", option, value],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode != 0
+    assert message in result.stderr
 
 
 @pytest.mark.parametrize("selection", ["all", "3.11", "3.12", "3.15"])
@@ -186,6 +206,71 @@ start_container() {
         assert '--python "$patch" --offline python' in script
         assert '--output "$lane/results"' in script
         assert '--commit "$commit" --archive-sha256 "$archive_hash"' in script
+
+
+@pytest.mark.parametrize("failed_version", ["", "3.12"])
+def test_linux_reuses_completed_slot_without_waiting_for_oldest_lane(
+    tmp_path: Path, failed_version: str
+) -> None:
+    scheduling = (LOCAL / "linux.sh").read_text().split("versions=(", 1)[1]
+    fake = tmp_path / "container.py"
+    fake.write_text(
+        "import pathlib, sys, time\n"
+        "root = pathlib.Path(sys.argv[1])\n"
+        "version, failed = sys.argv[2:]\n"
+        "(root / ('started-' + version)).touch()\n"
+        "if version == '3.11':\n"
+        "    deadline = time.monotonic() + 5\n"
+        "    while not (root / 'started-3.15').exists():\n"
+        "        if time.monotonic() > deadline: raise SystemExit(99)\n"
+        "        time.sleep(0.01)\n"
+        "(root / ('finished-' + version)).touch()\n"
+        "raise SystemExit(7 if version == failed else 0)\n"
+    )
+    values = {
+        "run_root": str(tmp_path),
+        "state_root": "/state",
+        "run_id": "synthetic",
+        "ref": "a" * 40,
+        "archive_hash": "b" * 64,
+        "image": "synthetic",
+        "python_version": "all",
+        "mode": "check",
+        "workers": "4",
+        "max_lanes": "2",
+        "resource_slots": "2",
+        "cpu_limit": "6",
+        "suite_stage": "full",
+        "benchmark_workers": "",
+        "distribution": "loadfile",
+        "fake_python": sys.executable,
+        "fake_program": str(fake),
+        "failed_version": failed_version,
+    }
+    setup = "set -Eeuo pipefail\n" + "\n".join(
+        f"{key}={shlex.quote(value)}" for key, value in values.items()
+    )
+    setup += """
+container_clients=()
+fatal() { exit 2; }
+start_container() {
+  "$fake_python" "$fake_program" "$run_root" "$version" "$failed_version" &
+  container_clients+=("$!")
+}
+"""
+    result = subprocess.run(
+        ["bash", "-c", setup + "versions=(" + scheduling],
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == bool(failed_version), result.stdout + result.stderr
+    for version in PINS:
+        assert (tmp_path / f"finished-{version}").exists()
+        expected = "7" if version == failed_version else "0"
+        assert (
+            tmp_path / f"python-{version}/exit-code"
+        ).read_text().strip() == expected
 
 
 def test_linux_image_preserves_pinned_isolated_toolchain_and_cleanup() -> None:

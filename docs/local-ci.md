@@ -50,7 +50,7 @@ recorded commits; they are not seven-configuration qualification.
 |---|---|---|
 | Linux | Ubuntu 24.04.4 `pairwisellm-linux-ci:release` base image, R 4.6.1 | `/mnt/VM_Fast/judgmentllm-ci/linux` |
 | Windows | Existing Docker-hosted `pairwise-windows-ci`, Server 2025, six CPUs, 12 GiB RAM | Host `/mnt/VM_Fast/pairwiseLLM-checks/judgmentllm-ci`; guest `C:\JudgmentLLM-ci` |
-| macOS | Existing Quickemu `macos-sequoia`, macOS 15.8.1 x86_64, six CPUs, 16 GiB RAM | Host `/mnt/VM_Fast/judgmentllm-ci/macos`; guest `~/judgmentllm-ci` |
+| macOS | Existing Quickemu `macos-sequoia`, macOS 15.8.1 x86_64, four visible CPUs, 16 GiB RAM | Host `/mnt/VM_Fast/judgmentllm-ci/macos`; guest `~/judgmentllm-ci` |
 
 The Linux adapter creates a namespaced derivative image, preserving the existing
 R project's image and tags. Containers have explicit per-run CPU quotas (the
@@ -189,12 +189,14 @@ request alone. Cancellation now also uses guest-local control, avoiding reliance
 on a newly created SMB file becoming visible.
 Linux cleanup can remove a stopped disposable CI container after verifying its
 full ID and exact run label, without force; mounted source/results are retained.
-The three Linux containers retain six CPUs/16 GiB each; both Python lanes in a VM
-share that VM's existing six CPUs and memory allocation. No test threshold is
-adjusted for concurrent execution. The preparation inventory found 32 logical
-CPUs (16 physical cores), 125 GiB RAM and about 99 GiB available. The bounded
-allocations total 30 logical CPUs and 76 GiB RAM (Linux 18/48, Windows 6/12,
-macOS 6/16). These fit this host without changing limits. SMT, VM overhead and
+Linux containers use the selected schedule's CPU quota and 16 GiB each. Windows
+shares six CPUs / 12 GiB; macOS shares four visible CPUs / 16 GiB. Quickemu rounds
+macOS's existing configured six cores down to four; boot logs and guest telemetry
+confirm that topology. No guest allocation or test threshold is changed.
+The host exposes 32 logical CPUs (16 physical cores) and about 125 GiB RAM.
+The tuned parallel schedule caps 28 logical CPUs and 76 GiB RAM (Linux 18/48,
+Windows 6/12, macOS 4/16); resource-aware scheduling caps 22 CPUs and 60 GiB.
+These fit this host without changing limits. SMT, VM overhead and
 other host work can still cause contention; keep other heavy work idle and
 record full-grid wall time and resource-test outcomes. The 180-second resource
 fixture deadline and all memory acceptance thresholds stay unchanged.

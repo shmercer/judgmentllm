@@ -13,7 +13,7 @@ resource_slots=3
 cpu_limit=6
 suite_stage=full
 benchmark_workers=''
-distribution=loadfile
+distribution=worksteal
 state_root=/mnt/VM_Fast/judgmentllm-ci/linux
 base_image=pairwisellm-linux-ci:release
 uv_archive=''
@@ -249,6 +249,32 @@ versions=(3.11 3.12 3.15)
 [[ $python_version == all ]] || versions=("$python_version")
 lanes=()
 overall=0
+join_finished_lane() {
+  # Reuse the first completed slot. Waiting for the oldest lane can leave a
+  # container idle while the coverage lane continues. Inspect owned shell jobs;
+  # wait still retrieves cached exit status if a child has already terminated.
+  local index client running job active status
+  while true; do
+    running=$(jobs -pr)
+    for index in "${!container_clients[@]}"; do
+      client=${container_clients[index]}
+      [[ -n $client ]] || continue
+      active=0
+      for job in $running; do
+        [[ $job != "$client" ]] || active=1
+      done
+      if (( active == 0 )); then
+        status=0
+        wait "$client" || status=$?
+        container_clients[index]=''
+        printf '%s\n' "$status" >"${lanes[index]}/exit-code"
+        (( status == 0 )) || overall=1
+        return
+      fi
+    done
+    sleep 0.1
+  done
+}
 for version in "${versions[@]}"; do
   case "$version" in
     3.11) patch=3.11.18 ;;
@@ -293,14 +319,11 @@ for version in "${versions[@]}"; do
     "$mode" "$version" "$patch" "$ref" "$archive_hash"
   # Bound independent containers without cancelling failed peers. Versions in
   # one VM have their own shared allocation limit in the native adapters.
-  index=$((${#container_clients[@]} - max_lanes))
-  if (( index >= 0 )); then
-    status=0
-    wait "${container_clients[index]}" || status=$?
-    container_clients[index]=''
-    printf '%s\n' "$status" >"${lanes[index]}/exit-code"
-    (( status == 0 )) || overall=1
-  fi
+  active=0
+  for client in "${container_clients[@]}"; do
+    [[ -z $client ]] || active=$((active + 1))
+  done
+  if (( active >= max_lanes )); then join_finished_lane; fi
 done
 # Start all three fresh interpreters before waiting. A failed lane never cancels
 # its siblings; only explicit interruption/adapter exit invokes whole-run cleanup.

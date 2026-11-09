@@ -40,7 +40,7 @@ def main() -> int:
     )
     parser.add_argument("--benchmark-workers", default="")
     parser.add_argument(
-        "--distribution", choices=("loadfile", "worksteal"), default="loadfile"
+        "--distribution", choices=("loadfile", "worksteal"), default="worksteal"
     )
     options = parser.parse_args()
     source = Path(__file__).resolve().parents[2]

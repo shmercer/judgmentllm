@@ -6,6 +6,7 @@ import os
 import threading
 import time
 from contextlib import AbstractContextManager
+from pathlib import Path
 from types import TracebackType
 
 try:
@@ -39,6 +40,10 @@ class ProcessSampler(AbstractContextManager["ProcessSampler"]):
         self.peak_processes = 0
         self.samples = 0
         self.races = 0
+        self.visible_memory_total = 0
+        self.minimum_visible_available: int | None = None
+        self.peak_visible_swap = 0
+        self.peak_cgroup_memory = 0
         self.started = 0.0
         self.elapsed = 0.0
         self.own_cpu_started = 0.0
@@ -58,6 +63,22 @@ class ProcessSampler(AbstractContextManager["ProcessSampler"]):
     def sample(self, *, initial: bool = False) -> None:
         if psutil is None or self.root is None:
             return
+        memory_state = psutil.virtual_memory()
+        self.visible_memory_total = memory_state.total
+        self.minimum_visible_available = min(
+            self.minimum_visible_available
+            if self.minimum_visible_available is not None
+            else memory_state.available,
+            memory_state.available,
+        )
+        self.peak_visible_swap = max(self.peak_visible_swap, psutil.swap_memory().used)
+        try:
+            self.peak_cgroup_memory = max(
+                self.peak_cgroup_memory,
+                int(Path("/sys/fs/cgroup/memory.current").read_text()),
+            )
+        except (OSError, ValueError):
+            pass  # Not exposed on Windows/macOS or legacy cgroup layouts.
         rss = children_rss = count = 0
         try:
             processes = [self.root, *self.root.children(recursive=True)]
@@ -139,8 +160,15 @@ class ProcessSampler(AbstractContextManager["ProcessSampler"]):
             "observed_processes": len(self.cpu),
             "samples": self.samples,
             "process_exit_races": self.races,
+            "owner_cpu_seconds": self.own_cpu_elapsed,
+            "visible_memory_scope": "OS-wide, shared guest counted once; Linux OS view may expose host memory; cgroup usage is separate",
+            "visible_memory_total_bytes": self.visible_memory_total,
+            "minimum_visible_memory_available_bytes": self.minimum_visible_available
+            if self.minimum_visible_available is not None
+            else 0,
+            "peak_visible_swap_used_bytes": self.peak_visible_swap,
+            "peak_visible_cgroup_memory_bytes": self.peak_cgroup_memory,
         }
         if self.children_elapsed is not None:
             result["waited_children_cpu_seconds"] = sum(self.children_elapsed)
-            result["owner_cpu_seconds"] = self.own_cpu_elapsed
         return result

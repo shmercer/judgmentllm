@@ -82,7 +82,7 @@ class Options:
     resource_root: Path | None = None
     suite_stage: str = "full"
     benchmark_workers: str = ""
-    distribution: str = "loadfile"
+    distribution: str = "worksteal"
 
 
 def digest(path: Path) -> str:
@@ -803,7 +803,7 @@ def main() -> int:
     parser.add_argument("--workers", type=int, default=0)
     parser.add_argument("--benchmark-workers", default="")
     parser.add_argument(
-        "--distribution", choices=("loadfile", "worksteal"), default="loadfile"
+        "--distribution", choices=("loadfile", "worksteal"), default="worksteal"
     )
     parser.add_argument("--resource-slots", type=int, default=1)
     parser.add_argument("--resource-root", type=Path)

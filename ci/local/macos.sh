@@ -13,7 +13,7 @@ MAX_LANES=2
 RESOURCE_SLOTS=2
 SUITE_STAGE=full
 BENCHMARK_WORKERS=''
-DISTRIBUTION=loadfile
+DISTRIBUTION=worksteal
 UV_ARCHIVE=
 UV_SHA256=
 UV_RELEASE_ARCHIVE_SHA256=63ba17fdda55ad1a230d4b37fc6017ffa10c23688c83818bd3bfdf914c652a02
@@ -75,12 +75,12 @@ while (($#)); do
     *) fail "unknown option: $1" ;;
   esac
 done
-[[ $WORKERS =~ ^[0-9]+$ ]] && (( WORKERS <= 6 )) || fail 'Workers exceed the unchanged six-CPU guest'
+[[ $WORKERS =~ ^[0-9]+$ ]] && (( WORKERS <= 4 )) || fail 'Workers exceed the measured four-CPU guest'
 [[ $MAX_LANES =~ ^[1-2]$ ]] || fail 'Invalid macOS lane limit'
 [[ $RESOURCE_SLOTS =~ ^[1-2]$ ]] || fail 'Invalid macOS resource slots'
 [[ $SUITE_STAGE =~ ^(full|ordinary|resource)$ ]] || fail 'Invalid suite stage'
 [[ $DISTRIBUTION =~ ^(loadfile|worksteal)$ ]] || fail 'Invalid pytest distribution'
-[[ -z "$BENCHMARK_WORKERS" || $BENCHMARK_WORKERS =~ ^[0-6](,[0-6])*$ ]] || fail 'Invalid worker sweep'
+[[ -z "$BENCHMARK_WORKERS" || $BENCHMARK_WORKERS =~ ^[0-4](,[0-4])*$ ]] || fail 'Invalid worker sweep'
 [[ "$MODE" == doctor || "$MODE" == prepare || "$MODE" == check ]] || fail 'invalid --mode'
 [[ "$MODE" == doctor || "$REF" =~ ^[0-9a-f]{40}$ ]] || fail '--ref must be a full lowercase 40-character commit SHA'
 [[ -z "$REF" || "$REF" =~ ^[0-9a-f]{40}$ ]] || fail 'invalid --ref'

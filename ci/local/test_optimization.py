@@ -276,9 +276,13 @@ def test_case_failure_and_dependency_skip_are_not_lost() -> None:
     assert outcomes(receipt, {"failed", "skipped"}) == {"failed": 1, "skipped": 1}
 
 
-@pytest.mark.parametrize("fault", ["none", "failed", "worker_crash", "preflight"])
+@pytest.mark.parametrize(
+    "fault,distribution",
+    [(fault, "loadfile") for fault in ("none", "failed", "worker_crash", "preflight")]
+    + [(fault, "worksteal") for fault in ("none", "failed")],
+)
 def test_real_distributed_runner_accounts_for_every_partition(
-    tmp_path: Path, fault: str
+    tmp_path: Path, fault: str, distribution: str
 ) -> None:
     source = tmp_path / "source"
     source.mkdir()
@@ -340,6 +344,8 @@ def test_resource(tmp_path):
             str(output),
             "--workers",
             "2",
+            "--distribution",
+            distribution,
             "--no-coverage",
             *preflights,
             "test_contract.py",
@@ -560,13 +566,18 @@ def test_process_sampler_measures_owned_child_and_joins_its_thread() -> None:
     assert sampler.peak_children_rss >= 30 * 1024 * 1024
     assert len(sampler.cpu) >= 2
     assert report["samples"] == sampler.samples
+    assert isinstance(report["owner_cpu_seconds"], float)
+    total = report["visible_memory_total_bytes"]
+    available = report["minimum_visible_memory_available_bytes"]
+    assert isinstance(total, int) and isinstance(available, int)
+    assert 0 < available <= total
     assert sampler.thread is not None and not sampler.thread.is_alive()
 
 
 def test_schedule_accounts_for_shared_guests_and_host_headroom() -> None:
     schedule = get_schedule("parallel")
     budget = schedule.budget(["linux", "windows", "macos"], 32, 128 * 1024**3)
-    assert budget["cpu_cap_total"] == 24
+    assert budget["cpu_cap_total"] == 28
     assert budget["ram_cap_total_gib"] == 76
     with pytest.raises(ValueError, match="exceeds host"):
         schedule.budget(["linux", "windows", "macos"], 16, 128 * 1024**3)

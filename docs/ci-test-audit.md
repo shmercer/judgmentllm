@@ -57,8 +57,10 @@ The installed CLI R gate cost about 100s hosted; the other R gates cost 1–7s.
 Pytest dominates, so cheap quality/platform installation gates remain intact.
 
 The workstation inventory confirms sixteen physical / thirty-two logical CPUs
-and 134,972,321,792 bytes RAM. Existing shared guests remain six CPUs each,
-Windows 12 GiB and macOS 16 GiB. Disposable Linux limits are explicit per schedule.
+and 134,972,321,792 bytes RAM. Windows exposes six CPUs / 12 GiB. macOS exposes four CPUs / 16 GiB: Quickemu
+rounds its configured six cores down to four, confirmed by boot and guest
+telemetry. Earlier six-CPU budget metadata reserved two unused CPUs conservatively;
+raw records remain unchanged. Disposable Linux limits are explicit per schedule.
 Native/Python workload peaks remain independent fresh-process measurements;
 sampled aggregate RSS may double-count shared pages and miss transient processes.
 Host utilization includes all host activity. These measurement scopes are labeled.
@@ -73,14 +75,15 @@ obsolete contract was demonstrated and no critical Cartesian matrix was reduced.
 
 | Original tests/work | Independent guarantee | Decision/replacement | Equivalence and risks |
 |---|---|---|---|
-| Two tests each in execution/generation/grouped-lifecycle/source-preparation R modules | Independent reopened Python evidence plus real R assertions | Eight persist/export pipelines become four immutable module fixtures; all eight test functions remain | Both readers consume actual outputs; complete artifact tree hashes must remain unchanged. Writable persistence R tests keep fresh fixtures. `loadfile` keeps each module on one worker. |
-| Six cases across four OpenAI qualification functions | Exact offline eight-entry plan, source/digest/consent authorization, private executor token, duplicate physical identity rejection | Six full plan builds become one verified immutable plan; mutating/execution cases remain fresh | All eight entries remain; file hashes and canonical model bytes are checked after every reader. No SDK boundary is mocked in ordinary tests. |
+| Two tests each in execution/generation/grouped-lifecycle/source-preparation R modules | Independent reopened Python evidence plus real R assertions | Eight persist/export pipelines become four immutable module fixtures per worker; all eight test functions remain | Both readers consume actual outputs; complete artifact tree hashes must remain unchanged. Writable persistence R tests keep fresh fixtures. `loadfile` keeps a module on one worker; work stealing may create independent fixture copies. Both modes preserve all readers and artifact guards. |
+| Six cases across four OpenAI qualification functions | Exact offline eight-entry plan, source/digest/consent authorization, private executor token, duplicate physical identity rejection | Six full plan builds become one verified immutable plan per worker; mutating/execution cases remain fresh | All eight entries remain; file hashes and canonical model bytes are checked after every reader. No SDK boundary is mocked in ordinary tests. |
 | Windows durability/export/cancellation/privacy/lock prechecks repeated in main pytest | Early platform failure detection plus complete case execution | Retain early prechecks, reuse complete passing per-case receipts in main suite | 69 identical cases execute once per Windows lane. Missing/failed/duplicate receipts fail; resource cases cannot be reused; coverage lanes cannot reuse unmeasured preflights. |
 | Native policy × scope × capability × strictness matrices | Selection authority, endpoint incompatibility and transport identity | Retain exhaustive interactions | Similar call paths protect different authority boundaries. No pairwise reduction. |
 | Capture × layout × grouping / diagnostic malformed-output cases | Privacy, durable recovery, canonical salvage and exact evidence retention | Retain | Shared functions do not imply equivalent failure modes. |
 | Resource fixtures, memory-accounting probes and tiny allocation diagnostics | Scale, queue/process ceilings, native transient peaks, 90/180-second deadlines | Retain workloads/limits; mark resource cases and bound shared-allocation concurrency | Neither sizes nor thresholds changed. Compare isolation with independently budgeted concurrency before selecting a schedule. |
 | Large schema limits/cache-eviction/many-trait tests | Exact boundary, no hidden schema caps, compiler cache bounds | Retain | Scale is the property here; shrinking to a few records would remove protection. |
 | Crash helpers sleeping 30/60 seconds; short polling loops | Real owned child liveness/termination and durable-state synchronization | Retain | Long sleeps are deliberately interrupted, not normally awaited; polls already use bounded state checks. No evidence of costly unconditional sleeps. |
+| Fork-inheritance check and two small benchmark CLI diagnostics | Real fork ownership, fixture replacement refusal and genuine focused execution reports | Retain all cases in a serial partition | Fork must avoid execnet's threaded workers. The two CLI diagnostics failed at the added Windows worker path depth in both versions. Original inputs, assertions and deadlines remain. |
 | Streaming 100-row examples, small query diagnostic | Incremental iteration, SQLite VM-step behavior | Retain | Negligible measured cost; deletion/reduction has no justified benefit. |
 | Repeated Ruff/Pyright/build/install/R gates | Platform tool/install/runtime acceptance | Retain current frequency | Static reuse is plausible but current savings are small; no acceptance-policy reduction is bundled. |
 

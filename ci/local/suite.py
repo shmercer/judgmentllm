@@ -209,7 +209,7 @@ def run(
     bound_workers: bool = False,
     preflight_reports: list[Path] | None = None,
     contract: Path | None = None,
-    distribution: str = "loadfile",
+    distribution: str = "worksteal",
 ) -> int:
     if isinstance(workers, bool) or not 0 <= workers <= 32:
         raise ValueError("pytest workers must be an integer from 0 through 32")
@@ -507,7 +507,7 @@ def main() -> int:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--workers", type=int, default=2)
     parser.add_argument(
-        "--distribution", choices=("loadfile", "worksteal"), default="loadfile"
+        "--distribution", choices=("loadfile", "worksteal"), default="worksteal"
     )
     parser.add_argument(
         "--benchmark-workers", help="Ordinary-only benchmark sweep, for example 0,2,4,6"
