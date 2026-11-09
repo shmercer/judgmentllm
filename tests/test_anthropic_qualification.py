@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import shutil
 import socket
 import sqlite3
 import subprocess
@@ -1317,14 +1319,17 @@ def test_input_allowances_account_for_complete_bodies_and_schema_repetition(
 
 
 def test_cli_plan_and_readonly_report_with_exact_source(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    tmp_path_factory: pytest.TempPathFactory,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     import sys
 
+    tmp_path = tmp_path_factory.mktemp("qc")
     profile = pricing()
     pricing_path = tmp_path / "pricing.json"
     pricing_path.write_bytes(canonical_bytes(profile))
-    directory = tmp_path / "cli-plan"
+    directory = tmp_path / "p"
     monkeypatch.setattr(q, "_source_commit", lambda: "a" * 40)
     monkeypatch.setattr(
         sys,
@@ -1393,6 +1398,14 @@ def test_cli_plan_and_readonly_report_with_exact_source(
 def test_source_authorization_requires_clean_exact_git_checkout(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    if shutil.which("git") is None and sys.platform == "win32":
+        # The isolated Windows guest has no system Git. Preparation verifies the
+        # official portable archive; this path is private to JudgmentLLM tests.
+        tools = Path("C:/JudgmentLLM-ci/tools/mingit-2.56.0.4/cmd")
+        assert (tools / "git.exe").is_file(), (
+            "Source-authorization tests require Git on PATH or the documented private MinGit"
+        )
+        monkeypatch.setenv("PATH", str(tools) + os.pathsep + os.environ.get("PATH", ""))
     checkout = tmp_path / "owned-checkout"
     checkout.mkdir()
     subprocess.run(
@@ -1605,14 +1618,14 @@ async def test_truthy_values_cannot_replace_explicit_billable_boolean(
 )
 @pytest.mark.asyncio
 async def test_exact_model_identity_gates_continuation_and_matrix_qualification(
-    tmp_path: Path,
+    tmp_path_factory: pytest.TempPathFactory,
     monkeypatch: pytest.MonkeyPatch,
     reported_model: str | None,
     missing_model: bool,
     case_index: int,
 ) -> None:
     monkeypatch.setattr(q, "_source_commit", lambda: "a" * 40)
-    directory = tmp_path / "exact-model-plan"
+    directory = tmp_path_factory.mktemp("mi") / "p"
     plan = q.build_plan(
         directory=directory,
         source_commit="a" * 40,

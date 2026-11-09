@@ -198,3 +198,26 @@ former terminal-classification edge now passes through the exact-model guard,
 with its entry and both outcomes covered. The external source-specific coverage
 and explicit contract-update audit are development evidence; full final-head
 coverage remains mandatory and is not replaced by this selection.
+
+
+The complete local run on `494bb8ef1b79274fc935afe3368748a35f5c2acd` passed all
+Linux/macOS configurations, all 49 strict R gates, applicable resources, quality
+and packaging; its two Windows pytest steps failed. All five hosted jobs passed
+on that source. The retained Windows failures identified excessive test-owned
+qualification paths and a missing real Git executable. The minimal guest retains
+its existing disabled long-path setting; qualification fixtures use short factory
+prefixes and the source-authorization test uses the checksum-verified private
+MinGit documented in the local-CI guide. The existing tiny-prefix regression
+failed its unchanged 10 GiB free-disk reserve before executing any requests;
+its code and workload dimensions remain unchanged. Task-owned completed scratch
+is copied to externally retained archives, with per-file hashes independently
+verified before removing only guest duplicates. Earlier-phase evidence and VM
+allocation/registry settings remain untouched. There are no assertion, resource
+threshold, CI schedule, source-authentication rule or production module changes
+in this portability correction. The benchmark implementations and original measurement
+evidence remain unchanged; only the failed tiny correctness fixture is rerun
+during development. Its results are not performance qualification.
+
+All failures and earlier source-bound plans remain retained. Any new test/doc
+commit requires another complete exact-head acceptance run and a rebuilt,
+independently audited, unexecuted live plan; earlier passes are not substituted.

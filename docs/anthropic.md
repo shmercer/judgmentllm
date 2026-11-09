@@ -135,9 +135,9 @@ and immutable result exports before making any separate retry decision.
 ## Independently reviewable live proposal
 
 `scripts/qualify_anthropic.py plan` compiles four synthetic Messages requests:
-rubric text/native and pairwise text/native. Planning reads source and installed
-package metadata only. It creates no execution authority and calls no Anthropic
-endpoint. The candidate is exactly `claude-sonnet-4-6`; no substitution is allowed.
+rubric text/native and pairwise text/native. Planning requires Git and a clean
+committed source checkout, and reads source and installed package metadata only.
+It creates no execution authority and calls no Anthropic endpoint. The candidate is exactly `claude-sonnet-4-6`; no substitution is allowed.
 [Model documentation](https://platform.claude.com/docs/en/models/sonnet-4-6/overview),
 [structured-output documentation](https://platform.claude.com/docs/en/build-with-claude/structured-outputs)
 and [pricing](https://platform.claude.com/docs/en/about-claude/pricing) were reviewed

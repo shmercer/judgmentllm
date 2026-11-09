@@ -114,6 +114,15 @@ Preparation installs only project-specific tools and caches:
 - uv 0.13.6 archives and executable bytes are pinned/verified. Official archive
   checksums are in `ci/local/grid.py`; macOS/Windows adapters also verify their
   cached executable bytes.
+- The Anthropic source-authorization integration test requires real Git. The
+  minimal Windows guest can use project-private MinGit 2.56.0.windows.4 at
+  `C:\JudgmentLLM-ci\tools\mingit-2.56.0.4`, prepared before offline checks.
+  The official `MinGit-2.56.0.4-64-bit.zip` SHA-256 is
+  `e3bf78351fe777fba47ddee5950082f8a98bb0f02604fdc7ba3ee2cb68ffa877`
+  ([release and checksums](https://github.com/git-for-windows/git/releases/tag/v2.56.0.windows.4)).
+  Extract only the verified portable archive into that private directory. The
+  test adds its `cmd` directory only to its own process environment; system Git,
+  startup PATH, registry defaults and preflight provenance are unchanged.
 - Managed CPython 3.11.18/3.12.16 (all platforms) and 3.15.2 (Linux only) installs use their own directory, `--no-bin`
   and `--no-registry`; system Python, PATH startup files, and registry defaults
   are not replaced.
