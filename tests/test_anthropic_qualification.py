@@ -1346,6 +1346,7 @@ def test_cli_plan_and_readonly_report_with_exact_source(
     q.main()
     report = json.loads(capsys.readouterr().out)
     assert report["physical_send_attempts"] == 0 and len(report["calls"]) == 4
+    assert report["reported_usage_totals"]["total_tokens"] is None
     before = (directory / "plan.json").read_bytes()
     monkeypatch.setattr(
         sys,

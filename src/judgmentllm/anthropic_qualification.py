@@ -902,7 +902,7 @@ def report_plan(directory: Path) -> dict[str, object]:
     totals: dict[str, int | None] = {
         "input_tokens": 0,
         "output_tokens": 0,
-        "total_tokens": 0,
+        "total_tokens": None,
     }
     for case in plan.calls:
         item: dict[str, object] = {

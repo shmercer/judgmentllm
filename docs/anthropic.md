@@ -22,9 +22,9 @@ initialize a client, or resolve credentials.
 Copy [examples/anthropic](../examples/anthropic/) and replace `YOUR_EXACT_MODEL`
 with an exact model ID. The synthetic IDs are character strings, including `001`.
 New production execution requires explicit `schema_version: 3`, `provider:
-anthropic`, `endpoint: messages`, and `prompt.native_mechanism:
-anthropic.messages.output_config.format`. Historical configurations retain their
-original behavior. These first-run commands are offline:
+anthropic` and `endpoint: messages`. Auto/native policies also require
+`prompt.native_mechanism: anthropic.messages.output_config.format`; text mode
+permits omission. Historical configurations retain their original behavior. These first-run commands are offline:
 
 ```bash
 judgmentllm validate --config examples/anthropic/rubric.yaml --json

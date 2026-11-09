@@ -611,3 +611,23 @@ def test_required_token_policy_and_exact_native_artifacts_are_not_forgeable(
             TransportCommitmentV3.model_validate(
                 dict(wire.transport_commitment) | changed
             )
+
+
+def test_text_policy_can_omit_native_route_without_borrowing_native_authority(
+    tmp_path: Path,
+) -> None:
+    from judgmentllm.config import PromptSpecV3, RunSpecV3
+
+    spec, dependency, _ = case(tmp_path, policy="text")
+    spec = RunSpecV3.model_validate(
+        dict(spec) | {"prompt": PromptSpecV3(structured_output="text")}
+    )
+    wire = prepare_production_request(
+        spec,
+        dependency,
+        physical_identity("001", dependency.request.request_uid, "attempt-001"),
+        production_context(spec),
+    )
+    assert wire.output_commitment.selection.requested_mechanism is None
+    assert wire.output_commitment.selection.mechanism == "text"
+    assert b"output_config" not in wire.payload

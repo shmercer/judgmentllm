@@ -1264,7 +1264,7 @@ as a network or execution failure.
 The existing `validate_inputs`, `estimate_run`, `preview_prompt`, `arun_live`,
 `run_live`, resume/status/result export and read-only assessment inspection
 services accept explicit RunSpecV3 `provider="anthropic"`, `endpoint="messages"`,
-and native mechanism `anthropic.messages.output_config.format`. Their neutral
+and, for auto/native policies, native mechanism `anthropic.messages.output_config.format`. Their neutral
 control/result contracts are unchanged; new internal manifest5, output/request5
 and transport3 records preserve historical dispatch. See [the guide](anthropic.md).
 `verify_authentication(provider="anthropic")` and `discover_models(provider=

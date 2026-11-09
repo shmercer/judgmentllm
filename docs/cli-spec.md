@@ -509,7 +509,7 @@ its assessment checks; independent live qualification review remains required.
 
 Existing validate/plan/preview/run/resume/status/export commands dispatch explicit
 RunSpecV3 Anthropic Messages configurations through the additive production
-protocol. Control JSON and normalized exports keep their versions. Required
+protocol. Control JSON and normalized exports keep their versions. For auto/native policies, required
 `prompt.native_mechanism` is `anthropic.messages.output_config.format`; text/native/
 auto admission is documented in the [Messages guide](anthropic.md).
 `auth verify --provider anthropic` and `providers models --provider anthropic`
