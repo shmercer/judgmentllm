@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import sys
+import tarfile
 from pathlib import Path
 from typing import Any, NamedTuple
 
@@ -305,6 +306,7 @@ def test_resource(tmp_path):
     if fault == "preflight":
         receipt = tmp_path / "preflight.json"
         environment = dict(os.environ)
+        environment["PATH"] = ""
         environment.pop("PYTEST_XDIST_WORKER", None)
         environment["PYTHONPATH"] = str(Path(__file__).resolve().parents[2])
         preflight = subprocess.run(
@@ -345,9 +347,11 @@ def test_resource(tmp_path):
         capture_output=True,
         text=True,
         timeout=30,
-        env={**os.environ, "PYTEST_XDIST_WORKER": "outer-worker"},
+        env={**os.environ, "PYTEST_XDIST_WORKER": "outer-worker", "PATH": ""},
     )
+    assert (output / "summary.json").is_file(), result.stdout + result.stderr
     summary = json.loads((output / "summary.json").read_text())
+    assert summary["source"]["commit"] is None
     assert (result.returncode == 0) == (fault in {"none", "preflight"}), (
         result.stdout + result.stderr
     )
@@ -577,3 +581,35 @@ def test_host_cpu_total_does_not_count_guest_time_twice() -> None:
 
     assert total_cpu(Times(10, 20, 5, 1)) == 30
     assert total_cpu((10, 20)) == 30
+
+
+def test_release_profile_rejects_a_different_archive_before_starting_guests(
+    tmp_path: Path,
+) -> None:
+    archive = tmp_path / "candidate.tar"
+    with tarfile.open(
+        archive, "w", format=tarfile.PAX_FORMAT, pax_headers={"comment": "b" * 40}
+    ) as stream:
+        stream.addfile(tarfile.TarInfo("placeholder.txt"))
+    command = [
+        sys.executable,
+        str(Path(__file__).resolve().parents[1] / "check.py"),
+        "--profile",
+        "release",
+        "--ref",
+        "a" * 40,
+        "--baseline-python",
+        sys.executable,
+        "--candidate-python",
+        sys.executable,
+        "--baseline-source-archive",
+        str(archive),
+        "--candidate-source-archive",
+        str(archive),
+        "--release-evidence",
+        str(tmp_path / "evidence"),
+    ]
+    result = subprocess.run(command, capture_output=True, text=True, timeout=15)
+    assert result.returncode != 0
+    assert "Candidate source archive must embed the requested commit" in result.stderr
+    assert not (tmp_path / "evidence").exists()

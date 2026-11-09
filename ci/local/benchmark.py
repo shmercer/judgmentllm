@@ -48,7 +48,10 @@ def main() -> int:
     if output.is_relative_to(source):
         parser.error("benchmark evidence must be outside the worktree")
     output.mkdir(parents=True, exist_ok=False)
-    grid_root = Path("/mnt/VM_Fast/judgmentllm-ci/benchmarks") / output.name
+    grid_root = (
+        Path("/mnt/VM_Fast/judgmentllm-ci/benchmarks")
+        / f"{output.name}-{time.time_ns()}-{os.getpid()}"
+    )
     command = [
         sys.executable,
         str(source / "ci/local/grid.py"),

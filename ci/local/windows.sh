@@ -83,6 +83,8 @@ done
 [[ $max_lanes =~ ^[1-2]$ ]] || fatal 'Invalid Windows lane limit'
 [[ $resource_slots =~ ^[1-2]$ ]] || fatal 'Invalid Windows resource slots'
 [[ $suite_stage =~ ^(full|ordinary|resource)$ ]] || fatal 'Invalid suite stage'
+[[ $distribution =~ ^(loadfile|worksteal)$ ]] || fatal 'Invalid pytest distribution'
+[[ -z "$benchmark_workers" || $benchmark_workers =~ ^[0-6](,[0-6])*$ ]] || fatal 'Invalid worker sweep'
 [[ $python_version =~ ^(3\.11|3\.12|all)$ ]] || fatal 'Invalid --python-version'
 [[ $boot_timeout =~ ^[0-9]+$ ]] && (( boot_timeout >= 10 )) || fatal 'Boot timeout must be >= 10 seconds'
 [[ $shutdown_timeout =~ ^[0-9]+$ ]] && (( shutdown_timeout >= 10 )) || fatal 'Shutdown timeout must be >= 10 seconds'

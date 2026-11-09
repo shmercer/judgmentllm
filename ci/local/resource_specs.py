@@ -23,7 +23,7 @@ def read_resources() -> Resources:
     quota: float | None = None
     memory: int | None = None
     available: int | None = None
-    if sys.platform.startswith("linux"):
+    if sys.platform == "linux":
         count = min(count, len(os.sched_getaffinity(0)))
         path = Path("/sys/fs/cgroup/cpu.max")
         if path.is_file():

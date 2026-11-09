@@ -59,6 +59,13 @@ done
 [[ $resource_slots =~ ^[1-3]$ ]] || fatal 'Invalid Linux resource slots'
 [[ $cpu_limit =~ ^[0-9]+$ ]] && (( cpu_limit >= 1 && cpu_limit <= 16 )) || fatal 'Invalid disposable container CPU quota'
 [[ $suite_stage =~ ^(full|ordinary|resource)$ ]] || fatal 'Invalid suite stage'
+[[ $distribution =~ ^(loadfile|worksteal)$ ]] || fatal 'Invalid pytest distribution'
+[[ -z "$benchmark_workers" || $benchmark_workers =~ ^([0-9]|1[0-6])(,([0-9]|1[0-6]))*$ ]] || fatal 'Invalid worker sweep'
+(( workers <= cpu_limit )) || fatal 'Workers exceed the disposable CPU quota'
+if [[ -n "$benchmark_workers" ]]; then
+  IFS=',' read -r -a sweep_counts <<< "$benchmark_workers"
+  for count in "${sweep_counts[@]}"; do (( count <= cpu_limit )) || fatal 'Invalid worker sweep'; done
+fi
 [[ $python_version =~ ^(3\.11|3\.12|3\.15|all)$ ]] || fatal 'Invalid Python version'
 [[ $mode == doctor || $ref =~ ^[0-9a-f]{40}$ ]] || fatal 'Use a full proposed commit SHA'
 for program in docker python3 mountpoint realpath flock sha256sum tee; do

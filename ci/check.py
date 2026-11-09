@@ -8,6 +8,7 @@ import json
 import os
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 from datetime import UTC, datetime
@@ -228,6 +229,9 @@ def main() -> int:
                 parser.error(
                     f"release checks require --{name.replace('_', '-')}; see docs/ci-optimization.md"
                 )
+        with tarfile.open(options.candidate_source_archive) as archive:
+            if archive.pax_headers.get("comment") != options.ref:
+                parser.error("Candidate source archive must embed the requested commit")
     command = [
         sys.executable,
         str(ROOT / "ci/local/grid.py"),
@@ -291,7 +295,7 @@ def main() -> int:
         print(
             f"Offline release evidence: {release}. Publication remains separately gated by the existing release checklist."
         )
-        return compatible
+        return compatible if compatible else 2
     return code
 
 

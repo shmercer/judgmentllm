@@ -37,7 +37,7 @@ def source_record(source: Path) -> dict[str, Any]:
             "manifest_sha256": hashlib.sha256(manifest.read_bytes()).hexdigest(),
             "dirty": False,
         }
-    else:
+    elif shutil.which("git") is not None:
         commit = subprocess.run(
             ["git", "rev-parse", "HEAD"],
             cwd=source,
@@ -56,6 +56,11 @@ def source_record(source: Path) -> dict[str, Any]:
             "commit": commit.stdout.strip() if commit.returncode == 0 else None,
             "dirty": bool(state.stdout.strip()) if state.returncode == 0 else None,
         }
+    else:
+        # Synthetic runner acceptance uses unversioned temporary projects. The
+        # native guest needs no Git installation when qualifying manifest-bound
+        # archives; unknown identity here must not prevent a failure receipt.
+        identity = {"commit": None, "dirty": None}
     lock = source / "uv.lock"
     identity["lockfile_sha256"] = (
         hashlib.sha256(lock.read_bytes()).hexdigest() if lock.exists() else None
@@ -405,7 +410,11 @@ def run(
                     ]
                 )
             arguments.extend(
-                ["--cov-append", "--cov-report=", "--cov-fail-under=0"]
+                [
+                    "--cov-append",
+                    f"--cov-report=xml:{output / 'coverage.xml'}",
+                    "--cov-fail-under=0",
+                ]
                 if coverage
                 else ["--no-cov"]
             )

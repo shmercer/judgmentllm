@@ -15,6 +15,28 @@ LOCAL = Path(__file__).parent
 PINS = {"3.11": "3.11.18", "3.12": "3.12.16", "3.15": "3.15.2"}
 
 
+@pytest.mark.parametrize("platform", ["linux", "windows", "macos"])
+@pytest.mark.parametrize(
+    "option,value,message",
+    [
+        ("--distribution", "loadfile; invalid-command", "Invalid pytest distribution"),
+        ("--benchmark-workers", "0,2; invalid-command", "Invalid worker sweep"),
+        ("--benchmark-workers", "0,2,32", "Invalid worker sweep"),
+    ],
+)
+def test_worker_options_fail_before_any_host_or_guest_control(
+    platform: str, option: str, value: str, message: str
+) -> None:
+    result = subprocess.run(
+        ["bash", str(LOCAL / (platform + ".sh")), "--mode", "doctor", option, value],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode != 0
+    assert message in result.stderr
+
+
 @pytest.mark.parametrize("sweep", ["", "0,2,4,6"])
 def test_macos_ssh_argument_join_preserves_optional_worker_sweep(
     tmp_path: Path, sweep: str

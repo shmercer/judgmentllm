@@ -89,7 +89,10 @@ publication also requires exact-head hosted results, the
 and the [alpha readiness checklist](alpha-release-readiness.md). Those include
 the permitted explicitly reviewed source-equivalence basis for retained large
 scale evidence, independent usability, provider-family live acceptance,
-artifact/tag/provenance and human publication approval. Do not substitute small
+artifact/tag/provenance and human publication approval. Exit code 2 identifies
+these still-pending release requirements; it cannot be treated as a passing
+release gate. The candidate source archive must embed the requested full commit
+before any guest work starts. Do not substitute small
 resource tests or green CI for those requirements. This optimization does not
 change their scope or authorize provider usage/PyPI publication.
 

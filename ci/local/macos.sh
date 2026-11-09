@@ -79,6 +79,8 @@ done
 [[ $MAX_LANES =~ ^[1-2]$ ]] || fail 'Invalid macOS lane limit'
 [[ $RESOURCE_SLOTS =~ ^[1-2]$ ]] || fail 'Invalid macOS resource slots'
 [[ $SUITE_STAGE =~ ^(full|ordinary|resource)$ ]] || fail 'Invalid suite stage'
+[[ $DISTRIBUTION =~ ^(loadfile|worksteal)$ ]] || fail 'Invalid pytest distribution'
+[[ -z "$BENCHMARK_WORKERS" || $BENCHMARK_WORKERS =~ ^[0-6](,[0-6])*$ ]] || fail 'Invalid worker sweep'
 [[ "$MODE" == doctor || "$MODE" == prepare || "$MODE" == check ]] || fail 'invalid --mode'
 [[ "$MODE" == doctor || "$REF" =~ ^[0-9a-f]{40}$ ]] || fail '--ref must be a full lowercase 40-character commit SHA'
 [[ -z "$REF" || "$REF" =~ ^[0-9a-f]{40}$ ]] || fail 'invalid --ref'
