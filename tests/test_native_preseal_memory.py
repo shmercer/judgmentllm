@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 from typing import cast
 
+import pytest
 from test_native_transport_integration import offline as offline
 
 _SCRIPT = r"""
@@ -145,6 +146,7 @@ def measurement(directory: Path, count: int) -> dict[str, int]:
     return measured
 
 
+@pytest.mark.resource
 def test_native_preseal_request_product_uses_bounded_memory(tmp_path: Path) -> None:
     small = measurement(tmp_path / "small", 32)
     large = measurement(tmp_path / "large", 256)

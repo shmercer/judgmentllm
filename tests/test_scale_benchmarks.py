@@ -208,6 +208,7 @@ def test_storage_budget_failure_keeps_structured_evidence(tmp_path: Path) -> Non
         controller.summarize(tmp_path / "raw")
 
 
+@pytest.mark.resource
 @pytest.mark.parametrize("scope", ["whole", "execution"])
 def test_tiny_scale_allocation_diagnostics(tmp_path: Path, scope: str) -> None:
     process = subprocess.run(
@@ -284,6 +285,8 @@ def test_tiny_scale_allocation_diagnostics(tmp_path: Path, scope: str) -> None:
                 assert value["peak_absolute_bytes"] < 8 * 1024**2
 
 
+# Keep the legacy Windows path budget; xdist adds another directory level.
+@pytest.mark.serial
 def test_shared_fixture_rejects_changed_dimensions_before_removing_store(
     tmp_path: Path,
 ) -> None:

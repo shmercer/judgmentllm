@@ -11,6 +11,7 @@ from typing import Any
 
 import gates
 import pytest
+from preflight_provenance import RUN_ID_ENV
 
 from judgmentllm import __version__
 
@@ -96,6 +97,18 @@ def test_existing_or_overlapping_output_is_rejected(
         gates.Runner(options(staged, staged / "output"))
 
 
+def test_native_preflights_share_a_fresh_lane_run_identity(
+    staged: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv(RUN_ID_ENV, "inherited-run-must-not-be-reused")
+    first = gates.Runner(options(staged, tmp_path / "first-run"))
+    second = gates.Runner(options(staged, tmp_path / "second-run"))
+    assert first.environment[RUN_ID_ENV] != second.environment[RUN_ID_ENV]
+    for runner in (first, second):
+        assert runner.environment[RUN_ID_ENV] != "inherited-run-must-not-be-reused"
+        assert runner.summary["qualification_run_id"] == runner.environment[RUN_ID_ENV]
+
+
 def fake_commands(
     monkeypatch: pytest.MonkeyPatch,
     *,
@@ -122,7 +135,24 @@ def fake_commands(
             directory.mkdir()
             for name in ("synthetic.whl", "synthetic.tar.gz"):
                 (directory / name).write_bytes(b"synthetic artifact")
-        elif "pytest" in command:
+        elif "pytest" in command or any(
+            Path(argument).name == "suite.py" for argument in command
+        ):
+            if any(Path(argument).name == "suite.py" for argument in command):
+                target = Path(command[command.index("--output") + 1])
+                target.mkdir()
+                (target / "summary.json").write_text(
+                    json.dumps(
+                        {
+                            "status": "failed" if fail_pytest else "passed",
+                            "source": {"commit": "a" * 40},
+                            "stage": "full",
+                            "manifest_complete": True,
+                            "selection_complete": True,
+                            "expected_cases": 1380 if fail_pytest else 1376,
+                        }
+                    )
+                )
             stream.write(
                 (
                     "1 failed, 1375 passed, 4 skipped in 1.25s\n"
@@ -134,7 +164,11 @@ def fake_commands(
         if mutate is not None and "twine" in command:
             mutate.write_text("Changed during checks")
         failed = (fail_lint and "ruff" in command and "check" in command) or (
-            fail_pytest and "pytest" in command
+            fail_pytest
+            and (
+                "pytest" in command
+                or any(Path(argument).name == "suite.py" for argument in command)
+            )
         )
         if failed:
             stream.write("synthetic lint failure retained\n")
@@ -191,18 +225,17 @@ def test_seven_lanes_preserve_full_tests_r_gates_and_single_coverage_lane(
     step = next(step for step in runner.summary["steps"] if step["name"] == name)
     command = step["command"]
     assert "tests" in command and "ci/local/test_gates.py" in command
-    assert "-ra" in command
-    assert "-Werror::ResourceWarning" in command
-    assert "-Werror::pytest.PytestUnraisableExceptionWarning" in command
+    assert Path(command[1]).name == "suite.py"
+    assert command[command.index("--stage") + 1] == "full"
+    assert command[command.index("--workers") + 1] == "0"
+    assert step["suite"]["manifest_complete"] is True
+    assert step["suite"]["selection_complete"] is True
     assert not any(
         argument.startswith(("--ignore", "--deselect")) for argument in command
     )
     assert "-k" not in command and "-m" not in command[3:]
-    assert ("--no-cov" not in command) == coverage_enabled
-    assert (
-        any(argument.startswith("--cov-report=xml:") for argument in command)
-        == coverage_enabled
-    )
+    assert ("--no-coverage" not in command) == coverage_enabled
+    assert ("--baseline" in command) == coverage_enabled
     assert step["coverage_enabled"] == coverage_enabled
     assert step["coverage_percent"] == (96.16 if coverage_enabled else None)
     assert step["exit_code"] == int(fail_pytest)
@@ -397,12 +430,24 @@ def test_windows_plan_uses_distinct_short_data_paths_and_preserves_them(
     assert runner.run() == int(fail_lint)
     pytest_calls = [command for command in calls if "pytest" in command]
     bases = {Path(command[command.index("--basetemp") + 1]) for command in pytest_calls}
-    assert bases == {runner.data_root / name for name in ("d", "l", "p")}
+    assert bases == {runner.data_root / name for name in ("d", "l")}
+    suites = [
+        command
+        for command in calls
+        if len(command) > 1 and Path(command[1]).name == "suite.py"
+    ]
+    assert len(suites) == 1
+    assert Path(suites[0][suites[0].index("--output") + 1]) == runner.data_root / "p"
+    assert suites[0].count("--preflight-report") == 2
     assert not any(path.exists() for path in bases)
     assert runner.data_root != runner.output
     for key in ("TEMP", "TMP", "TMPDIR"):
         assert runner.environment[key] == str(runner.data_root / "t")
-    fixture_calls = [command for command in calls if "--output" in command]
+    fixture_calls = [
+        command
+        for command in calls
+        if "--output" in command and Path(command[1]).name != "suite.py"
+    ]
     assert len(fixture_calls) == 12
     assert all(
         Path(command[command.index("--output") + 1]).is_relative_to(

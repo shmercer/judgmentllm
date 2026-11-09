@@ -48,6 +48,7 @@ def measurement(directory: Path, responses: int, traits: int) -> dict[str, int |
     return result
 
 
+@pytest.mark.resource
 def test_large_sources_use_bounded_indexing_and_lookup_memory(tmp_path: Path) -> None:
     small = measurement(tmp_path / "small", 200, 1)
     large = measurement(tmp_path / "large", 2_000, 1)
@@ -66,6 +67,7 @@ def test_large_sources_use_bounded_indexing_and_lookup_memory(tmp_path: Path) ->
     )
 
 
+@pytest.mark.resource
 def test_trait_product_remains_incremental_without_execution_rows(
     tmp_path: Path,
 ) -> None:

@@ -7,6 +7,13 @@ repo=$(cd -- "$script_dir/../.." && pwd -P)
 ref=''
 mode=check
 python_version=all
+workers=0
+max_lanes=3
+resource_slots=3
+cpu_limit=6
+suite_stage=full
+benchmark_workers=''
+distribution=worksteal
 state_root=/mnt/VM_Fast/judgmentllm-ci/linux
 base_image=pairwisellm-linux-ci:release
 uv_archive=''
@@ -29,9 +36,13 @@ HELP
 }
 while (( $# )); do
   case "$1" in
-    --repo|--ref|--mode|--python-version|--state-root|--uv-archive|--uv-sha256|--jsonlite-archive|--jsonlite-sha256)
+    --repo|--ref|--mode|--python-version|--state-root|--uv-archive|--uv-sha256|--jsonlite-archive|--jsonlite-sha256|--workers|--max-lanes|--resource-slots|--cpus|--suite-stage|--benchmark-workers|--distribution)
       (( $# >= 2 )) || fatal "$1 requires a value"
       case "$1" in
+        --workers) workers=$2 ;; --max-lanes) max_lanes=$2 ;;
+        --resource-slots) resource_slots=$2 ;; --cpus) cpu_limit=$2 ;;
+        --suite-stage) suite_stage=$2 ;;
+        --benchmark-workers) benchmark_workers=$2 ;; --distribution) distribution=$2 ;;
         --repo) repo=$2 ;; --ref) ref=$2 ;; --mode) mode=$2 ;;
         --python-version) python_version=$2 ;; --state-root) state_root=$2 ;;
         --uv-archive) uv_archive=$2 ;; --uv-sha256) uv_sha256=$2 ;;
@@ -43,6 +54,18 @@ while (( $# )); do
   esac
 done
 [[ $mode =~ ^(doctor|prepare|check)$ ]] || fatal 'Invalid mode'
+[[ $workers =~ ^[0-9]+$ ]] && (( workers <= 32 )) || fatal 'Invalid worker count'
+[[ $max_lanes =~ ^[1-3]$ ]] || fatal 'Invalid Linux lane limit'
+[[ $resource_slots =~ ^[1-3]$ ]] || fatal 'Invalid Linux resource slots'
+[[ $cpu_limit =~ ^[0-9]+$ ]] && (( cpu_limit >= 1 && cpu_limit <= 16 )) || fatal 'Invalid disposable container CPU quota'
+[[ $suite_stage =~ ^(full|ordinary|resource)$ ]] || fatal 'Invalid suite stage'
+[[ $distribution =~ ^(loadfile|worksteal)$ ]] || fatal 'Invalid pytest distribution'
+[[ -z "$benchmark_workers" || $benchmark_workers =~ ^([0-9]|1[0-6])(,([0-9]|1[0-6]))*$ ]] || fatal 'Invalid worker sweep'
+(( workers <= cpu_limit )) || fatal 'Workers exceed the disposable CPU quota'
+if [[ -n "$benchmark_workers" ]]; then
+  IFS=',' read -r -a sweep_counts <<< "$benchmark_workers"
+  for count in "${sweep_counts[@]}"; do (( count <= cpu_limit )) || fatal 'Invalid worker sweep'; done
+fi
 [[ $python_version =~ ^(3\.11|3\.12|3\.15|all)$ ]] || fatal 'Invalid Python version'
 [[ $mode == doctor || $ref =~ ^[0-9a-f]{40}$ ]] || fatal 'Use a full proposed commit SHA'
 for program in docker python3 mountpoint realpath flock sha256sum tee; do
@@ -225,6 +248,33 @@ docker image inspect "$image" >"$run_root/image.json" || fatal 'Image absent; ru
 versions=(3.11 3.12 3.15)
 [[ $python_version == all ]] || versions=("$python_version")
 lanes=()
+overall=0
+join_finished_lane() {
+  # Reuse the first completed slot. Waiting for the oldest lane can leave a
+  # container idle while the coverage lane continues. Inspect owned shell jobs;
+  # wait still retrieves cached exit status if a child has already terminated.
+  local index client running job active status
+  while true; do
+    running=$(jobs -pr)
+    for index in "${!container_clients[@]}"; do
+      client=${container_clients[index]}
+      [[ -n $client ]] || continue
+      active=0
+      for job in $running; do
+        [[ $job != "$client" ]] || active=1
+      done
+      if (( active == 0 )); then
+        status=0
+        wait "$client" || status=$?
+        container_clients[index]=''
+        printf '%s\n' "$status" >"${lanes[index]}/exit-code"
+        (( status == 0 )) || overall=1
+        return
+      fi
+    done
+    sleep 0.1
+  done
+}
 for version in "${versions[@]}"; do
   case "$version" in
     3.11) patch=3.11.18 ;;
@@ -239,13 +289,16 @@ for version in "${versions[@]}"; do
   network=none; [[ $mode == check ]] || network=bridge
   printf '[judgmentllm-linux] %s Python %s: %s\n' "$mode" "$patch" "$lane"
   start_container "$lane/console.log" "$lane/container.cid" \
-    --network "$network" --cpus 6 --memory 16g \
+    --network "$network" --cpus "$cpu_limit" --memory 16g \
     --user "$(id -u):$(id -g)" \
     --mount "type=bind,src=$state_root,dst=/state" \
     --env UV_CACHE_DIR=/state/cache --env XDG_CACHE_HOME=/state/cache \
     --env "TMPDIR=/state/runs/$run_id/python-$version/scratch" \
     --env UV_PYTHON_INSTALL_DIR=/opt/judgmentllm/python \
     --env R_LIBS_USER=/opt/judgmentllm/r-library \
+    --env "JCI_PYTEST_WORKERS=$workers" --env "JCI_RESOURCE_SLOTS=$resource_slots" \
+    --env "JCI_BENCHMARK_WORKERS=$benchmark_workers" --env "JCI_DISTRIBUTION=$distribution" \
+    --env "JCI_SUITE_STAGE=$suite_stage" --env "JCI_RESOURCE_ROOT=/state/runs/$run_id/resource-budget" \
     --entrypoint bash "$image" -c '
       set -euo pipefail
       bundle=$1; lane=$2; mode=$3; minor=$4; patch=$5; commit=$6; archive_hash=$7
@@ -257,15 +310,25 @@ for version in "${versions[@]}"; do
       exec /opt/judgmentllm/tools/uv run --no-project --python "$patch" --offline python \
         "$lane/source/ci/local/gates.py" --source "$lane/source" --output "$lane/results" \
         --commit "$commit" --archive-sha256 "$archive_hash" --python-version "$minor" \
-        --mode "$mode" --uv /opt/judgmentllm/tools/uv
+        --mode "$mode" --uv /opt/judgmentllm/tools/uv \
+        --workers "$JCI_PYTEST_WORKERS" --resource-slots "$JCI_RESOURCE_SLOTS" \
+        --resource-root "$JCI_RESOURCE_ROOT" --suite-stage "$JCI_SUITE_STAGE" \
+        "--benchmark-workers=$JCI_BENCHMARK_WORKERS" --distribution "$JCI_DISTRIBUTION"
     ' judgmentllm \
     "/state/runs/$run_id/bundle" "/state/runs/$run_id/python-$version" \
     "$mode" "$version" "$patch" "$ref" "$archive_hash"
+  # Bound independent containers without cancelling failed peers. Versions in
+  # one VM have their own shared allocation limit in the native adapters.
+  active=0
+  for client in "${container_clients[@]}"; do
+    [[ -z $client ]] || active=$((active + 1))
+  done
+  if (( active >= max_lanes )); then join_finished_lane; fi
 done
 # Start all three fresh interpreters before waiting. A failed lane never cancels
 # its siblings; only explicit interruption/adapter exit invokes whole-run cleanup.
-overall=0
 for index in "${!versions[@]}"; do
+  [[ -n ${container_clients[index]} ]] || continue
   status=0
   wait "${container_clients[index]}" || status=$?
   container_clients[index]=''

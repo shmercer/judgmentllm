@@ -13,9 +13,17 @@ Windows Python 3.12. Manual `windows_311_only=true` retains the complete Windows
 3.11 job. Historical proposal and qualification records below describe the
 infrastructure rollout; they do not override this matrix or the seventh gate.
 
+The [CI optimization profiles](ci-optimization.md) provide fast component testing,
+complete PR checks, release checks and reproducible allocation experiments.
+The [baseline audit](ci-test-audit.md) and [requirement map](../ci/verification-map.json)
+explain retained guarantees and documented setup consolidation. All seven local
+configurations and 49 strict R gates remain mandatory. The default grid uses an
+explicit bounded schedule; resource batches can run concurrently in independently
+budgeted allocations. Partial benchmark stages never establish qualification.
+
 | Platform | Local Python (exact) | Coverage |
 |---|---|---|
-| Ubuntu | 3.11.18 | Enabled, branch coverage ≥90% |
+| Ubuntu | 3.11.18 | Branch-enabled combined coverage ≥90%, plus exact baseline line/branch nonregression |
 | Ubuntu | 3.12.16 | Disabled (`--no-cov`) |
 | Ubuntu | 3.15.2 | Disabled (`--no-cov`) |
 | macOS | 3.11.18, 3.12.16 | Disabled (`--no-cov`), both lanes |
@@ -42,10 +50,12 @@ recorded commits; they are not seven-configuration qualification.
 |---|---|---|
 | Linux | Ubuntu 24.04.4 `pairwisellm-linux-ci:release` base image, R 4.6.1 | `/mnt/VM_Fast/judgmentllm-ci/linux` |
 | Windows | Existing Docker-hosted `pairwise-windows-ci`, Server 2025, six CPUs, 12 GiB RAM | Host `/mnt/VM_Fast/pairwiseLLM-checks/judgmentllm-ci`; guest `C:\JudgmentLLM-ci` |
-| macOS | Existing Quickemu `macos-sequoia`, macOS 15.8.1 x86_64, six CPUs, 16 GiB RAM | Host `/mnt/VM_Fast/judgmentllm-ci/macos`; guest `~/judgmentllm-ci` |
+| macOS | Existing Quickemu `macos-sequoia`, macOS 15.8.1 x86_64, four visible CPUs, 16 GiB RAM | Host `/mnt/VM_Fast/judgmentllm-ci/macos`; guest `~/judgmentllm-ci` |
 
 The Linux adapter creates a namespaced derivative image, preserving the existing
-R project's image and tags. Containers have six CPUs and 16 GiB RAM. The Windows
+R project's image and tags. Containers have explicit per-run CPU quotas (the
+historical reference is six) and 16 GiB RAM; the selected schedule records each
+quota and bounds active lanes. The Windows
 adapter uses `docker start` on the existing container; it never invokes a VM
 installer, recreates the container, changes Compose, or changes its disk/share
 configuration. The macOS adapter invokes the existing Quickemu configuration
@@ -58,6 +68,13 @@ entire operation, including result collection and graceful shutdown:
 /mnt/VM_Fast/pairwiseLLM-checks/windows-ci/.local-ci-windows.lock
 /mnt/VM_Fast/pairwiseLLM-checks/macos-ci/.ci.lock
 ```
+
+Grid and direct guest adapters also reject incomplete allocation recovery journals
+under `/mnt/VM_Fast/judgmentllm-ci/overrides` before guest work. No supported
+per-run CPU/RAM override exists in the current guest launchers, so guest settings
+remain unchanged. Any future supported experiment must journal durable original
+settings and verify restoration against actual settings under these same locks;
+see [the recovery protocol](ci-optimization.md#temporary-guest-allocation-recovery).
 
 Never run an adapter while another project holds the corresponding lock. A
 preexisting running VM is left running. A VM started by the adapter is shut down
@@ -172,12 +189,14 @@ request alone. Cancellation now also uses guest-local control, avoiding reliance
 on a newly created SMB file becoming visible.
 Linux cleanup can remove a stopped disposable CI container after verifying its
 full ID and exact run label, without force; mounted source/results are retained.
-The three Linux containers retain six CPUs/16 GiB each; both Python lanes in a VM
-share that VM's existing six CPUs and memory allocation. No test threshold is
-adjusted for concurrent execution. The preparation inventory found 32 logical
-CPUs (16 physical cores), 125 GiB RAM and about 99 GiB available. The bounded
-allocations total 30 logical CPUs and 76 GiB RAM (Linux 18/48, Windows 6/12,
-macOS 6/16). These fit this host without changing limits. SMT, VM overhead and
+Linux containers use the selected schedule's CPU quota and 16 GiB each. Windows
+shares six CPUs / 12 GiB; macOS shares four visible CPUs / 16 GiB. Quickemu rounds
+macOS's existing configured six cores down to four; boot logs and guest telemetry
+confirm that topology. No guest allocation or test threshold is changed.
+The host exposes 32 logical CPUs (16 physical cores) and about 125 GiB RAM.
+The tuned parallel schedule caps 28 logical CPUs and 76 GiB RAM (Linux 18/48,
+Windows 6/12, macOS 4/16); resource-aware scheduling caps 22 CPUs and 60 GiB.
+These fit this host without changing limits. SMT, VM overhead and
 other host work can still cause contention; keep other heavy work idle and
 record full-grid wall time and resource-test outcomes. The 180-second resource
 fixture deadline and all memory acceptance thresholds stay unchanged.

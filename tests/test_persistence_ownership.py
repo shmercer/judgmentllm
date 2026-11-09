@@ -182,6 +182,7 @@ def test_wrong_process_cannot_heartbeat_or_unlock_parent(
 
 
 @pytest.mark.skipif(not hasattr(os, "fork"), reason="fork inheritance is Unix-specific")
+@pytest.mark.serial
 def test_forked_child_release_does_not_unlock_parent(registry: Repository) -> None:
     fork: Callable[[], int] | None = getattr(os, "fork", None)
     if fork is None:

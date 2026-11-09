@@ -32,6 +32,12 @@ repo=$(cd -- "$script_dir/../.." && pwd -P)
 ref=''
 mode=check
 python_version=all
+workers=0
+max_lanes=2
+resource_slots=2
+suite_stage=full
+benchmark_workers=''
+distribution=worksteal
 state_root=/mnt/VM_Fast/pairwiseLLM-checks/judgmentllm-ci
 uv_archive=''
 uv_sha256=''
@@ -56,9 +62,12 @@ request_cancel() {
 }
 while (( $# )); do
   case "$1" in
-    --repo|--ref|--mode|--python-version|--state-root|--uv-archive|--uv-sha256)
+    --repo|--ref|--mode|--python-version|--state-root|--uv-archive|--uv-sha256|--workers|--max-lanes|--resource-slots|--suite-stage|--benchmark-workers|--distribution)
       (( $# >= 2 )) || fatal "$1 requires a value"
       case "$1" in
+        --workers) workers=$2 ;; --max-lanes) max_lanes=$2 ;;
+        --resource-slots) resource_slots=$2 ;; --suite-stage) suite_stage=$2 ;;
+        --benchmark-workers) benchmark_workers=$2 ;; --distribution) distribution=$2 ;;
         --repo) repo=$2 ;; --ref) ref=$2 ;; --mode) mode=$2 ;;
         --python-version) python_version=$2 ;; --state-root) state_root=$2 ;;
         --uv-archive) uv_archive=$2 ;; --uv-sha256) uv_sha256=$2 ;;
@@ -70,6 +79,12 @@ while (( $# )); do
   esac
 done
 [[ $mode =~ ^(prepare|check|doctor)$ ]] || fatal 'Invalid --mode'
+[[ $workers =~ ^[0-9]+$ ]] && (( workers <= 6 )) || fatal 'Workers exceed the unchanged six-CPU guest'
+[[ $max_lanes =~ ^[1-2]$ ]] || fatal 'Invalid Windows lane limit'
+[[ $resource_slots =~ ^[1-2]$ ]] || fatal 'Invalid Windows resource slots'
+[[ $suite_stage =~ ^(full|ordinary|resource)$ ]] || fatal 'Invalid suite stage'
+[[ $distribution =~ ^(loadfile|worksteal)$ ]] || fatal 'Invalid pytest distribution'
+[[ -z "$benchmark_workers" || $benchmark_workers =~ ^[0-6](,[0-6])*$ ]] || fatal 'Invalid worker sweep'
 [[ $python_version =~ ^(3\.11|3\.12|all)$ ]] || fatal 'Invalid --python-version'
 [[ $boot_timeout =~ ^[0-9]+$ ]] && (( boot_timeout >= 10 )) || fatal 'Boot timeout must be >= 10 seconds'
 [[ $shutdown_timeout =~ ^[0-9]+$ ]] && (( shutdown_timeout >= 10 )) || fatal 'Shutdown timeout must be >= 10 seconds'
@@ -96,6 +111,7 @@ fi
 # Share the established cross-project VM lock; leave the existing launcher intact.
 exec 9>"$share_root/windows-ci/.local-ci-windows.lock"
 flock -n 9 || fatal 'The Windows VM is already in use by a local CI launcher'
+python3 "$script_dir/override_recovery.py" --guest windows
 initial_state=$(docker inspect --format '{{.State.Status}}' "$container") || fatal 'Existing Windows container is unavailable'
 [[ $initial_state == running || $initial_state == exited || $initial_state == created ]] || fatal "Unsupported VM state: $initial_state"
 
@@ -227,7 +243,7 @@ PY
 fi
 if [[ -n $uv_archive ]]; then cp -- "$uv_archive" "$run_root/uv.zip"; fi
 
-encoded_command=$(python3 - "$run_root" "$share_root" "$mode" "$python_version" "$ref" "$uv_sha256" "$initial_state" <<'PY'
+encoded_command=$(python3 - "$run_root" "$share_root" "$mode" "$python_version" "$ref" "$uv_sha256" "$initial_state" "$workers" "$max_lanes" "$resource_slots" "$suite_stage" "$benchmark_workers" "$distribution" <<'PY'
 import base64
 import hashlib
 import json
@@ -243,6 +259,12 @@ request = {
     "run_id": root.name,
     "mode": sys.argv[3],
     "python_version": sys.argv[4],
+    "workers": int(sys.argv[8]),
+    "max_lanes": int(sys.argv[9]),
+    "resource_slots": int(sys.argv[10]),
+    "suite_stage": sys.argv[11],
+    "benchmark_workers": sys.argv[12],
+    "distribution": sys.argv[13],
     "commit": sys.argv[5],
     "transfer_root": unc,
     "results_root": "\\\\host.lan\\Data\\" + root.parent.parent.relative_to(share).as_posix().replace("/", "\\") + "\\results",

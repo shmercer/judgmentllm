@@ -37,11 +37,13 @@ jobs:
       UV_PYTHON: ${{ matrix.python }}
       NO_COLOR: "1"
       JUDGMENTLLM_REQUIRE_NATIVE_SDK_PROBES: "1"
+      JUDGMENTLLM_CI_RUN_ID: ${{ github.run_id }}:${{ github.run_attempt }}:${{ matrix.os }}:${{ matrix.python }}
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Set up Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -60,7 +62,7 @@ jobs:
 
       - name: Verify Windows export durability and cancellation recovery
         if: runner.os == 'Windows'
-        run: uv run --offline --no-sync pytest --no-cov -q -rP tests/test_export_durability.py tests/test_execution_exports.py tests/test_grouped_execution.py::test_grouped_minimal_privacy_live_and_recovery tests/test_execution_cancellation_processes.py::test_competing_process_cannot_cancel_exclusive_executor -Werror::ResourceWarning -Werror::pytest.PytestUnraisableExceptionWarning
+        run: uv run --offline --no-sync python -m pytest --no-cov -p ci.local.pytest_report --ci-report "${{ runner.temp }}/judgmentllm-preflights/d.json" -q -rP tests/test_export_durability.py tests/test_execution_exports.py tests/test_grouped_execution.py::test_grouped_minimal_privacy_live_and_recovery tests/test_execution_cancellation_processes.py::test_competing_process_cannot_cancel_exclusive_executor -Werror::ResourceWarning -Werror::pytest.PytestUnraisableExceptionWarning
 
       - name: Lint
         run: uv run --offline --no-sync ruff check .
@@ -101,19 +103,20 @@ jobs:
 
       - name: Verify Windows live privacy and lock behavior
         if: runner.os == 'Windows'
-        run: uv run --offline --no-sync pytest --no-cov -q tests/test_execution_privacy.py tests/test_execution.py::test_minimal_privacy_success_and_loss_windows -Werror::ResourceWarning -Werror::pytest.PytestUnraisableExceptionWarning
+        run: uv run --offline --no-sync python -m pytest --no-cov -p ci.local.pytest_report --ci-report "${{ runner.temp }}/judgmentllm-preflights/l.json" -q tests/test_execution_privacy.py tests/test_execution.py::test_minimal_privacy_success_and_loss_windows -Werror::ResourceWarning -Werror::pytest.PytestUnraisableExceptionWarning
 
       - name: Run offline tests with coverage
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
         env:
+          JUDGMENTLLM_R_STRICT: "1"
           JUDGMENTLLM_OPENAI_RESOURCE_EVIDENCE: ${{ runner.temp }}/judgmentllm-openai-resources
-        run: uv run --offline --no-sync pytest -ra -Werror::ResourceWarning -Werror::pytest.PytestUnraisableExceptionWarning
+        run: uv run --offline --no-sync python ci/local/suite.py --output "${{ runner.temp }}/judgmentllm-suite" --workers 4 --bound-workers --contract ci/test-contract.json --baseline ci/coverage-floor.json tests
 
       - name: Run offline tests without coverage
         if: matrix.os != 'ubuntu-latest' || matrix.python != '3.11'
         env:
           JUDGMENTLLM_OPENAI_RESOURCE_EVIDENCE: ${{ runner.temp }}/judgmentllm-openai-resources
-        run: uv run --offline --no-sync pytest --no-cov -ra -Werror::ResourceWarning -Werror::pytest.PytestUnraisableExceptionWarning
+        run: uv run --offline --no-sync python ci/local/suite.py --output "${{ runner.temp }}/judgmentllm-suite" --workers 4 --bound-workers --contract ci/test-contract.json --no-coverage --preflight-root "${{ runner.temp }}/judgmentllm-preflights" tests
 
       - name: Verify required Python-to-R interoperability
         if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
@@ -199,6 +202,18 @@ jobs:
         if: runner.os == 'Linux'
         run: uv run --offline --no-sync python scripts/smoke_install.py dist/*.tar.gz
 
+      - name: Preserve complete test and allocation receipts
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-receipts-${{ matrix.os }}-${{ matrix.python }}
+          path: |
+            ${{ runner.temp }}/judgmentllm-suite/*.json
+            ${{ runner.temp }}/judgmentllm-suite/*.log
+            ${{ runner.temp }}/judgmentllm-suite/resource-measurements/*.json
+            ${{ runner.temp }}/judgmentllm-preflights/*.json
+          if-no-files-found: warn
+
       - name: Preserve offline OpenAI resource measurements
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -212,7 +227,7 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: coverage-${{ matrix.os }}-${{ matrix.python }}
-          path: coverage.xml
+          path: ${{ runner.temp }}/judgmentllm-suite/coverage.xml
           if-no-files-found: warn
 
       - name: Preserve distributions
@@ -228,7 +243,7 @@ jobs:
         continue-on-error: true
         uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
         with:
-          files: coverage.xml
+          files: ${{ runner.temp }}/judgmentllm-suite/coverage.xml
           disable_search: true
           fail_ci_if_error: false
           token: ${{ secrets.CODECOV_TOKEN }}

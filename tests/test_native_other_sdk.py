@@ -119,7 +119,12 @@ print("sixteen offline SDK representations verified")
 """
 
 
-@pytest.mark.parametrize("provider", ["anthropic", "together", "ollama"])
+# The genuine Anthropic import/AST probe takes 22–24s on Windows 3.11 before
+# contention. Keep its fixed 30s deadline under the allocation's resource budget.
+@pytest.mark.parametrize(
+    "provider",
+    [pytest.param("anthropic", marks=pytest.mark.resource), "together", "ollama"],
+)
 def test_pinned_sdk_preserves_sixteen_fragments_under_offline_guards(
     provider: str, tmp_path: Path
 ) -> None:

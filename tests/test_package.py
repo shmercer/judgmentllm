@@ -8,6 +8,8 @@ from packaging.version import Version
 
 import judgmentllm
 
+pytestmark = pytest.mark.smoke
+
 FEATURE_DEPENDENCIES = {
     "openai": {"openai"},
     "anthropic": {"anthropic"},

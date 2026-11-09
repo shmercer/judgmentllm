@@ -129,6 +129,8 @@ initialization_sample(Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3]), 2
     } == before
 
 
+# Keep the legacy Windows path budget; xdist adds another directory level.
+@pytest.mark.serial
 def test_focused_execution_cli_uses_tiny_test_only_prefixes(
     tmp_path_factory: pytest.TempPathFactory,
 ) -> None:

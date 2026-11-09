@@ -4,6 +4,33 @@
 
 **First public PyPI alpha:** Treat [alpha-release readiness](alpha-release-readiness.md) as a **parallel, independently gated workstream**. Start user-facing documentation, package usability and secure release preparation now, but **do not publish until all intended Milestone 3 generative and Milestone 4 native live provider/endpoint families are implemented and specifically live-qualified**. Milestones 5 (batch/bulk-live), 6 (generated catalog/thin R wrapper) and 7 (FastAPI) are later commitments, not prerequisites for the first Python library/CLI alpha. Existing R/export, safety and regression gates continue to apply.
 
+## CI efficiency workstream after Phase 5A
+
+Phase 5A PR #24 is merged at `1298bedf5e408d48ef1fd6e113677a0ece27aa24`
+after exact-head offline/hosted acceptance and eight authorized live successes.
+The separate CI/test optimization workstream leaves production source unchanged.
+Its [baseline and necessity audit](ci-test-audit.md),
+[execution profiles and experiment/recovery protocol](ci-optimization.md), and
+[machine-readable requirement map](../ci/verification-map.json) preserve every
+existing platform, resource, historical, security and R acceptance requirement.
+
+Priorities are cheaper equivalent tests/fixtures, independent pytest workers,
+then measured complete-grid scheduling. Exact baseline covered lines/branches
+and overall line/branch ratios are blocking, in addition to the existing 90%
+branch-enabled combined gate. No exclusions or acceptance thresholds change.
+Resource experiments begin with isolated references and compare bounded
+concurrency using explicit shared-guest/container CPU and RAM budgets. Global
+serialization requires measurement evidence. Guest overrides require durable
+crash recovery, verified actual restoration and startup admission; current
+guest controls do not support a suitable runtime override, so settings stay fixed.
+
+The final source commit requires a fresh complete seven-configuration local grid,
+all 49 strict R gates, original resource/packaging/quality checks and all five
+hosted jobs on the same PR head. Benchmark-only stages cannot establish acceptance.
+Detailed final evidence is recorded externally after the commit is frozen and
+linked from the open, unmerged optimization PR. No live calls or publication are
+authorized by this workstream.
+
 ## Milestone 0 - Repository and engineering baseline
 
 - Create public GitHub repo `shmercer/judgmentllm` (target), MIT, `main` branch, issue templates optional.

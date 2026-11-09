@@ -7,9 +7,11 @@ import os
 import shutil
 import subprocess
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from fixture_artifacts import immutable_exports
 
 from judgmentllm.io import read_results, read_results_csv
 
@@ -29,11 +31,20 @@ def generate(output: Path) -> None:
         assert completed.returncode == 0, completed.stderr
 
 
-def test_grouped_lifecycle_survives_independent_processes(tmp_path: Path) -> None:
-    generate(tmp_path)
+@pytest.fixture(scope="module")
+def generated_exports(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
+    # Both readers consume one real persist/export pipeline. The helper verifies
+    # every artifact remains byte-identical after all readers finish.
+    with immutable_exports(tmp_path_factory.mktemp("rf"), generate) as output:
+        yield output
+
+
+def test_grouped_lifecycle_survives_independent_processes(
+    generated_exports: Path,
+) -> None:
     evidence = [
         json.loads(line)
-        for line in (tmp_path / "grouped-lifecycle.jsonl")
+        for line in (generated_exports / "grouped-lifecycle.jsonl")
         .read_text(encoding="utf-8")
         .splitlines()
     ]
@@ -42,8 +53,10 @@ def test_grouped_lifecycle_survives_independent_processes(tmp_path: Path) -> Non
         assert len(row["attempts"]) == len(row["acceptances"]) == 2
         assert [len(attempt["task_ids"]) for attempt in row["attempts"]] == [3, 1]
         assert all(accepted["acceptance_count"] == 1 for accepted in row["acceptances"])
-        records = list(read_results(tmp_path / f"{row['run_id']}.jsonl"))
-        assert records == list(read_results_csv(tmp_path / f"{row['run_id']}.csv"))
+        records = list(read_results(generated_exports / f"{row['run_id']}.jsonl"))
+        assert records == list(
+            read_results_csv(generated_exports / f"{row['run_id']}.csv")
+        )
         assert [record.status for record in records] == [
             "complete",
             "complete",
@@ -52,7 +65,9 @@ def test_grouped_lifecycle_survives_independent_processes(tmp_path: Path) -> Non
         ]
 
 
-def test_grouped_lifecycle_passes_required_r_assertions(tmp_path: Path) -> None:
+def test_grouped_lifecycle_passes_required_r_assertions(
+    generated_exports: Path,
+) -> None:
     executable = shutil.which("Rscript")
     if executable is None:
         if os.environ.get("JUDGMENTLLM_R_STRICT") == "1":
@@ -73,9 +88,8 @@ def test_grouped_lifecycle_passes_required_r_assertions(tmp_path: Path) -> None:
         if os.environ.get("JUDGMENTLLM_R_STRICT") == "1":
             pytest.fail("Required jsonlite is unavailable")
         pytest.skip("jsonlite unavailable locally; required Ubuntu CI does not skip")
-    generate(tmp_path)
     completed = subprocess.run(
-        [executable, "--vanilla", str(R_SCRIPT), str(tmp_path)],
+        [executable, "--vanilla", str(R_SCRIPT), str(generated_exports)],
         capture_output=True,
         text=True,
         timeout=30,

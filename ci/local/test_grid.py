@@ -43,6 +43,9 @@ def summaries(platform: str = "windows", mode: str = "check") -> list[dict[str, 
                     "exit_code": 0,
                     "coverage_enabled": name == "pytest-coverage",
                     "coverage_percent": 91.8 if name == "pytest-coverage" else None,
+                    "suite": {"selection_complete": True, "manifest_complete": True}
+                    if name in {"pytest-coverage", "pytest-no-coverage"}
+                    else None,
                 }
                 for name in sorted(grid.required_gates(platform, version, mode))
             ],
@@ -175,7 +178,10 @@ def test_fresh_results_allow_guest_boot_clock_correction_without_admitting_stale
     assert admit(wrong_source, "windows", mode)
 
 
-@pytest.mark.parametrize("mutation", ["missing", "failed", "duplicate", "unexpected"])
+@pytest.mark.parametrize(
+    "mutation",
+    ["missing", "failed", "duplicate", "unexpected", "receipt", "incomplete"],
+)
 def test_admission_checks_actual_required_steps_even_with_completion_flag(
     mutation: str,
 ) -> None:
@@ -187,6 +193,12 @@ def test_admission_checks_actual_required_steps_even_with_completion_flag(
         steps[-1]["exit_code"] = 1
     elif mutation == "duplicate":
         steps.append(steps[0])
+    elif mutation in {"receipt", "incomplete"}:
+        step = next(s for s in steps if s["name"].startswith("pytest-"))
+        if mutation == "receipt":
+            del step["suite"]
+        else:
+            step["suite"]["manifest_complete"] = False
     else:
         steps.append({"name": "informational", "status": "passed", "exit_code": 0})
     assert items[-1]["all_scheduled_gates_finished"] is True

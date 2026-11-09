@@ -17,6 +17,8 @@ from judgmentllm.results import (
     validate_pairwise_output,
 )
 
+pytestmark = pytest.mark.smoke
+
 
 def trait() -> Trait:
     return Trait(

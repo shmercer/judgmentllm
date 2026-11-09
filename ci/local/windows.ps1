@@ -14,6 +14,10 @@ $ProgressPreference = 'SilentlyContinue'
 $settings = Get-Content -LiteralPath $Request -Raw | ConvertFrom-Json
 if ($settings.mode -notin @('prepare', 'check', 'doctor')) { throw 'Invalid mode' }
 if ($settings.python_version -notin @('3.11', '3.12', 'all')) { throw 'Invalid Python version' }
+if ($settings.workers -lt 0 -or $settings.workers -gt 6) { throw 'Invalid six-CPU guest worker allocation' }
+if ($settings.max_lanes -notin @(1,2) -or $settings.resource_slots -notin @(1,2)) { throw 'Invalid shared guest allocation' }
+if ($settings.suite_stage -notin @('full','ordinary','resource')) { throw 'Invalid suite stage' }
+
 if ($settings.run_id -notmatch '^windows-[A-Za-z0-9-]+$') { throw 'Invalid run ID' }
 if ((Get-FileHash -LiteralPath $MyInvocation.MyCommand.Path -Algorithm SHA256).Hash.ToLowerInvariant() -ne $settings.adapter_sha256) {
     throw 'Guest adapter bytes differ from the staged commitment'
@@ -202,7 +206,10 @@ if ($Lane) {
         $arguments = @('run', '--no-project', '--python', $patch, '--offline', 'python', $gates,
             '--source', $source, '--output', $output, '--commit', $settings.commit,
             '--archive-sha256', $settings.source_archive_sha256, '--python-version', $Lane,
-            '--mode', $settings.mode, '--uv', $uvExe)
+            '--mode', $settings.mode, '--uv', $uvExe,
+            '--workers', $settings.workers, '--resource-slots', $settings.resource_slots,
+            '--resource-root', (Join-Path $runRoot 'resource-budget'), '--suite-stage', $settings.suite_stage,
+            ('--benchmark-workers=' + $settings.benchmark_workers), '--distribution', $settings.distribution)
         if ($settings.mode -eq 'prepare') { $env:UV_OFFLINE = '0' }
         Invoke-Logged $uvExe $arguments $laneLog
         $status = 0
@@ -353,6 +360,16 @@ public sealed class JudgmentLlmLaneJob : IDisposable {
         # Children cannot start uv/Python before job ownership is established.
         New-Item -ItemType File -Path (Join-Path $runRoot "lane-$minor.start") | Out-Null
         Write-Host "Python $minor lane started (PID $($process.Id))"
+        if ($settings.max_lanes -eq 1) {
+            while (-not $process.HasExited) {
+                if (Test-CancelRequest) { throw 'Host cancelled the owned lane' }
+                Start-Sleep -Milliseconds 200
+                $process.Refresh()
+            }
+            $process.WaitForExit()
+            $worker.exit_code = $process.ExitCode
+            $worker.status = if ($process.ExitCode -eq 0) { 'passed' } else { 'failed' }
+        }
     }
     while (@($workers | Where-Object { $_.status -eq 'running' }).Count) {
         if (Test-CancelRequest) {

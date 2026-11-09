@@ -72,6 +72,7 @@ def _run(script: str) -> dict[str, Any]:
     return cast(dict[str, Any], json.loads(result.stdout))
 
 
+@pytest.mark.resource
 def test_child_native_peak_keeps_transient_touched_allocation(tmp_path: Path) -> None:
     result = _run(_CHILD)
     (tmp_path / "transient-peak-measurement.json").write_text(
@@ -81,6 +82,7 @@ def test_child_native_peak_keeps_transient_touched_allocation(tmp_path: Path) ->
     assert result["after_release"] >= result["while_live"], result
 
 
+@pytest.mark.resource
 @pytest.mark.skipif(
     sys.platform != "linux", reason="Linux pre-exec RSS accounting regression"
 )
