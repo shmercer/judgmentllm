@@ -673,3 +673,19 @@ Protected recognized assessment bytes are separate from reasoning, signatures,
 canonical validity and whole-envelope retention. Missing historical diagnostics
 remain missing. The offline qualification-plan version 1 has its own namespace,
 requires a clean exact source and grants zero requests; no executor is provided.
+
+
+## Phase 5C qualification executor follow-up
+
+The repository-only Gemini executor adapts the Anthropic one-shot consumption and
+terminal-evidence controls, with separate Gemini authority and authorization
+records. It preserves immutable plan version 1 and historical provider evidence.
+Only exact plan/source consent plus billable and full synthetic capture consent
+can authorize its four original requests. Exact `modelVersion` equality, strict
+canonical validity and intact retained evidence are required for qualification.
+The $0.02 estimate is not a provider-enforced cap. See the
+[Gemini execution guide](gemini.md#unexecuted-live-qualification-proposal).
+Implementation acceptance is Level 3 and entirely offline; a fresh plan from the
+eventual merged source and independent live authorization remain required.
+Normalized exports, seven strict R gates and the empty production native registry
+are preserved. No provider calls or publication are authorized by this follow-up.

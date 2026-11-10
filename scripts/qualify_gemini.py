@@ -1,4 +1,4 @@
-"""Repository-only offline proposal; there is deliberately no execute command."""
+"""Repository-only Gemini plan, explicitly authorized execute, read-only report."""
 
 import sys
 from pathlib import Path

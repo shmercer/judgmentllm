@@ -145,7 +145,7 @@ def test_invalid_reservations_fail_before_preparation(
     assert not (tmp_path / "proposal").exists()
 
 
-def test_cli_has_no_execute_or_authorization_command(
+def test_cli_execute_without_plan_and_consent_is_rejected(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(sys, "argv", ["qualify_gemini.py", "execute"])

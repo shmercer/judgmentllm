@@ -86,8 +86,8 @@ class GeminiProductionContext:
     """Descriptive scoped authority; qualification context is never call consent.
 
     Ordinary execution accepts only the production kind. Candidate contexts can
-    compile bodies offline and cannot execute. No qualification grant or live
-    qualification executor is implemented in this phase.
+    compile bodies offline; submitting them requires the dedicated private
+    Gemini executor guard and separate exact-plan/source authorization.
     """
 
     scope: NativeProjectionScopeV1
