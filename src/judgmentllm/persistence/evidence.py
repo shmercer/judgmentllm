@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING, Annotated, Literal, TypeVar, cast
 
 from pydantic import Field, field_validator, model_validator
 
+from judgmentllm import gemini_types
 from judgmentllm.anthropic_assessment import AnthropicAssessmentDiagnosticV2
 from judgmentllm.evidence._base import EvidenceIdentity, EvidenceModel
 from judgmentllm.evidence.assessment import AssessmentDiagnosticV1
@@ -89,7 +90,10 @@ class EvidenceReceipt(EvidenceModel):
     retained: ArtifactIdentity | None = None
     response_retention: Literal["exact", "redacted", "omitted"]
     assessment_diagnostic: (
-        AssessmentDiagnosticV1 | AnthropicAssessmentDiagnosticV2 | None
+        AssessmentDiagnosticV1
+        | AnthropicAssessmentDiagnosticV2
+        | gemini_types.GeminiAssessmentDiagnosticV3
+        | None
     ) = Field(default=None, exclude_if=lambda value: value is None)
     invocation_acceptance: Literal["unresolved"] | None = Field(
         default=None, exclude_if=lambda value: value is None
@@ -127,6 +131,7 @@ class EvidenceReceipt(EvidenceModel):
                 ("openai", "responses"),
                 ("openai", "chat.completions"),
                 ("anthropic", "messages"),
+                ("gemini", "models.generate_content"),
             }
         ):
             raise ValueError(

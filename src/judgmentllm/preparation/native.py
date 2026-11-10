@@ -6,6 +6,7 @@ from collections.abc import Callable, Iterator
 from hashlib import sha256
 from typing import TYPE_CHECKING, Literal
 
+from judgmentllm import gemini_types
 from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.hashing import (
     bytes_digest,
@@ -84,7 +85,10 @@ class InitialTransportDigest:
 def publish_prepared_transport(
     repository: Repository,
     store: ArtifactStore,
-    wire: PreparedRequestV3 | PreparedRequestV4 | PreparedRequestV5,
+    wire: PreparedRequestV3
+    | PreparedRequestV4
+    | PreparedRequestV5
+    | gemini_types.PreparedRequestV6,
     capture: Literal["full", "minimal"],
 ) -> tuple[ArtifactIdentity, ...]:
     """Publish bytes before a transaction; caller registers returned identities.
@@ -131,8 +135,12 @@ def preseal_transports(
     template: str | None,
     manifest: ExecutableRunManifestV3
     | ExecutableRunManifestV4
-    | ExecutableRunManifestV5,
-    context: TransportContext | ProductionContext | AnthropicProductionContext,
+    | ExecutableRunManifestV5
+    | gemini_types.ExecutableRunManifestV6,
+    context: TransportContext
+    | ProductionContext
+    | AnthropicProductionContext
+    | gemini_types.GeminiProductionContext,
     checkpoint: Callable[[str, str | None], None],
 ) -> tuple[int, str]:
     """Prepare first attempts while created; submission remains impossible."""
@@ -238,7 +246,12 @@ def verify_initial_transports(prepared: PreparedRun) -> None:
     manifest = prepared.manifest
     if not isinstance(
         manifest,
-        (ExecutableRunManifestV3, ExecutableRunManifestV4, ExecutableRunManifestV5),
+        (
+            ExecutableRunManifestV3,
+            ExecutableRunManifestV4,
+            ExecutableRunManifestV5,
+            gemini_types.ExecutableRunManifestV6,
+        ),
     ):
         return
     repository = prepared.repository

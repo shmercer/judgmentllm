@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO, Literal
 
+from judgmentllm import gemini_types
 from judgmentllm._verification import ExactToken, exact_token
 from judgmentllm.config import (
     RunSpecification,
@@ -167,6 +168,7 @@ class PreparedRun:
         transport_context: TransportContext
         | ProductionContext
         | AnthropicProductionContext
+        | gemini_types.GeminiProductionContext
         | None = None,
     ) -> None:
         self._read_record = record_reader
@@ -304,7 +306,12 @@ class PreparedRun:
         template = self.template
         if isinstance(
             self.manifest,
-            (ExecutableRunManifestV3, ExecutableRunManifestV4, ExecutableRunManifestV5),
+            (
+                ExecutableRunManifestV3,
+                ExecutableRunManifestV4,
+                ExecutableRunManifestV5,
+                gemini_types.ExecutableRunManifestV6,
+            ),
         ):
             from judgmentllm.transport_dispatch import context_digest, verify_protocol
 
@@ -435,13 +442,19 @@ class PreparedRun:
         | RenderedPromptV3
         | RenderedProductionPromptV1
         | RenderedAnthropicPromptV1
+        | gemini_types.RenderedGeminiPromptV1
     ):
         context = self._context
         spec = context.spec if context is not None else self.spec
         template = context.template if context is not None else self.template
         if isinstance(
             self.manifest,
-            (ExecutableRunManifestV3, ExecutableRunManifestV4, ExecutableRunManifestV5),
+            (
+                ExecutableRunManifestV3,
+                ExecutableRunManifestV4,
+                ExecutableRunManifestV5,
+                gemini_types.ExecutableRunManifestV6,
+            ),
         ):
             from judgmentllm.planning import stable_id
             from judgmentllm.transport import (
@@ -491,7 +504,12 @@ class PreparedRun:
 
     def transport_for_attempt(
         self, attempt_id: str
-    ) -> TransportCommitmentV1 | TransportCommitmentV2 | TransportCommitmentV3:
+    ) -> (
+        TransportCommitmentV1
+        | TransportCommitmentV2
+        | TransportCommitmentV3
+        | gemini_types.TransportCommitmentV4
+    ):
         """Read original safe metadata; missing commitments are never repaired."""
         from judgmentllm.persistence.transport_receipts import read_transport_commitment
         from judgmentllm.planning import stable_id
@@ -499,7 +517,12 @@ class PreparedRun:
 
         if not isinstance(
             self.manifest,
-            (ExecutableRunManifestV3, ExecutableRunManifestV4, ExecutableRunManifestV5),
+            (
+                ExecutableRunManifestV3,
+                ExecutableRunManifestV4,
+                ExecutableRunManifestV5,
+                gemini_types.ExecutableRunManifestV6,
+            ),
         ):
             raise PreparationError("historical preparation has no native transport")
         attempt = self.repository.get_attempt(self.manifest.run_id, attempt_id)
@@ -528,7 +551,9 @@ class PreparedRun:
         from judgmentllm.transport_dispatch import manifest_protocol
 
         expected_version = (
-            3
+            4
+            if manifest_protocol(self.manifest) == "gemini"
+            else 3
             if manifest_protocol(self.manifest) == "anthropic"
             else 2
             if manifest_protocol(self.manifest) == "production"
@@ -558,12 +583,19 @@ class PreparedRun:
         frozen: TransportCommitmentV1
         | TransportCommitmentV2
         | TransportCommitmentV3
+        | gemini_types.TransportCommitmentV4
         | None = None,
         parent: TransportCommitmentV1
         | TransportCommitmentV2
         | TransportCommitmentV3
+        | gemini_types.TransportCommitmentV4
         | None = None,
-    ) -> PreparedRequestV3 | PreparedRequestV4 | PreparedRequestV5:
+    ) -> (
+        PreparedRequestV3
+        | PreparedRequestV4
+        | PreparedRequestV5
+        | gemini_types.PreparedRequestV6
+    ):
         """Reconstruct pinned bytes or prepare an authorized ordered retry subset."""
         from judgmentllm.execution.retry import subset_dependency
         from judgmentllm.planning import stable_id
@@ -577,6 +609,7 @@ class PreparedRun:
                     ExecutableRunManifestV3,
                     ExecutableRunManifestV4,
                     ExecutableRunManifestV5,
+                    gemini_types.ExecutableRunManifestV6,
                 ),
             )
             or self.transport_context is None
@@ -683,6 +716,7 @@ class PreparedRun:
                     ExecutableRunManifestV3,
                     ExecutableRunManifestV4,
                     ExecutableRunManifestV5,
+                    gemini_types.ExecutableRunManifestV6,
                 ),
             )
             and not self._transport_index_verified
@@ -799,6 +833,7 @@ class PreparedRun:
         | RenderedPromptV3
         | RenderedProductionPromptV1
         | RenderedAnthropicPromptV1
+        | gemini_types.RenderedGeminiPromptV1
     ):
         """Render an exact ordered subset while retaining its parent identity."""
         selected = tuple(t.task_id for t in dependency.request.tasks)
@@ -837,7 +872,12 @@ class PreparedRun:
             raise PreparationError("attempt membership differs from its parent")
         if isinstance(
             self.manifest,
-            (ExecutableRunManifestV3, ExecutableRunManifestV4, ExecutableRunManifestV5),
+            (
+                ExecutableRunManifestV3,
+                ExecutableRunManifestV4,
+                ExecutableRunManifestV5,
+                gemini_types.ExecutableRunManifestV6,
+            ),
         ):
             from judgmentllm.native_prompts import render_request_v3
             from judgmentllm.planning import stable_id
@@ -859,6 +899,12 @@ class PreparedRun:
             from judgmentllm.anthropic_transport import OutputCommitmentV5
             from judgmentllm.production_transport import OutputCommitmentV4
 
+            if isinstance(output, gemini_types.OutputCommitmentV6):
+                from judgmentllm.gemini_prompts import render_gemini_request
+
+                return render_gemini_request(
+                    self.spec, self.template, dependency.request, self._get, output
+                )
             if isinstance(output, OutputCommitmentV5):
                 from judgmentllm.anthropic_prompts import render_anthropic_request
 
@@ -883,6 +929,7 @@ class PreparedRun:
         | RenderedPromptV3
         | RenderedProductionPromptV1
         | RenderedAnthropicPromptV1
+        | gemini_types.RenderedGeminiPromptV1
     ):
         """Render with the established renderer; never retain text in minimal mode."""
         self.verify_compatibility(capabilities=self.capabilities)

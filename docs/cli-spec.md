@@ -515,3 +515,16 @@ auto admission is documented in the [Messages guide](anthropic.md).
 `auth verify --provider anthropic` and `providers models --provider anthropic`
 are separately invoked network reads; `auth status` remains offline. Development
 and qualification-plan preparation never run either read against Anthropic.
+
+
+## Phase 5C Gemini Developer
+
+The existing validate/plan/templates-preview and run/status/resume/cancel/export
+commands accept explicit RunSpecV3 Gemini Developer configurations at endpoint
+`models.generate_content`. No new execution command or control-envelope version
+is added. Offline commands never resolve credentials or construct SDK clients.
+Explicit `auth verify --provider gemini` and `providers models --provider gemini`
+perform one bounded non-generative read without pagination; authentication
+acceptance is separate from model qualification. See the [Gemini guide](gemini.md)
+for native authority, key precedence, capture, usage and conservative recovery.
+The repository qualification script exposes plan/report only, with no live executor.

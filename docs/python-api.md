@@ -27,7 +27,7 @@ inputs and the mock adapter. Phase5A OpenAI examples are documented separately i
 
 The top-level `judgmentllm` package and `judgmentllm.lifecycle` expose:
 
-```python
+```text
 validate_inputs(spec_or_path, *, capabilities=None, exhaustive_rendering=False) -> InputValidationReport
 estimate_run(spec_or_path, *, capabilities=None) -> ExecutionPlan
 run_live(spec_or_path, *, store=None, progress=None, mock=None) -> RunSummary
@@ -833,7 +833,7 @@ evidence.
 
 Order extraction:
 
-```python
+```text
 extract_observation_metadata(
     commitment: OutputCommitmentV2, *, identity: EvidenceIdentity,
     output: str | bytes | None,
@@ -927,7 +927,7 @@ exports/R joins and Phase 7 authorized live qualification remain deferred.
 Expose these typed services from `judgmentllm.lifecycle` and the top-level package,
 following the existing synchronous result-export convention:
 
-```python
+```text
 export_run_usage(run_id, *, store=None, format="jsonl", view="canonical",
                  na_string="NA", high_water_mark=None,
                  evidence_high_water_mark=None) -> EvidenceManifest
@@ -1100,7 +1100,7 @@ Explicit `RunSpecV3` / `PromptSpecV3` add typed `prompt.native_mechanism`; the
 public mock lifecycle remains unchanged and cannot execute real providers.
 `judgmentllm.transport` contains the independently versioned native-capable seam:
 
-```python
+```text
 TransportContext(scope, evidence=None, openai_catalog=None, provider_catalog=None,
                  service_identity=None, fixture_sha256=None)
 build_output_commitment_v3(spec, request, context, *, inherited_commitment=None)
@@ -1178,7 +1178,7 @@ output limits, missing/multiple/unsupported output, tools and provider failures.
 
 ### Read-only assessment diagnostics
 
-```python
+```text
 from judgmentllm.assessment_inspection import (
     AssessmentOutputInspection,
     inspect_assessment_output,
@@ -1273,3 +1273,20 @@ non-generative protected GET and return separate provider-specific typed records
 Default OpenAI calls retain their existing record classes. No diagnostic operation
 runs during ordinary offline validation, preview or `credential_status`.
 Native production support remains unqualified and requires reviewed exact scope.
+
+
+## Gemini Developer production adapter (Milestone 3 Phase 5C)
+
+The existing public lifecycle functions accept explicit `RunSpecV3` with provider
+`gemini` and endpoint `models.generate_content`. `preview_prompt`, `validate_inputs`
+and `estimate_run` stay offline. Execution uses the shared resolver, maintained
+SDK2.34.0/v1beta, immutable source preparation and existing durable services.
+`discover_models(provider="gemini")` / `verify_authentication(provider="gemini")`
+and their async counterparts return the separate Gemini diagnostic records; each
+explicit operation performs at most one non-generative models-list read.
+
+Gemini manifest6/output6/request6/transport4 and diagnostic3 are additive internal
+contracts. Existing result records, per-physical usage evidence readers, read-only
+assessment inspection and JSONL/CSV/R exports retain their formats. No public
+arbitrary SDK config or reasoning-retention interface is added. Details and
+unqualified live scope are in the [Gemini guide](gemini.md).

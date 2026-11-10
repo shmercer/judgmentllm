@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from judgmentllm import gemini_types
 from judgmentllm.config import (
     RunSpec,
     RunSpecification,
@@ -33,7 +34,21 @@ def _preview_render(
     template: str | None,
     request: PlannedRequest,
     lookup: Callable[[Literal["response", "pair"], str], ResponseItem | PairTask],
-) -> RenderedAssessmentPrompt | RenderedProductionPromptV1 | RenderedAnthropicPromptV1:
+) -> (
+    RenderedAssessmentPrompt
+    | RenderedProductionPromptV1
+    | RenderedAnthropicPromptV1
+    | gemini_types.RenderedGeminiPromptV1
+):
+    if isinstance(spec, RunSpecV3) and spec.provider == "gemini":
+        from judgmentllm.gemini_prompts import render_gemini_request
+        from judgmentllm.gemini_transport import build_output_commitment_v6
+        from judgmentllm.gemini_transport import (
+            production_context as gemini_context,
+        )
+
+        output = build_output_commitment_v6(spec, request, gemini_context(spec))
+        return render_gemini_request(spec, template, request, lookup, output)
     if isinstance(spec, RunSpecV3) and spec.provider == "anthropic":
         from judgmentllm.anthropic_prompts import render_anthropic_request
         from judgmentllm.anthropic_transport import build_output_commitment_v5
@@ -64,7 +79,12 @@ def preview_prompt(
     trait_id: str | None = None,
     pair_uid: str | None = None,
     capabilities: CapabilityProfile | None = None,
-) -> RenderedAssessmentPrompt | RenderedProductionPromptV1 | RenderedAnthropicPromptV1:
+) -> (
+    RenderedAssessmentPrompt
+    | RenderedProductionPromptV1
+    | RenderedAnthropicPromptV1
+    | gemini_types.RenderedGeminiPromptV1
+):
     """Render one planned request without credentials, networking, or execution.
 
     For grouped rubric requests, selecting a trait previews its entire fixed

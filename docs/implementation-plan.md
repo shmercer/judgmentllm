@@ -26,7 +26,8 @@ The [baseline audit](ci-test-audit.md), [requirement map](../ci/verification-map
 and [local CI guide](local-ci.md) describe retained guarantees and the optional
 complete grid. The CI modernization itself is Level 3; focused enforcement tests
 and one representative hosted campaign suffice. No repeated full-grid benchmark
-study is required. Gemini Developer implementation remains a separate milestone.
+study is required. Gemini Developer Phase 5C has its separate implementation and
+review boundary below.
 
 ## Milestone 0 - Repository and engineering baseline
 
@@ -554,3 +555,39 @@ No credential retrieval, discovery, token-count, generation, live qualification,
 registry promotion, merge, publication or Phase6 exports occur in this workstream.
 The external verification report and open PR identify final source-bound results
 and the immutable unexecuted plan.
+
+
+## Milestone 3 Phase 5C implementation and review boundary
+
+Gemini Developer uses google-genai 2.34.0 / v1beta `models.generate_content` with
+independent manifest6/output6/request6/transport4/diagnostic3 identities. The shared
+engine, persistence, normalization and export contracts are reused. Historical
+Google projections, SDK lock, OpenAI/Anthropic/synthetic source identities and
+normalized result version1 remain unchanged. No Vertex or Interactions route is
+implemented. The production native qualification registry stays empty.
+
+Implemented mappings and synthetic SDK tests cover text/native/auto, independent
+and grouped ordinal rubrics, all explanation layouts, protected templates and
+exemplars, pairwise wins and supported ties, sparse generation, strict response
+completion, usage classes and conservative recovery. Exact outgoing bytes are
+verified at synthetic HTTP interception, including both Google schema mechanisms.
+The SDK's default automatic continuation is explicitly disabled, as are function
+calling and retries; a second forwarding within one invocation is rejected.
+Credentials use the shared GOOGLE_API_KEY-before-GEMINI_API_KEY policy and cannot
+select Vertex, ADC, ambient endpoint/proxy/debug recording or redirects.
+
+The existing strict execution R gate adds Python-generated Gemini outputs and
+physical usage/diagnostic joins without changing export columns or adding Phase6
+APIs. Actual acceptance is recorded against the final PR head under the
+[risk policy](ci-optimization.md). Shared dispatch/authentication/evidence/schema
+additions make this Level3; the automatic protected-base plan must decide the
+complete lanes, seven strict Linux R gates, coverage and affected package/resource
+checks. No seven-lane local campaign or duplicate full coverage campaign is required.
+
+The [Gemini guide](gemini.md) includes runnable synthetic inputs and a four-case
+source-bound live proposal for candidate gemini-3.1-flash-lite. Planning/reporting
+are credential-free; native proposal preparation grants no execution authority.
+The narrowly scoped harness deliberately has no live executor. Future execution
+requires reviewed source-bound enforcement plus separate exact-plan/source human
+billable-call and assessment-capture authorization. This implementation establishes
+no live serving enforcement, model qualification, package publication or merge.

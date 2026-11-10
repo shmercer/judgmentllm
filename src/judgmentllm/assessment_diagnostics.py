@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import Field, model_validator
 
+from judgmentllm import gemini_types
 from judgmentllm.assessment_errors import (
     AssessmentDiagnosticCode,
     contract_error_code,
@@ -162,7 +163,9 @@ class AssessmentParseDiagnostic:
 
 
 def diagnose_assessment_output(
-    component: AssessmentComponent | AnthropicAssessmentComponentV2,
+    component: AssessmentComponent
+    | AnthropicAssessmentComponentV2
+    | gemini_types.GeminiAssessmentComponentV3,
     contract: AssessmentOutputContract,
 ) -> AssessmentParseDiagnostic:
     """Use the canonical complete-output validator without repair or rescoring."""

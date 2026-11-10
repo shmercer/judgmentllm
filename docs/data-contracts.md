@@ -643,3 +643,33 @@ The Anthropic qualification plan has its own provider namespace. Its exact sourc
 complete request bytes, per-case input estimate evidence and plan digest are
 immutable; plan creation grants no physical submission authority. See the
 [adapter guide](anthropic.md) for controls and estimate limitations.
+
+## Gemini Developer production additions (Phase 5C)
+
+Gemini Developer uses manifest 6 (`gemini-production-v1`), output commitment 6,
+prepared request 6, transport commitment 4, and assessment component/diagnostic 3.
+These are additive independent versions; RunSpec remains 3, SQLite remains 2,
+neutral output remains 2, and normalized JSONL/CSV/R results remain 1. Historical
+OpenAI, Anthropic and synthetic identities are unchanged and never migrate.
+
+The exact scope is `gemini` / `models.generate_content`, google-genai 2.34.0,
+v1beta. Request commitments retain one candidate, no SDK continuation/function
+calling/retries, local timeout policy, sparse requested generation, exact prompt,
+ordered membership and the two existing Google projections. Native SDK-config
+and physical format fragments have distinct hashes. Actual intercepted SDK HTTP
+bytes, including float conversion, JSON spaces and Unicode escaping, must match
+the sealed complete body before forwarding. No key or local identity enters it.
+
+Usage adds source `gemini.generate_content.usageMetadata` under existing evidence
+semantics version 1. `promptTokenCount`, `candidatesTokenCount`, `thoughtsTokenCount`,
+`cachedContentTokenCount` and `totalTokenCount` map to the existing nullable
+counters. Thinking is excluded from candidate output; cached input is included
+in prompt input. `toolUsePromptTokenCount`, when reported, is a breakdown included
+in the reported total. Totals and prices are never derived from partial data.
+Usage stays once per physical observation rather than once per rubric trait.
+
+Diagnostic 3 records only closed finish/block reasons and component metadata.
+Protected recognized assessment bytes are separate from reasoning, signatures,
+canonical validity and whole-envelope retention. Missing historical diagnostics
+remain missing. The offline qualification-plan version 1 has its own namespace,
+requires a clean exact source and grants zero requests; no executor is provided.

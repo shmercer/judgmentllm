@@ -71,13 +71,21 @@ def register_commands(app: typer.Typer, auth_app: typer.Typer) -> typer.Typer:
     @auth_app.command("verify")
     def auth_verify(
         provider: Annotated[
-            str, typer.Option(help="Exact provider; openai or anthropic.")
+            str, typer.Option(help="Exact provider; openai, anthropic or gemini.")
         ],
         json_output: Annotated[
             bool, typer.Option("--json", help="Emit the version-1 control envelope.")
         ] = False,
     ) -> None:
         """Make one protected non-generative read; does not qualify a model."""
+
+        if provider == "gemini":
+            from judgmentllm.gemini_diagnostics import (
+                verify_authentication as verify_gemini,
+            )
+            from judgmentllm.providers.gemini_cli import present_gemini
+
+            return perform(lambda: verify_gemini(), present=present_gemini)
 
         if provider == "anthropic":
             from judgmentllm.anthropic_diagnostics import (
@@ -92,7 +100,7 @@ def register_commands(app: typer.Typer, auth_app: typer.Typer) -> typer.Typer:
             if provider != "openai":
                 raise LifecycleError(
                     "unsupported_capability",
-                    "Authentication verification supports providers openai and anthropic",
+                    "Authentication verification supports providers openai, anthropic and gemini",
                 )
             return verify_authentication(provider=provider)
 
@@ -101,7 +109,7 @@ def register_commands(app: typer.Typer, auth_app: typer.Typer) -> typer.Typer:
     @providers.command("models")
     def providers_models(
         provider: Annotated[
-            str, typer.Option(help="Exact provider; openai or anthropic.")
+            str, typer.Option(help="Exact provider; openai, anthropic or gemini.")
         ],
         model: Annotated[
             str | None,
@@ -112,6 +120,14 @@ def register_commands(app: typer.Typer, auth_app: typer.Typer) -> typer.Typer:
         ] = False,
     ) -> None:
         """List visible models with one read; no generation or pagination."""
+
+        if provider == "gemini":
+            from judgmentllm.gemini_diagnostics import (
+                discover_models as discover_gemini,
+            )
+            from judgmentllm.providers.gemini_cli import present_gemini
+
+            return perform(lambda: discover_gemini(model=model), present=present_gemini)
 
         if provider == "anthropic":
             from judgmentllm.anthropic_diagnostics import (
@@ -126,7 +142,7 @@ def register_commands(app: typer.Typer, auth_app: typer.Typer) -> typer.Typer:
             if provider != "openai":
                 raise LifecycleError(
                     "unsupported_capability",
-                    "Model discovery supports providers openai and anthropic",
+                    "Model discovery supports providers openai, anthropic and gemini",
                 )
             return discover_models(provider=provider, model=model)
 

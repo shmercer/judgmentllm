@@ -64,6 +64,19 @@ independent installation and provenance checks. If a required family is not live
 alpha; changing this all-provider criterion needs a recorded, explicit scope decision, not a silent
 downgrade.
 
+### Phase 5C alpha support update (2026-11-10)
+
+| Provider / endpoint | Install / authentication | Implemented and fixture-tested | Live qualification |
+|---|---|---|---|
+| Gemini Developer / models.generate_content | `[google]`, google-genai2.34.0 / v1beta; GOOGLE_API_KEY then GEMINI_API_KEY | Independent/grouped ordinal rubrics, three explanation layouts, pairwise winners/ties, text and two controlled native mechanisms, usage/provenance and recovery; sparse temperature/top_p/max_output_tokens | None; gemini-3.1-flash-lite is a proposed four-case candidate only |
+
+Selected category scores have no invented probabilities. Native production needs
+reviewed exact-route authority; offline fixtures grant none. Explicit tier/cache
+controls, reasoning retention, Vertex, Interactions and batches are unavailable.
+The [Gemini guide](gemini.md) and [provider matrix](provider-matrix.md) describe
+limits and the unexecuted proposal. This update does not check off alpha readiness
+or authorize a release, paid call, capability promotion or merge.
+
 ## B. Beginner-first documentation and navigation
 
 The GitHub README and PyPI project description are **front doors, not development logs**. Keep deep

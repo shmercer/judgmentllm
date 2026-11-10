@@ -1,6 +1,6 @@
 # JudgmentLLM
 
-**Milestone 3, Phase 5B — Anthropic Messages alongside OpenAI Responses and Chat Completions production adapters. Development version 0.1.0a3; exact-head offline and separately authorized live qualification are recorded separately.**
+**Milestone 3, Phase 5C — Gemini Developer alongside Anthropic Messages, OpenAI Responses and Chat Completions production adapters. Development version 0.1.0a3; exact-head offline and separately authorized live qualification are recorded separately.**
 
 Milestone 2 adds an [internal preparation foundation](docs/persistence-contracts.md)
 for SQLite state, immutable source snapshots, indexed input access, complete run
@@ -8,7 +8,7 @@ manifests, generation commitments, and local executor ownership.
 Public Python services and the versioned CLI provide complete validation, planning,
 mock live execution, durable status, conservative recovery, explicit subset retries,
 and immutable all-attempt exports. Production runs require explicit RunSpecV3;
-see the [OpenAI user guide](docs/openai.md) and [Anthropic user guide](docs/anthropic.md). Native serving qualification remains pending.
+see the [OpenAI user guide](docs/openai.md) and [Anthropic user guide](docs/anthropic.md), and [Gemini Developer guide](docs/gemini.md). Native serving qualification remains pending.
 The [approved Milestone 2 plan](docs/milestone-2-execution-plan.md) records the boundaries.
 Subphase 6 adds reproducible complete-run benchmarks, focused resource checks and
 practical examples. The [qualification protocol](docs/milestone-2-subphase-6-verification.md)
@@ -16,7 +16,7 @@ identifies the external exact-source ledger that records acceptance, measured
 workloads, exclusions and remaining conditions. Tooling availability alone does
 not establish milestone acceptance.
 
-JudgmentLLM provides typed, provider-independent contracts for ordinal rubric scoring and pairwise judgments. It loads synthetic assessments, validates category coding, prepares deterministic task groups, renders prompts, and normalizes supplied categorical or probability results. Synthetic mock execution, OpenAI and Anthropic generative adapters are available; model/feature qualification is scoped separately.
+JudgmentLLM provides typed, provider-independent contracts for ordinal rubric scoring and pairwise judgments. It loads synthetic assessments, validates category coding, prepares deterministic task groups, renders prompts, and normalizes supplied categorical or probability results. Synthetic mock execution, OpenAI, Anthropic and Gemini Developer generative adapters are available; model/feature qualification is scoped separately.
 
 Python 3.11+, Linux, Windows, and macOS are supported. The core uses Pydantic 2, PyYAML, Jinja2, and Typer; pandas and PyArrow are not required.
 

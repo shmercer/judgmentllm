@@ -419,7 +419,7 @@ class MockAdapter:
                 _revalidate_record(dependency),
                 _revalidate_record(rendered),
             )
-            if not isinstance(rendered, (RenderedPrompt, RenderedPromptV2)):
+            if type(rendered) not in (RenderedPrompt, RenderedPromptV2):
                 raise ValueError("historical mock cannot accept native rendering")
             if (spec.schema_version == 2) != isinstance(rendered, RenderedPromptV2):
                 raise ValueError("renderer version differs from the RunSpec version")

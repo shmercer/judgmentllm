@@ -333,7 +333,7 @@ def prepare_subset_retry(
         ):
             raise RetryAuthorizationError("retry operation selection conflicts")
         # Rendering and artifact verification stay outside write transactions.
-        if prepared_run.manifest.schema_version in (3, 4, 5):
+        if prepared_run.manifest.schema_version in (3, 4, 5, 6):
             from judgmentllm.transport import physical_identity
 
             wire = prepared_run.prepare_transport_attempt(
@@ -413,7 +413,7 @@ def prepare_subset_retry(
     adapter.validate(prepared_run.spec)
     attempt_id = stable_id("attempt", run_id, request_uid, attempt_number)
     native_artifacts = ()
-    if prepared_run.manifest.schema_version in (3, 4, 5):
+    if prepared_run.manifest.schema_version in (3, 4, 5, 6):
         from judgmentllm.preparation.native import publish_prepared_transport
         from judgmentllm.transport import physical_identity
 
@@ -433,7 +433,7 @@ def prepare_subset_retry(
         )
     else:
         rendered = prepared_run.render_attempt(subset)
-        if not isinstance(rendered, (RenderedPrompt, RenderedPromptV2)):
+        if type(rendered) not in (RenderedPrompt, RenderedPromptV2):
             raise IntegrityError("historical retry acquired native rendering")
         wire = adapter.prepare(prepared_run.spec, subset, rendered)
         prompt_bytes = rendered.text.encode("utf-8")

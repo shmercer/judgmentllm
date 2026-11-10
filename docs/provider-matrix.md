@@ -8,7 +8,7 @@
 | OpenAI Responses | implemented; reviewed live scope accepted | target | later milestone | generative | generative | Phase 5A, SDK 3.42.1; exact-model capability unknown until qualified |
 | OpenAI Decisions | target | not available | yes | typed score, 2-10 levels | typed choice | Currently GPT-6 Luna; no generated explanations; 1-400 questions/request; cache policy handled separately |
 | Anthropic Messages | implemented; live acceptance pending | target | later milestone | generative | generative | Phase 5B; SDK 2.3.0 / API 2026-10-21; text JSON and controlled native output_config.format |
-| Gemini Developer | target | target | yes | generative | generative | `google-genai` SDK; batch via generateContent |
+| Gemini Developer | implemented; offline fixtures; live unverified | later milestone | later milestone | generative | generative | Phase 5C; google-genai 2.34.0 / v1beta; text and two controlled native routes; [guide](gemini.md) |
 | Vertex AI Gemini | target | target (Google Cloud setup required) | yes | generative | generative | `google-genai` SDK; Gemini focus; GCS/BigQuery source and cloud IAM considerations |
 | Together AI | target | target, subject to current API qualification | yes | generative | generative | Use official Together Python SDK v3 (`together>=3,<4`); endpoint/model feature coverage must be tested |
 | Ollama local | target | no native provider batch | yes | generative | generative | Official Ollama SDK, local daemon; local model discovery; optional later cloud support separate |
@@ -28,7 +28,7 @@ distinguishes documented behavior, planned integration policy and pending
 qualification. Phases 1–3 implement neutral output contracts, v2 mock execution
 and offline authentication diagnostics. Phase 4A adds standalone strict evidence
 records and pure extractors. Phase 5A adds production OpenAI Responses and Chat
-adapters; Phase 5B adds Anthropic Messages. Other real integrations remain proposed. No endpoint/model
+adapters; Phase 5B adds Anthropic Messages and Phase 5C adds Gemini Developer. Other real integrations remain proposed. No endpoint/model
 acquires runtime support or live qualification from those records.
 
 - Shared credential resolution uses official SDK mechanisms: provider-specific
@@ -43,7 +43,7 @@ acquires runtime support or live qualification from those records.
   [provider evidence](assessment-provider-evidence.md#planned-vertex-authorization-key-route).
 - `auth status` and its Python API remain offline. Phase 5A adds explicit OpenAI
   `auth verify` and model discovery through a protected, non-generative models-list
-  request. Phase 5B adds the separate protected Anthropic models-list operation; other providers remain deferred; authentication acceptance and model
+  request. Phases 5B/5C add protected Anthropic and Gemini Developer models-list operations; other providers remain deferred; authentication acceptance and model
   visibility do not qualify an assessment endpoint or mechanism.
 - Native structured outputs are preferred where compatible. Generated schemas
   and local validators remain provider-neutral; each adapter reports the native
@@ -171,3 +171,21 @@ unknown totals, thinking privacy and non-retrievable uncertainty.
 The four-case live proposal is prepared offline and requires separate consent
 against its exact source and plan digest; no model-list or token-count call is
 needed to prepare it.
+
+### Gemini Developer Phase 5C scope
+
+The [Gemini guide](gemini.md) distinguishes implemented request mapping and
+synthetic SDK/lifecycle tests from unverified live serving. Developer API only:
+`models.generate_content`, google-genai 2.34.0, v1beta, explicit API key with
+`GOOGLE_API_KEY` before `GEMINI_API_KEY`. Vertex, enterprise, ADC and Interactions
+are separate. Independent/grouped rubric layouts and pairwise winners use the
+existing strict local output contracts. No probability distribution is invented.
+
+Both existing native projections are preserved and tested through actual SDK
+serialization. Production native qualification remains empty; `auto` records text
+when native authority is unknown and strict policy permits it. Selected native
+requests never fall back after failure. Automatic continuation, function calling,
+SDK retries, redirects and ambient transport routing are disabled or rejected.
+Usage records prompt, candidate, thought, cache and total counts separately, with
+missing values unknown. The four-case source-bound qualification proposal has no
+executor and no live authorization. No Gemini model is live-qualified here.

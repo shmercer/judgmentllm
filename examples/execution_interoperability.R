@@ -247,3 +247,51 @@ stopifnot(all(as.numeric(ap$result) == 1), all(is.na(ap$p_left)), all(is.na(ap$p
 for (order in ap$original_order) stopifnot(identical(jsonlite::fromJSON(order), c("001", "002")))
 for (order in ap$presented_order) stopifnot(identical(jsonlite::fromJSON(order), c("002", "001")))
 for (inspection in read_anthropic("inspections.jsonl")) stopifnot(!"output_text" %in% names(inspection))
+
+# Phase 5C: actual pinned Gemini SDK, synthetic HTTP, unchanged R exports.
+gemini_root <- file.path(root, "gemini")
+read_gemini <- function(name) lapply(readLines(file.path(gemini_root, name), encoding="UTF-8"), jsonlite::fromJSON, simplifyVector=FALSE)
+gemini_rows <- read_gemini("results.jsonl")
+gemini_evidence <- read_gemini("evidence.jsonl")
+stopifnot(length(gemini_rows) == 8L, length(gemini_evidence) == 6L)
+gkeys <- vapply(gemini_evidence, function(x) key(x$identity), character(1))
+stopifnot(length(unique(gkeys)) == 6L)
+for (row in gemini_rows) {
+  stopifnot(key(row) %in% gkeys, row$provider == "gemini", row$endpoint == "models.generate_content")
+  stopifnot(is.null(row$input_tokens), is.null(row$output_tokens))
+  if (row$task_kind == "rubric") {
+    stopifnot(row$item_id == "001", row$trait_id %in% c("01", "02"))
+    stopifnot(is.null(row$probabilities), is.null(row$expected_value))
+  } else {
+    stopifnot(identical(unlist(row$original_order), c("001", "002")))
+    stopifnot(identical(unlist(row$presented_order), c("002", "001")))
+    stopifnot(row$winner_id == "002", is.null(row$p_left), is.null(row$p_right))
+  }
+}
+stopifnot(sum(vapply(gemini_rows, function(x) x$status == "invalid", logical(1))) == 2L)
+for (entry in gemini_evidence) {
+  usage <- entry$usage
+  stopifnot(usage$provider == "gemini", is.null(usage$reported_cost), is.null(usage$cache_write_tokens))
+  if (is.null(usage$input_tokens)) {
+    stopifnot(is.null(usage$output_tokens), is.null(usage$reasoning_tokens), is.null(usage$total_tokens))
+  } else {
+    stopifnot(usage$input_tokens == 100, usage$output_tokens == 10, usage$reasoning_tokens == 4)
+    stopifnot(usage$cache_read_tokens == 5, usage$total_tokens == 114)
+    thoughts <- Filter(function(x) x$field == "thoughtsTokenCount", usage$breakdown)[[1L]]
+    stopifnot(thoughts$relationship == "excluded_from", thoughts$related_counter == "output_tokens")
+  }
+  diagnostic <- entry$assessment_diagnostic
+  stopifnot(diagnostic$diagnostic_version == 3L, diagnostic$component$finish_reason == "STOP")
+  stopifnot(diagnostic$identity$observation_id == entry$identity$observation_id)
+  stopifnot(length(entry$reasoning) == 1L, entry$reasoning[[1L]]$availability == "not_retained")
+  stopifnot(is.null(entry$reasoning[[1L]]$artifact))
+  stopifnot(diagnostic$retention == if (entry$capture == "full") "retained" else "hash_only")
+}
+gr <- read.csv(file.path(gemini_root, "rubric.csv"), colClasses="character", na.strings="NA", check.names=FALSE)
+gp <- read.csv(file.path(gemini_root, "pairs.csv"), colClasses="character", na.strings="NA", check.names=FALSE)
+stopifnot(nrow(gr) == 6L, nrow(gp) == 2L, all(gr$response_id == "001"))
+for (mapping in gr$resolved_levels_json) stopifnot(identical(jsonlite::fromJSON(mapping)$numeric_value, c(1, 3, 8)))
+stopifnot(all(gp$ID1 == "002"), all(gp$ID2 == "001"), all(as.numeric(gp$result) == 1))
+stopifnot(length(unique(gr$attempt_id)) == 4L)
+for (inspection in read_gemini("inspections.jsonl")) stopifnot(!"output_text" %in% names(inspection))
+cat("Gemini Developer interoperability passed\n")

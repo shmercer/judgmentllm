@@ -327,3 +327,28 @@ tokens and512 requested output tokens each when the audit supports that allowanc
 At reviewed $3/$15 rates, $0.129024 reservation and proposed $0.15 estimated ceiling
 remain estimates, not a guaranteed bill. Separate plan/source-bound billable
 consent is mandatory; no Anthropic API operation occurs during this work.
+
+
+## Phase 5C: Gemini Developer production scope (2026-11-10)
+
+Keep reviewed google-genai2.34.0, v1beta, and both frozen Google projections.
+Developer API only; explicitly disable enterprise/Vertex, ADC fallback, automatic
+continuation/function calling, SDK retries, redirects, ambient URLs/proxies and
+SDK replay recording. Preserve typed SDK transformations in physical body bytes,
+including float controls, Schema casing and JSON whitespace/Unicode escaping.
+The final HTTP guard rejects mismatches and repeated forwarding within an attempt.
+
+Use separate Gemini manifest6/output6/request6/receipt4/diagnostic3 contracts and
+exact mechanism-scoped qualification profiles. Reuse provider-neutral durable
+execution and evidence; leave normalized results and R export schemas unchanged.
+Reported thinking usage is separate from candidate output and never authorizes
+thinking-text retention. Missing counters remain unknown, with no inferred totals
+or precise cost. Uncertain non-retrievable outcomes never authorize resubmission.
+
+Prepare only four synthetic proposal cases. The candidate gemini-3.1-flash-lite
+has reviewed standard rates $0.25/$1.50 per million input/output, including
+thinking. At8192 estimated input and512 requested output per case, reserve
+$0.011264 within a proposed$0.02 estimate. This is not a provider-enforced input
+or monetary cap. The plan/report-only harness has no executor or grant: a later
+reviewed executor and exact-digest/source-bound human consent are required. No
+live request or qualification promotion is authorized by offline evidence.
