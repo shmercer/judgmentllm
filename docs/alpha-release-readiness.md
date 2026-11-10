@@ -14,6 +14,15 @@ and managed bulk-live), Milestone 6 (automated model catalog and thin R package)
 (FastAPI) remain committed *later* deliverables, **not alpha blockers**. Existing R-compatible exports
 and required interoperability tests remain alpha blockers.
 
+Development acceptance follows the [risk decision table](ci-optimization.md).
+Publication is Level 4: comprehensive supported-platform/Python verification,
+strict cross-platform R, primary coverage/regression assessment, isolated wheel
+and sdist installation, compatibility, required scale/resource evidence, and the
+independent live-capability and human artifact approval gates below. Routine
+low-risk acceptance never establishes release readiness. Deferred verification
+must be resolved or explicitly admitted under the existing release protocol;
+it must never be relabeled as passed.
+
 ## A. Definition of ready and supported scope
 
 - [ ]  Complete the applicable Milestone 3 live-adapter, evidence/export, diagnosis, and qualification

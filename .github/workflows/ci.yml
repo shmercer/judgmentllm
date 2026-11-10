@@ -1,249 +1,222 @@
 name: CI
 
 on:
+  # The workflow and policy come from the protected base, not the proposed PR.
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
-  pull_request:
+  schedule:
+    - cron: '17 8 * * 1'
   workflow_dispatch:
     inputs:
-      windows_311_only:
-        description: Run only Windows / Python 3.11 troubleshooting
-        type: boolean
-        required: false
-        default: false
+      risk:
+        description: Minimum verification level (4 = comprehensive; never lowers classification)
+        type: choice
+        options: ['4', '3', '2', '1', '0']
+        default: '4'
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+env:
+  SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+  POLICY_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
+  BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before || (github.event_name == 'workflow_dispatch' && 'refs/remotes/origin/main') || github.sha }}
+  RUN_ID: ${{ github.run_id }}:${{ github.run_attempt }}
+
 jobs:
-  baseline:
-    name: ${{ matrix.os }} / Python ${{ matrix.python }}
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      risk: ${{ steps.plan.outputs.risk }}
+      r_required: ${{ steps.plan.outputs.r_required }}
+    steps:
+      - name: Check out trusted policy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.POLICY_SHA }}
+          path: policy
+          persist-credentials: false
+      - name: Check out immutable candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
+        with:
+          python-version: '3.11'
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2
+        with:
+          version: '0.13.6'
+          enable-cache: false
+      - name: Classify using trusted policy
+        id: plan
+        env:
+          MINIMUM: ${{ github.event_name == 'schedule' && '4' || inputs.risk || '0' }}
+        run: python policy/ci/acceptance.py plan --source candidate --base "$BASE_REF" --head "$SOURCE_SHA" --risk "$MINIMUM" --output "$RUNNER_TEMP/p/plan.json"
+      - name: Prepare locked environment
+        if: steps.plan.outputs.risk != '0'
+        run: uv sync --project candidate --locked --all-extras --group dev
+      - name: Inexpensive checks before the matrix
+        env:
+          RISK: ${{ steps.plan.outputs.risk }}
+        shell: bash
+        run: |
+          launcher=(python)
+          if [ "$RISK" != 0 ]; then launcher=(uv run --project candidate --offline --no-sync python); fi
+          "${launcher[@]}" policy/ci/acceptance.py lane --source candidate --plan "$RUNNER_TEMP/p/plan.json" --run-id "$RUN_ID" --quality-only --output "$RUNNER_TEMP/p/quality"
+      - name: Preserve plan and quality evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: verification-plan
+          path: ${{ runner.temp }}/p/
+          if-no-files-found: error
+
+  verify:
+    needs: plan
+    name: ${{ matrix.id }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 50
     strategy:
       fail-fast: false
-      matrix:
-        include: >-
-          ${{ fromJSON(
-          github.event_name == 'workflow_dispatch' && inputs.windows_311_only &&
-          '[{"os":"windows-latest","python":"3.11"}]' ||
-          '[{"os":"ubuntu-latest","python":"3.11"},{"os":"ubuntu-latest","python":"3.15"},{"os":"macos-latest","python":"3.11"},{"os":"macos-latest","python":"3.15"},{"os":"windows-latest","python":"3.12"}]'
-          ) }}
-    env:
-      UV_PYTHON: ${{ matrix.python }}
-      NO_COLOR: "1"
-      JUDGMENTLLM_REQUIRE_NATIVE_SDK_PROBES: "1"
-      JUDGMENTLLM_CI_RUN_ID: ${{ github.run_id }}:${{ github.run_attempt }}:${{ matrix.os }}:${{ matrix.python }}
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out trusted policy
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          ref: ${{ env.POLICY_SHA }}
+          path: policy
           persist-credentials: false
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-
-      - name: Set up Python
-        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+      - name: Check out immutable candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0
         with:
           python-version: ${{ matrix.python }}
-
-      - name: Set up uv
-        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2
+        if: needs.plan.outputs.risk != '0'
         with:
-          version: "0.13.6"
-          enable-cache: true
-          cache-dependency-glob: uv.lock
-
-      - name: Install locked development and optional dependencies
-        run: uv sync --locked --all-extras --group dev
-
-      - name: Verify Windows export durability and cancellation recovery
-        if: runner.os == 'Windows'
-        run: uv run --offline --no-sync python -m pytest --no-cov -p ci.local.pytest_report --ci-report "${{ runner.temp }}/judgmentllm-preflights/d.json" -q -rP tests/test_export_durability.py tests/test_execution_exports.py tests/test_grouped_execution.py::test_grouped_minimal_privacy_live_and_recovery tests/test_execution_cancellation_processes.py::test_competing_process_cannot_cancel_exclusive_executor -Werror::ResourceWarning -Werror::pytest.PytestUnraisableExceptionWarning
-
-      - name: Lint
-        run: uv run --offline --no-sync ruff check .
-
-      - name: Check formatting
-        run: uv run --offline --no-sync ruff format --check .
-
-      - name: Check types
-        run: uv run --offline --no-sync pyright
-
-      - name: Verify local CI infrastructure
-        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
-        run: uv run --offline --no-sync pytest --no-cov -q ci/local
-
-      - name: Set up R for required interoperability checks
-        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
-        uses: r-lib/actions/setup-r@f9a764fea8d5c63df6ef9a5c7795bf7deb5d7e05 # v2
+          version: '0.13.6'
+          enable-cache: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: verification-plan
+          path: ${{ runner.temp }}/p
+      - name: Set up required R
+        if: needs.plan.outputs.r_required == 'true' && (matrix.id == 'linux-3.11' || needs.plan.outputs.risk == '4')
+        uses: r-lib/actions/setup-r@f9a764fea8d5c63df6ef9a5c7795bf7deb5d7e05
         with:
           r-version: '4.6.2'
           use-public-rspm: false
-
-      - name: Install pinned jsonlite for R interoperability
-        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
+      - name: Install pinned jsonlite
+        if: needs.plan.outputs.r_required == 'true' && (matrix.id == 'linux-3.11' || needs.plan.outputs.risk == '4')
         shell: Rscript --vanilla {0}
         run: |
-          # CRAN jsonlite 2.0.0 source, pinned to its immutable mirror commit.
-          # Runtime dependencies are base R's methods; no fitting packages.
           utils::install.packages(
             "https://github.com/cran/jsonlite/archive/2559608891cc42b9f857a5a0aff231738a670576.tar.gz",
             repos = NULL, type = "source", dependencies = FALSE
           )
           stopifnot(requireNamespace("jsonlite", quietly = TRUE))
           stopifnot(as.character(utils::packageVersion("jsonlite")) == "2.0.0")
-
-      - name: Observe Windows file-signature metadata
-        if: runner.os == 'Windows'
-        run: uv run --offline --no-sync python scripts/source_signature_probe.py
-
-      - name: Verify Windows live privacy and lock behavior
-        if: runner.os == 'Windows'
-        run: uv run --offline --no-sync python -m pytest --no-cov -p ci.local.pytest_report --ci-report "${{ runner.temp }}/judgmentllm-preflights/l.json" -q tests/test_execution_privacy.py tests/test_execution.py::test_minimal_privacy_success_and_loss_windows -Werror::ResourceWarning -Werror::pytest.PytestUnraisableExceptionWarning
-
-      - name: Run offline tests with coverage
-        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
-        env:
-          JUDGMENTLLM_R_STRICT: "1"
-          JUDGMENTLLM_OPENAI_RESOURCE_EVIDENCE: ${{ runner.temp }}/judgmentllm-openai-resources
-        run: uv run --offline --no-sync python ci/local/suite.py --output "${{ runner.temp }}/judgmentllm-suite" --workers 4 --bound-workers --contract ci/test-contract.json --baseline ci/coverage-floor.json tests
-
-      - name: Run offline tests without coverage
-        if: matrix.os != 'ubuntu-latest' || matrix.python != '3.11'
-        env:
-          JUDGMENTLLM_OPENAI_RESOURCE_EVIDENCE: ${{ runner.temp }}/judgmentllm-openai-resources
-        run: uv run --offline --no-sync python ci/local/suite.py --output "${{ runner.temp }}/judgmentllm-suite" --workers 4 --bound-workers --contract ci/test-contract.json --no-coverage --preflight-root "${{ runner.temp }}/judgmentllm-preflights" tests
-
-      - name: Verify required Python-to-R interoperability
-        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
+      - name: Prepare locked environment
+        if: needs.plan.outputs.risk != '0'
+        run: uv sync --project candidate --locked --all-extras --group dev
+      - name: Execute planned checks
         shell: bash
         env:
-          JUDGMENTLLM_R_STRICT: '1'
+          RISK: ${{ needs.plan.outputs.risk }}
         run: |
-          set -euo pipefail
-          uv run --offline --no-sync python examples/export_r.py --output "$RUNNER_TEMP/judgmentllm-r"
-          Rscript --vanilla examples/r_interoperability.R "$RUNNER_TEMP/judgmentllm-r"
-
-      - name: Verify required persistence-to-R interoperability
-        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
-        shell: bash
-        env:
-          JUDGMENTLLM_R_STRICT: '1'
-        run: |
-          set -euo pipefail
-          uv run --offline --no-sync python scripts/persistence_r_fixture.py --phase persist --output "$RUNNER_TEMP/judgmentllm-persistence-r"
-          uv run --offline --no-sync python scripts/persistence_r_fixture.py --phase export --output "$RUNNER_TEMP/judgmentllm-persistence-r"
-          Rscript --vanilla examples/persistence_interoperability.R "$RUNNER_TEMP/judgmentllm-persistence-r"
-
-      - name: Verify required generation-to-R interoperability
-        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
-        shell: bash
-        env:
-          JUDGMENTLLM_R_STRICT: '1'
-        run: |
-          set -euo pipefail
-          uv run --offline --no-sync python scripts/generation_r_fixture.py --phase persist --output "$RUNNER_TEMP/judgmentllm-generation-r"
-          uv run --offline --no-sync python scripts/generation_r_fixture.py --phase export --output "$RUNNER_TEMP/judgmentllm-generation-r"
-          Rscript --vanilla examples/generation_interoperability.R "$RUNNER_TEMP/judgmentllm-generation-r"
-
-      - name: Verify required source-preparation-to-R interoperability
-        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
-        shell: bash
-        env:
-          JUDGMENTLLM_R_STRICT: '1'
-        run: |
-          set -euo pipefail
-          uv run --offline --no-sync python scripts/source_preparation_r_fixture.py --phase persist --output "$RUNNER_TEMP/judgmentllm-source-preparation-r"
-          uv run --offline --no-sync python scripts/source_preparation_r_fixture.py --phase export --output "$RUNNER_TEMP/judgmentllm-source-preparation-r"
-          Rscript --vanilla examples/source_preparation_interoperability.R "$RUNNER_TEMP/judgmentllm-source-preparation-r"
-
-      - name: Verify required execution-to-R interoperability
-        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
-        shell: bash
-        env:
-          JUDGMENTLLM_R_STRICT: '1'
-        run: |
-          set -euo pipefail
-          uv run --offline --no-sync python scripts/execution_r_fixture.py --phase persist --output "$RUNNER_TEMP/judgmentllm-execution-r"
-          uv run --offline --no-sync python scripts/execution_r_fixture.py --phase export --output "$RUNNER_TEMP/judgmentllm-execution-r"
-          Rscript --vanilla examples/execution_interoperability.R "$RUNNER_TEMP/judgmentllm-execution-r"
-
-      - name: Verify required grouped retry and export interoperability
-        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
-        shell: bash
-        env:
-          JUDGMENTLLM_R_STRICT: '1'
-        run: |
-          set -euo pipefail
-          uv run --offline --no-sync python scripts/grouped_lifecycle_r_fixture.py --phase persist --output "$RUNNER_TEMP/judgmentllm-grouped-lifecycle-r"
-          uv run --offline --no-sync python scripts/grouped_lifecycle_r_fixture.py --phase export --output "$RUNNER_TEMP/judgmentllm-grouped-lifecycle-r"
-          Rscript --vanilla examples/grouped_lifecycle_interoperability.R "$RUNNER_TEMP/judgmentllm-grouped-lifecycle-r"
-
-      - name: Verify required installed CLI lifecycle interoperability
-        if: matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
-        env:
-          JUDGMENTLLM_R_STRICT: '1'
-        run: uv run --offline --no-sync python scripts/cli_lifecycle_r_gate.py --output "${{ runner.temp }}/judgmentllm-cli-lifecycle-r"
-
-      - name: Build distributions
-        run: uv build --offline
-
-      - name: Validate distribution metadata
-        run: uv run --offline --no-sync twine check --strict dist/*
-
-      - name: Verify clean core wheel installation
-        run: uv run --offline --no-sync python scripts/smoke_install.py dist/*.whl
-
-      - name: Verify clean core source distribution installation
-        if: runner.os == 'Linux'
-        run: uv run --offline --no-sync python scripts/smoke_install.py dist/*.tar.gz
-
-      - name: Preserve complete test and allocation receipts
+          launcher=(python)
+          if [ "$RISK" != 0 ]; then launcher=(uv run --project candidate --offline --no-sync python); fi
+          "${launcher[@]}" policy/ci/acceptance.py lane \
+            --source candidate --plan "$RUNNER_TEMP/p/plan.json" --lane "${{ matrix.id }}" \
+            --quality-receipt "$RUNNER_TEMP/p/quality/quality.json" --run-id "$RUN_ID" --output "$RUNNER_TEMP/v"
+      - name: Preserve diagnostics even on failure
         if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: test-receipts-${{ matrix.os }}-${{ matrix.python }}
+          name: verification-${{ matrix.id }}
           path: |
-            ${{ runner.temp }}/judgmentllm-suite/*.json
-            ${{ runner.temp }}/judgmentllm-suite/*.log
-            ${{ runner.temp }}/judgmentllm-suite/resource-measurements/*.json
-            ${{ runner.temp }}/judgmentllm-preflights/*.json
-          if-no-files-found: warn
-
-      - name: Preserve offline OpenAI resource measurements
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: openai-resources-${{ matrix.os }}-${{ matrix.python }}
-          path: ${{ runner.temp }}/judgmentllm-openai-resources/*.json
-          if-no-files-found: warn
-
-      - name: Preserve coverage report
-        if: always() && matrix.os == 'ubuntu-latest' && matrix.python == '3.11'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: coverage-${{ matrix.os }}-${{ matrix.python }}
-          path: ${{ runner.temp }}/judgmentllm-suite/coverage.xml
-          if-no-files-found: warn
-
-      - name: Preserve distributions
-        if: runner.os == 'Linux' && matrix.python == '3.11'
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: distributions
-          path: dist/*
+            ${{ runner.temp }}/v/*.json
+            ${{ runner.temp }}/v/*.log
+            ${{ runner.temp }}/v/suite/*.json
+            ${{ runner.temp }}/v/suite/*.log
+            ${{ runner.temp }}/v/suite/*.xml
+            ${{ runner.temp }}/v/suite/resource-measurements/*.json
+            ${{ runner.temp }}/v/openai-resources/*.json
           if-no-files-found: error
 
-      - name: Upload coverage to Codecov when connected
-        if: runner.os == 'Linux' && matrix.python == '3.11' && vars.CODECOV_ENABLED == 'true'
-        continue-on-error: true
-        uses: codecov/codecov-action@303a32d7a59b442fa8d48b6a1cc6825c09c847a5 # v7.1.1
+  acceptance:
+    name: CI acceptance
+    if: always()
+    needs: [plan, verify]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Only this trusted, isolated job can publish the status on the literal PR
+    # head. Candidate code never receives this token or runs in this job.
+    permissions:
+      contents: read
+      statuses: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          files: ${{ runner.temp }}/judgmentllm-suite/coverage.xml
-          disable_search: true
-          fail_ci_if_error: false
-          token: ${{ secrets.CODECOV_TOKEN }}
+          ref: ${{ env.POLICY_SHA }}
+          path: policy
+          persist-credentials: false
+      - name: Read candidate Git objects without executing candidate code
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          path: candidate
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          name: verification-plan
+          path: ${{ runner.temp }}/p
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          pattern: verification-*
+          path: ${{ runner.temp }}/receipts
+      - name: Require every planned lane and artifact
+        env:
+          PLAN_RESULT: ${{ needs.plan.result }}
+          VERIFY_RESULT: ${{ needs.verify.result }}
+          MINIMUM: ${{ github.event_name == 'schedule' && '4' || inputs.risk || '0' }}
+        run: |
+          test "$PLAN_RESULT" = success
+          test "$VERIFY_RESULT" = success
+          python policy/ci/acceptance.py aggregate --plan "$RUNNER_TEMP/p/plan.json" \
+            --source candidate --base "$BASE_REF" --head "$SOURCE_SHA" --risk "$MINIMUM" \
+            --receipts "$RUNNER_TEMP/receipts" --run-id "$RUN_ID" --output "$RUNNER_TEMP/acceptance.json"
+      - name: Preserve acceptance evidence
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: acceptance
+          path: ${{ runner.temp }}/acceptance.json
+          if-no-files-found: error
+      - name: Publish exact-head required status
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATE: ${{ job.status == 'success' && 'success' || 'failure' }}
+        run: |
+          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$SOURCE_SHA" \
+            -f state="$STATE" -f context="CI acceptance" \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+            -f description="Risk-based verification; required lanes and evidence checked"

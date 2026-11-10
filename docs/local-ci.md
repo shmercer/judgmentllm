@@ -1,48 +1,27 @@
-# Local cross-platform verification
+# Local verification and optional complete grid
 
-This development harness runs the committed JudgmentLLM checkout on seven local
-configurations before publication: Ubuntu with CPython 3.11.18, 3.12.16 and
-3.15.2; Windows and macOS each with CPython 3.11.18 and 3.12.16. It is separate from the installed library/CLI and does not
-implement scoring. It qualifies the exact committed public lifecycle implementation
-through the same quality, installation and seven strict interoperability gates.
-The original infrastructure was merged through PR #9 and PR #8 into main
-`01fa7e47b86f36370f8df017873cf41668b2f363`.
+Use the authoritative [risk decision table and commands](ci-optimization.md)
+for development and PR acceptance. Targeted feedback uses the existing locked
+worktree environment; Linux/Python 3.11 is the principal full-suite and coverage
+lane. Routine PRs do **not** need a duplicate local platform campaign before
+hosted CI. A passing primary lane does not imply deferred platforms or R gates
+passed. Hosted CI records the requirements and the named acceptance status.
 
-Current hosted CI has five routine jobs: Ubuntu/macOS Python 3.11/3.15 and
-Windows Python 3.12. Manual `windows_311_only=true` retains the complete Windows
-3.11 job. Historical proposal and qualification records below describe the
-infrastructure rollout; they do not override this matrix or the seventh gate.
+The native grid remains an explicit complete-qualification option. The details
+below apply **when this grid is requested**, not to every PR. It runs Ubuntu
+CPython 3.11.18/3.12.16/3.15.2 and Windows/macOS 3.11.18/3.12.16, including all
+seven strict R/jsonlite gates per lane (49 executions). Only Linux 3.11 measures
+coverage; the other lanes use explicit `--no-cov`. Source-bound archives need a
+reconciled coverage floor at this checkpoint; an edited module with no historical
+Git snapshot fails safely. Preserve the 90% combined floor, resource workload
+sizes, memory limits and the 90/180-second child deadlines.
 
-The [CI optimization profiles](ci-optimization.md) provide fast component testing,
-complete PR checks, release checks and reproducible allocation experiments.
-The [baseline audit](ci-test-audit.md) and [requirement map](../ci/verification-map.json)
-explain retained guarantees and documented setup consolidation. All seven local
-configurations and 49 strict R gates remain mandatory. The default grid uses an
-explicit bounded schedule; resource batches can run concurrently in independently
-budgeted allocations. Partial benchmark stages never establish qualification.
-
-| Platform | Local Python (exact) | Coverage |
-|---|---|---|
-| Ubuntu | 3.11.18 | Branch-enabled combined coverage ≥90%, plus exact baseline line/branch nonregression |
-| Ubuntu | 3.12.16 | Disabled (`--no-cov`) |
-| Ubuntu | 3.15.2 | Disabled (`--no-cov`) |
-| macOS | 3.11.18, 3.12.16 | Disabled (`--no-cov`), both lanes |
-| Windows | 3.11.18, 3.12.16 | Disabled (`--no-cov`), both lanes |
-
-Hosted coverage also runs only on Ubuntu/Python 3.11. All other routine jobs
-and optional Windows/Python 3.11 run the full suite with explicit `--no-cov`.
-Only the primary job uploads coverage.xml (including failed-job evidence when
-available) and invokes the existing optional Codecov integration. The default
-pytest branch coverage settings and blocking 90% threshold remain unchanged.
-Hosted jobs have a 50-minute timeout, as explicitly authorized during Phase 4C3
-review; the routine runtime target remains under 20 minutes. This job ceiling is
-separate from the native preparation child's 90-second deadline.
-The resource fixtures retain their separate 180-second deadline and existing
-memory and workload limits.
-
-This seven-configuration requirement applies prospectively from this CI change.
-The six-configuration Subphase 6 results remain historical evidence for their
-recorded commits; they are not seven-configuration qualification.
+The hosted comprehensive profile covers the union of the former local and
+hosted version scopes: Linux 3.11/3.12/3.15, Windows 3.11/3.12, and macOS
+3.11/3.12/3.15. Weekly/manual comprehensive runs make Windows 3.11 available
+without a separate troubleshooting-only status that could qualify a PR.
+Do not run both complete grids by default. Release evidence must identify actual
+platform/version coverage, including hosted macOS 3.15 when using the native grid.
 
 ## Existing infrastructure and isolation
 
@@ -165,7 +144,7 @@ hosted Ubuntu and macOS use GitHub images and hosted R is 4.6.2. Local macOS
 remains Intel with its private native build toolchain; Windows remains the
 existing Server VM. Local Windows/macOS do not add 3.15 in this change.
 
-## Commands
+## Complete-grid commands
 
 Commit the proposed runner/test/documentation changes before qualifying them.
 Use a full commit SHA. Uncommitted and untracked files are excluded from source
@@ -246,7 +225,7 @@ recover SSH. The runner does not silently restart services or waive readiness.
 
 ## Gates and evidence
 
-Every check runs Ruff lint/format, strict Pyright, locked offline synchronization,
+Every explicit complete-grid check runs Ruff lint/format, strict Pyright, locked offline synchronization,
 the full Python suite (branch coverage and the existing 90% gate on Linux/3.11
 only; explicit `--no-cov` elsewhere), all seven
 strict R/jsonlite gates (7 configurations × 7 gates = 49 required executions), wheel/sdist builds, strict Twine metadata and clean core
@@ -338,7 +317,13 @@ or deletes another run's scratch directory. The probe attempts and failures are
 kept alongside their successful retry; these diagnostic results do not replace
 the required exact-head full six-configuration qualification.
 
-## Parity differences and proposed hosted workflow
+## Historical rollout records (superseded verification frequency)
+
+Everything below records earlier requirements and observations at the named
+commits. It is retained as historical evidence, not current instructions to run
+exhaustive verification. Use [the risk policy](ci-optimization.md) for new work.
+
+### Parity differences and proposed hosted workflow
 
 Historical infrastructure-rollout context follows. References here to the
 then-current six hosted jobs, six R gates, or proposed Windows selection describe
