@@ -1,6 +1,6 @@
 """Reviewed exact-scope production authority, separate from descriptive evidence.
 
-The registry deliberately starts empty. Only reviewed repository changes may add
+Only reviewed repository changes may add
 qualified scopes; neither callers, credentials, stored receipts nor a live probe
 can register a model. Qualification probes never write this registry.
 """
@@ -125,9 +125,68 @@ class _QualifiedProfile(NativeModel):
         return semantic_digest("gemini-reviewed-production-profile-v1", self)
 
 
-# No publicly callable registration/import hook. The initial implementation has
-# no serving-model qualification, including models visible through models.list.
-_QUALIFIED_PROFILES: tuple[_QualifiedProfile, ...] = ()
+# Source-pinned provenance derivation and compatibility limits are recorded in
+# docs/gemini-live-qualification-acceptance.md. These identify the qualification
+# source/evidence, independently of the later commit accepting that evidence.
+_DOCUMENTATION_SHA256 = (
+    "67b3050f1727a23153a4f9eb5f8b27a85768e407f8f10c96e990db4eef7a1576"
+)
+_OFFLINE_FIXTURE_SHA256 = (
+    "7e24ab54b72b4f99c8a35646bbf17f783381ac3bcbeddc08a39a9128d58d55f0"
+)
+_INDEPENDENT_LIVE_SHA256 = (
+    "ddd2a6e2f206d7b0f6f99db1a9328f65926abe8d8c660309fddad285afa36e31"
+)
+
+# No publicly callable registration/import hook. Untested features stay unknown;
+# neither a qualification report nor models.list can add authority.
+_QUALIFIED_PROFILES: tuple[_QualifiedProfile, ...] = (
+    _QualifiedProfile(
+        scope=NativeProjectionScopeV1(
+            provider="gemini",
+            endpoint="models.generate_content",
+            model_scope="exact",
+            model="gemini-3.1-flash-lite",
+            sdk_package="google-genai",
+            sdk_version="2.34.0",
+            api_version="v1beta",
+        ),
+        mechanism="gemini.generate_content.response_json_schema",
+        qualification_date=date(2026, 11, 10),
+        source_commit="a77e700f550e68b382c1734d270b8bfa9eb8b181",
+        translator_version=2,
+        schema_dialect="gemini.json-schema.v1",
+        support_status="supported",
+        request_acceptance="accepted",
+        assessment_behavior="verified",
+        native_schema_behavior="verified",
+        supported_features=("rubric_scores", "pairwise_forced_choice"),
+        unsupported_features=(),
+        documentation_sha256=_DOCUMENTATION_SHA256,
+        offline_fixture_sha256=_OFFLINE_FIXTURE_SHA256,
+        independent_live_sha256=_INDEPENDENT_LIVE_SHA256,
+        provenance=(
+            EvidenceProvenance(
+                kind="documentation",
+                source_sha256=_DOCUMENTATION_SHA256,
+                recorded_on=date(2026, 11, 10),
+            ),
+            EvidenceProvenance(
+                kind="offline_fixture",
+                source_sha256=_OFFLINE_FIXTURE_SHA256,
+                recorded_on=date(2026, 11, 10),
+            ),
+            EvidenceProvenance(
+                kind="independent_live",
+                source_sha256=_INDEPENDENT_LIVE_SHA256,
+                recorded_on=date(2026, 11, 10),
+            ),
+        ),
+        # Only max_output_tokens=512 was exercised. GenerationCapabilities has
+        # one aggregate live flag, so broader generation qualification stays false.
+        generation=None,
+    ),
+)
 
 
 def _profile_for(

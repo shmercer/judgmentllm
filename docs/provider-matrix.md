@@ -8,7 +8,7 @@
 | OpenAI Responses | implemented; reviewed live scope accepted | target | later milestone | generative | generative | Phase 5A, SDK 3.42.1; exact-model capability unknown until qualified |
 | OpenAI Decisions | target | not available | yes | typed score, 2-10 levels | typed choice | Currently GPT-6 Luna; no generated explanations; 1-400 questions/request; cache policy handled separately |
 | Anthropic Messages | implemented; live acceptance pending | target | later milestone | generative | generative | Phase 5B; SDK 2.3.0 / API 2026-10-21; text JSON and controlled native output_config.format |
-| Gemini Developer | implemented; offline fixtures; live unverified | later milestone | later milestone | generative | generative | Phase 5C; google-genai 2.34.0 / v1beta; text and two controlled native routes; [guide](gemini.md) |
+| Gemini Developer | implemented; reviewed four-case live scope accepted | later milestone | later milestone | generative | generative | Phase 5C; google-genai 2.34.0 / v1beta; [exact qualified scope](gemini-live-qualification-acceptance.md); broader mappings remain fixture-only |
 | Vertex AI Gemini | target | target (Google Cloud setup required) | yes | generative | generative | `google-genai` SDK; Gemini focus; GCS/BigQuery source and cloud IAM considerations |
 | Together AI | target | target, subject to current API qualification | yes | generative | generative | Use official Together Python SDK v3 (`together>=3,<4`); endpoint/model feature coverage must be tested |
 | Ollama local | target | no native provider batch | yes | generative | generative | Official Ollama SDK, local daemon; local model discovery; optional later cloud support separate |
@@ -175,17 +175,23 @@ needed to prepare it.
 ### Gemini Developer Phase 5C scope
 
 The [Gemini guide](gemini.md) distinguishes implemented request mapping and
-synthetic SDK/lifecycle tests from unverified live serving. Developer API only:
+synthetic SDK/lifecycle tests from the narrowly accepted live scope. Developer API only:
 `models.generate_content`, google-genai 2.34.0, v1beta, explicit API key with
 `GOOGLE_API_KEY` before `GEMINI_API_KEY`. Vertex, enterprise, ADC and Interactions
 are separate. Independent/grouped rubric layouts and pairwise winners use the
 existing strict local output contracts. No probability distribution is invented.
 
 Both existing native projections are preserved and tested through actual SDK
-serialization. Production native qualification remains empty; `auto` records text
-when native authority is unknown and strict policy permits it. Selected native
+serialization. The [accepted qualification](gemini-live-qualification-acceptance.md)
+promotes only `rubric_scores` and `pairwise_forced_choice` for exact
+`gemini-3.1-flash-lite` through `response_json_schema`. `auto` selects native for
+that feature scope and records text when authority is unknown and strict policy
+permits it. Selected native
 requests never fall back after failure. Automatic continuation, function calling,
 SDK retries, redirects and ambient transport routing are disabled or rejected.
 Usage records prompt, candidate, thought, cache and total counts separately, with
-missing values unknown. The four-case source-bound qualification proposal has no
-executor and no live authorization. No Gemini model is live-qualified here.
+missing values unknown. The four original-source text/native rubric/pairwise
+cases qualified on 2026-11-10; grouped traits, explanations, ordering variants,
+ties, `response_schema`, other models, Vertex and broader generation/reasoning
+features remain unknown. Historical verification requires the original checkout
+where authority commitments differ; no new live operation is authorized here.

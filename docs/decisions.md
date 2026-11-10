@@ -364,7 +364,10 @@ can authorize its four original requests. Exact `modelVersion` equality, strict
 canonical validity and intact retained evidence are required for qualification.
 The $0.02 estimate is not a provider-enforced cap. See the
 [Gemini execution guide](gemini.md#unexecuted-live-qualification-proposal).
-Implementation acceptance is Level 3 and entirely offline; a fresh plan from the
-eventual merged source and independent live authorization remain required.
-Normalized exports, seven strict R gates and the empty production native registry
-are preserved. No provider calls or publication are authorized by this follow-up.
+Executor implementation acceptance was Level 3 and offline; a fresh merged-source
+plan and independent live authorization were required before the later execution.
+At that executor-only stage, normalized exports, seven strict R gates and the empty
+production native registry were preserved. The later
+[2026-11-10 acceptance](gemini-live-qualification-acceptance.md) adds one reviewed
+profile for two exact native features. Original source/authority commitments remain
+immutable; affected historical reconstruction uses its original checkout.

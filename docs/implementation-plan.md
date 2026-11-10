@@ -564,7 +564,9 @@ independent manifest6/output6/request6/transport4/diagnostic3 identities. The sh
 engine, persistence, normalization and export contracts are reused. Historical
 Google projections, SDK lock, OpenAI/Anthropic/synthetic source identities and
 normalized result version1 remain unchanged. No Vertex or Interactions route is
-implemented. The production native qualification registry stays empty.
+implemented. The initial registry was empty; the
+[live acceptance follow-up](gemini-live-qualification-acceptance.md) adds only the
+two independently demonstrated native feature sets for one exact model.
 
 Implemented mappings and synthetic SDK tests cover text/native/auto, independent
 and grouped ordinal rubrics, all explanation layouts, protected templates and
@@ -587,10 +589,10 @@ checks. No seven-lane local campaign or duplicate full coverage campaign is requ
 The [Gemini guide](gemini.md) includes runnable synthetic inputs and a four-case
 source-bound live proposal for candidate gemini-3.1-flash-lite. Planning/reporting
 are credential-free; native proposal preparation grants no execution authority.
-The narrowly scoped harness deliberately has no live executor. Future execution
-requires reviewed source-bound enforcement plus separate exact-plan/source human
-billable-call and assessment-capture authorization. This implementation establishes
-no live serving enforcement, model qualification, package publication or merge.
+The initial harness provided only planning/reporting. The executor follow-up below
+added source-bound enforcement with separate exact-plan/source billable-call and
+assessment-capture authorization. Implementation alone established no live model
+qualification or publication authority.
 
 
 ## Phase 5C qualification executor follow-up
@@ -603,7 +605,26 @@ can authorize its four original requests. Exact `modelVersion` equality, strict
 canonical validity and intact retained evidence are required for qualification.
 The $0.02 estimate is not a provider-enforced cap. See the
 [Gemini execution guide](gemini.md#unexecuted-live-qualification-proposal).
-Implementation acceptance is Level 3 and entirely offline; a fresh plan from the
-eventual merged source and independent live authorization remain required.
-Normalized exports, seven strict R gates and the empty production native registry
-are preserved. No provider calls or publication are authorized by this follow-up.
+Executor implementation acceptance was Level 3 and offline; a fresh merged-source
+plan and independent live authorization were required before the later execution.
+At that executor-only stage, normalized exports, seven strict R gates and the empty
+production native registry were preserved. No provider calls or publication were
+authorized by that follow-up.
+
+## Phase 5C live qualification acceptance and promotion
+
+On 2026-11-10, independent read-only verification from original source
+`a77e700f550e68b382c1734d270b8bfa9eb8b181` accepted the four separately authorized
+text/native rubric/pairwise cases. The [acceptance record](gemini-live-qualification-acceptance.md)
+retains plan/report/component digests, usage unknowns and compatibility limits.
+One reviewed `gemini-3.1-flash-lite` / SDK2.34.0 / v1beta profile promotes only
+`rubric_scores` and `pairwise_forced_choice` through `response_json_schema`.
+Grouped traits, explanations, ordering variants, ties, other mechanisms/models,
+Vertex, batch/bulk and broader generation/reasoning remain unqualified.
+
+Existing authority digests remain source-bound: affected historical evidence and
+frozen runs require their original source checkout; commitments are not migrated.
+Plan/report version1 and normalized exports remain unchanged. This Level3 change
+requires exact-head protected-base CI acceptance, primary coverage, representative
+Windows/macOS and all seven strict Linux R gates. No new live execution,
+credentials/keyring access, evidence rewrite or publication belongs to promotion.

@@ -358,9 +358,13 @@ manifest6, output/request6, receipt4 and diagnostic3, preserving every historica
 protocol and normalized export contract. The [Gemini guide](gemini.md) describes
 SDK2.34.0/v1beta, exact SDK wire verification, one physical call per attempt,
 explicit key isolation, text/native schema selection and strict completed-response
-validation. The shared lifecycle owns recovery and exports. All serving support
-remains unverified; the native registry stays empty. The source-bound four-case
-proposal is offline and unexecuted, with live executor work explicitly deferred.
+validation. The shared lifecycle owns recovery and exports. The
+[2026-11-10 live acceptance](gemini-live-qualification-acceptance.md) independently
+verifies four original-source cases and promotes only one-trait scores and
+forced-choice winners through `response_json_schema` for `gemini-3.1-flash-lite`.
+Broader features remain unknown; generation qualification is unchanged. Historical
+commitments retain original authority/source identities and require the original
+checkout when newer registry commitments differ.
 
 
 ## Phase 5C qualification executor follow-up
@@ -373,7 +377,8 @@ can authorize its four original requests. Exact `modelVersion` equality, strict
 canonical validity and intact retained evidence are required for qualification.
 The $0.02 estimate is not a provider-enforced cap. See the
 [Gemini execution guide](gemini.md#unexecuted-live-qualification-proposal).
-Implementation acceptance is Level 3 and entirely offline; a fresh plan from the
-eventual merged source and independent live authorization remain required.
-Normalized exports, seven strict R gates and the empty production native registry
-are preserved. No provider calls or publication are authorized by this follow-up.
+Executor implementation acceptance was Level 3 and offline; a fresh merged-source
+plan and independent live authorization were required before the later execution.
+At that executor-only stage, normalized exports, seven strict R gates and the empty
+production native registry were preserved. Later live acceptance is recorded
+separately above and authorizes no additional calls or publication.

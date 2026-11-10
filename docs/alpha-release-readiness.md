@@ -68,7 +68,7 @@ downgrade.
 
 | Provider / endpoint | Install / authentication | Implemented and fixture-tested | Live qualification |
 |---|---|---|---|
-| Gemini Developer / models.generate_content | `[google]`, google-genai2.34.0 / v1beta; GOOGLE_API_KEY then GEMINI_API_KEY | Independent/grouped ordinal rubrics, three explanation layouts, pairwise winners/ties, text and two controlled native mechanisms, usage/provenance and recovery; sparse temperature/top_p/max_output_tokens | None; gemini-3.1-flash-lite is a proposed four-case candidate only |
+| Gemini Developer / models.generate_content | `[google]`, google-genai2.34.0 / v1beta; GOOGLE_API_KEY then GEMINI_API_KEY | Independent/grouped ordinal rubrics, three explanation layouts, pairwise winners/ties, text and two controlled native mechanisms, usage/provenance and recovery; sparse temperature/top_p/max_output_tokens | [2026-11-10 accepted four-case scope](gemini-live-qualification-acceptance.md): exact gemini-3.1-flash-lite, one-trait scores and forced-choice winners without explanations/ties, text and native response_json_schema only; broader generation/features remain unqualified |
 
 Selected category scores have no invented probabilities. Native production needs
 reviewed exact-route authority; offline fixtures grant none. Explicit tier/cache
