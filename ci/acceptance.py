@@ -368,6 +368,10 @@ def main() -> int:
     parser.add_argument("--quality-only", action="store_true")
     parser.add_argument("--quality-receipt", type=Path)
     args = parser.parse_args()
+    if args.operation in {"plan", "aggregate"} and args.base:
+        # Dispatch has no event.before SHA. Resolve main to a literal commit
+        # before classification; never compare a feature branch to itself.
+        args.base = git(args.source, "rev-parse", args.base)
     if args.operation == "plan":
         plan = make_plan(args.source, args.base, args.head, minimum=args.risk)
         args.output.parent.mkdir(parents=True, exist_ok=True)

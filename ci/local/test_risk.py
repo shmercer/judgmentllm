@@ -169,6 +169,48 @@ def test_moderate_adapter_gets_primary_coverage_and_affected_r(repository: Any) 
     assert plan["coverage"] and not plan["resources"]
 
 
+def test_manual_dispatch_resolves_main_and_keeps_affected_ci_gates(
+    repository: Any,
+    tmp_path: Path,
+) -> None:
+    source, base = repository
+    subprocess.run(
+        ["git", "update-ref", "refs/remotes/origin/main", base], cwd=source, check=True
+    )
+    path = source / "ci/control.py"
+    path.parent.mkdir()
+    path.write_text("synthetic_ci_control = True\n")
+    head = freeze(source)
+    output = tmp_path / "plan.json"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(Path(__file__).resolve().parents[1] / "acceptance.py"),
+            "plan",
+            "--source",
+            str(source),
+            "--base",
+            "refs/remotes/origin/main",
+            "--head",
+            head,
+            "--risk",
+            "3",
+            "--output",
+            str(output),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    plan = json.loads(output.read_text())
+    assert plan["base_sha"] == base and plan["source_sha"] == head
+    assert plan["risk"] == 3 and plan["changes"][0]["path"] == "ci/control.py"
+    assert plan["resources"] and plan["packaging"]
+    assert "resources" in required_steps(plan, "linux-3.11")
+    assert "sdist" in required_steps(plan, "linux-3.11")
+
+
 def passing_receipts(plan: dict[str, Any]) -> list[dict[str, Any]]:
     return [
         {

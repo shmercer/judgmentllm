@@ -37,6 +37,9 @@ def test_workflow_is_base_owned_and_only_aggregator_can_write_statuses() -> None
         data["env"]["POLICY_SHA"]
         == "${{ github.event.pull_request.base.sha || github.sha }}"
     )
+    assert data["env"]["BASE_REF"] == (
+        "${{ github.event.pull_request.base.sha || github.event.before || (github.event_name == 'workflow_dispatch' && 'refs/remotes/origin/main') || github.sha }}"
+    )
     for name, job in data["jobs"].items():
         if name != "acceptance":
             assert "permissions" not in job
