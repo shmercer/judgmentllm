@@ -7,6 +7,7 @@ to the map, selector, workflow or floor cannot lower its plan.
 from __future__ import annotations
 
 import ast
+import difflib
 import hashlib
 import json
 import re
@@ -46,6 +47,49 @@ PROMPT_TESTS = [
     "tests/test_transport_rendering.py",
     "tests/test_native_transport_rendering.py",
 ]
+SHARED_PROVIDER_FILES = {
+    "src/judgmentllm/providers/" + name
+    for name in (
+        "__init__.py",
+        "protocol.py",
+        "ledger.py",
+        "mock.py",
+        "_assessment_schema.py",
+        "evidence.py",
+    )
+}
+SENSITIVE_PROVIDER = re.compile(
+    r"auth|credential|secret|api_?key|headers|privacy|capture|retain|withhold|reasoning|"
+    r"safe|saniti|logging|logfilter|ambient|authority|retry|journal|ledger|recover|sqlite|"
+    r"ownership|uncertain|notsubmitted|not_submitted|acceptance|accepted|"
+    r"protected_client|execution_client|\btoken\b|\bverify\b|tls|ssl|certificate",
+    re.I,
+)
+
+
+def sensitive_provider_edit(before: str | None, after: str) -> bool:
+    changed = "\n".join(
+        line[2:]
+        for line in difflib.ndiff((before or "").splitlines(), after.splitlines())
+        if line.startswith(("+ ", "- "))
+    )
+    if SENSITIVE_PROVIDER.search(changed):
+        return True
+
+    # Also protect a credential/authority helper when only its predicate or
+    # return value changes; the sensitive function name may be outside the diff.
+    def boundaries(text: str) -> set[tuple[str, str]]:
+        return {
+            (node.name, ast.dump(node))
+            for node in ast.walk(ast.parse(text))
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+            and SENSITIVE_PROVIDER.search(node.name)
+        }
+
+    try:
+        return boundaries(before or "") != boundaries(after)
+    except SyntaxError:
+        return True
 
 
 def git(source: Path, *args: str) -> str:
@@ -304,11 +348,23 @@ def classify(filename: str, before: str | None, after: str | None) -> tuple[int,
                 return 2, "new independent test module"
         return 3, "test assertions, collection or historical evidence changed"
     if filename.startswith("src/judgmentllm/providers/") and filename.endswith(".py"):
+        if filename in SHARED_PROVIDER_FILES or filename.endswith("_cli.py"):
+            return (
+                3,
+                "shared provider protocol, durable evidence, schema or authentication CLI",
+            )
+        if sensitive_provider_edit(before, after):
+            return 3, "provider credential, privacy, authority or recovery behavior"
         if any(
             token in filename for token in ("auth", "evidence", "registry", "transport")
         ):
             return 3, "provider authority, privacy or transport boundary"
-        return 2, "independent provider adapter or response handling"
+        if re.fullmatch(
+            r"(?:openai|anthropic|google|gemini|vertex|together|ollama|typesafe)(?:_[a-z0-9_]+)?\.py",
+            Path(filename).name,
+        ):
+            return 2, "independent provider adapter or response handling"
+        return 3, "unknown provider-directory boundary"
     return 3, "shared behavior or unknown change; conservative escalation"
 
 
@@ -364,6 +420,7 @@ def make_plan(
         )
         or any(token in name for token in ("resource", "memory", "concurrency"))
         or name in {"pyproject.toml", "uv.lock"}
+        or name in SHARED_PROVIDER_FILES
         for name in names
     )
     lanes = (

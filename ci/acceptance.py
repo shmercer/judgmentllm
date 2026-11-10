@@ -194,6 +194,31 @@ def run_lane(
             step(
                 "infrastructure", [python, "-m", "pytest", "--no-cov", "-q", "ci/local"]
             )
+        if "build" in needed:
+            step("build", ["uv", "build", "--offline"])
+            step(
+                "metadata",
+                [
+                    python,
+                    "-m",
+                    "twine",
+                    "check",
+                    "--strict",
+                    *sorted(glob.glob(str(source / "dist/*"))),
+                ],
+            )
+            for kind, pattern in (("wheel", "*.whl"), ("sdist", "*.tar.gz")):
+                artifacts = list((source / "dist").glob(pattern))
+                if len(artifacts) != 1:
+                    raise ValueError(f"Expected exactly one {kind}")
+                step(
+                    kind,
+                    [
+                        python,
+                        "scripts/smoke_install.py",
+                        str(artifacts[0]),
+                    ],
+                )
         if "tests" in needed:
             command = [
                 python,
@@ -266,32 +291,6 @@ def run_lane(
                     str(output / ("r-" + name)),
                 ],
             )
-        if "build" in needed:
-            step("build", ["uv", "build", "--offline"])
-            step(
-                "metadata",
-                [
-                    python,
-                    "-m",
-                    "twine",
-                    "check",
-                    "--strict",
-                    *sorted(glob.glob(str(source / "dist/*"))),
-                ],
-            )
-            for kind, pattern in (("wheel", "*.whl"), ("sdist", "*.tar.gz")):
-                artifacts = list((source / "dist").glob(pattern))
-                if len(artifacts) != 1:
-                    raise ValueError(f"Expected exactly one {kind}")
-                step(
-                    kind,
-                    [
-                        python,
-                        "scripts/smoke_install.py",
-                        "--offline",
-                        str(artifacts[0]),
-                    ],
-                )
         verify_source()
         if not needed <= {item["name"] for item in report["steps"]}:
             raise ValueError("Required steps were omitted")

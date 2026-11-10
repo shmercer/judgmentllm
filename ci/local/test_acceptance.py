@@ -7,7 +7,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import pytest
 
@@ -165,3 +165,55 @@ def test_credentials_and_execution_overrides_do_not_reach_tests(
     assert environment["JUDGMENTLLM_REQUIRE_NATIVE_SDK_PROBES"] == "1"
     assert environment["PATH"]
     assert os.environ["GH_TOKEN"] == "synthetic-never-forward"
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="primary runner uses Linux")
+def test_packaging_failure_prevents_expensive_tests(
+    documentation: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source, plan = documentation
+    plan.update(risk=3, packaging=True)
+    quality = tmp_path / "quality.json"
+    quality.write_text(
+        json.dumps(
+            {
+                "source_sha": plan["source_sha"],
+                "plan_sha256": plan["plan_sha256"],
+                "lane": "linux-3.11",
+                "run_id": "run:1",
+                "phase": "quality",
+                "status": "passed",
+                "source_verified": True,
+                "steps": [
+                    {"name": name, "exit_code": 0}
+                    for name in ("docs", "ruff", "format", "pyright", "infrastructure")
+                ],
+            }
+        )
+    )
+    original = subprocess.run
+
+    def fail_build(command: list[str], **kwargs: Any) -> Any:
+        if command[0] == "git":
+            return cast(Any, original(command, **kwargs))
+        assert command[:2] == ["uv", "build"], "expensive tests ran before packaging"
+        return subprocess.CompletedProcess[str](command, 1)
+
+    monkeypatch.setattr(acceptance.subprocess, "run", fail_build)
+    output = tmp_path / "run"
+    assert (
+        acceptance.run_lane(
+            plan,
+            source,
+            output,
+            "linux-3.11",
+            "run:1",
+            quality_receipt=quality,
+        )
+        == 1
+    )
+    receipt = json.loads((output / "receipt.json").read_text())
+    assert receipt["steps"][-1]["name"] == "build"
+    assert not (output / "suite").exists()

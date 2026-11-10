@@ -25,8 +25,32 @@ from risk import COMPREHENSIVE, R_GATES, admit, classify, make_plan, required_st
             'def prompt(): return "raw JSON"',
             1,
         ),
-        ("src/judgmentllm/providers/new_adapter.py", None, "def parse(): return 1", 2),
+        (
+            "src/judgmentllm/providers/gemini_developer.py",
+            None,
+            "def parse(): return 1",
+            2,
+        ),
         ("src/judgmentllm/providers/anthropic_response.py", "x=1", "x=2", 2),
+        ("src/judgmentllm/providers/protocol.py", "x=1", "x=2", 3),
+        ("src/judgmentllm/providers/ledger.py", "x=1", "x=2", 3),
+        ("src/judgmentllm/providers/mock.py", "x=1", "x=2", 3),
+        ("src/judgmentllm/providers/_assessment_schema.py", "x=1", "x=2", 3),
+        ("src/judgmentllm/providers/__init__.py", "x=1", "x=2", 3),
+        ("src/judgmentllm/providers/openai_cli.py", "x=1", "x=2", 3),
+        ("src/judgmentllm/providers/unknown_shared.py", None, "x=1", 3),
+        (
+            "src/judgmentllm/providers/openai.py",
+            "def _check_authority(): return True",
+            "def _check_authority(): return False",
+            3,
+        ),
+        (
+            "src/judgmentllm/providers/anthropic_response.py",
+            "reasoning = None",
+            "reasoning = payload",
+            3,
+        ),
         ("src/judgmentllm/execution/core.py", "x=1", "x=2", 3),
         ("src/judgmentllm/persistence/recovery.py", "x=1", "x=2", 3),
         ("src/judgmentllm/models.py", "x=1", "x=2", 3),
@@ -85,7 +109,7 @@ def freeze(source: Path) -> str:
 def test_mixed_adapter_and_shared_execution_use_higher_level(repository: Any) -> None:
     source, base = repository
     for name in (
-        "src/judgmentllm/providers/new.py",
+        "src/judgmentllm/providers/gemini_developer.py",
         "src/judgmentllm/execution/core.py",
     ):
         path = source / name
@@ -142,6 +166,18 @@ def test_candidate_classifier_edits_cannot_lower_base_classification(
     assert plan["changes"][0]["reason"].startswith("verification")
 
 
+def test_shared_provider_ledger_requires_high_risk_and_resource_evidence(
+    repository: Any,
+) -> None:
+    source, base = repository
+    path = source / "src/judgmentllm/providers/ledger.py"
+    path.parent.mkdir(parents=True)
+    path.write_text("synthetic_shared_ledger = True\n")
+    plan = make_plan(source, base, freeze(source))
+    assert plan["risk"] == 3 and plan["resources"]
+    assert len(plan["lanes"]) == 3 and plan["r_gates"] == R_GATES
+
+
 def test_stronger_request_and_complete_matrix_are_recorded(repository: Any) -> None:
     source, base = repository
     (source / "README.md").write_text("new")
@@ -160,7 +196,7 @@ def test_stronger_request_and_complete_matrix_are_recorded(repository: Any) -> N
 
 def test_moderate_adapter_gets_primary_coverage_and_affected_r(repository: Any) -> None:
     source, base = repository
-    path = source / "src/judgmentllm/providers/new.py"
+    path = source / "src/judgmentllm/providers/gemini_developer.py"
     path.parent.mkdir(parents=True)
     path.write_text("def parse(): return 1\n")
     plan = make_plan(source, base, freeze(source))

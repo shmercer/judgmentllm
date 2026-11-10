@@ -55,6 +55,11 @@ and macOS 3.11/3.12/3.15: the union of former local/hosted scopes. This includes
 complete Windows 3.11 troubleshooting without a lightweight success status.
 
 Static checks and CI selftests execute once, before scheduling expensive lanes.
+When packaging is affected, build/metadata/install smokes precede the full suite.
+The existing installer may fetch locked core/build dependencies during isolated
+environment preparation; installed-package checks themselves stay offline. This
+avoids assuming that locked sync populated index metadata for an offline pip
+resolver. Native complete-grid check mode retains its prepared offline caches.
 Pytest uses the existing complete collection/partition/case-receipt runner.
 Ordinary and serial functional cases remain; expensive resource measurements are
 conditional outside Level 4. Cold pinned-SDK byte-identity probes retain their
@@ -82,8 +87,12 @@ Unknown prompt control flow, unknown paths and changed/removed existing tests
 escalate. Additive prompt tests may stay focused; existing statements/fixtures
 remain exact. This deliberately avoids general semantic/dependency analysis.
 
-Provider adapters/response handling start at Level 2; touching shared execution
-raises the whole change to Level 3. Path/process/OS-sensitive moderate code adds
+Independent adapters/response handling for known provider families start at Level 2.
+Shared provider protocols, ledgers, mock execution, shared schemas and authentication
+CLI routes are Level 3. Credential/privacy/authority/recovery edits inside an adapter
+also escalate, including predicate-only edits to a sensitive helper. Unknown provider
+modules escalate; a directory name never downgrades a shared boundary. Touching
+shared execution raises the whole change to Level 3. Path/process/OS-sensitive moderate code adds
 representative platforms. All CI, risk-map, coverage, dependency, selection and
 exclusion controls are Level 3, regardless of their size. Level 3 runs all seven
 R gates on Linux; Level 2 runs relevant export/execution gates for provider output
