@@ -672,7 +672,9 @@ Diagnostic 3 records only closed finish/block reasons and component metadata.
 Protected recognized assessment bytes are separate from reasoning, signatures,
 canonical validity and whole-envelope retention. Missing historical diagnostics
 remain missing. The offline qualification-plan version 1 has its own namespace,
-requires a clean exact source and grants zero requests; no executor is provided.
+requires a clean exact source and grants zero requests. The separate executor
+authorization and later [live acceptance](gemini-live-qualification-acceptance.md)
+do not rewrite that plan or change these contracts.
 
 
 ## Phase 5C qualification executor follow-up
@@ -685,7 +687,9 @@ can authorize its four original requests. Exact `modelVersion` equality, strict
 canonical validity and intact retained evidence are required for qualification.
 The $0.02 estimate is not a provider-enforced cap. See the
 [Gemini execution guide](gemini.md#unexecuted-live-qualification-proposal).
-Implementation acceptance is Level 3 and entirely offline; a fresh plan from the
-eventual merged source and independent live authorization remain required.
-Normalized exports, seven strict R gates and the empty production native registry
-are preserved. No provider calls or publication are authorized by this follow-up.
+Executor implementation acceptance was Level 3 and offline; a fresh merged-source
+plan and independent live authorization were required before the later execution.
+At that executor-only stage, normalized exports, seven strict R gates and the empty
+production native registry were preserved. The later live acceptance changes one
+reviewed profile, preserving all schemas and historical source/authority identities;
+affected historical reconstruction requires its original source checkout.

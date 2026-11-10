@@ -113,6 +113,9 @@ def files(directory: Path) -> dict[str, bytes]:
 async def test_all_four_cases_one_shot_deterministic_readonly_and_no_promotion(
     planned: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from judgmentllm import gemini_registry
+
+    reviewed_profiles = gemini_registry._QUALIFIED_PROFILES
     directory, plan, arguments = planned
     sent = install(monkeypatch, directory, plan)
     raw = (directory / "plan.json").read_bytes()
@@ -153,9 +156,7 @@ async def test_all_four_cases_one_shot_deterministic_readonly_and_no_promotion(
     monkeypatch.setattr(gemini, "_resolve_credentials", forbidden)
     assert await e.execute_plan(directory, **arguments) == result
     assert len(sent) == 4
-    from judgmentllm import gemini_registry
-
-    assert gemini_registry._QUALIFIED_PROFILES == ()
+    assert gemini_registry._QUALIFIED_PROFILES == reviewed_profiles
     encoded = json.dumps(result)
     assert "SYNTHETIC_SELECTED" not in encoded and "SYNTHETIC_SECONDARY" not in encoded
     assert all(b"SYNTHETIC_SELECTED" not in raw for raw in files(directory).values())

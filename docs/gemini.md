@@ -6,11 +6,14 @@ official `google-genai==2.34.0` SDK, endpoint `models.generate_content`, API
 `https://generativelanguage.googleapis.com/`. Vertex/enterprise, ADC and the
 Interactions API are separate integrations.
 
-Implementation and deterministic synthetic SDK tests do not establish live model
-support. The production native qualification registry is empty. No Gemini
-live credential, real authentication check, model-list read or generation was
-used to develop or qualify this implementation. SDK fixtures use synthetic keys
-and intercepted HTTP transports.
+The [accepted four-case live qualification](gemini-live-qualification-acceptance.md)
+on 2026-11-10 establishes exact-model scope for `gemini-3.1-flash-lite`:
+single-trait ordinal scores and forced-choice pairwise winners, without
+explanations or ties, in text and native `response_json_schema` modes. Production
+native authority contains exactly `rubric_scores` and `pairwise_forced_choice`
+for the SDK/API/endpoint above. Other features and models remain unknown.
+Implementation and deterministic SDK fixtures alone establish no live support;
+standard tests still use synthetic keys and intercepted HTTP transports.
 
 Install from a reviewed source checkout with the Google extra:
 
@@ -72,12 +75,21 @@ the established compatible custom-template policy. Original and presented item
 orders remain distinct. Selected categories produce category-code scores, with
 unknown probabilities and expected scores.
 
+Those broader mappings are fixture-tested. Live native qualification covers only
+the two feature sets above; grouped traits, explanations, alternative ordering,
+ties and `response_schema` remain unqualified. Explicit native requests for them
+fail preflight. The acceptance record also documents why historical frozen
+requests for this model require their original source checkout after promotion.
+
 Supported `generation` mappings are `temperature` (0–2), `top_p` (0–1), and
 `max_output_tokens` (positive integer). Omitted controls remain omitted: the
 adapter supplies no sampling or output-token default. The SDK serializes sampling
 numbers as floats; the original requested representation remains committed.
 The documented candidate model's output ceiling is 65,536; other model ceilings
 remain unknown. Model-specific restrictions can still reject a request.
+The live matrix exercised only `max_output_tokens=512`. Temperature/top-p were
+omitted; aggregate generation `live_qualified` remains false because the current
+descriptor cannot express that partial qualification.
 
 Each request explicitly asks for one candidate. Tools, thinking controls, stop
 sequences, arbitrary provider JSON, headers, URLs and generation seeds are not
@@ -148,6 +160,12 @@ subset retries require existing lifecycle authorization and a new attempt.
 
 ## Unexecuted live qualification proposal
 
+This section preserves the proposal/execution workflow and its historical anchor.
+The merged-source plan at `a77e700f550e68b382c1734d270b8bfa9eb8b181` was subsequently
+authorized and completed successfully. See the
+[acceptance record](gemini-live-qualification-acceptance.md) for exact plan/report
+digests and reviewed scope. Any future qualification still needs fresh consent.
+
 The proposed candidate is exactly **`gemini-3.1-flash-lite`**. Official
 [model documentation](https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite),
 [structured output guidance](https://ai.google.dev/gemini-api/docs/structured-output),
@@ -155,8 +173,9 @@ The proposed candidate is exactly **`gemini-3.1-flash-lite`**. Official
 [pricing](https://ai.google.dev/gemini-api/docs/pricing) were reviewed on
 2026-11-10. They document text output, structured output, a 1,048,576 input-token
 limit and paid standard rates of $0.25 input / $1.50 output per million tokens,
-including thinking output. These are proposal assumptions, with account access
-and serving unverified. Recheck availability and rates before future consent.
+including thinking output. These were proposal assumptions; the accepted calls
+establish only the recorded scope. Recheck availability and rates before future
+consent.
 
 From a clean committed checkout, prepare and inspect four synthetic cases:
 rubric text/native and pairwise text/native. Native cases propose only the
@@ -183,11 +202,12 @@ an 8192 floor. The four short cases reserve 32,768 estimated input and at most
 Tokenization and injected overhead are unproved, and the endpoint has no enforced
 input-token cap here; this is an estimated reservation, not a guaranteed bill.
 
-The repository executor is a separate, billable operation. This implementation
-PR authorizes **offline verification only**. After independent review and merge,
-generate a **new** plan from the eventual clean merged commit, recheck official
-model availability/pricing, and independently review its bytes and digest before
-obtaining exact-plan/source billable and full synthetic capture authorization.
+The repository executor is a separate, billable operation. Its implementation
+was verified offline before the separately authorized execution accepted above.
+For any future execution, generate a **new** plan from the intended clean
+committed source, recheck official model availability/pricing, and independently
+review its bytes and digest before obtaining exact-plan/source billable and full
+synthetic capture authorization.
 The PR #29 proposal is historical; its source does not authorize this executor.
 Do not edit a proposal to enable it. `execution_enabled: false`, zero authorized
 requests and the deferred status in plan version 1 remain its original immutable
@@ -243,9 +263,10 @@ A future alias mapping needs documented evidence and separate code review.
 
 All four cases must be valid, identity-verified and backed by intact evidence for
 an overall successful report. A report grants no production capability promotion.
-Ordinary native registry, historical OpenAI/Anthropic rules, exports and public
-run/resume authority remain unchanged. No live request, money spent or package
-publication is part of this PR.
+Historical OpenAI/Anthropic rules and exports remain unchanged. Production
+promotion is a separate reviewed registry edit recorded in the acceptance record;
+no arbitrary report grants run/resume authority. Acceptance/promotion makes no
+additional live request and authorizes no package publication.
 
 The [executor verification record](gemini-qualification-executor-verification.md)
 describes offline controls and the exact-head acceptance boundary.
