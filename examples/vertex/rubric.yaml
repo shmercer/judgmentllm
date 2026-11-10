@@ -1,0 +1,28 @@
+schema_version: 3
+task_kind: rubric
+input: responses.jsonl
+provider: vertex
+endpoint: models.generate_content
+model: YOUR_EXACT_MODEL
+generation:
+  max_output_tokens: 256
+prompt:
+  structured_output: text
+  native_mechanism: vertex.generate_content.response_json_schema
+execution:
+  explanations: false
+  concurrency: 1
+rubric:
+  rubric_id: '001'
+  name: Synthetic clarity rubric
+  traits:
+    - trait_id: '01'
+      name: Clarity
+      description: Assess whether the response clearly states its idea.
+      levels:
+        - label: low
+          numeric_value: 1
+        - label: middle
+          numeric_value: 3
+        - label: high
+          numeric_value: 8

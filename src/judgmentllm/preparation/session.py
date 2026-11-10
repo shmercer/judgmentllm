@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO, Literal
 
-from judgmentllm import gemini_types
+from judgmentllm import gemini_types, vertex_types
 from judgmentllm._verification import ExactToken, exact_token
 from judgmentllm.config import (
     RunSpecification,
@@ -168,6 +168,7 @@ class PreparedRun:
         transport_context: TransportContext
         | ProductionContext
         | AnthropicProductionContext
+        | vertex_types.VertexProductionContext
         | gemini_types.GeminiProductionContext
         | None = None,
     ) -> None:
@@ -310,6 +311,7 @@ class PreparedRun:
                 ExecutableRunManifestV3,
                 ExecutableRunManifestV4,
                 ExecutableRunManifestV5,
+                vertex_types.ExecutableRunManifestV7,
                 gemini_types.ExecutableRunManifestV6,
             ),
         ):
@@ -442,6 +444,7 @@ class PreparedRun:
         | RenderedPromptV3
         | RenderedProductionPromptV1
         | RenderedAnthropicPromptV1
+        | vertex_types.RenderedVertexPromptV1
         | gemini_types.RenderedGeminiPromptV1
     ):
         context = self._context
@@ -453,6 +456,7 @@ class PreparedRun:
                 ExecutableRunManifestV3,
                 ExecutableRunManifestV4,
                 ExecutableRunManifestV5,
+                vertex_types.ExecutableRunManifestV7,
                 gemini_types.ExecutableRunManifestV6,
             ),
         ):
@@ -508,6 +512,7 @@ class PreparedRun:
         TransportCommitmentV1
         | TransportCommitmentV2
         | TransportCommitmentV3
+        | vertex_types.TransportCommitmentV5
         | gemini_types.TransportCommitmentV4
     ):
         """Read original safe metadata; missing commitments are never repaired."""
@@ -521,6 +526,7 @@ class PreparedRun:
                 ExecutableRunManifestV3,
                 ExecutableRunManifestV4,
                 ExecutableRunManifestV5,
+                vertex_types.ExecutableRunManifestV7,
                 gemini_types.ExecutableRunManifestV6,
             ),
         ):
@@ -551,7 +557,9 @@ class PreparedRun:
         from judgmentllm.transport_dispatch import manifest_protocol
 
         expected_version = (
-            4
+            5
+            if manifest_protocol(self.manifest) == "vertex"
+            else 4
             if manifest_protocol(self.manifest) == "gemini"
             else 3
             if manifest_protocol(self.manifest) == "anthropic"
@@ -583,17 +591,20 @@ class PreparedRun:
         frozen: TransportCommitmentV1
         | TransportCommitmentV2
         | TransportCommitmentV3
+        | vertex_types.TransportCommitmentV5
         | gemini_types.TransportCommitmentV4
         | None = None,
         parent: TransportCommitmentV1
         | TransportCommitmentV2
         | TransportCommitmentV3
+        | vertex_types.TransportCommitmentV5
         | gemini_types.TransportCommitmentV4
         | None = None,
     ) -> (
         PreparedRequestV3
         | PreparedRequestV4
         | PreparedRequestV5
+        | vertex_types.PreparedRequestV7
         | gemini_types.PreparedRequestV6
     ):
         """Reconstruct pinned bytes or prepare an authorized ordered retry subset."""
@@ -609,6 +620,7 @@ class PreparedRun:
                     ExecutableRunManifestV3,
                     ExecutableRunManifestV4,
                     ExecutableRunManifestV5,
+                    vertex_types.ExecutableRunManifestV7,
                     gemini_types.ExecutableRunManifestV6,
                 ),
             )
@@ -716,6 +728,7 @@ class PreparedRun:
                     ExecutableRunManifestV3,
                     ExecutableRunManifestV4,
                     ExecutableRunManifestV5,
+                    vertex_types.ExecutableRunManifestV7,
                     gemini_types.ExecutableRunManifestV6,
                 ),
             )
@@ -833,6 +846,7 @@ class PreparedRun:
         | RenderedPromptV3
         | RenderedProductionPromptV1
         | RenderedAnthropicPromptV1
+        | vertex_types.RenderedVertexPromptV1
         | gemini_types.RenderedGeminiPromptV1
     ):
         """Render an exact ordered subset while retaining its parent identity."""
@@ -876,6 +890,7 @@ class PreparedRun:
                 ExecutableRunManifestV3,
                 ExecutableRunManifestV4,
                 ExecutableRunManifestV5,
+                vertex_types.ExecutableRunManifestV7,
                 gemini_types.ExecutableRunManifestV6,
             ),
         ):
@@ -899,6 +914,12 @@ class PreparedRun:
             from judgmentllm.anthropic_transport import OutputCommitmentV5
             from judgmentllm.production_transport import OutputCommitmentV4
 
+            if isinstance(output, vertex_types.OutputCommitmentV7):
+                from judgmentllm.vertex_prompts import render_vertex_request
+
+                return render_vertex_request(
+                    self.spec, self.template, dependency.request, self._get, output
+                )
             if isinstance(output, gemini_types.OutputCommitmentV6):
                 from judgmentllm.gemini_prompts import render_gemini_request
 
@@ -929,6 +950,7 @@ class PreparedRun:
         | RenderedPromptV3
         | RenderedProductionPromptV1
         | RenderedAnthropicPromptV1
+        | vertex_types.RenderedVertexPromptV1
         | gemini_types.RenderedGeminiPromptV1
     ):
         """Render with the established renderer; never retain text in minimal mode."""

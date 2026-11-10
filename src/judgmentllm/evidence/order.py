@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Annotated, Literal, cast
 
 from pydantic import Field, model_validator
 
-from judgmentllm import gemini_types
+from judgmentllm import gemini_types, vertex_types
 from judgmentllm.evidence._base import EvidenceIdentity, EvidenceModel
 from judgmentllm.models import ID
 from judgmentllm.output_commitments import OutputCommitmentV2
@@ -170,6 +170,7 @@ def extract_observation_metadata(
     | OutputCommitmentV3
     | OutputCommitmentV4
     | OutputCommitmentV5
+    | vertex_types.OutputCommitmentV7
     | gemini_types.OutputCommitmentV6,
     *,
     identity: EvidenceIdentity,
@@ -185,7 +186,11 @@ def extract_observation_metadata(
     All limits and failures produce fixed safe codes, with no response fragment.
     """
     try:
-        if commitment.commitment_version == 6:
+        if commitment.commitment_version == 7:
+            commitment = vertex_types.OutputCommitmentV7.model_validate_json(
+                commitment.model_dump_json()
+            )
+        elif commitment.commitment_version == 6:
             commitment = gemini_types.OutputCommitmentV6.model_validate_json(
                 commitment.model_dump_json()
             )

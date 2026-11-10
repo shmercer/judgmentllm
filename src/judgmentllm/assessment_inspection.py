@@ -6,7 +6,7 @@ from pathlib import Path
 
 from pydantic import Field
 
-from judgmentllm import gemini_types
+from judgmentllm import gemini_types, vertex_types
 from judgmentllm.anthropic_assessment import AnthropicAssessmentDiagnosticV2
 from judgmentllm.evidence._base import EvidenceModel
 from judgmentllm.evidence.assessment import AssessmentDiagnosticV1
@@ -26,6 +26,7 @@ class AssessmentOutputInspection(EvidenceModel):
     diagnostic: (
         AssessmentDiagnosticV1
         | AnthropicAssessmentDiagnosticV2
+        | vertex_types.VertexAssessmentDiagnosticV4
         | gemini_types.GeminiAssessmentDiagnosticV3
         | None
     )

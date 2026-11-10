@@ -20,7 +20,7 @@ from judgmentllm._auth import (
     _BY_PROVIDER,  # pyright: ignore[reportPrivateUsage]
     ProviderId,
 )
-from judgmentllm.auth import CredentialStatus
+from judgmentllm.auth import CredentialStatus, CredentialStatusV2
 from judgmentllm.lifecycle import LifecycleError, ProgressEvent, get_run
 from judgmentllm.lifecycle_models import ErrorCategory
 from judgmentllm.models import StrictModel, VersionedModel
@@ -59,7 +59,7 @@ class _AuthStatusReport(StrictModel):
 
     model_config = ConfigDict(frozen=True)
 
-    providers: tuple[CredentialStatus, ...]
+    providers: tuple[CredentialStatus | CredentialStatusV2, ...]
     required_providers: tuple[ProviderId, ...]
     requirements_met: bool
 

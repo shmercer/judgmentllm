@@ -23,6 +23,7 @@ UsageSource = Literal[
     "openai.responses.usage",
     "anthropic.messages.usage",
     "gemini.generate_content.usageMetadata",
+    "vertex.generate_content.usageMetadata",
     "synthetic.reported_usage",
 ]
 UsageCounter = Literal[
@@ -108,6 +109,24 @@ _SEMANTICS: dict[
         "output_tokens",
     ),
     ("gemini.generate_content.usageMetadata", "toolUsePromptTokenCount"): (
+        "included_in",
+        "total_tokens",
+    ),
+    ("vertex.generate_content.usageMetadata", "promptTokenCount"): ("reported", None),
+    ("vertex.generate_content.usageMetadata", "candidatesTokenCount"): (
+        "reported",
+        None,
+    ),
+    ("vertex.generate_content.usageMetadata", "totalTokenCount"): ("reported", None),
+    ("vertex.generate_content.usageMetadata", "cachedContentTokenCount"): (
+        "included_in",
+        "input_tokens",
+    ),
+    ("vertex.generate_content.usageMetadata", "thoughtsTokenCount"): (
+        "excluded_from",
+        "output_tokens",
+    ),
+    ("vertex.generate_content.usageMetadata", "toolUsePromptTokenCount"): (
         "included_in",
         "total_tokens",
     ),
@@ -389,6 +408,11 @@ class ProviderUsage(EvidenceIdentity, UsageContext, ReportedUsageInput):
             self.provider,
             self.endpoint,
         ) != ("gemini", "models.generate_content"):
+            raise ValueError("usage source does not match provider endpoint")
+        if self.usage_source == "vertex.generate_content.usageMetadata" and (
+            self.provider,
+            self.endpoint,
+        ) != ("vertex", "models.generate_content"):
             raise ValueError("usage source does not match provider endpoint")
         if self.reported_cost is not None and self.provider != "mock":
             raise ValueError("synthetic reported cost requires a synthetic provider")

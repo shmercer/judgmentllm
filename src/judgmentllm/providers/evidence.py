@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import Field, model_validator
 
-from judgmentllm import gemini_types
+from judgmentllm import gemini_types, vertex_types
 from judgmentllm.anthropic_assessment import AnthropicAssessmentComponentV2
 from judgmentllm.assessment_diagnostics import AssessmentComponent
 from judgmentllm.evidence._base import EvidenceIdentity, EvidenceModel
@@ -97,6 +97,7 @@ class ProviderEvidence(EvidenceModel):
     assessment_component: (
         AssessmentComponent
         | AnthropicAssessmentComponentV2
+        | vertex_types.VertexAssessmentComponentV4
         | gemini_types.GeminiAssessmentComponentV3
         | None
     ) = Field(default=None, exclude=True, repr=False)
@@ -140,6 +141,7 @@ def prepare_evidence(
     | OutputCommitmentV3
     | OutputCommitmentV4
     | OutputCommitmentV5
+    | vertex_types.OutputCommitmentV7
     | gemini_types.OutputCommitmentV6
     | None,
     response: ProviderResponse,
@@ -148,6 +150,7 @@ def prepare_evidence(
     transport_context: TransportContext
     | ProductionContext
     | AnthropicProductionContext
+    | vertex_types.VertexProductionContext
     | gemini_types.GeminiProductionContext
     | None = None,
 ) -> PreparedEvidence:

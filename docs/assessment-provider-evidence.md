@@ -530,3 +530,34 @@ separately audits full body/schema bytes and estimated overhead. Its8192 input
 allowance is not an exact tokenizer result or request input cap. Endpoint docs,
 fixture tests and independent live support remain three separate evidence scopes;
 the production native registry remains empty.
+
+
+## Milestone 3 Phase 5D1: Vertex production implementation
+
+The [Vertex guide](vertex.md) documents google-genai 2.34.0,
+`models.generate_content` and the unchanged registered `v1beta1` contract.
+Explicit ADC and separate `JUDGMENTLLM_VERTEX_API_KEY` modes share the offline
+resolver but never fall back. ADC discovery/refresh occurs only during explicit
+execution. Status remains offline; key/mode status uses additive version 2 while
+historical five-field ADC records and CLI envelope 1 remain unchanged.
+
+Vertex manifest7/output7/request7/transport5/diagnostic4 are independent of
+Gemini Developer. Route commitments bind mode/project/location/host without
+retaining project or credential strings. Exact SDK bytes, strict assessment,
+privacy, usage, cancellation and recovery reuse the provider-neutral engine;
+normalized JSONL/CSV/R contracts and all historical identities remain unchanged.
+The two existing V2 native mechanisms have independent physical-byte fixtures.
+The Vertex production qualification registry remains empty; explicit native fails,
+nonstrict auto chooses text and strict unknown fails. No Developer qualification
+can establish Vertex support. Unknown model IDs remain open subject to validation.
+
+Single-run implementation is offline-qualified only. Thinking controls, tier,
+explicit caching, Express Mode, batch/bulk and non-generative eligibility checks
+remain unavailable or deferred. Current documentation's exact-model ignored
+sampling settings are rejected before forwarding. The [unexecuted proposal](vertex-live-qualification-proposal.md)
+remains deferred for missing setup/model eligibility, with no executable model
+scope, physical requests, rates, consent or executor. This Level3 change requires
+protected-base exact-head CI acceptance, primary coverage, representative
+Windows/macOS, all seven strict Linux R/jsonlite gates and affected security,
+credential, recovery and cross-provider regressions. No live requests,
+credential/keyring access, capability promotion or publication is authorized.

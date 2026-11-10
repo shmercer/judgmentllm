@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Literal
 
-from judgmentllm import gemini_types
+from judgmentllm import gemini_types, vertex_types
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -46,15 +46,18 @@ def context_protocol(
     context: TransportContext
     | ProductionContext
     | AnthropicProductionContext
+    | vertex_types.VertexProductionContext
     | gemini_types.GeminiProductionContext
     | None,
-) -> Literal["synthetic", "production", "anthropic", "gemini"]:
+) -> Literal["synthetic", "production", "anthropic", "gemini", "vertex"]:
     from judgmentllm.anthropic_transport import AnthropicProductionContext
     from judgmentllm.production_transport import ProductionContext
     from judgmentllm.transport import TransportContext
 
     if type(context) is TransportContext:
         return "synthetic"
+    if type(context) is vertex_types.VertexProductionContext:
+        return "vertex"
     if type(context) is gemini_types.GeminiProductionContext:
         return "gemini"
     if type(context) is AnthropicProductionContext:
@@ -68,8 +71,14 @@ def context_digest(
     context: TransportContext
     | ProductionContext
     | AnthropicProductionContext
+    | vertex_types.VertexProductionContext
     | gemini_types.GeminiProductionContext,
 ) -> str:
+    if context_protocol(context) == "vertex":
+        from judgmentllm.vertex_transport import production_context_digest
+
+        assert isinstance(context, vertex_types.VertexProductionContext)
+        return production_context_digest(context)
     if context_protocol(context) == "gemini":
         from judgmentllm.gemini_transport import production_context_digest
 
@@ -99,7 +108,7 @@ def context_digest(
 
 def manifest_protocol(
     manifest: ExecutableManifest,
-) -> Literal["historical", "synthetic", "production", "anthropic", "gemini"]:
+) -> Literal["historical", "synthetic", "production", "anthropic", "gemini", "vertex"]:
     from judgmentllm.preparation.manifest import (
         ExecutableRunManifest,
         ExecutableRunManifestV2,
@@ -108,6 +117,8 @@ def manifest_protocol(
         ExecutableRunManifestV5,
     )
 
+    if type(manifest) is vertex_types.ExecutableRunManifestV7:
+        return "vertex"
     if type(manifest) is gemini_types.ExecutableRunManifestV6:
         return "gemini"
     if type(manifest) is ExecutableRunManifestV5:
@@ -126,6 +137,7 @@ def verify_protocol(
     context: TransportContext
     | ProductionContext
     | AnthropicProductionContext
+    | vertex_types.VertexProductionContext
     | gemini_types.GeminiProductionContext
     | None,
 ) -> None:
@@ -144,6 +156,7 @@ def prepare_request(
     context: TransportContext
     | ProductionContext
     | AnthropicProductionContext
+    | vertex_types.VertexProductionContext
     | gemini_types.GeminiProductionContext,
     *,
     template: str | None = None,
@@ -152,19 +165,44 @@ def prepare_request(
     frozen: TransportCommitmentV1
     | TransportCommitmentV2
     | TransportCommitmentV3
+    | vertex_types.TransportCommitmentV5
     | gemini_types.TransportCommitmentV4
     | None = None,
     parent: TransportCommitmentV1
     | TransportCommitmentV2
     | TransportCommitmentV3
+    | vertex_types.TransportCommitmentV5
     | gemini_types.TransportCommitmentV4
     | None = None,
 ) -> (
     PreparedRequestV3
     | PreparedRequestV4
     | PreparedRequestV5
+    | vertex_types.PreparedRequestV7
     | gemini_types.PreparedRequestV6
 ):
+    if context_protocol(context) == "vertex":
+        from judgmentllm.vertex_transport import prepare_production_request
+
+        assert isinstance(context, vertex_types.VertexProductionContext)
+        if (
+            frozen is not None
+            and type(frozen) is not vertex_types.TransportCommitmentV5
+        ) or (
+            parent is not None
+            and type(parent) is not vertex_types.TransportCommitmentV5
+        ):
+            raise ValueError("Vertex preparation requires Vertex commitments")
+        return prepare_production_request(
+            spec,
+            dependency,
+            identity,
+            context,
+            template=template,
+            lookup=lookup,
+            frozen=frozen,
+            parent=parent,
+        )
     if context_protocol(context) == "gemini":
         from judgmentllm.gemini_transport import prepare_production_request
 
@@ -264,15 +302,23 @@ def render_request(
     wire: PreparedRequestV3
     | PreparedRequestV4
     | PreparedRequestV5
+    | vertex_types.PreparedRequestV7
     | gemini_types.PreparedRequestV6,
 ) -> (
     RenderedPromptV3
     | RenderedProductionPromptV1
     | RenderedAnthropicPromptV1
+    | vertex_types.RenderedVertexPromptV1
     | gemini_types.RenderedGeminiPromptV1
 ):
     from judgmentllm.anthropic_transport import PreparedRequestV5
 
+    if isinstance(wire, vertex_types.PreparedRequestV7):
+        from judgmentllm.vertex_prompts import render_vertex_request
+
+        return render_vertex_request(
+            spec, template, request, lookup, wire.output_commitment
+        )
     if isinstance(wire, gemini_types.PreparedRequestV6):
         from judgmentllm.gemini_prompts import render_gemini_request
 
@@ -304,18 +350,30 @@ def build_output(
     context: TransportContext
     | ProductionContext
     | AnthropicProductionContext
+    | vertex_types.VertexProductionContext
     | gemini_types.GeminiProductionContext,
     parent: TransportCommitmentV1
     | TransportCommitmentV2
     | TransportCommitmentV3
+    | vertex_types.TransportCommitmentV5
     | gemini_types.TransportCommitmentV4,
 ) -> (
     OutputCommitmentV3
     | OutputCommitmentV4
     | OutputCommitmentV5
+    | vertex_types.OutputCommitmentV7
     | gemini_types.OutputCommitmentV6
 ):
     """Render an ordered subset under its original protocol and selection."""
+    if context_protocol(context) == "vertex":
+        from judgmentllm.vertex_transport import build_output_commitment_v7
+
+        assert isinstance(context, vertex_types.VertexProductionContext)
+        if type(parent) is not vertex_types.TransportCommitmentV5:
+            raise ValueError("Vertex subsets require Vertex parent commitments")
+        return build_output_commitment_v7(
+            spec, request, context, inherited_commitment=parent
+        )
     if context_protocol(context) == "gemini":
         from judgmentllm.gemini_transport import build_output_commitment_v6
 

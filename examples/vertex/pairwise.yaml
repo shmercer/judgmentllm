@@ -1,0 +1,19 @@
+schema_version: 3
+task_kind: pairwise
+input: responses.jsonl
+pairs: pairs.jsonl
+provider: vertex
+endpoint: models.generate_content
+model: YOUR_EXACT_MODEL
+generation:
+  max_output_tokens: 256
+prompt:
+  structured_output: text
+  native_mechanism: vertex.generate_content.response_json_schema
+execution:
+  explanations: false
+  concurrency: 1
+criteria:
+  - trait_id: '01'
+    name: Clarity
+    description: Choose the response that states its idea more clearly.

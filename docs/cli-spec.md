@@ -528,3 +528,15 @@ perform one bounded non-generative read without pagination; authentication
 acceptance is separate from model qualification. See the [Gemini guide](gemini.md)
 for native authority, key precedence, capture, usage and conservative recovery.
 The repository qualification script exposes plan/report only, with no live executor.
+
+
+## Vertex Phase 5D1
+
+Existing validate/plan/preview/run/resume/export syntax supports explicit V3
+`provider: vertex` / `endpoint: models.generate_content`. See the [Vertex guide](vertex.md)
+for required nonsecret project/location and explicit ADC/separate-key selection.
+`auth status` stays offline; Vertex key/invalid-mode records have additive
+`status_version:2`, while historical default ADC status and control envelope1
+are unchanged. `auth verify --provider vertex` and `providers models --provider
+vertex` return unsupported (exit2), with zero SDK calls. Batch/bulk, live
+qualification execution and capability promotion remain deferred.

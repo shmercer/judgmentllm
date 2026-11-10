@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from judgmentllm import gemini_types
+from judgmentllm import gemini_types, vertex_types
 from judgmentllm.config import (
     RunSpec,
     RunSpecification,
@@ -38,8 +38,18 @@ def _preview_render(
     RenderedAssessmentPrompt
     | RenderedProductionPromptV1
     | RenderedAnthropicPromptV1
+    | vertex_types.RenderedVertexPromptV1
     | gemini_types.RenderedGeminiPromptV1
 ):
+    if isinstance(spec, RunSpecV3) and spec.provider == "vertex":
+        from judgmentllm.vertex_prompts import render_vertex_request
+        from judgmentllm.vertex_transport import build_output_commitment_v7
+        from judgmentllm.vertex_transport import (
+            production_context as vertex_context,
+        )
+
+        output = build_output_commitment_v7(spec, request, vertex_context(spec))
+        return render_vertex_request(spec, template, request, lookup, output)
     if isinstance(spec, RunSpecV3) and spec.provider == "gemini":
         from judgmentllm.gemini_prompts import render_gemini_request
         from judgmentllm.gemini_transport import build_output_commitment_v6
@@ -83,6 +93,7 @@ def preview_prompt(
     RenderedAssessmentPrompt
     | RenderedProductionPromptV1
     | RenderedAnthropicPromptV1
+    | vertex_types.RenderedVertexPromptV1
     | gemini_types.RenderedGeminiPromptV1
 ):
     """Render one planned request without credentials, networking, or execution.

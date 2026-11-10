@@ -693,3 +693,25 @@ At that executor-only stage, normalized exports, seven strict R gates and the em
 production native registry were preserved. The later live acceptance changes one
 reviewed profile, preserving all schemas and historical source/authority identities;
 affected historical reconstruction requires its original source checkout.
+
+
+## Vertex production additions (Phase 5D1)
+
+Vertex uses independent manifest 7 (`vertex-production-v1`), output/prepared
+request 7, transport commitment 5 and assessment component/diagnostic 4.
+RunSpec3, SQLite2, canonical assessment2 and normalized JSONL/CSV/R1 remain
+unchanged. New scope `vertex.generate_content.usageMetadata` preserves nullable
+prompt/candidate/thinking/cache/total counters; no totals or prices are inferred.
+Reasoning field identity is independently `vertex.generate_content.thought`.
+Complete mode/project/location routing is hash-bound to source/context and each
+physical request. No project/credential string enters status or retained route
+metadata. Original transport versions and Google projections are unchanged.
+
+Authentication policy2 adds only explicitly selected Vertex key mode, source
+`JUDGMENTLLM_VERTEX_API_KEY`, through `JUDGMENTLLM_VERTEX_AUTH_MODE=api_key`.
+`CredentialStatusV2` adds integer `status_version:2` for Vertex key/unsupported-mode
+records, with the existing five safe fields. It rejects unknown fields and
+cross-provider sources with content-free errors. Historical `CredentialStatus`
+records, including default ADC unknown/google_adc, keep their exact shape.
+The CLI envelope remains1. No key, private identity or ADC path is a run setting.
+See [the user guide](vertex.md) and [deferred proposal](vertex-live-qualification-proposal.md).

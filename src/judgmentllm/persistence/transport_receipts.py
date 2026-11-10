@@ -11,7 +11,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from judgmentllm import gemini_types
+from judgmentllm import gemini_types, vertex_types
 from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.hashing import bytes_digest, canonical_bytes
 from judgmentllm.persistence.models import ArtifactIdentity, ArtifactIntegrityError
@@ -33,6 +33,7 @@ def publish_transport_commitment(
     commitment: TransportCommitmentV1
     | TransportCommitmentV2
     | TransportCommitmentV3
+    | vertex_types.TransportCommitmentV5
     | gemini_types.TransportCommitmentV4,
 ) -> ArtifactIdentity:
     """Publish exact immutable metadata before registry preparation commits."""
@@ -57,6 +58,7 @@ def read_transport_commitment(
     TransportCommitmentV1
     | TransportCommitmentV2
     | TransportCommitmentV3
+    | vertex_types.TransportCommitmentV5
     | gemini_types.TransportCommitmentV4
     | None
 ):
@@ -98,6 +100,7 @@ def iter_transport_commitments(
     TransportCommitmentV1
     | TransportCommitmentV2
     | TransportCommitmentV3
+    | vertex_types.TransportCommitmentV5
     | gemini_types.TransportCommitmentV4
 ]:
     """Inspect named safe references in bounded memory, including orphan attempts."""
@@ -139,6 +142,7 @@ def _parse_transport_commitment(
     TransportCommitmentV1
     | TransportCommitmentV2
     | TransportCommitmentV3
+    | vertex_types.TransportCommitmentV5
     | gemini_types.TransportCommitmentV4
 ):
     from judgmentllm.output_contracts import decode_assessment_output
@@ -149,6 +153,8 @@ def _parse_transport_commitment(
     if not isinstance(value, dict):
         raise ValueError("invalid transport commitment")
     version = cast(dict[str, object], value).get("transport_commitment_version", 1)
+    if type(version) is int and version == 5:
+        return vertex_types.TransportCommitmentV5.model_validate_json(raw)
     if type(version) is int and version == 4:
         return gemini_types.TransportCommitmentV4.model_validate_json(raw)
     if type(version) is int and version == 3:

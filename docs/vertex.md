@@ -1,0 +1,230 @@
+# Vertex AI Gemini execution
+
+Phase 5D1 implements the `vertex` provider's single-run generative adapter with
+**google-genai 2.34.0**, `models.generate_content`, **v1beta1**. Implementation and
+offline fixtures establish transport and validation behavior. **No Vertex model,
+native mechanism or account has been live-qualified. The production qualification
+registry is empty.** No live calls, credential discovery, keyring reads or
+publication are part of this phase.
+
+Google's current documentation calls this service Gemini Enterprise Agent
+Platform. JudgmentLLM retains provider ID `vertex`. Provider `gemini` uses the
+separate Developer API and its own keys and qualification. Its accepted live
+results confer no Vertex authority.
+
+Install the Google extra from reviewed source, retaining the existing lock:
+
+```bash
+pip install '.[google]' 'google-genai==2.34.0'
+```
+
+Another installed SDK version fails execution readiness. Ordinary imports, status,
+validation, planning and preview construct no SDK client. Copy
+[the synthetic configurations](../examples/vertex/) and replace `YOUR_EXACT_MODEL`
+with a bare Google publisher model ID. Unknown IDs remain valid configuration;
+that does not establish availability. Project-qualified names, other publishers,
+URLs, path traversal, query parameters and arbitrary request bodies are rejected.
+
+## Routing and authentication
+
+Choose `schema_version: 3`, `provider: vertex`, and
+`endpoint: models.generate_content`. Both implemented modes require explicit
+`GOOGLE_CLOUD_PROJECT` and `GOOGLE_CLOUD_LOCATION`. Project IDs/numbers are
+validated offline; this neither probes Google Cloud nor confirms the project
+exists. Locations in this reviewed transport scope are `global`, `us-central1`,
+`us-east4`, `europe-west1`, `europe-west4` and `asia-southeast1`. Other regions,
+multi-regions, private gateways, custom hosts and mTLS-bound transports need a
+separate reviewed extension. Model eligibility remains unknown at every location.
+See Google's [location documentation](https://docs.cloud.google.com/gemini-enterprise-agent-platform/resources/locations).
+
+`global` uses `https://aiplatform.googleapis.com/`; regional execution uses
+`https://LOCATION-aiplatform.googleapis.com/`. Both use the complete resource
+`v1beta1/projects/PROJECT/locations/LOCATION/publishers/google/models/MODEL:generateContent`.
+The mode, project, location, host, resource template and SDK/API versions enter a
+domain-separated route commitment and the complete preparation/source identity.
+Only the route digest enters retained commitments; the private project string
+stays transient. Resume requires the original route configuration. Changing
+region, project or authentication mode cannot reuse a frozen run.
+
+### ADC
+
+`JUDGMENTLLM_VERTEX_AUTH_MODE=adc` selects Google Cloud Application Default
+Credentials. This remains the default after deliberately selecting provider
+`vertex`, preserving historical ADC status. The
+[official ADC chain](https://docs.cloud.google.com/docs/authentication/application-default-credentials)
+can resolve eligible service accounts, local ADC, attached identities and
+federation. JudgmentLLM delegates resolution/refresh to the SDK during explicit
+execution only. It supplies no custom credential-file reader or identity chain.
+An ADC path alone establishes nothing. Missing project, malformed project,
+missing location and invalid location have separate fixed diagnostics. Unavailable
+ADC fails safely before inference forwarding and never falls back to a key.
+
+Offline `credential_status(providers=['vertex'])` and `auth status` return the
+historical five-field `unknown`/`google_adc` record in ADC mode. They do not
+construct clients, discover ADC, open credential files, access metadata, refresh
+tokens or expose project/account identities. `--require vertex` cannot be
+satisfied by unknown ADC; this does not mean ADC is invalid.
+
+### Separate Vertex key
+
+Set **`JUDGMENTLLM_VERTEX_AUTH_MODE=api_key`** and securely supply
+**`JUDGMENTLLM_VERTEX_API_KEY`** in the invoking process. JudgmentLLM never reads
+GNOME Keyring; an external launcher may expose this variable later. No key belongs
+in YAML, command arguments, source, a proposal, an artifact or an export.
+`GOOGLE_API_KEY` and `GEMINI_API_KEY` cannot authorize this mode. Missing/malformed
+Vertex keys fail without ADC or Developer fallback. Key status uses additive
+`CredentialStatusV2` with `status_version: 2`; the CLI envelope stays version 1.
+Configured means presence only.
+
+The implemented key path sends `x-goog-api-key` to the **standard project/location
+resource above**. Google's [key reference](https://docs.cloud.google.com/docs/authentication/api-keys)
+distinguishes an unbound API key from an authorization key bound to a service
+account. The [Agent Platform key setup](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/start/api-keys?usertype=standard)
+describes billing, organization policy, service-account permissions and key
+restrictions. Operators must independently establish eligibility, restrict the
+key to `aiplatform.googleapis.com`, and review the bound account's IAM and quota.
+The adapter cannot infer these facts from a string. SDK forwarding is fixture-
+tested; account authorization for inference remains unqualified.
+
+[Express Mode](https://docs.cloud.google.com/gemini-enterprise-agent-platform/reference/express-mode/api-reference)
+uses a distinct global publisher resource without project/location components.
+The SDK supports that constructor shape, but this adapter does not expose the
+Express route or reinterpret an Express key as standard-project authorization.
+There is no automatic mode/endpoint selection from key contents or ambient SDK
+variables.
+
+## Pinned SDK evidence
+
+Actual 2.34.0 source and intercepted HTTP establish `enterprise=True` as the
+current flag and `vertexai=True` as its legacy alias; conflicting explicit flags
+raise. The adapter sets both true and explicitly fixes base URL, project,
+location, API version and HTTP clients. Explicit project/location suppresses
+ambient Developer-key selection in ADC mode. Key mode supplies the separate
+resolved Vertex key. Source hashes are retained in the
+[SDK profile](../tests/fixtures/production_vertex/sdk-profile.json).
+See the pinned [client](https://github.com/googleapis/python-genai/blob/v2.34.0/google/genai/client.py),
+[HTTP implementation](https://github.com/googleapis/python-genai/blob/v2.34.0/google/genai/_api_client.py)
+and [model conversion](https://github.com/googleapis/python-genai/blob/v2.34.0/google/genai/models.py).
+
+Current quickstarts commonly show `v1`. The already registered V2 Vertex
+projections and this production transport use **v1beta1**, explicitly, matching
+the pinned SDK's Vertex default and the
+[versioned endpoint reference](https://docs.cloud.google.com/gemini-enterprise-agent-platform/reference/rest/v1beta1/projects.locations.publishers.models/generateContent).
+No compatibility version or historical Google projection is changed.
+
+## Assessment and controls
+
+Text mode includes the complete canonical JSON schema in the protected prompt.
+Independent/grouped ordinal rubrics, optional exemplars, custom sandboxed
+prompts, all three explanation layouts, forced-choice pairwise winners and
+explicitly permitted ties have offline fixtures. Separated arrays join by trait
+ID. Original and presented positions remain distinct. Category selection creates
+a category code, with null probabilities/expected scores.
+
+The separate V2 native projections remain:
+
+- `vertex.generate_content.response_schema`: SDK `Schema`/Cloud Schema.
+- `vertex.generate_content.response_json_schema`: JSON Schema.
+
+The first emits `responseSchema`, uppercase types and SDK snake-case schema
+fields. The second emits `responseJsonSchema` with the original JSON-schema
+casing. Ordered schemas, property ordering, closure, alternatives and enums have
+independent exact-byte fixtures. Native prompts omit schema duplication under
+the existing route policies; all relational, membership and explanation checks
+still run locally. Google's [structured-output guide](https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/capabilities/control-generated-output)
+and the pinned types describe different schema surfaces; serialization is not
+proof of serving enforcement.
+
+The Vertex production registry grants **neither mechanism**. Explicit native
+requests fail preflight. Nonstrict `auto` selects text; strict unknown capability
+requests fail. Offline candidate preparation can inspect either native body but
+cannot execute through the production adapter. No executor or grant is provided.
+A failed request never changes the selected mechanism or causes a second call.
+
+Sparse generation maps temperature to `temperature`, top-p to `topP` and output
+limit to `maxOutputTokens`. Omitted values stay omitted; SDK sampling numbers
+serialize as floats. Endpoint numeric validation bounds temperature to 0–2 and
+top-p to 0–1. Model limits remain unknown. For unknown IDs, sampling support is
+unknown and obeys strict/nonstrict validation. Documentation establishes sampling
+for the reviewed `gemini-2.5-flash`/`gemini-2.5-pro` names; it establishes no live
+qualification. Current [inference guidance](https://docs.cloud.google.com/gemini-enterprise-agent-platform/reference/models/inference)
+says newer models ignore sampling: this adapter rejects explicit sampling for
+exact `gemini-3.6-flash`, `gemini-3.8-flash`, `gemini-4-carbon` and
+`gemini-4-argon`. A successful SDK constructor cannot justify an ignored setting.
+
+One candidate is fixed. Thinking controls, tools, arbitrary headers/URLs, tier
+settings and explicit cache controls are unavailable. `off`/`auto` omit explicit
+cache controls; implicit provider caching may still occur. Provider thinking
+usage never authorizes thinking-text retention. Native provider batch and managed
+bulk-live remain Milestone 5, with no emulation or batch discount here.
+
+## Responses, privacy and recovery
+
+Successful assessment requires exactly one candidate with model role, one
+nonblank supported assessment-text part, `STOP`, and no safety block or
+continuation. Refusal, truncation, tools, unsupported finish reasons, multiple
+outputs, invalid JSON, duplicate keys and malformed assessments remain failures.
+No concatenation, JSON repair, category coercion or implicit rescoring occurs.
+Grouped sibling salvage follows the existing strict per-member contract.
+
+Requested and reported models remain separate. Missing usage is null. Vertex
+[UsageMetadata](https://docs.cloud.google.com/gemini-enterprise-agent-platform/reference/rest/v1beta1/GenerateContentResponse)
+reports prompt, candidate, thinking, cached and total counters: cached input is
+included in prompt input; thinking is separate from candidate output. Preserve
+reported totals without recomputing them. Unknown counters have no inferred
+meaning. Usage belongs to one physical observation, never one row per trait.
+No precise cost, cache savings or zero charge follows from missing counters.
+
+Full capture may retain exact recognized assessment text, including invalid JSON,
+as a protected artifact. Minimal capture retains hash/length and safe metadata.
+Thought text, signatures, credential echoes and unknown envelope fields are
+excluded before retention. Assessment explanations remain separate from provider
+reasoning. The response bound is 8 MiB; recognized text is bounded to 1 MiB,
+without truncation. SDK/auth error prose and authenticated URLs/headers are never
+persisted. A credential-bearing response is withheld without hashing the secret.
+
+Complete SDK HTTP body bytes must match the committed body before forwarding.
+The guard fixes method, host, resource path, authentication headers and permitted
+header names. SDK and HTTP retries, automatic continuation, function calling,
+redirects, proxy routing and debug/replay recording are disabled or rejected.
+Connect/write/pool limits are 10 seconds, read 60 seconds, generation deadline
+90 seconds. Concurrency bounds connections and pending responses. ADC acquisition
+uses Google's own credential transports/timeouts; cancellation of a background
+credential refresh cannot promise immediate thread termination.
+
+The shared engine journals physical identities before submission and retains
+attempts, observations, diagnostics and exports. HTTP rejection differs from
+uncertain forwarding. Restart never replaces an accepted/uncertain non-retrievable
+response. Reopening can finish from retained evidence; it cannot manufacture
+remote retrieval. Cancellation after forwarding remains uncertain unless a
+response is already retained. Explicit subset retries use new attempts and retain
+prior outcomes and immutable exports.
+
+## Offline use and future qualification
+
+With explicit nonsecret project/location configuration, these operations remain
+offline, including when no credential exists:
+
+```bash
+judgmentllm validate --config examples/vertex/rubric.yaml --json
+judgmentllm plan --config examples/vertex/pairwise.yaml --json
+judgmentllm templates preview --config examples/vertex/rubric.yaml --item-id 001 --trait 01
+judgmentllm auth status --require vertex --json
+```
+
+`run` and `resume` can make billable inference requests and require separate
+operator authorization. Neither was invoked against Google in Phase 5D1.
+`auth verify --provider vertex` and `providers models --provider vertex` explicitly
+return unsupported with zero SDK calls. No suitable protected bounded operation
+has been independently established; public listing, ADC discovery and token
+refresh cannot establish inference permission.
+
+The separate [live proposal](vertex-live-qualification-proposal.md) remains
+**deferred**: no eligible project/account or exact serving model has been
+established within this offline authorization. It does not borrow Gemini
+Developer plans, consent, responses, pricing or authority. A fresh committed-source
+proposal records its explicit auth mode/API/location, four intended synthetic
+text/native rubric/pairwise cases, request/output ceilings and missing prerequisites.
+Complete physical requests/hashes, input/cost reservations and real model scope
+remain absent until eligibility and current documentation are reviewed. There
+is no execute command in this phase.

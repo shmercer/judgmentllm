@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Literal, cast
 
 from pydantic import Field
 
-from judgmentllm import gemini_types
+from judgmentllm import gemini_types, vertex_types
 from judgmentllm._lifecycle_store import (
     decode_cursor,
     discover_store,
@@ -84,9 +84,24 @@ def _production_context(
 ) -> (
     ProductionContext
     | AnthropicProductionContext
+    | vertex_types.VertexProductionContext
     | gemini_types.GeminiProductionContext
     | None
 ):
+    if spec.provider == "vertex":
+        if (
+            not isinstance(spec, RunSpecV3)
+            or spec.endpoint != "models.generate_content"
+        ):
+            raise LifecycleError(
+                "unsupported_capability",
+                "Vertex AI execution requires schema_version 3 and endpoint models.generate_content",
+            )
+        from judgmentllm.vertex_transport import (
+            production_context as vertex_context,
+        )
+
+        return vertex_context(spec)
     if spec.provider == "gemini":
         if (
             not isinstance(spec, RunSpecV3)
@@ -134,6 +149,7 @@ def _offline_context(
 ) -> (
     ProductionContext
     | AnthropicProductionContext
+    | vertex_types.VertexProductionContext
     | gemini_types.GeminiProductionContext
     | None
 ):
@@ -150,6 +166,15 @@ def _execution_adapter(
     resume: bool,
     concurrency: int = 4,
 ) -> ProviderAdapter:
+    if provider == "vertex":
+        if options is not None or endpoint != "models.generate_content":
+            raise LifecycleError(
+                "unsupported_capability",
+                "Vertex AI does not accept mock controls or other endpoints",
+            )
+        from judgmentllm.providers.vertex import VertexAdapter
+
+        return VertexAdapter(endpoint, model, concurrency=concurrency)
     if provider == "gemini":
         if options is not None or endpoint != "models.generate_content":
             raise LifecycleError(
@@ -239,6 +264,11 @@ def _safe_provider_diagnostic(error: BaseException) -> tuple[ErrorCategory, str]
         OpenAIConfigurationError,
         OpenAIReadinessError,
     )
+    from judgmentllm.providers.vertex import (
+        VertexConfigurationError,
+        VertexReadinessError,
+    )
+    from judgmentllm.vertex_config import VertexSetupError
 
     if isinstance(
         error,
@@ -246,12 +276,20 @@ def _safe_provider_diagnostic(error: BaseException) -> tuple[ErrorCategory, str]
             OpenAIConfigurationError,
             AnthropicConfigurationError,
             GeminiConfigurationError,
+            VertexConfigurationError,
+            VertexSetupError,
         ),
     ):
         return "unsupported_capability", str(error)
 
     if isinstance(
-        error, (OpenAIReadinessError, AnthropicReadinessError, GeminiReadinessError)
+        error,
+        (
+            OpenAIReadinessError,
+            AnthropicReadinessError,
+            GeminiReadinessError,
+            VertexReadinessError,
+        ),
     ):
         return (
             "validation"
@@ -370,6 +408,7 @@ def _require_presentation(spec: RunSpecification) -> None:
         "openai",
         "anthropic",
         "gemini",
+        "vertex",
     }:
         _production_context(spec)
         return
@@ -412,6 +451,27 @@ def _profile(
             raise LifecycleError(
                 "unsupported_capability", "synthetic provider settings are unsupported"
             ) from None
+    if spec.provider == "vertex" and isinstance(spec, RunSpecV3):
+        _production_context(spec)
+        from judgmentllm.providers.vertex import (
+            VertexAdapter,
+            VertexConfigurationError,
+        )
+
+        profile = VertexAdapter.capabilities_for(
+            spec.provider,
+            spec.endpoint,
+            spec.model,
+            mechanism=spec.prompt.native_mechanism,
+        )
+        if allow_invalid and not validate_run(spec, capabilities=profile).valid:
+            return profile
+        try:
+            VertexAdapter(
+                spec.endpoint, spec.model, concurrency=spec.execution.concurrency
+            ).validate(spec)
+        except VertexConfigurationError as error:
+            raise LifecycleError("unsupported_capability", str(error)) from None
     if spec.provider == "gemini" and isinstance(spec, RunSpecV3):
         _production_context(spec)
         from judgmentllm.providers.gemini import (
@@ -572,6 +632,8 @@ def estimate_run(
                         "openai.responses.text.format",
                         "openai.chat.response_format",
                         "anthropic.messages.output_config.format",
+                        "vertex.generate_content.response_schema",
+                        "vertex.generate_content.response_json_schema",
                         "gemini.generate_content.response_schema",
                         "gemini.generate_content.response_json_schema",
                     ],
@@ -579,7 +641,7 @@ def estimate_run(
                 ]
                 | None
             ) = None
-            if manifest.schema_version in (4, 5, 6):
+            if manifest.schema_version in (4, 5, 6, 7):
                 from judgmentllm.anthropic_transport import TransportCommitmentV3
                 from judgmentllm.persistence.transport_receipts import (
                     iter_transport_commitments,
@@ -593,6 +655,7 @@ def estimate_run(
                         (
                             TransportCommitmentV2,
                             TransportCommitmentV3,
+                            vertex_types.TransportCommitmentV5,
                             gemini_types.TransportCommitmentV4,
                         ),
                     ):
@@ -614,7 +677,9 @@ def estimate_run(
                 cache_policy=spec.execution.cache_policy or "auto",
                 cache_report="uncached" if mock else "unknown",
                 pricing="not_applicable" if mock else "unknown",
-                transport_protocol="gemini-production-v1"
+                transport_protocol="vertex-production-v1"
+                if manifest.schema_version == 7
+                else "gemini-production-v1"
                 if manifest.schema_version == 6
                 else "anthropic-production-v1"
                 if manifest.schema_version == 5
@@ -664,7 +729,7 @@ async def arun_live(
     """Execute in this process until drained; cancellation preserves durable work."""
     with _errors():
         spec = _checked_spec(spec_or_path)
-        if spec.provider in {"openai", "anthropic", "gemini"}:
+        if spec.provider in {"openai", "anthropic", "gemini", "vertex"}:
             _production_context(spec)
         _require_presentation(spec)
         root = discover_store(store, spec)
@@ -734,6 +799,7 @@ def _prepare(
     profile: CapabilityProfile,
     context: ProductionContext
     | AnthropicProductionContext
+    | vertex_types.VertexProductionContext
     | gemini_types.GeminiProductionContext
     | None = None,
 ) -> None:

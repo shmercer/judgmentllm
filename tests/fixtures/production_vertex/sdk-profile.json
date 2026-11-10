@@ -1,0 +1,15 @@
+{
+  "sdk_package": "google-genai",
+  "sdk_version": "2.34.0",
+  "api_version": "v1beta1",
+  "endpoint": "models.generate_content",
+  "source_sha256": {
+    "client.py": "64d53f858606224ef444c7ad8d19bab3e1fb2bea675dfbb57f714494388072d7",
+    "_api_client.py": "b179b80a126a35c98b98aeefa701950304c38c8a1e117136a2270a0901fd93e4",
+    "_transformers.py": "a7d84a3b0605f14bb43044063ee78852198da81f1c13e50fb02401ba91ff099a",
+    "models.py": "f78ac26c5e01ba8863ebedf10345ef4b48be6c3edd1c573f33d0ed964366116c",
+    "types.py": "1a435d319fb2cd9da117ab962433c53783c3e5ab71851762574700ec975a5350",
+    "_base_url.py": "1391f875ec35e18d7aa9f9c1dd74678d20a2d7d70956591a30da0cffc8a9f8f3"
+  },
+  "scope": "offline serialization only; no live qualification"
+}
