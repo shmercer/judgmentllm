@@ -17,6 +17,10 @@ from judgmentllm.anthropic_transport import (
     production_context,
 )
 from judgmentllm.assessment_diagnostics import diagnose_assessment_output
+from judgmentllm.output_contracts import (
+    RubricOutputContract,
+    validate_rubric_contract_output,
+)
 from judgmentllm.providers.anthropic import AnthropicAdapter
 from judgmentllm.providers.anthropic_response import (
     _extract_assessment_component,
@@ -212,6 +216,28 @@ def test_diagnostics_do_not_repair_invalid_assessments(
     # Codes are closed and content-free; exact code vocabulary is shared with Phase 5A.
     assert result.code == code
     assert component.output_text == text.encode()
+
+
+@pytest.mark.parametrize("fence", [None, "", "json"])
+def test_raw_rubric_json_is_valid_and_markdown_fences_remain_invalid(
+    tmp_path: Path, fence: str | None
+) -> None:
+    wire, *_ = wire_for(tmp_path, grouped=False)
+    contract = wire.output_commitment.contract
+    assert isinstance(contract, RubricOutputContract)
+    raw = '{"scores":[{"trait_id":"01","category_label":"high é"}]}'
+    text = raw if fence is None else f"```{fence}\n{raw}\n```"
+    component = _extract_assessment_component(envelope("messages", text), "messages")
+    result = diagnose_assessment_output(component, contract)
+    assert component.output_text == text.encode("utf-8")
+    assert result.canonical_valid == (fence is None)
+    if fence is None:
+        output = validate_rubric_contract_output(raw, contract)
+        assert output.scores[0].category_label == "high é"
+    else:
+        assert result.code == "json_syntax"
+        with pytest.raises(ValueError):
+            validate_rubric_contract_output(text, contract)
 
 
 @pytest.mark.parametrize("cache", ["off", "auto", "explicit"])

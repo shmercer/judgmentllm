@@ -42,6 +42,12 @@ used descriptively and in permitted text mode. A schema fixture, installed SDK,
 visible model, configured credential, or qualification-harness response grants no
 native production authority. There is no mechanism or model fallback on failure.
 
+Text-mode rubric instructions explicitly request one raw JSON object without
+Markdown code fences or any surrounding text. Prompting does not guarantee
+compliance: malformed output, including fenced JSON, remains an unsuccessful
+assessment. Prefer native structured output for stronger format enforcement when
+the exact model and feature are supported and qualified.
+
 Independent rubric assessment is the default. Grouped rubric outputs must provide
 all requested traits under the exact contract; valid siblings can be preserved
 beside explicitly unsuccessful traits. Scores-only and supported explanation
@@ -194,3 +200,14 @@ python scripts/qualify_anthropic.py report --evidence-dir /external/new-anthropi
 
 The resulting plan records the body-derived reservations; a larger request
 requires a correspondingly larger estimated budget and a newly reviewed digest.
+
+The four-call plan `4f4a4e4d5d361ac45935ad3aa685ba421ac0c5f33b4f2ecf24b90b2b7daf3aa0`
+at source `1f5c25be6ce366e8ad42cafe620fc6b99eb4370c` is consumed. Its fenced rubric-text
+result remains invalid; the revised wording has not been live-qualified. A future
+retest needs a new source-bound plan and independent billable authorization.
+Prefer a single rubric-text case, but the current harness requires the four-case
+matrix and has no case-selection option. Leave the harness unchanged here; a
+follow-up can review a minimal case-selection change or authorize a fresh bounded
+four-case plan. Anthropic rubric text mode remains explicitly unqualified;
+Milestone 3 Phase 5C (Gemini Developer) can proceed independently after this
+correction is reviewed and merged.
