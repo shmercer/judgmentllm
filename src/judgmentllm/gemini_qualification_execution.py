@@ -431,6 +431,8 @@ def _case_report(
     case: GeminiQualificationCallV1,
     consumed: bool,
 ) -> dict[str, Any]:
+    from judgmentllm.preparation import _load_manifest, _verify_metadata
+
     row: dict[str, Any] = {
         "case_id": case.case_id,
         "run_id": case.run_id,
@@ -478,6 +480,11 @@ def _case_report(
             artifacts = ArtifactStore(
                 repository.run_directory(case.run_id), create=False
             )
+            manifest = _load_manifest(repository, case.run_id, unsealed=False)
+            _verify_metadata(repository, manifest)
+            artifacts.read(manifest.specification)
+            for source in manifest.sources:
+                artifacts.read(repository.get_artifact(case.run_id, source.raw_sha256))
             transport = read_transport_commitment(artifacts, case.attempt_id)
             if (
                 transport is None

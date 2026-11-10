@@ -555,7 +555,17 @@ def test_damaged_authorization_is_not_reconstructed(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "damage", ["diagnostic", "response", "transport", "results", "observation"]
+    "damage",
+    [
+        "diagnostic",
+        "response",
+        "transport",
+        "results",
+        "observation",
+        "manifest",
+        "source_snapshot",
+        "specification",
+    ],
 )
 async def test_retained_evidence_integrity_blocks_qualification(
     planned: Any, monkeypatch: pytest.MonkeyPatch, damage: str
@@ -572,7 +582,14 @@ async def test_retained_evidence_integrity_blocks_qualification(
     with ReadOnlyRepository(store, preserve_files=True) as repository:
         receipt = next(repository.iter_evidence(case.run_id))
         artifacts = ArtifactStore(repository.run_directory(case.run_id), create=False)
-        if damage in {"diagnostic", "response", "transport"}:
+        if damage in {
+            "diagnostic",
+            "response",
+            "transport",
+            "manifest",
+            "source_snapshot",
+            "specification",
+        }:
             if damage == "diagnostic":
                 assert (
                     receipt.assessment_diagnostic is not None
@@ -584,6 +601,24 @@ async def test_retained_evidence_integrity_blocks_qualification(
                 assert receipt.retained is not None
                 path = artifacts.verify(receipt.retained)
                 assert path is not None
+            elif damage in {"manifest", "source_snapshot", "specification"}:
+                from judgmentllm.preparation import _load_manifest
+
+                manifest = _load_manifest(repository, case.run_id, unsealed=False)
+                if damage == "manifest":
+                    path = artifacts.root / "manifest.json"
+                else:
+                    identity = (
+                        manifest.specification
+                        if damage == "specification"
+                        else next(
+                            source.snapshot
+                            for source in manifest.sources
+                            if source.snapshot is not None
+                        )
+                    )
+                    path = artifacts.verify(identity)
+                    assert path is not None
             else:
                 path = artifacts.reference_path(transport_reference(case.attempt_id))
             path.write_bytes(b"PRIVATE_CORRUPTION_CANARY")
