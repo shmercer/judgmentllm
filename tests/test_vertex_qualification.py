@@ -696,6 +696,17 @@ def test_source_change_during_preparation_prevents_sealing(
     assert not (tmp_path / "changing" / "plan.json").exists()
 
 
+def test_source_change_during_verification_fails_without_evidence_writes(
+    plan: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source = iter([SOURCE, "b" * 40])
+    monkeypatch.setattr(q, "_source_commit", lambda: next(source))
+    before = _files(plan)
+    with pytest.raises(ValueError):
+        q.verify_plan(plan, expected_plan_sha256=_digest(plan))
+    assert _files(plan) == before
+
+
 def test_python_integer_and_credential_source_ingress(plan: Path) -> None:
     model = q.VertexQualificationPlanV2.model_validate_json(
         (plan / "plan.json").read_bytes()
