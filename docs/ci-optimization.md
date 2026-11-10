@@ -8,7 +8,7 @@ risk. Unknowns and ambiguity escalate. Deferred checks are **not passed checks**
 | Level | Typical change | Required development/PR acceptance |
 |---|---|---|
 | 0 — Documentation | Non-executable prose | Relevant offline links and example syntax checks |
-| 1 — Low | Prompt wording or text formatting with unchanged control flow | Affected Ruff/format/Pyright, focused unit/regression and prompt/serialization contracts; no comprehensive coverage, platform, resource, R or package campaign |
+| 1 — Low | Designated prompt-instruction wording or template prose with unchanged schema, selection, sandbox and control flow | Affected Ruff/format/Pyright, focused unit/regression and prompt/serialization contracts; no comprehensive coverage, platform, resource, R or package campaign |
 | 2 — Moderate | Independent adapter or response handling | Primary Linux/Python 3.11 functional suite and coverage; affected integration/R gates, platforms and packaging |
 | 3 — High | Execution, persistence/recovery, schemas/exports, authentication/privacy, CI/selection/coverage controls | Primary suite/coverage, representative full functional Windows 3.12 and macOS 3.11, all seven strict Linux R gates, relevant security/durability/concurrency/compatibility tests; resource/package checks when affected |
 | 4 — Release/comprehensive | Publication, compatibility milestone, weekly/manual complete check | Supported platform/version union, all strict R gates across platforms, primary coverage, resource workloads, wheel/sdist metadata and isolated installs; releases additionally require compatibility, scale/reproducibility and alpha-readiness evidence |
@@ -78,11 +78,17 @@ remain non-qualifying. Native grid commands and isolation requirements are in
 ## Classification and trust
 
 `ci/risk.py` uses boundary rules, content checks and conservative defaults.
-String-only Python wording edits must preserve the AST after replacing strings;
-template wording must preserve control blocks/placeholders. A narrow additional
-rule recognizes literal instruction replacements under a commitment-version
-predicate in the instruction builder, including PR #27; protected renderer
-logic and calls must remain unchanged. Type-only imports are allowed there.
+Python wording edits may replace only designated instruction literals in
+`output_instructions_v3`, `_output_instructions_v2` and `render_prompt`;
+all other AST content stays exact. Schema keys, selection values (including
+`canonical_neutral`), sandbox rules (including the Jinja filter allowlist), call
+arguments and control-flow predicates are Level 3 unless a separate narrow rule
+independently establishes safety. Template wording must preserve control
+blocks/placeholders. The sole predicate exception recognizes PR #27's additive
+literal `instructions[0]` replacement under exactly
+`not native and output.commitment_version == 5`, first inside the rubric guard,
+with its specific type-only import/annotation. Editing that predicate escalates;
+protected renderer logic and calls must remain unchanged.
 Unknown prompt control flow, unknown paths and changed/removed existing tests
 escalate. Additive prompt tests may stay focused; existing statements/fixtures
 remain exact. This deliberately avoids general semantic/dependency analysis.
@@ -112,6 +118,9 @@ steps (including R/coverage). It independently reconstructs the plan from the
 protected policy and literal base/head commits, so a replaced plan artifact
 cannot reduce acceptance. It also requires successful plan/matrix job results.
 Diagnostic artifacts are retained on failure and superseded runs are cancelled.
+The final acceptance artifact must upload successfully before the aggregator
+publishes success. Status publication is its last step and includes every
+preceding step's outcome, including a failed or missing artifact upload.
 
 Read-only settings inspection on 2026-11-09 found `main` unprotected, with no
 required status checks and no repository rulesets. This PR does not modify those

@@ -21,8 +21,8 @@ from risk import COMPREHENSIVE, R_GATES, admit, classify, make_plan, required_st
         ("docs/guide.md", "# Guide\nOld words", "# Guide\nNew words", 0),
         (
             "src/judgmentllm/native_prompts.py",
-            'def prompt(): return "JSON"',
-            'def prompt(): return "raw JSON"',
+            'def output_instructions_v3(output):\n    instructions = ["JSON"]\n    return instructions[0]',
+            'def output_instructions_v3(output):\n    instructions = ["raw JSON"]\n    return instructions[0]',
             1,
         ),
         (
@@ -135,6 +135,137 @@ def test_actual_pr27_diff_receives_focused_level_one_plan() -> None:
     assert not plan["coverage"] and not plan["r_gates"]
     assert not plan["resources"] and not plan["packaging"]
     assert "tests/test_anthropic_response.py" in plan["targets"]
+
+
+@pytest.mark.parametrize(
+    "path,old,new,level",
+    [
+        (
+            "native_prompts.py",
+            "Return only a JSON object matching this schema.",
+            "Return exactly one raw JSON object matching this schema.",
+            1,
+        ),
+        (
+            "native_prompts.py",
+            "Include every requested trait exactly once; do not add traits or fields.",
+            "Include each requested trait exactly once; do not add traits or fields.",
+            1,
+        ),
+        (
+            "prompts.py",
+            "Include every requested trait exactly once. Preserve category labels exactly.",
+            "Include each requested trait exactly once. Preserve category labels exactly.",
+            1,
+        ),
+        (
+            "native_prompts.py",
+            '"canonical_neutral"',
+            '"projected_native"',
+            3,
+        ),
+        ("native_prompts.py", '!= "text"', '!= "native"', 3),
+        ("native_prompts.py", '== "together"', '== "scores_first"', 3),
+        (
+            "native_prompts.py",
+            "not native and output.commitment_version == 5",
+            "not native and output.commitment_version == 4",
+            3,
+        ),
+        (
+            "prompts.py",
+            '{"length", "lower", "upper", "trim"}',
+            '{"length", "lower", "upper", "attr"}',
+            3,
+        ),
+        (
+            "prompts.py",
+            '"trait_id": {"const": trait.trait_id}',
+            '"trait": {"const": trait.trait_id}',
+            3,
+        ),
+        ("prompts.py", 'kind == "rubric"', 'kind == "pairwise"', 3),
+        ("prompts.py", '== "scores_first"', '== "explanations_first"', 3),
+        ("anthropic_prompts.py", 'mode="after"', 'mode="before"', 3),
+    ],
+)
+def test_real_prompt_modules_only_designated_instruction_text_is_low_risk(
+    path: str, old: str, new: str, level: int
+) -> None:
+    filename = "src/judgmentllm/" + path
+    before = (Path(__file__).resolve().parents[2] / filename).read_text()
+    assert old in before
+    assert classify(filename, before, before.replace(old, new, 1))[0] == level
+
+
+@pytest.mark.parametrize(
+    "before,after,level",
+    [
+        ('return "JSON"', 'return "raw JSON"', 3),
+        ('instructions = ["JSON"]', 'instructions = ["raw JSON"]', 1),
+        (
+            'instructions = ["JSON" if mode == "text" else "native"]',
+            'instructions = ["raw JSON" if mode == "text" else "native"]',
+            1,
+        ),
+        (
+            'instructions = ["JSON" if mode == "text" else "native"]',
+            'instructions = ["JSON" if mode == "native" else "native"]',
+            3,
+        ),
+        (
+            'instructions.append(schema["scores"])',
+            'instructions.append(schema["results"])',
+            3,
+        ),
+        (
+            'instructions.append(json.dumps(schema, separators=(",", ":")))',
+            'instructions.append(json.dumps(schema, separators=(";", ":")))',
+            3,
+        ),
+        (
+            'instructions.append({"scores": "JSON"})',
+            'instructions.append({"results": "JSON"})',
+            3,
+        ),
+        (
+            "instructions.append(f\"Return {schema['scores']}\")",
+            "instructions.append(f\"Return {schema['results']}\")",
+            3,
+        ),
+    ],
+)
+def test_instruction_expressions_preserve_selection_keys_and_call_arguments(
+    before: str, after: str, level: int
+) -> None:
+    prefix = "def output_instructions_v3(output):\n    "
+    assert (
+        classify("src/judgmentllm/native_prompts.py", prefix + before, prefix + after)[
+            0
+        ]
+        == level
+    )
+
+
+@pytest.mark.parametrize(
+    "predicate",
+    [
+        "native and output.commitment_version == 5",
+        "not native and output.commitment_version == 4",
+        "not native and output.commitment_version != 5",
+    ],
+)
+def test_pr27_exception_does_not_admit_unreviewed_predicates(predicate: str) -> None:
+    root = Path(__file__).resolve().parents[2]
+    filename = "src/judgmentllm/native_prompts.py"
+    before, after = (
+        subprocess.check_output(
+            ["git", "show", f"{ref}:{filename}"], cwd=root, text=True
+        )
+        for ref in ("91e4079", "37604d14a94f19f7d47b626625c9d742fc72124c")
+    )
+    after = after.replace("not native and output.commitment_version == 5", predicate)
+    assert classify(filename, before, after)[0] == 3
 
 
 @pytest.mark.parametrize(

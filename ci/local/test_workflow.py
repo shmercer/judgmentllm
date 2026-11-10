@@ -65,6 +65,24 @@ def test_workflow_is_base_owned_and_only_aggregator_can_write_statuses() -> None
     assert "job.status == 'success'" in status["env"]["STATE"]
 
 
+def test_acceptance_status_includes_artifact_upload_outcome_and_is_last() -> None:
+    steps = workflow()["jobs"]["acceptance"]["steps"]
+    upload, status = steps[-2:]
+    assert upload["uses"].startswith("actions/upload-artifact@")
+    assert upload["if"] == "always()"
+    assert upload["with"] == {
+        "name": "acceptance",
+        "path": "${{ runner.temp }}/acceptance.json",
+        "if-no-files-found": "error",
+    }
+    # job.status now includes upload failure; no later step can fail after success.
+    assert status["name"] == "Publish exact-head required status"
+    assert status["if"] == "always()"
+    assert status["env"]["STATE"] == (
+        "${{ job.status == 'success' && 'success' || 'failure' }}"
+    )
+
+
 def test_workflow_runs_quality_before_dynamic_matrix_and_keeps_diagnostics() -> None:
     data = workflow()
     plan = data["jobs"]["plan"]

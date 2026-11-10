@@ -107,18 +107,70 @@ def blob(source: Path, ref: str, filename: str) -> str | None:
     return result.stdout if result.returncode == 0 else None
 
 
-def wording_only(before: str, after: str) -> bool:
-    class Strings(ast.NodeTransformer):
-        def visit_Constant(self, node: ast.Constant) -> ast.AST:
-            return (
-                ast.copy_location(ast.Constant(value="<wording>"), node)
-                if isinstance(node.value, str)
-                else node
-            )
+def instruction_wording(tree: ast.Module, filename: str) -> ast.Module:
+    """Mask only designated instruction text, keeping predicates and data exact."""
+    slots = {
+        "src/judgmentllm/native_prompts.py": {
+            "output_instructions_v3": {"instructions", "instructions[0]"},
+        },
+        "src/judgmentllm/prompts.py": {
+            "_output_instructions_v2": {"prefix", "text"},
+            "render_prompt": {"output_instructions"},
+        },
+    }.get(filename, {})
+
+    def text(expression: ast.expr) -> ast.expr:
+        if isinstance(expression, ast.Constant) and isinstance(expression.value, str):
+            return ast.copy_location(ast.Constant(value="<wording>"), expression)
+        if isinstance(expression, ast.BinOp) and isinstance(expression.op, ast.Add):
+            expression.left = text(expression.left)
+            expression.right = text(expression.right)
+        elif isinstance(expression, ast.IfExp):
+            # Selection values in the predicate are never instruction wording.
+            expression.body = text(expression.body)
+            expression.orelse = text(expression.orelse)
+        elif isinstance(expression, ast.JoinedStr):
+            expression.values = [
+                text(part) if isinstance(part, ast.Constant) else part
+                for part in expression.values
+            ]
+        # Calls, schema dictionaries, subscripts and formatted values stay exact.
+        return expression
+
+    for function in tree.body:
+        if not isinstance(function, ast.FunctionDef) or function.name not in slots:
+            continue
+        for node in ast.walk(function):
+            if isinstance(node, (ast.Assign, ast.AugAssign)):
+                targets = (
+                    node.targets if isinstance(node, ast.Assign) else [node.target]
+                )
+                if (
+                    len(targets) == 1
+                    and ast.unparse(targets[0]) in slots[function.name]
+                ):
+                    if ast.unparse(targets[0]) == "instructions" and isinstance(
+                        node.value, ast.List
+                    ):
+                        node.value.elts = [text(part) for part in node.value.elts]
+                    else:
+                        node.value = text(node.value)
+            elif (
+                function.name == "output_instructions_v3"
+                and isinstance(node, ast.Call)
+                and ast.unparse(node.func) == "instructions.append"
+                and len(node.args) == 1
+                and not node.keywords
+            ):
+                node.args[0] = text(node.args[0])
+    return tree
+
+
+def wording_only(filename: str, before: str, after: str) -> bool:
 
     try:
-        return ast.dump(Strings().visit(ast.parse(before))) == ast.dump(
-            Strings().visit(ast.parse(after))
+        return ast.dump(instruction_wording(ast.parse(before), filename)) == ast.dump(
+            instruction_wording(ast.parse(after), filename)
         )
     except SyntaxError:
         return False
@@ -175,27 +227,29 @@ def additive_prompt_tests(before: str, after: str) -> bool:
 
 
 def conditional_wording_only(before: str, after: str) -> bool:
-    """Allow a literal instruction replacement under a version-only predicate.
+    """Recognize only PR #27's reviewed additive instruction replacement.
 
     This recognizes PR #27 without permitting changed renderer logic or new
     calls. Unknown prompt control flow still escalates.
     """
-    predicate_nodes = (
-        ast.BoolOp,
-        ast.And,
-        ast.Or,
-        ast.UnaryOp,
-        ast.Not,
-        ast.Compare,
-        ast.Eq,
-        ast.NotEq,
-        ast.Name,
-        ast.Load,
-        ast.Attribute,
-        ast.Constant,
+    predicate = ast.dump(
+        ast.parse("not native and output.commitment_version == 5", mode="eval").body
+    )
+    rubric_guard = ast.dump(
+        ast.parse("isinstance(contract, RubricOutputContract)", mode="eval").body
+    )
+    type_import = ast.dump(
+        ast.parse(
+            "if TYPE_CHECKING:\n    from judgmentllm.anthropic_transport import OutputCommitmentV5"
+        ).body[0]
+    )
+    annotation = ast.dump(
+        ast.parse("OutputCommitmentV3 | OutputCommitmentV5", mode="eval").body
     )
 
     class Wording(ast.NodeTransformer):
+        replacements = 0
+
         def visit_ImportFrom(self, node: ast.ImportFrom) -> ast.AST:
             if node.module == "typing":
                 node.names = [
@@ -206,12 +260,7 @@ def conditional_wording_only(before: str, after: str) -> bool:
             return node
 
         def visit_If(self, node: ast.If) -> ast.AST | None:
-            if (
-                isinstance(node.test, ast.Name)
-                and node.test.id == "TYPE_CHECKING"
-                and not node.orelse
-                and all(isinstance(child, ast.ImportFrom) for child in node.body)
-            ):
+            if ast.dump(node) == type_import:
                 return None
             return self.generic_visit(node)
 
@@ -219,11 +268,18 @@ def conditional_wording_only(before: str, after: str) -> bool:
             if node.name != "output_instructions_v3":
                 return node
             for arg in node.args.args:
-                arg.annotation = None
-            for parent in ast.walk(node):
-                if not isinstance(parent, ast.If):
+                if (
+                    arg.annotation is not None
+                    and ast.dump(arg.annotation) == annotation
+                ):
+                    arg.annotation = ast.Name(id="OutputCommitmentV3", ctx=ast.Load())
+            for parent in node.body:
+                if (
+                    not isinstance(parent, ast.If)
+                    or ast.dump(parent.test) != rubric_guard
+                ):
                     continue
-                for child in list(parent.body):
+                for child in parent.body[:1]:
                     if (
                         not isinstance(child, ast.If)
                         or child.orelse
@@ -237,27 +293,23 @@ def conditional_wording_only(before: str, after: str) -> bool:
                         and ast.unparse(assignment.targets[0]) == "instructions[0]"
                         and isinstance(assignment.value, ast.Constant)
                         and isinstance(assignment.value.value, str)
-                        and all(
-                            isinstance(part, predicate_nodes)
-                            for part in ast.walk(child.test)
-                        )
-                        and all(
-                            part.id in {"native", "output"}
-                            for part in ast.walk(child.test)
-                            if isinstance(part, ast.Name)
-                        )
-                        and all(
-                            ast.unparse(part) == "output.commitment_version"
-                            for part in ast.walk(child.test)
-                            if isinstance(part, ast.Attribute)
-                        )
+                        and ast.dump(child.test) == predicate
                     ):
                         parent.body.remove(child)
+                        self.replacements += 1
             return node
 
     try:
-        return ast.dump(Wording().visit(ast.parse(before))) == ast.dump(
-            Wording().visit(ast.parse(after))
+        old, new = Wording(), Wording()
+        old_tree, new_tree = old.visit(ast.parse(before)), new.visit(ast.parse(after))
+        return (
+            old.replacements == 0
+            and new.replacements == 1
+            and wording_only(
+                "src/judgmentllm/native_prompts.py",
+                ast.unparse(old_tree),
+                ast.unparse(new_tree),
+            )
         )
     except SyntaxError:
         return False
@@ -312,8 +364,11 @@ def classify(filename: str, before: str | None, after: str | None) -> tuple[int,
         }
         and before is not None
     ):
-        if wording_only(before, after):
-            return 1, "only string wording changed; Python control flow is identical"
+        if wording_only(filename, before, after):
+            return (
+                1,
+                "designated instruction wording; predicates, schemas and sandbox unchanged",
+            )
         if filename.endswith("/native_prompts.py") and conditional_wording_only(
             before, after
         ):
