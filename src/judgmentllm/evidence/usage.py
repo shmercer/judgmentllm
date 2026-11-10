@@ -22,6 +22,7 @@ UsageSource = Literal[
     "openai.chat.usage",
     "openai.responses.usage",
     "anthropic.messages.usage",
+    "gemini.generate_content.usageMetadata",
     "synthetic.reported_usage",
 ]
 UsageCounter = Literal[
@@ -46,6 +47,12 @@ UsageField = Literal[
     "cache_creation_input_tokens",
     "cache_creation.ephemeral_5m_input_tokens",
     "cache_creation.ephemeral_1h_input_tokens",
+    "promptTokenCount",
+    "candidatesTokenCount",
+    "thoughtsTokenCount",
+    "cachedContentTokenCount",
+    "totalTokenCount",
+    "toolUsePromptTokenCount",
 ]
 UsageRelationship = Literal["reported", "included_in", "excluded_from", "unknown"]
 Currency = Literal["USD", "EUR", "GBP", "CAD", "JPY"]
@@ -86,6 +93,24 @@ class UsageBreakdown(_UsageSemantics):
 _SEMANTICS: dict[
     tuple[UsageSource, UsageField], tuple[UsageRelationship, UsageCounter | None]
 ] = {
+    ("gemini.generate_content.usageMetadata", "promptTokenCount"): ("reported", None),
+    ("gemini.generate_content.usageMetadata", "candidatesTokenCount"): (
+        "reported",
+        None,
+    ),
+    ("gemini.generate_content.usageMetadata", "totalTokenCount"): ("reported", None),
+    ("gemini.generate_content.usageMetadata", "cachedContentTokenCount"): (
+        "included_in",
+        "input_tokens",
+    ),
+    ("gemini.generate_content.usageMetadata", "thoughtsTokenCount"): (
+        "excluded_from",
+        "output_tokens",
+    ),
+    ("gemini.generate_content.usageMetadata", "toolUsePromptTokenCount"): (
+        "included_in",
+        "total_tokens",
+    ),
     ("openai.responses.usage", "input_tokens"): ("reported", None),
     ("openai.responses.usage", "output_tokens"): ("reported", None),
     ("openai.responses.usage", "total_tokens"): ("reported", None),
@@ -301,6 +326,11 @@ class ReportedUsageInput(_UsageSemantics):
         ):
             raise ValueError("4A mapping does not establish these counters")
         targets: dict[UsageField, UsageCounter] = {
+            "promptTokenCount": "input_tokens",
+            "candidatesTokenCount": "output_tokens",
+            "totalTokenCount": "total_tokens",
+            "cachedContentTokenCount": "cache_read_tokens",
+            "thoughtsTokenCount": "reasoning_tokens",
             "prompt_tokens": "input_tokens",
             "completion_tokens": "output_tokens",
             "total_tokens": "total_tokens",
@@ -355,6 +385,11 @@ class ProviderUsage(EvidenceIdentity, UsageContext, ReportedUsageInput):
 
     @model_validator(mode="after")
     def provider_source(self) -> ProviderUsage:
+        if self.usage_source == "gemini.generate_content.usageMetadata" and (
+            self.provider,
+            self.endpoint,
+        ) != ("gemini", "models.generate_content"):
+            raise ValueError("usage source does not match provider endpoint")
         if self.reported_cost is not None and self.provider != "mock":
             raise ValueError("synthetic reported cost requires a synthetic provider")
         if self.usage_source == "openai.chat.usage" and (

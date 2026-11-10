@@ -1,0 +1,51 @@
+{
+  "schema_version": 1,
+  "provider": "gemini",
+  "sdk_package": "google-genai",
+  "sdk_version": "2.34.0",
+  "http_package": "httpx2",
+  "http_version": "2.16.0",
+  "api_version": "v1beta",
+  "reviewed_on": "2026-11-10",
+  "sdk_sources": {
+    "__init__.py": "1347651deee5c8542c51e437cb41444228808302d583dd0c07c49a3091867a15",
+    "client.py": "64d53f858606224ef444c7ad8d19bab3e1fb2bea675dfbb57f714494388072d7",
+    "types.py": "1a435d319fb2cd9da117ab962433c53783c3e5ab71851762574700ec975a5350",
+    "models.py": "f78ac26c5e01ba8863ebedf10345ef4b48be6c3edd1c573f33d0ed964366116c",
+    "_api_client.py": "b179b80a126a35c98b98aeefa701950304c38c8a1e117136a2270a0901fd93e4",
+    "_base_url.py": "1391f875ec35e18d7aa9f9c1dd74678d20a2d7d70956591a30da0cffc8a9f8f3",
+    "_common.py": "8a45f980cfd1c4fcef967a5f5618490d611637bb7772fd42bdad0cb63050ba2a",
+    "_transformers.py": "a7d84a3b0605f14bb43044063ee78852198da81f1c13e50fb02401ba91ff099a",
+    "_extra_utils.py": "10f4f7765b9aea602d667fdb97db78e6e7c6dd209f828ce10d05c9d0d6d96a7d",
+    "_automatic_function_calling_util.py": "0e26daf6417c7869bbfd0b30a553326da8b3a071aea816220385365aeee4fb50"
+  },
+  "http_sources": {
+    "_client.py": "a4380f9842a38896430618673ccef66486a5cdbd6653987d581b869c72df9b53",
+    "_config.py": "0c02410f19895f81a6942aad344d4bd5d804af9b019a8f2dbcb727e3c476a130",
+    "_transports/default.py": "8fc43a2882d471aff751366a7f28e91c5e31831a4b29aa3bb4e66931a2148e97"
+  },
+  "documentation_download_sha256": {
+    "pricing": "ad2140dd935ccca0a66bb70f7c1b59b5e4c74d6180b599a8c32e0dcf4a422a2e",
+    "model": "47da1c404e339a9180117d393d00cc97a0bb8e0803fdafbcbd6b4d16332a04a4",
+    "structured": "dd3e233667ff2485809fa7ba2b2eca7251dfe5490c71f22e10eab260a3fb1e09",
+    "generate": "fba7832d0e5bdc47d3cce869ac078798fb2e493f7f839616e43fa31b2159a441",
+    "api_errors": "99a94ec38178d059e0a14c3e20f7e1cb6f061ef913ea98364c3f6c60156c87dd",
+    "thinking": "7a24af4ee1433cea5ddd0171e71149bb259c033ce4adb59c84850f11065951f0"
+  },
+  "documentation_urls": [
+    "https://googleapis.github.io/python-genai/",
+    "https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite",
+    "https://ai.google.dev/gemini-api/docs/structured-output",
+    "https://ai.google.dev/gemini-api/docs/pricing",
+    "https://ai.google.dev/api/generate-content",
+    "https://ai.google.dev/gemini-api/docs/generate-content/api-errors",
+    "https://ai.google.dev/gemini-api/docs/thinking"
+  ],
+  "facts": {
+    "automatic_continuation": "enabled by default in 2.34.0; explicitly disabled by this adapter",
+    "automatic_function_calling": "explicitly disabled; tools absent",
+    "sdk_attempts": 1,
+    "schema_source": "unchanged native_google frozen projections; actual SDK HTTP body verified",
+    "qualification": "offline fixtures only; no live credentials, requests or serving enforcement"
+  }
+}

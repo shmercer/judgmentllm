@@ -349,3 +349,15 @@ this implementation or its standard CI.
 Phase5A completed its separately authorized eight-case OpenAI live scope at
 `b300a3e5f7fbd59d6ca2d3761d79a5660b9c2633`; the [final acceptance](https://github.com/shmercer/judgmentllm/pull/24#issuecomment-6726984126)
 is authoritative over earlier pending status. It grants no Anthropic authority.
+
+
+## Phase 5C production implementation boundary
+
+Gemini Developer adds an independently dispatched production transport with
+manifest6, output/request6, receipt4 and diagnostic3, preserving every historical
+protocol and normalized export contract. The [Gemini guide](gemini.md) describes
+SDK2.34.0/v1beta, exact SDK wire verification, one physical call per attempt,
+explicit key isolation, text/native schema selection and strict completed-response
+validation. The shared lifecycle owns recovery and exports. All serving support
+remains unverified; the native registry stays empty. The source-bound four-case
+proposal is offline and unexecuted, with live executor work explicitly deferred.

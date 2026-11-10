@@ -503,12 +503,101 @@ class ExecutableRunManifestV5(ExecutableRunManifest):
         return value
 
 
+class ExecutableRunManifestV6(ExecutableRunManifest):
+    """Production Gemini Developer boundary; never a synthetic V3 manifest."""
+
+    schema_version: Literal[6] = 6  # pyright: ignore[reportIncompatibleVariableOverride]
+    transport_protocol: Literal["gemini-production-v1"] = "gemini-production-v1"
+    run_spec_version: Literal[3] = 3
+    output_contract_version: Literal[2] = 2
+    output_commitment_version: Literal[6] = 6
+    transport_commitment_version: Literal[4] = 4
+    request_identity_version: Literal[3] = 3  # pyright: ignore[reportIncompatibleVariableOverride]
+    template: TemplateCommitmentV3  # pyright: ignore[reportIncompatibleVariableOverride]
+    transport_context_sha256: SHA256
+    initial_transport_count: int = Field(ge=0)
+    initial_transport_sha256: SHA256
+
+    @model_validator(mode="wrap")
+    @classmethod
+    def safe_manifest(
+        cls,
+        value: object,
+        handler: ModelWrapValidatorHandler[Self],
+        info: ValidationInfo,
+    ) -> Self:
+        from judgmentllm.evidence._base import _invalid_evidence  # pyright: ignore[reportPrivateUsage]
+
+        try:
+            if info.mode == "json" and isinstance(value, dict):
+                import json
+
+                values = cast(dict[str, object], value)
+                value = {
+                    key: TypeAdapter(
+                        cls.model_fields[key].annotation or Any
+                    ).validate_json(json.dumps(item), strict=True)
+                    if key in cls.model_fields and not key.endswith("_version")
+                    else item
+                    for key, item in values.items()
+                }
+            return handler(value)
+        except Exception:
+            raise _invalid_evidence() from None
+
+    @classmethod
+    def model_validate_json(
+        cls, json_data: str | bytes | bytearray, **kwargs: Any
+    ) -> Self:
+        from judgmentllm.evidence._base import _invalid_evidence  # pyright: ignore[reportPrivateUsage]
+        from judgmentllm.output_contracts import decode_assessment_output
+
+        try:
+            if type(json_data) is bytearray:
+                raw: str | bytes = bytes(json_data)
+            elif type(json_data) in (str, bytes):
+                raw = cast(str | bytes, json_data)
+            else:
+                raise ValueError("invalid JSON input")
+            decode_assessment_output(raw)
+            return super().model_validate_json(raw, **kwargs)
+        except Exception:
+            raise _invalid_evidence() from None
+
+    @field_validator("schema_version", mode="before")
+    @classmethod
+    def _version(cls, value: object) -> object:
+        if type(value) is not int or value != 6:
+            raise ValueError("schema_version must be the supported integer 6")
+        return value
+
+    @field_validator(
+        "schema_version",
+        "run_spec_version",
+        "output_contract_version",
+        "output_commitment_version",
+        "transport_commitment_version",
+        "request_identity_version",
+        "assessment_schema_version",
+        "canonicalization_version",
+        "serializer_version",
+        "index_version",
+        mode="before",
+    )
+    @classmethod
+    def strict_version_tokens(cls, value: object) -> object:
+        if type(value) is not int:
+            raise ValueError("manifest versions must be integers")
+        return value
+
+
 ExecutableManifest = (
     ExecutableRunManifest
     | ExecutableRunManifestV2
     | ExecutableRunManifestV3
     | ExecutableRunManifestV4
     | ExecutableRunManifestV5
+    | ExecutableRunManifestV6
 )
 
 
@@ -524,6 +613,8 @@ def parse_executable_manifest(raw: bytes) -> ExecutableManifest:
         if isinstance(value, dict)
         else None
     )
+    if type(version) is int and version == 6:
+        return ExecutableRunManifestV6.model_validate_json(raw)
     if type(version) is int and version == 5:
         return ExecutableRunManifestV5.model_validate_json(raw)
     if type(version) is int and version == 4:

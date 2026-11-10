@@ -1273,3 +1273,20 @@ non-generative protected GET and return separate provider-specific typed records
 Default OpenAI calls retain their existing record classes. No diagnostic operation
 runs during ordinary offline validation, preview or `credential_status`.
 Native production support remains unqualified and requires reviewed exact scope.
+
+
+## Gemini Developer production adapter (Milestone 3 Phase 5C)
+
+The existing public lifecycle functions accept explicit `RunSpecV3` with provider
+`gemini` and endpoint `models.generate_content`. `preview_prompt`, `validate_inputs`
+and `estimate_run` stay offline. Execution uses the shared resolver, maintained
+SDK2.34.0/v1beta, immutable source preparation and existing durable services.
+`discover_models(provider="gemini")` / `verify_authentication(provider="gemini")`
+and their async counterparts return the separate Gemini diagnostic records; each
+explicit operation performs at most one non-generative models-list read.
+
+Gemini manifest6/output6/request6/transport4 and diagnostic3 are additive internal
+contracts. Existing result records, per-physical usage evidence readers, read-only
+assessment inspection and JSONL/CSV/R exports retain their formats. No public
+arbitrary SDK config or reasoning-retention interface is added. Details and
+unqualified live scope are in the [Gemini guide](gemini.md).

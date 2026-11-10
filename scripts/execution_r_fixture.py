@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Literal
 
 from anthropic_offline_fixture import export_anthropic, persist_anthropic
+from gemini_offline_fixture import export_gemini, persist_gemini
 from openai_offline_fixture import export_openai, persist_openai
 
 from judgmentllm.config import load_run_spec
@@ -250,10 +251,12 @@ def main() -> None:
             await persist(options.output)
             await persist_openai(options.output / "openai")
             await persist_anthropic(options.output / "anthropic")
+            await persist_gemini(options.output / "gemini")
         else:
             await export(options.output)
             export_openai(options.output / "openai")
             export_anthropic(options.output / "anthropic")
+            export_gemini(options.output / "gemini")
 
     asyncio.run(run_phase())
 

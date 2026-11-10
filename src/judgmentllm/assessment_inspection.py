@@ -6,6 +6,7 @@ from pathlib import Path
 
 from pydantic import Field
 
+from judgmentllm import gemini_types
 from judgmentllm.anthropic_assessment import AnthropicAssessmentDiagnosticV2
 from judgmentllm.evidence._base import EvidenceModel
 from judgmentllm.evidence.assessment import AssessmentDiagnosticV1
@@ -22,7 +23,12 @@ class AssessmentOutputInspection(EvidenceModel):
     """
 
     label: str = "Unvalidated model output; diagnostic evidence only"
-    diagnostic: AssessmentDiagnosticV1 | AnthropicAssessmentDiagnosticV2 | None
+    diagnostic: (
+        AssessmentDiagnosticV1
+        | AnthropicAssessmentDiagnosticV2
+        | gemini_types.GeminiAssessmentDiagnosticV3
+        | None
+    )
     output_text: bytes | None = Field(default=None, exclude=True, repr=False)
 
 

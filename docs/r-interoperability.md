@@ -596,3 +596,17 @@ totals stay null. Read-only reopened diagnostics retain their original identity
 and never expose assessment text in serialized metadata. The existing seven
 mandatory gates and49 local executions are preserved; no separate pipeline or
 Phase6 usage/reasoning export API is introduced. No real provider is contacted.
+
+## Phase 5C Gemini Developer adapter acceptance
+
+The same execution gate adds actual pinned google-genai SDK execution through
+synthetic HTTP. Python creates full/minimal rubric and reversed pairwise records,
+an invalid grouped sibling and an explicit subset retry, then reopens immutable
+evidence and exports. R checks character IDs, all attempts, category mappings,
+null probabilities/expected values, original/presented order and observation
+joins. Usage preserves prompt/candidate/thinking/cache/total classes once per
+physical observation and missing counters as null. Diagnostic 3 keeps safe finish
+reasons and full versus hash-only assessment capture; thought text has no retained
+artifact. No result/export columns or Phase 6 APIs change. Applicable gate
+selection follows [the risk policy](ci-optimization.md); Level 3 requires the seven
+strict Linux R gates, without repeating a full local grid.

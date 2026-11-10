@@ -11,6 +11,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+from judgmentllm import gemini_types
 from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.hashing import bytes_digest, canonical_bytes
 from judgmentllm.persistence.models import ArtifactIdentity, ArtifactIntegrityError
@@ -29,7 +30,10 @@ def transport_reference(attempt_id: str) -> str:
 
 def publish_transport_commitment(
     store: ArtifactStore,
-    commitment: TransportCommitmentV1 | TransportCommitmentV2 | TransportCommitmentV3,
+    commitment: TransportCommitmentV1
+    | TransportCommitmentV2
+    | TransportCommitmentV3
+    | gemini_types.TransportCommitmentV4,
 ) -> ArtifactIdentity:
     """Publish exact immutable metadata before registry preparation commits."""
 
@@ -49,7 +53,13 @@ def publish_transport_commitment(
 
 def read_transport_commitment(
     store: ArtifactStore, attempt_id: str
-) -> TransportCommitmentV1 | TransportCommitmentV2 | TransportCommitmentV3 | None:
+) -> (
+    TransportCommitmentV1
+    | TransportCommitmentV2
+    | TransportCommitmentV3
+    | gemini_types.TransportCommitmentV4
+    | None
+):
     """Read the original receipt; absence is never repaired by reconstruction."""
 
     path = store.reference_path(transport_reference(attempt_id))
@@ -84,7 +94,12 @@ def read_transport_commitment(
 
 def iter_transport_commitments(
     store: ArtifactStore,
-) -> Iterator[TransportCommitmentV1 | TransportCommitmentV2 | TransportCommitmentV3]:
+) -> Iterator[
+    TransportCommitmentV1
+    | TransportCommitmentV2
+    | TransportCommitmentV3
+    | gemini_types.TransportCommitmentV4
+]:
     """Inspect named safe references in bounded memory, including orphan attempts."""
 
     directory = store.reference_path("transports/.guard").parent
@@ -120,7 +135,12 @@ def iter_transport_commitments(
 
 def _parse_transport_commitment(
     raw: bytes,
-) -> TransportCommitmentV1 | TransportCommitmentV2 | TransportCommitmentV3:
+) -> (
+    TransportCommitmentV1
+    | TransportCommitmentV2
+    | TransportCommitmentV3
+    | gemini_types.TransportCommitmentV4
+):
     from judgmentllm.output_contracts import decode_assessment_output
     from judgmentllm.production_transport import TransportCommitmentV2
     from judgmentllm.transport import TransportCommitmentV1
@@ -129,6 +149,8 @@ def _parse_transport_commitment(
     if not isinstance(value, dict):
         raise ValueError("invalid transport commitment")
     version = cast(dict[str, object], value).get("transport_commitment_version", 1)
+    if type(version) is int and version == 4:
+        return gemini_types.TransportCommitmentV4.model_validate_json(raw)
     if type(version) is int and version == 3:
         from judgmentllm.anthropic_transport import TransportCommitmentV3
 

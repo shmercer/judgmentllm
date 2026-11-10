@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Literal
 
 from pydantic import Field, model_validator
 
+from judgmentllm import gemini_types
 from judgmentllm.anthropic_assessment import AnthropicAssessmentComponentV2
 from judgmentllm.assessment_diagnostics import AssessmentComponent
 from judgmentllm.evidence._base import EvidenceIdentity, EvidenceModel
@@ -94,7 +95,10 @@ class ProviderEvidence(EvidenceModel):
     usage: ReportedUsageInput | None = None
     observation_context: ProviderObservationContext | None = None
     assessment_component: (
-        AssessmentComponent | AnthropicAssessmentComponentV2 | None
+        AssessmentComponent
+        | AnthropicAssessmentComponentV2
+        | gemini_types.GeminiAssessmentComponentV3
+        | None
     ) = Field(default=None, exclude=True, repr=False)
     output_text: bytes | None = Field(default=None, exclude=True, repr=False)
     output_source: OrderEvidence = "unavailable"
@@ -136,6 +140,7 @@ def prepare_evidence(
     | OutputCommitmentV3
     | OutputCommitmentV4
     | OutputCommitmentV5
+    | gemini_types.OutputCommitmentV6
     | None,
     response: ProviderResponse,
     capture: Literal["full", "minimal"],
@@ -143,6 +148,7 @@ def prepare_evidence(
     transport_context: TransportContext
     | ProductionContext
     | AnthropicProductionContext
+    | gemini_types.GeminiProductionContext
     | None = None,
 ) -> PreparedEvidence:
     """Prepare safe facts before publishing any response or reasoning artifact.
