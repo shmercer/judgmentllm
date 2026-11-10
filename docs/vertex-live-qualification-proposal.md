@@ -214,12 +214,15 @@ thinking; it does not prove serving enforcement or actual billing behavior.
 
 ## Outstanding cloud setup and future authority
 
-The operator reports a separate Vertex key in GNOME Keyring, no installed
-`gcloud` and no local ADC file. These are supplied setup facts, not independently
-verified credentials or prerequisites for offline use. This PR never inspects the
-entry, installs Cloud CLI, runs `gcloud auth`, resolves ADC, refreshes OAuth,
-queries metadata, lists projects/models or performs a live authentication check.
-ADC setup will be performed manually after this PR.
+The operator now reports Google Cloud CLI installed, user ADC created with OAuth
+token acquisition verified, a matching quota project, `aiplatform.googleapis.com`
+enabled, `GOOGLE_CLOUD_LOCATION=global`, and `JUDGMENTLLM_VERTEX_AUTH_MODE=adc`.
+The separate Vertex key remains in GNOME Keyring. These are operator-reported
+setup facts, not independent verification by this work or prerequisites for
+offline use. No installation or configuration is needed here. This PR never
+inspects credential/keyring contents, runs `gcloud auth`, resolves ADC, refreshes
+OAuth, queries metadata, lists projects/models or performs a live authentication
+check. Setup does not establish billing, inference IAM or model eligibility.
 
 Account eligibility and API-key type/project association stay **unverified** for
 both modes. Before any later live work, the separately approved cloud-setup

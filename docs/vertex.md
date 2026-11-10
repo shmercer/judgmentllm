@@ -239,6 +239,9 @@ Account eligibility remains unverified. A stored Vertex key does not establish
 its type or standard project association: independently verify key type, billing,
 enabled API, IAM and restrictions under approved cloud setup before live work.
 Express Mode keys are incompatible with this candidate: stop without route or
-mode fallback. ADC setup is a separate manual step, with its own later consent.
+mode fallback. The operator reports ADC/CLI setup, quota-project matching and API
+enablement completed; this work does not inspect or verify that state. Billing,
+inference IAM and model eligibility remain independently unverified. Each mode
+still requires its own later consent.
 There is no Vertex qualification execute command or production native promotion;
 offline fixture/CI success is not live qualification.

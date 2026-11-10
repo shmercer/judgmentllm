@@ -411,7 +411,8 @@ the same four synthetic cases but separate route-bound physical identities,
 immutable seals, reservations and eventual consent. The current model card's
 global/us/eu availability does not establish us-central1 or account eligibility.
 An existing keyring entry does not establish a standard project authorization
-key; Express keys are incompatible, and ADC setup is manually deferred.
+key; Express keys are incompatible. ADC setup is operator-managed and now reported
+complete, while billing, inference IAM and model eligibility remain unverified.
 
 Reconstruct via existing production builders and installed SDK pure converters,
 without constructing a client or reading credentials. Independently compare real
