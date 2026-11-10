@@ -462,3 +462,41 @@ def test_untrusted_runtime_selection_and_frozen_identity_cannot_be_substituted(
         spec.execution = spec.execution.model_copy(update={"mode": mode})
         with pytest.raises(ValueError):
             prepare_production_request(spec, dep, wire.transport_plan.identity, context)
+
+
+@pytest.mark.asyncio
+async def test_rehashed_candidate_cannot_borrow_production_native_authority(
+    tmp_path: Path,
+) -> None:
+    from judgmentllm.vertex_transport import (
+        PreparedRequestV7,
+        _receipt,
+        production_context_digest,
+    )
+
+    candidate, spec, _, _ = wire_for(tmp_path, probe=True, policy="native")
+    context = production_context(spec)
+    output = candidate.output_commitment.model_copy(
+        update={"context_sha256": production_context_digest(context)}
+    )
+    plan = candidate.transport_plan.model_copy(
+        update={
+            "context_sha256": production_context_digest(context),
+            "output_commitment_sha256": output.commitment_sha256,
+        }
+    )
+    receipt = _receipt(
+        plan, output, candidate.rendered_text.encode(), candidate.payload, context.kind
+    )
+    forged = PreparedRequestV7.model_validate(
+        dict(candidate)
+        | {
+            "output_commitment": output,
+            "transport_plan": plan,
+            "transport_commitment": receipt,
+        }
+    )
+    adapter = p.VertexAdapter(spec.endpoint, spec.model, context=context)
+    with pytest.raises(ProviderIntegrityError, match="reviewed qualification"):
+        await adapter.submit(forged, **invocation(forged))
+    assert adapter.actual_call_count == 0 and adapter._client is None

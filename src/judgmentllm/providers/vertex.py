@@ -698,6 +698,13 @@ class VertexAdapter:
                 "Vertex sealed transport scope or invocation identity differs"
             )
         self._check_authority()
+        # The independent Vertex registry is empty. Descriptive candidate
+        # records, even rehashed into a production context, grant no native
+        # execution authority at this direct adapter boundary.
+        if prepared.output_commitment.selection.mechanism != "text":
+            raise ProviderIntegrityError(
+                "Vertex native execution requires independent reviewed qualification"
+            )
         if submission_id in self._invoked or len(self._responses) >= self._concurrency:
             raise ProviderIntegrityError(
                 "Vertex invocation identity was reused or handoff capacity exceeded"
