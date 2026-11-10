@@ -402,3 +402,22 @@ protected-base exact-head CI acceptance, primary coverage, representative
 Windows/macOS, all seven strict Linux R/jsonlite gates and affected security,
 credential, recovery and cross-provider regressions. No live requests,
 credential/keyring access, capability promotion or publication is authorized.
+
+## Phase 5D2a: complete offline Vertex candidates
+
+Preserve deferred proposal1 and add plan2 with exact source, SDK, full request
+and standard global project route commitments. Both API-key and ADC modes use
+the same four synthetic cases but separate route-bound physical identities,
+immutable seals, reservations and eventual consent. The current model card's
+global/us/eu availability does not establish us-central1 or account eligibility.
+An existing keyring entry does not establish a standard project authorization
+key; Express keys are incompatible. ADC setup is operator-managed and now reported
+complete, while billing, inference IAM and model eligibility remain unverified.
+
+Reconstruct via existing production builders and installed SDK pure converters,
+without constructing a client or reading credentials. Independently compare real
+SDK HTTP through synthetic interception. Preserve the empty production registry,
+all historical harnesses/evidence and canonical result/R contracts. No executor
+or billable authority is added. Each plan reserves body-derived estimated input
+plus output including thinking, admits only a fitting proposed $0.02 ceiling and
+authorizes zero requests. Offline acceptance follows Level3 protected-base CI.

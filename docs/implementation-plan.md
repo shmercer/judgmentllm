@@ -659,3 +659,46 @@ protected-base exact-head CI acceptance, primary coverage, representative
 Windows/macOS, all seven strict Linux R/jsonlite gates and affected security,
 credential, recovery and cross-provider regressions. No live requests,
 credential/keyring access, capability promotion or publication is authorized.
+
+## Milestone 3 Phase 5D2a: Vertex offline qualification plan preparation
+
+Extend the existing repository qualification workflow with a separate immutable
+version-2 complete candidate and read-only exact-digest verifier. Preserve the
+original deferred proposal and historical OpenAI/Anthropic/Developer harnesses and
+evidence. Reuse clean-source admission, production preparation, strict output
+contracts, physical identities, byte commitments and qualification-only context.
+
+Support independent `api_key` and `adc` plans, each explicitly configured for a
+project, `gemini-3.1-flash-lite`, `global`, API v1beta1 and SDK 2.34.0. Each has four
+synthetic cases only: independent one-trait rubric and forced-choice pairwise,
+text and `response_json_schema`, items 001/002 and trait 01. Source and complete
+mode/project/global routing bind each physical identity and request. No authority
+transfers between modes. `response_schema` and production native remain unqualified.
+
+Retain full seals privately outside Git. Public reports contain hashes/redacted
+routes. Verify actual installed SDK source and reconstruct complete SDK URL/body
+bytes without clients/credentials/network; compare actual HTTP in synthetic
+interception tests. Reject altered region, project, mode, model, schema, payload,
+source, budget or physical IDs, injected authorization and changed artifacts.
+Read-only verification must leave all evidence unchanged.
+
+Review Vertex standard global pricing independently. Complete request bytes,
+repeated schemas and conservative framing give 23,552 input plus 2,048 output
+tokens at the default 512 output/case, $0.008960 estimated per mode. A $0.02
+proposed estimated ceiling admits only fitting reservations; excess requires a
+proposal revision. Planned requests 4, authorized 0, actual usage/cost unknown.
+No discounts, zero-thinking inference or enforced billing-cap claim is allowed.
+
+Account eligibility, API-key type/project association, billing, enabled API, IAM
+and restrictions remain independently unverified. Express Mode keys require a
+stop, with no fallback. Actual API keys, ADC credentials and `gcloud` are not
+offline prerequisites; no keyring/credential access, discovery, OAuth, metadata,
+executor, billable operation, promotion or publication belongs to this phase.
+A future executor requires a separate reviewed merge and exact-source/plan consent.
+
+Apply **Level 3**: exact-head protected-base **CI acceptance**, primary Linux/Python 3.11
+suite/change-aware coverage, representative Windows/Python 3.12 and macOS/Python 3.11 and all seven
+strict Linux R/jsonlite gates, including historical qualification/security
+regressions. Local fast checks are development evidence; deferred hosted gates
+cannot be called passed. After merge, construct fresh plans from clean merged
+source following the [proposal guide](vertex-live-qualification-proposal.md).

@@ -195,5 +195,10 @@ Vertex AI Gemini single-run implementation and offline SDK fixtures are availabl
 through explicit V3 configurations; see the [Vertex guide](docs/vertex.md).
 ADC and a separate explicitly selected Vertex authorization-key source stay
 isolated from Gemini Developer. Vertex has no live-qualified models/native routes;
-the [qualification proposal](docs/vertex-live-qualification-proposal.md) is deferred
-and unexecuted. Ordinary auth status, planning and validation stay offline.
+the original [deferred proposal](docs/vertex-live-qualification-proposal.md) is
+preserved. Separate complete offline candidate plans now support both API-key
+and ADC modes for `gemini-3.1-flash-lite` at `global`, with four cases and zero
+authorized calls per plan. Their read-only verifier requires the exact clean
+source and an independently retained plan digest. No credentials or `gcloud`
+are needed offline; account/key eligibility and live execution remain pending.
+Ordinary auth status, planning and validation stay offline.

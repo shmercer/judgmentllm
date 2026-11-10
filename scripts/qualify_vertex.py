@@ -1,4 +1,4 @@
-"""Create an immutable deferred Vertex proposal offline; no execution command.
+"""Create/verify offline Vertex plans; no execution command.
 
 An eligible project/authentication mode and exact serving model have not been
 established. Never invent executable requests or rates from Developer evidence.
@@ -7,6 +7,7 @@ established. Never invent executable requests or rates from Developer evidence.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import sys
@@ -130,7 +131,13 @@ def prepare_proposal(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
+    if len(sys.argv) > 1 and sys.argv[1] in {"candidate-plan", "verify", "report"}:
+        candidate_main()
+        return
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        epilog="Additional offline commands: candidate-plan --help; verify --help; report --help. The plan command below preserves the historical deferred proposal.",
+    )
     parser.add_argument("command", choices=("plan",))
     parser.add_argument("--source-commit", required=True)
     parser.add_argument("--auth-mode", choices=("adc", "api_key"), required=True)
@@ -151,6 +158,61 @@ def main() -> None:
             "Vertex proposal requires clean exact source, valid explicit mode/location and a new evidence directory.\n",
         )
     print(digest)
+
+
+def candidate_main() -> None:
+    """Additive candidate v2 commands; historical deferred v1 stays unchanged."""
+    from judgmentllm.vertex_qualification import (
+        MODEL,
+        ReservationRevisionRequired,
+        build_plan,
+        verify_plan,
+    )
+
+    parser = argparse.ArgumentParser(description=__doc__)
+    sub = parser.add_subparsers(dest="command", required=True)
+    plan = sub.add_parser("candidate-plan", help="Private offline four-case seal")
+    plan.add_argument("--source-commit", required=True)
+    plan.add_argument("--auth-mode", choices=("api_key", "adc"), required=True)
+    plan.add_argument("--location", choices=("global",), default="global")
+    plan.add_argument("--model", choices=(MODEL,), default=MODEL)
+    plan.add_argument("--max-output-tokens", type=int, default=512)
+    plan.add_argument("--evidence-dir", type=Path, required=True)
+    for command in ("verify", "report"):
+        report = sub.add_parser(command, help="Read-only exact-digest reconstruction")
+        report.add_argument("--evidence-dir", type=Path, required=True)
+        report.add_argument("--plan-sha256", required=True)
+    options = parser.parse_args()
+    try:
+        if options.command == "candidate-plan":
+            build_plan(
+                directory=options.evidence_dir,
+                source_commit=options.source_commit,
+                # Only this explicit nonsecret variable is read. Never inspect
+                # API-key values, keyring, ADC files or ambient SDK selection.
+                project=os.environ.get("GOOGLE_CLOUD_PROJECT", ""),
+                authentication_mode=options.auth_mode,
+                location=options.location,
+                model=options.model,
+                max_output_tokens=options.max_output_tokens,
+            )
+            print((options.evidence_dir / "plan.sha256").read_text().strip())
+        else:
+            print(
+                json.dumps(
+                    verify_plan(
+                        options.evidence_dir, expected_plan_sha256=options.plan_sha256
+                    ),
+                    sort_keys=True,
+                )
+            )
+    except ReservationRevisionRequired as error:
+        parser.exit(2, str(error) + "\n")
+    except Exception:
+        parser.exit(
+            2,
+            "Vertex offline qualification requires clean exact source, the pinned SDK, a valid explicit project/global/authentication candidate, an external private directory and intact exact-digest evidence. No provider operation is authorized.\n",
+        )
 
 
 if __name__ == "__main__":

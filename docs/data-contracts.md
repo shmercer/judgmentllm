@@ -715,3 +715,12 @@ cross-provider sources with content-free errors. Historical `CredentialStatus`
 records, including default ADC unknown/google_adc, keep their exact shape.
 The CLI envelope remains1. No key, private identity or ADC path is a run setting.
 See [the user guide](vertex.md) and [deferred proposal](vertex-live-qualification-proposal.md).
+
+Phase5D2a adds only the repository-private `VertexQualificationPlanV2` namespace:
+complete four-case offline candidate seals and read-only reconstruction, distinct
+from the unchanged deferred proposal1. The private project, full publisher
+resource, source/SDK/price/artifact hashes and request commitments are sealed per
+explicit authentication mode; reports expose only redacted routes and hashes.
+Both API-key and ADC plans authorize zero requests and keep account eligibility
+unverified. No production manifest/result/export/CLI envelope version changes,
+execution authority, registry grant or historical evidence migration is introduced.
