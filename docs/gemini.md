@@ -111,7 +111,7 @@ alternate URLs, proxies, redirects and ambient certificate paths cannot select
 the authenticated transport. A boundary verifies the exact endpoint, key header,
 allowed headers and complete outgoing body before forwarding.
 
-`auth status --provider gemini` stays offline. Explicit future
+`auth status --require gemini` stays offline. Explicit future
 `auth verify --provider gemini` and `providers models --provider gemini` each
 perform at most one bounded non-generative SDK models-list read. They never
 paginate automatically and do not qualify any assessment capability. These
