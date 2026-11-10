@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Callable
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from jinja2 import TemplateError
 from pydantic import Field, JsonValue, model_validator
@@ -30,6 +30,9 @@ from judgmentllm.prompts import (
 )
 from judgmentllm.transport import OutputCommitmentV3, _TransportModel
 
+if TYPE_CHECKING:
+    from judgmentllm.anthropic_transport import OutputCommitmentV5
+
 # Secure rendering primitives are intentionally shared with the frozen renderers.
 # pyright: reportPrivateUsage=false
 
@@ -50,7 +53,7 @@ class RenderedPromptV3(_TransportModel):
         return self
 
 
-def output_instructions_v3(output: OutputCommitmentV3) -> str:
+def output_instructions_v3(output: OutputCommitmentV3 | OutputCommitmentV5) -> str:
     """Full local requirements remain binding even when omitted from projection."""
     contract = output.contract
     native = output.selection.mechanism != "text"
@@ -60,6 +63,15 @@ def output_instructions_v3(output: OutputCommitmentV3) -> str:
         else "Return only a JSON object matching this schema."
     ]
     if isinstance(contract, RubricOutputContract):
+        # Limit the correction to Anthropic production; historical renderers stay exact.
+        if not native and output.commitment_version == 5:
+            instructions[0] = (
+                "Return exactly one raw JSON object matching the required schema. "
+                "Do not wrap the JSON in Markdown code fences, including ```json fences. "
+                "Do not include commentary, explanations, prefixes, suffixes, or other "
+                "text outside the JSON object. The entire response must begin with "
+                "`{` and end with `}`."
+            )
         instructions.append(
             "Include every requested trait exactly once; do not add traits or fields."
         )

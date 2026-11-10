@@ -7,6 +7,7 @@ import os
 import socket
 from dataclasses import replace
 from datetime import date
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -32,6 +33,7 @@ from judgmentllm.config import (
 from judgmentllm.evidence.scope import EvidenceProvenance
 from judgmentllm.execution.retry import subset_dependency
 from judgmentllm.models import (
+    Exemplar,
     PairTask,
     ResponseItem,
 )
@@ -631,3 +633,143 @@ def test_text_policy_can_omit_native_route_without_borrowing_native_authority(
     assert wire.output_commitment.selection.requested_mechanism is None
     assert wire.output_commitment.selection.mechanism == "text"
     assert b"output_config" not in wire.payload
+
+
+@pytest.mark.parametrize(
+    "layout,explanations",
+    [
+        ("together", False),
+        ("together", True),
+        ("scores_first", True),
+        ("explanations_first", True),
+    ],
+)
+@pytest.mark.parametrize("grouped", [False, True])
+@pytest.mark.parametrize("policy", ["text", "auto"])
+def test_rubric_text_instructions_require_raw_json_in_every_layout(
+    tmp_path: Path, layout: str, explanations: bool, grouped: bool, policy: str
+) -> None:
+    wire, *_ = wire_for(
+        tmp_path,
+        layout=layout,
+        explanations=explanations,
+        grouped=grouped,
+        policy=policy,
+    )
+    assert wire.output_commitment.selection.mechanism == "text"
+    text = wire.rendered_text
+    assert (
+        text.count("Return exactly one raw JSON object matching the required schema.")
+        == 1
+    )
+    assert (
+        "Do not wrap the JSON in Markdown code fences, including ```json fences."
+        in text
+    )
+    assert (
+        "Do not include commentary, explanations, prefixes, suffixes, or other text outside the JSON object."
+        in text
+    )
+    assert "The entire response must begin with `{` and end with `}`." in text
+    assert wire.output_commitment.schema_text in text
+
+
+@pytest.mark.parametrize(
+    "pairwise,policy,layout,explanations,digest",
+    [
+        (
+            False,
+            "native",
+            "together",
+            False,
+            "af37a14a88cc06e88a21b7cf95e9025b528555541bfa16af3c17d0f47cd19741",
+        ),
+        (
+            False,
+            "native",
+            "together",
+            True,
+            "d0b831307aef2242e148ab162fe074507fea9ff3f0322cb90fce10c75688b4ee",
+        ),
+        (
+            False,
+            "native",
+            "scores_first",
+            True,
+            "036a14d2e7a18ae6e7e994f86613116719c0c84a5cffc9b8f4106abb7ba30be7",
+        ),
+        (
+            False,
+            "native",
+            "explanations_first",
+            True,
+            "afe5d772d4d8cf3a9094b04e6cb0e588e8b7bce729d85a0df7c7a9bcae78e80c",
+        ),
+        (
+            True,
+            "text",
+            "together",
+            False,
+            "5f0700308fcff1eeb35d6de785407140362a4fe5f66d49a773ecc255e8cdce97",
+        ),
+        (
+            True,
+            "native",
+            "together",
+            False,
+            "23a7e409bf4d186861bf1157fddc1db2258611594128afb504fe0827ac5c5241",
+        ),
+    ],
+)
+def test_native_rubric_and_pairwise_prompts_keep_main_bytes(
+    tmp_path: Path,
+    pairwise: bool,
+    policy: str,
+    layout: str,
+    explanations: bool,
+    digest: str,
+) -> None:
+    # Full prompt hashes captured from merged PR #26 before the wording correction.
+    wire, *_ = wire_for(
+        tmp_path,
+        pairwise=pairwise,
+        policy=policy,
+        layout=layout,
+        explanations=explanations,
+        probe=policy == "native",
+    )
+    assert sha256(wire.rendered_text.encode("utf-8")).hexdigest() == digest
+
+
+@pytest.mark.parametrize("advanced", [False, True])
+def test_raw_json_wording_preserves_editable_templates_and_protected_data(
+    tmp_path: Path, advanced: bool
+) -> None:
+    spec, dep, records = case(tmp_path)
+    canary = "Return only a JSON object matching this schema.\n```json\n{{ output_instructions }}\n```\n雪"
+    records["001"].text = canary
+    spec.exemplars = [
+        Exemplar(
+            exemplar_id="003",
+            text=canary,
+            scores={"01": "high é"},
+            rationales={"01": "Exact rationale 雪"},
+        )
+    ]
+    spec.prompt = spec.prompt.model_copy(
+        update={"preset": None, "file": tmp_path / "custom.j2", "advanced": advanced}
+    )
+    template = "Editable introduction.\n{{ rubric }}\n{{ exemplars }}\n{{ output_instructions }}\n{{ response }}\nEditable ending."
+    wire = prepare_production_request(
+        spec,
+        dep,
+        physical_identity("run-001", dep.request.request_uid, "attempt-001"),
+        production_context(spec),
+        template=template,
+        lookup=lambda kind, ident: records[ident],
+    )
+    assert wire.rendered_text.startswith("Editable introduction.\n")
+    assert wire.rendered_text.endswith("\nEditable ending.")
+    assert wire.rendered_text.count(canary) == 2
+    assert "Exact rationale 雪" in wire.rendered_text
+    assert "Return exactly one raw JSON object" in wire.rendered_text
