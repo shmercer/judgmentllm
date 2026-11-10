@@ -1018,3 +1018,55 @@ async def test_report_rejects_inconsistent_independent_durable_views(
         == row
     )
     assert files(directory) == before
+
+
+@pytest.mark.parametrize(
+    "context_kind,grant_kind",
+    [("production", "exact"), ("production", "generic"), ("candidate", "generic")],
+)
+def test_qualification_authority_cannot_be_borrowed_by_production_or_generic_guards(
+    planned: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    context_kind: str,
+    grant_kind: str,
+) -> None:
+    from judgmentllm.gemini_transport import _qualification_context, production_context
+
+    directory, plan, arguments = planned
+    e._authorize(directory, plan, arguments["authorized_plan_sha256"])
+    spec = q._specification(directory, "rubric", "text", plan.max_output_tokens)
+    context = (
+        production_context(spec)
+        if context_kind == "production"
+        else _qualification_context(spec, source_commit=plan.source_commit)
+    )
+
+    def generic_guard(prepared: Any) -> None:
+        return None
+
+    guard = (
+        e._QualificationSubmissionGuard(
+            directory, plan, plan.calls[0], token=e._EXECUTOR_TOKEN
+        )
+        if grant_kind == "exact"
+        else generic_guard
+    )
+
+    def forbidden(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError(
+            "Unauthorized authority must fail before credentials or SDK"
+        )
+
+    monkeypatch.setattr(gemini, "_resolve_credentials", forbidden)
+    monkeypatch.setattr(gemini, "_sdk", forbidden)
+    adapter = gemini.GeminiAdapter(
+        spec.endpoint,
+        spec.model,
+        context=context,
+        concurrency=1,
+        submission_guard=guard,
+    )
+    with pytest.raises(gemini.ProviderIntegrityError):
+        adapter.validate_credentials()
+    assert not e._consumed(directory, plan, arguments["authorized_plan_sha256"])
+    assert not (directory / "independent-forwards").exists()
