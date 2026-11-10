@@ -369,6 +369,8 @@ async def test_sdk_logs_and_local_timeout_policy_are_enforced(
         for name in (
             "google_genai._api_client",
             "google_genai.models",
+            "google_genai.types",
+            "google_genai._transformers",
             "google_genai._extra_utils",
             "httpcore2.http11",
         ):

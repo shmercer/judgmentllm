@@ -8,8 +8,9 @@ Interactions API are separate integrations.
 
 Implementation and deterministic synthetic SDK tests do not establish live model
 support. The production native qualification registry is empty. No Gemini
-credential, authentication check, model-list read or generation was used to
-develop or qualify this implementation.
+live credential, real authentication check, model-list read or generation was
+used to develop or qualify this implementation. SDK fixtures use synthetic keys
+and intercepted HTTP transports.
 
 Install from a reviewed source checkout with the Google extra:
 

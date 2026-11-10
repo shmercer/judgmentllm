@@ -154,7 +154,7 @@ def _execution_adapter(
         if options is not None or endpoint != "models.generate_content":
             raise LifecycleError(
                 "unsupported_capability",
-                "Gemini Messages does not accept mock controls or other endpoints",
+                "Gemini Developer does not accept mock controls or other endpoints",
             )
         from judgmentllm.providers.gemini import GeminiAdapter
 

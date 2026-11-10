@@ -433,7 +433,7 @@ def prepare_subset_retry(
         )
     else:
         rendered = prepared_run.render_attempt(subset)
-        if not isinstance(rendered, (RenderedPrompt, RenderedPromptV2)):
+        if type(rendered) not in (RenderedPrompt, RenderedPromptV2):
             raise IntegrityError("historical retry acquired native rendering")
         wire = adapter.prepare(prepared_run.spec, subset, rendered)
         prompt_bytes = rendered.text.encode("utf-8")

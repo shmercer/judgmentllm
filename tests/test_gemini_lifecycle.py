@@ -329,6 +329,16 @@ async def test_grouped_salvage_retry_inherits_production_protocol(
             task_ids=selected,
             operation_id="retry-invalid",
         )
+        # Repeating the same authorization reuses the sealed physical attempt.
+        repeated = authorize_subset_retry(
+            "001",
+            store=store,
+            adapter=adapter,
+            spec=spec,
+            task_ids=selected,
+            operation_id="retry-invalid",
+        )
+        assert repeated.attempt_number == 2 and len(calls) == 1
         await recover_run("001", store=store, adapter=adapter, spec=spec)
         assert len(calls) == 2
         assert get_run("001", store=store).run_status == "completed"

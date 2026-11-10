@@ -85,8 +85,7 @@ def register_commands(app: typer.Typer, auth_app: typer.Typer) -> typer.Typer:
             )
             from judgmentllm.providers.gemini_cli import present_gemini
 
-            perform(lambda: verify_gemini(), present=present_gemini)
-            return
+            return perform(lambda: verify_gemini(), present=present_gemini)
 
         if provider == "anthropic":
             from judgmentllm.anthropic_diagnostics import (
@@ -128,8 +127,7 @@ def register_commands(app: typer.Typer, auth_app: typer.Typer) -> typer.Typer:
             )
             from judgmentllm.providers.gemini_cli import present_gemini
 
-            perform(lambda: discover_gemini(model=model), present=present_gemini)
-            return
+            return perform(lambda: discover_gemini(model=model), present=present_gemini)
 
         if provider == "anthropic":
             from judgmentllm.anthropic_diagnostics import (

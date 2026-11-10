@@ -148,6 +148,8 @@ def _sdk() -> tuple[Any, Any]:
         "google_genai",
         "google_genai._api_client",
         "google_genai.models",
+        "google_genai.types",
+        "google_genai._transformers",
         "google_genai._common",
         "google_genai._extra_utils",
         "google.auth",
