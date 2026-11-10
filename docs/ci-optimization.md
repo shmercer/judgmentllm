@@ -1,82 +1,170 @@
-# CI execution profiles and measurement protocol
+# Verification policy and CI profiles
 
-This workstream starts after merged Phase 5A PR #24 at
-`1298bedf5e408d48ef1fd6e113677a0ece27aa24`. Production code and historical
-contracts are unchanged. The [baseline and audit](ci-test-audit.md) describe
-the reviewed redundancies; [the requirement map](../ci/verification-map.json)
-locates every mandatory verification category. No platform, R gate frequency,
-resource size/threshold/deadline or security guarantee is removed.
+This is the authoritative development/PR decision table. It supersedes earlier
+universal seven-local/five-hosted requirements, including historical milestone
+records. Select the highest affected boundary; few changed lines never lower
+risk. Unknowns and ambiguity escalate. Deferred checks are **not passed checks**.
 
-The completed performance study and its final measurements belong to qualified
-commit `6f9e2d6d765106a85968ddf3404d633748246874`. The receipt-provenance
-correction preserves that evidence and runs only targeted correctness checks
-and mandatory final-head acceptance; it makes no new performance claim.
+| Level | Typical change | Required development/PR acceptance |
+|---|---|---|
+| 0 — Documentation | Non-executable prose | Relevant offline links and example syntax checks |
+| 1 — Low | Prompt wording or text formatting with unchanged control flow | Affected Ruff/format/Pyright, focused unit/regression and prompt/serialization contracts; no comprehensive coverage, platform, resource, R or package campaign |
+| 2 — Moderate | Independent adapter or response handling | Primary Linux/Python 3.11 functional suite and coverage; affected integration/R gates, platforms and packaging |
+| 3 — High | Execution, persistence/recovery, schemas/exports, authentication/privacy, CI/selection/coverage controls | Primary suite/coverage, representative full functional Windows 3.12 and macOS 3.11, all seven strict Linux R gates, relevant security/durability/concurrency/compatibility tests; resource/package checks when affected |
+| 4 — Release/comprehensive | Publication, compatibility milestone, weekly/manual complete check | Supported platform/version union, all strict R gates across platforms, primary coverage, resource workloads, wheel/sdist metadata and isolated installs; releases additionally require compatibility, scale/reproducibility and alpha-readiness evidence |
 
-## Development feedback
+All existing critical tests remain available. No provider calls are authorized.
+Synthetic offline implementation acceptance and explicitly authorized live
+capability qualification remain separate. Resource sizes, 90/180-second child
+deadlines, memory ceilings, ownership/credential/privacy safeguards and historical
+fixtures remain unchanged. The [requirement map](../ci/verification-map.json)
+records the protected assertions and applicability, rather than a test-count gate.
 
-Prepare the locked environment with `uv sync --locked --all-extras --group dev`.
-From the worktree, use:
+## Commands and ordinary workflow
+
+Prepare once with `uv sync --locked --all-extras --group dev --python 3.11`.
+Use these from the checkout; outputs default to fresh external temporary paths:
 
 ```bash
+# Development feedback; explicit component selection remains non-qualifying.
 python3 ci/check.py --profile fast --test ci/local
-python3 ci/check.py --profile fast --test tests/test_execution_retry.py
-python3 ci/check.py --profile fast --changed-since origin/main
-```
-
-The first two commands select a component explicitly. Essential model, config,
-result, package, authentication/privacy and public-lifecycle regressions always
-remain. The third selects changed test components, adding infrastructure tests
-for CI/workflow edits and conservatively expanding to the ordinary full suite
-for unknown production/script/dependency changes. Explicit targets are useful
-during implementation, including Codex cycles. Selection is not dependency
-proof or PR acceptance. Resource/serial tests are excluded, coverage is disabled,
-and the receipt states `qualification: false`.
-
-Ruff lint/format and strict Pyright precede bounded pytest. The default is four
-workers; choose an explicit smaller `--workers` value for a constrained machine.
-The measured CI-component checkpoint passed 403 cases with all quality checks
-in 33.536 seconds. Its source predates the final infrastructure additions;
-the exact final-head measurement is retained with the qualification report.
-Broader changed-component selections can exceed five minutes.
-Every profile keeps stdout/stderr and failure exits; development output defaults
-to a unique external temporary directory, or use `--output /external/new/path`.
-
-## Full PR qualification
-
-Commit first. All source changes, including documentation/workflow changes,
-require fresh qualification of the final head:
-
-```bash
+python3 ci/check.py --profile fast --test tests/test_anthropic_transport.py
+# Commit first, inspect automatic selection and its per-file reasons.
+python3 ci/check.py --profile pr --plan-only --changed-since origin/main
+# Documentation/low/moderate/high minimums; classification may strengthen them.
+python3 ci/check.py --profile pr --risk 0
+python3 ci/check.py --profile pr --risk 1
+python3 ci/check.py --profile pr --risk 2
+python3 ci/check.py --profile pr --risk 3
+# Explicit complete native grid (preparation may download; checking is offline).
 REF=$(git rev-parse HEAD)
-python3 ci/check.py --profile pr --ref "$REF" --mode prepare
-python3 ci/check.py --profile pr --ref "$REF"
+python3 ci/check.py --profile comprehensive --ref "$REF" --mode prepare
+python3 ci/check.py --profile comprehensive --ref "$REF"
+# Complete hosted matrix, also scheduled weekly on Monday.
+gh workflow run ci.yml -f risk=4
 ```
 
-Preparation may download locked prerequisites into JudgmentLLM namespaces.
-Checking is offline and uses exact archives/hashes. This profile requires all
-seven local configurations, full selected tests, original quality/build/core
-installation/offline checks, and seven strict R/jsonlite gates in each lane
-(49 executions). Only Linux 3.11 measures branch-enabled coverage. The existing
-90% combined gate remains; line coverage and branch coverage must each meet
-the baseline and every unchanged production covered line/branch must remain.
-Other lanes explicitly disable coverage. See [local CI](local-ci.md) for locks,
-guest prerequisites, shutdown and exact-source evidence admission.
+Local `pr` runs the primary lane only, with a clean committed source and Python
+3.11. Its exit status reports that lane; its output lists pending hosted lanes.
+Use hosted **CI acceptance** for complete PR acceptance. Do not routinely run
+both the primary suite locally and again hosted, or both complete grids. Use
+`--risk` to request stronger acceptance; it never downgrades inferred risk.
+A manual hosted run can select a feature branch with `--ref BRANCH`.
+The complete hosted matrix includes Linux 3.11/3.12/3.15, Windows 3.11/3.12,
+and macOS 3.11/3.12/3.15: the union of former local/hosted scopes. This includes
+complete Windows 3.11 troubleshooting without a lightweight success status.
 
-The five hosted jobs additionally qualify the identical PR head: Ubuntu/macOS
-3.11/3.15 and Windows 3.12. Checkout selects the literal PR head. Each job runs
-all ordinary cases plus isolated resource cases; only documented platform and
-nonrequired hosted R skips are accepted. Ubuntu 3.11 requires real R/jsonlite.
-The complete Windows 3.11 manual-dispatch job remains available. All action and
-dependency pins, existing setup caches, cancellation of superseded runs and
-50-minute deadlines remain. Local 3.11/3.12 never replace hosted 3.15.
+Static checks and CI selftests execute once, before scheduling expensive lanes.
+Pytest uses the existing complete collection/partition/case-receipt runner.
+Ordinary and serial functional cases remain; expensive resource measurements are
+conditional outside Level 4. Cold pinned-SDK byte-identity probes retain their
+isolation and remain correctness requirements even when resource measurements
+are deferred. Case existence/replacement, crash propagation, no unexpected
+skips/xfails and selection completeness stay enforced. Coverage is explicitly
+disabled in every nonprimary lane. If deferring resource tests loses required
+coverage, acceptance fails; investigate that dependency or request resources,
+never credit old measurements as fresh execution.
+
+The fast profile remains a development aid with caller-selected targets. Its
+receipt cannot establish PR acceptance. Benchmarks and partial suite stages
+remain non-qualifying. Native grid commands and isolation requirements are in
+[local CI](local-ci.md); that optional complete grid still retains its 49 R gates.
+
+## Classification and trust
+
+`ci/risk.py` uses boundary rules, content checks and conservative defaults.
+String-only Python wording edits must preserve the AST after replacing strings;
+template wording must preserve control blocks/placeholders. A narrow additional
+rule recognizes literal instruction replacements under a commitment-version
+predicate in the instruction builder, including PR #27; protected renderer
+logic and calls must remain unchanged. Type-only imports are allowed there.
+Unknown prompt control flow, unknown paths and changed/removed existing tests
+escalate. Additive prompt tests may stay focused; existing statements/fixtures
+remain exact. This deliberately avoids general semantic/dependency analysis.
+
+Provider adapters/response handling start at Level 2; touching shared execution
+raises the whole change to Level 3. Path/process/OS-sensitive moderate code adds
+representative platforms. All CI, risk-map, coverage, dependency, selection and
+exclusion controls are Level 3, regardless of their size. Level 3 runs all seven
+R gates on Linux; Level 2 runs relevant export/execution gates for provider output
+changes. Unknown R-facing modules escalate to Level 3. Packaging is conditional;
+CI/package/dependency changes exercise it. Resource-sensitive execution,
+preparation, persistence and CI orchestration changes request resource tests.
+
+For PRs, `pull_request_target` runs the workflow from the protected base and
+checks out the literal head separately. The classifier, runner, coverage floor
+and historical test contract come from that base. Proposed replacements cannot
+reduce their own acceptance. Candidate code runs with read-only repository
+permissions, no secrets, no persisted Git credentials and no shared uv cache.
+Only the separate trusted aggregator can write a commit status; it never runs
+candidate code. It rejects missing/extra/duplicate/failed/stale lane receipts,
+wrong source/plan/run identities, partial quality receipts and omitted required
+steps (including R/coverage). It independently reconstructs the plan from the
+protected policy and literal base/head commits, so a replaced plan artifact
+cannot reduce acceptance. It also requires successful plan/matrix job results.
+Diagnostic artifacts are retained on failure and superseded runs are cancelled.
+
+Read-only settings inspection on 2026-11-09 found `main` unprotected, with no
+required status checks and no repository rulesets. This PR does not modify those
+settings. **An administrator must configure protection:** require the commit
+status named **CI acceptance** from GitHub Actions, remove obsolete matrix
+status requirements if present, require review of CI/coverage/selection changes and a branch
+up to date with protected `main`. Protect the base workflow/policy with review
+rules (or a required workflow ruleset). Workflow YAML does not edit branch
+protection. Until this migration is completed, do not interpret missing old/new
+checks as acceptance. Weekly failures appear as failed Actions runs and a failed
+exact-head status; inspect their artifacts before release.
+
+Bootstrap: before this workflow reaches `main`, `pull_request_target` still uses
+the old base workflow, which lacks this event. Validate this proposal with a
+manual dispatch of its reviewed feature branch at minimum Level 3. That explicitly
+selected run tests the new policy; it is not proof that the protected-base event
+has already been deployed. Keep the PR open for independent review. After merge,
+ordinary PRs cannot use their proposed classifier/workflow to downgrade checks.
+
+## Change-aware coverage and reconciliation
+
+Measurement keeps branch coverage enabled and the combined **90%** floor.
+Overall historical line/branch/combined ratios remain blocking. Unchanged source
+must preserve denominators, exclusions and every previously covered line/arc.
+Coverage settings and pytest selection/coverage defaults must match the trusted
+baseline; changing thresholds/exclusions cannot silently qualify.
+
+Modified modules need a clean, committed source identity and a hash-verified
+historical snapshot. Simple exact equal-line blocks preserve previously covered
+unchanged lines. Every changed executable line and each branch originating on a
+changed line must be covered. File line/branch/combined percentages may lose at
+most **one percentage point**; new modules require 90% lines/combined and 80%
+branches, plus all changed executable lines/branch origins. Larger regressions
+fail and require investigation/review, not automatic baseline regeneration.
+Removed code is reported. **Exact branch correspondence across edited source is
+not established**; reports say so and use ratios/changed-origin checks. Equal-line
+mapping is conservative evidence, not proof that unchanged text has unchanged
+semantics. Integration/security tests still protect behavior.
+
+Missing/corrupt/inconsistent counts, omitted modules, uncommitted source,
+unavailable/mismatched historical source or altered exclusions fail safely.
+New type-only exclusions also need explicit baseline reconciliation. The historical
+floor is read from the protected base during PR acceptance: editing a candidate
+floor cannot bypass current acceptance. Review proposed baseline edits as high
+risk before merging them into the trusted base. At qualification/release
+checkpoints reconcile changed modules individually against retained measurements,
+with source/evidence provenance and reasons. Preserve unchanged entries and
+historical totals. `source_snapshot_commit` identifies matching source bytes;
+it does not relabel old measurements. Archive-only native runs require this
+reconciliation because they have no Git history for changed-source comparison.
+
+PR #27's [retained failure analysis](ci-test-audit.md#pr-27-coverage-baseline-failure)
+records the narrow correction, improved coverage and skipped downstream gates.
+The original failed run remains failed.
 
 ## Release qualification
 
-Release verification contains full PR qualification and genuine installed
-a2-to-current compatibility, along with the separate established scale and
-release-readiness requirements. It never publishes or makes live provider calls.
-Prepare the old/current installed wheels and source archives using
-[the existing compatibility guide](version-compatibility-qualification.md), then:
+Level 4 offline checks do not authorize publication. The existing release profile
+also invokes genuine installed a2/current compatibility and records pending
+scale/reproducibility, hosted and human review requirements. See the existing
+[compatibility guide](version-compatibility-qualification.md) and
+[alpha readiness checklist](alpha-release-readiness.md). For that native option:
 
 ```bash
 REF=$(git rev-parse HEAD)
@@ -88,93 +176,15 @@ python3 ci/check.py --profile release --ref "$REF" \
   --release-evidence /external/new-release-evidence
 ```
 
-The command runs the complete local grid, then the existing sixteen-case
-compatibility tool with its original negative checks/deadlines. Missing inputs
-fail rather than skip. Its receipt always leaves `release_ready: false`: final
-publication also requires exact-head hosted results, the
-[scale/allocation/export protocol](milestone-2-subphase-6-verification.md),
-and the [alpha readiness checklist](alpha-release-readiness.md). Those include
-the permitted explicitly reviewed source-equivalence basis for retained large
-scale evidence, independent usability, provider-family live acceptance,
-artifact/tag/provenance and human publication approval. Exit code 2 identifies
-these still-pending release requirements; it cannot be treated as a passing
-release gate. The candidate source archive must embed the requested full commit
-before any guest work starts. Do not substitute small
-resource tests or green CI for those requirements. This optimization does not
-change their scope or authorize provider usage/PyPI publication.
+Missing inputs fail. Its `release_ready: false` and exit 2 remain pending evidence,
+not acceptance. Hosted comprehensive qualification can supply the platform
+campaign without a duplicate local campaign; installed compatibility and the
+independent scale/alpha gates still need their existing tools and review.
 
-## Pytest partitions and failure reproduction
+## Historical allocation study
 
-`ci/local/suite.py` collects the entire selected suite into exact node IDs before
-execution. Ordinary cases use explicit `pytest-xdist` workers and measured `worksteal`
-distribution. Immutable module fixtures cache within each worker; each owns its
-artifacts. The `--distribution loadfile` alternative maximizes module reuse.
-Work stealing may rebuild a fixture in another worker, but reduces expensive
-file tails without sharing mutable objects or changing case identities. A `serial` marker
-reserves a test that needs one pytest process; a `resource` marker selects tests
-whose memory/timing acceptance needs controlled allocation. Resource batches
-never use xdist. Current process/SQLite/concurrency correctness tests use unique
-temporary stores and owned children and can remain ordinary; process creation
-alone is not a reason to serialize an entire suite.
-
-The three serial cases retain the actual fork-inheritance ownership check and
-two small benchmark CLI diagnostics. Fork stays outside execnet's threaded
-workers. The CLI diagnostics retain the established short Windows path budget;
-adding xdist's worker-directory level caused failures in both Windows versions.
-Their inputs, assertions and deadlines are unchanged. No resource workload is
-removed or reduced by this classification.
-The Anthropic pinned SDK converter case also uses the resource partition: its
-cold import/AST probe took 22–24s on Windows 3.11 and exceeded the unchanged
-30s child deadline under four workers per lane. The actual pinned SDK, source
-hashes, offline guards and all sixteen fragments remain checked. Together and
-Ollama converters stay ordinary; no SDK verification or timeout is weakened.
-
-The runner verifies complete per-phase receipts, exactly one execution per case,
-documented skips, no xfail and failure propagation. Worker crashes are fatal;
-automatic worker restart is disabled. `ci/test-contract.json` accounts for the
-original selected IDs and permits documented many-to-one replacements. Counts
-alone do not establish equivalence. This PR preserves all canonical cases.
-Coverage append/xdist combination uses the original source/branch settings;
-`coverage-comparison.json` records lost line/branch sets and rejects them.
-No exclusion or omission setting is broadened.
-
-The floor records this unchanged-production-source optimization. A later
-production milestone must review and update the affected module's source/coverage
-contract with its new tests, retaining exact sets for unchanged modules and
-explaining denominator changes. Do not regenerate the floor merely to accept a
-test deletion, exclusion or missed branch.
-
-Windows early durability/privacy checks remain early and emit receipts. The full
-runner validates and accounts for those 69 cases, without rerunning them. Missing,
-failed, overlapping or resource-bearing preflight receipts fail closed.
-Receipts also bind the clean source commit/archive/manifest, raw lockfile digest,
-actual interpreter/environment and qualification-run identity. The full runner
-rejects missing, stale or mismatched provenance before crediting any cases.
-Native gates create a fresh lane identity; hosted jobs bind the workflow run,
-attempt and platform/Python matrix lane. Old receipts cannot qualify a new run.
-Hosted prechecks invoke `python -m pytest`, so their reporting plugin imports
-from the uninstalled checkout without depending on `PYTHONPATH` or console-script
-search paths. A functional workflow test checks that import and its case receipt
-in a fresh uninstalled checkout using the actual workflow launch prefixes.
-Full receipts/logs are copied out of short Windows scratch paths before cleanup.
-Hosted artifacts retain case/selection/allocation receipts and resource JSON;
-they omit the bulky synthetic runtime stores.
-Resource numeric records are copied with original relative paths and SHA-256
-hashes into `resource-measurements`, so guest shutdown does not strand measurements
-in private scratch directories. Their source bytes remain unchanged.
-
-For an isolated reproduction, use the reported locked interpreter and node ID:
-
-```bash
-uv run --offline --no-sync pytest --no-cov 'tests/test_module.py::test_case[param]'
-uv run --offline --no-sync python ci/local/suite.py \
-  --output /external/new-suite-run --workers 2 --no-coverage tests
-```
-
-The first command is focused debugging. The second runs the complete test target
-with separate resource partitions. Use the native adapters to reproduce actual
-platform failures; a host-only rerun is not replacement platform acceptance.
-
+The following retained experiment/recovery details describe optional complete-grid
+operation. They do not override the risk table or require new benchmarking.
 ## Allocation budgets and experiments
 
 The host has sixteen physical / thirty-two logical CPUs and 128 GB RAM. Windows shares six guest CPUs and 12 GiB across its Python lanes. macOS
@@ -199,7 +209,7 @@ quotas are caps, not reserved physical cores. Case receipts record actual affini
 cgroup quota and visible/available memory. Guest sharing, disk/memory bandwidth
 and non-CI host activity still require measurement.
 
-The parallel schedule is the leading final candidate. Its measured four-worker
+Historical optimization study: the parallel schedule was the leading final candidate. Its measured four-worker
 Windows allocation is retained; six workers per Windows lane have not been
 shown to improve the complete grid. Two simultaneous lanes share the same six
 guest CPUs, so the worker count is not an additional CPU reservation. Final
@@ -219,8 +229,8 @@ python3 ci/local/grid.py --ref "$REF" --suite-stage resource --schedule parallel
 ```
 
 Ordinary/resource-only modes and worker sweeps explicitly record incomplete
-qualification. They cannot produce `qualification: true`; final acceptance still
-requires a full seven-configuration exact-head check. The benchmark wrapper
+qualification. They cannot produce `qualification: true`; complete-grid qualification still
+requires a full seven-configuration exact-head check when that grid is requested. The benchmark wrapper
 retains total grid wall time, all host samples, CPU time/utilization, host RAM/swap,
 disk counters, source/dependency/worker/budget records and every failed attempt.
 Suite records add partition CPU/process-tree RSS and complete test outcomes.
@@ -291,16 +301,3 @@ restore failure/lost ownership, and actual subprocess death before apply, during
 partial apply and after apply. Restart tests read independent synthetic actual
 settings, block admission, restore and verify before resuming. OS resource-slot
 locks are independently tested for release after child death.
-
-## Evidence and final acceptance
-
-All raw baseline/profiling/fault/benchmark/qualification evidence belongs under
-`/mnt/VM_Fast/judgmentllm-ci-optimization-evidence`. Native adapter runs remain in
-their established JudgmentLLM state namespaces; summaries link those immutable
-records. Historical evidence is copied/read, never modified. Failed attempts are
-retained and identified separately from passing final qualification.
-
-Freeze the final source commit after selecting the schedule and completing docs.
-Run a fresh full local grid, then all five hosted jobs against that exact PR head.
-Write the final comparison/report outside Git and link it from the PR so recording
-results does not change the qualified head. Keep the PR open for review.

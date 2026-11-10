@@ -157,6 +157,8 @@ def run(
     preflight_reports: list[Path] | None = None,
     contract: Path | None = None,
     distribution: str = "worksteal",
+    include_resources: bool = True,
+    coverage_ref: str | None = None,
 ) -> int:
     if isinstance(workers, bool) or not 0 <= workers <= 32:
         raise ValueError("pytest workers must be an integer from 0 through 32")
@@ -289,8 +291,21 @@ def run(
         if code != 0 or not collected.get("collected"):
             raise ValueError("Full-suite collection failed or produced no cases")
         parts = partition(collected["collected"])
+        # SDK byte-identity probes are correctness gates even though their cold
+        # imports need resource isolation. Only measurement workloads are deferred.
+        deferred = []
+        if not include_resources:
+            deferred = [
+                node
+                for node in parts["resource"]
+                if not node.startswith("tests/test_native_other_sdk.py::")
+            ]
+            parts["resource"] = [
+                node for node in parts["resource"] if node not in deferred
+            ]
+        summary["deferred_resource_cases"] = deferred
         summary["expected_cases"] = sum(map(len, parts.values()))
-        all_nodes = {node for nodes in parts.values() for node in nodes}
+        all_nodes = {item["nodeid"] for item in collected["collected"]}
         if contract is not None:
             summary["acceptance_contract"] = verify_contract(
                 contract, all_nodes, targets
@@ -402,7 +417,9 @@ def run(
             summary["expected_cases"] if stage == "full" else len(parts[stage])
         )
         summary["selection_complete"] = sum(totals.values()) == expected_selection
-        summary["manifest_complete"] = stage == "full" and summary["selection_complete"]
+        summary["manifest_complete"] = (
+            stage == "full" and summary["selection_complete"] and not deferred
+        )
         if not summary["selection_complete"]:
             raise ValueError(
                 "Qualification partitions did not execute the complete suite"
@@ -422,14 +439,19 @@ def run(
                 failed |= completed.returncode != 0
             from coverage_equivalence import compare
 
-            comparison = compare(output / "coverage.json", baseline, source)
+            comparison = compare(
+                output / "coverage.json", baseline, source, reviewed_ref=coverage_ref
+            )
             summary["coverage"] = comparison
             (output / "coverage-comparison.json").write_text(
                 json.dumps(comparison, indent=2, sort_keys=True) + "\n",
                 encoding="utf-8",
             )
             failed |= not comparison["passed"]
-            print(f"Total coverage: {comparison['combined_percent']:.2f}%", flush=True)
+            if "combined_percent" in comparison:
+                print(
+                    f"Total coverage: {comparison['combined_percent']:.2f}%", flush=True
+                )
         summary["status"] = "failed" if failed else "passed"
     except (OSError, ValueError, KeyError, TypeError) as error:
         summary.update(
@@ -472,6 +494,10 @@ def main() -> int:
     parser.add_argument("--resource-root", type=Path)
     parser.add_argument("--resource-slots", type=int, default=1)
     parser.add_argument("--baseline", type=Path)
+    parser.add_argument(
+        "--coverage-ref", help="Reviewed committed source for change-aware coverage"
+    )
+    parser.add_argument("--skip-resources", action="store_true")
     parser.add_argument("--contract", type=Path)
     parser.add_argument("--preflight-report", type=Path, action="append", default=[])
     parser.add_argument(
@@ -572,6 +598,8 @@ def main() -> int:
         preflight_reports=options.preflight_report,
         contract=options.contract,
         distribution=options.distribution,
+        include_resources=not options.skip_resources,
+        coverage_ref=options.coverage_ref,
     )
 
 

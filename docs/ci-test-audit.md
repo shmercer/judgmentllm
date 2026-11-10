@@ -1,5 +1,9 @@
 # CI baseline and test-suite audit
 
+The baseline and optimization study below are historical evidence. Their old
+universal verification frequency is superseded by the [risk policy](ci-optimization.md).
+No historical failure or incomplete campaign is relabeled as successful.
+
 The starting source is `1298bedf5e408d48ef1fd6e113677a0ece27aa24`, the merge of
 Phase 5A PR #24. Its tree equals qualified `b300a3e5f7fbd59d6ca2d3761d79a5660b9c2633`.
 The final Phase 5A acceptance comment records eight live successes before merge;
@@ -411,3 +415,65 @@ consolidations above change their work.
 | `tests/test_v2_public_lifecycle.py` | 6 | 3 | behavioral-contract, persistence-recovery, security-privacy |
 | `tests/test_v2_rendering.py` | 22 | 15 | behavioral-contract, resource-scale, security-privacy |
 | `tests/test_version_compatibility.py` | 6 | 2 | historical-compatibility, security-privacy |
+
+
+## PR #27 coverage-baseline failure
+
+Independently inspected retained [run 42730521723](https://github.com/shmercer/judgmentllm/actions/runs/42730521723)
+for source `37604d14a94f19f7d47b626625c9d742fc72124c`, now merged through
+`a109deb5d3ef0aaa3d05e56b794aa3671984119b`. Downloaded the Ubuntu 3.11
+`test-receipts` and `coverage` artifacts; inspected `summary.json`,
+`coverage-comparison.json`, `coverage.json`, XML and job step conclusions.
+The receipt artifact digest is
+`sha256:45b30905c05e1b6b7dde5a607e8f5af91a3c8a9615de1aca986a22525657a59c`.
+
+The full suite completed: **5,395 passed, zero failed/errors/skips**. Ruff and
+Pyright passed. Combined/line/branch coverage improved from
+92.96278/94.73879/87.80069% to **93.05844/94.81472/87.93103%**. The sole comparator
+loss was `native_prompts.py: production source changed`; the historical hash
+was stale. The four other hosted jobs passed. Ubuntu's seven downstream R gates,
+build, metadata, wheel/sdist installation and Codecov upload were **skipped**
+after coverage comparison failed. R setup/jsonlite installation succeeded;
+that does not mean the R assertion gates ran. The historical run remains failed.
+
+The correction replaces only `native_prompts.py`'s source/sets/denominators and
+explicit exclusions from that retained measurement. Every other file entry and
+the original overall ratios are unchanged. The module gained two executable
+statements and two branch outcomes: 101/107 lines and 28/34 branches became
+103/109 and 30/36. Equal source blocks preserve all previously covered lines.
+The original rubric edge now passes through an added conditional; both new
+outcomes are covered and `output_instructions_v3` has 100% line/branch coverage.
+Exact branch identity across that edit is not claimed. Three new default
+`TYPE_CHECKING` exclusions cover an annotation-only import; they are explicitly
+reviewed here, not silently added to a global exclusion pattern. All runtime
+missing lines/branches retain their previous failure boundaries after shifting.
+The source snapshot field binds current module hashes to merged main; it does
+not substitute current measurements for unchanged historical entries.
+
+## Risk-policy savings and independent guarantees
+
+The existing assertion/boundary audit above remains the basis for retaining tests.
+Repeated platform/R executions mainly add compatibility evidence; they need not
+repeat for wording/prose. Static analysis is platform independent. Builds and
+isolated installs protect package changes; resource workloads protect allocation,
+queue/process bounds and deadlines. Run them when affected and comprehensively
+at release. Keep independent privacy, durability, recovery, ordering, mapping,
+SDK-byte and no-fallback assertions intact.
+
+Measured PR #27 primary suite time was **1,793.81 s**: ordinary 907.24, serial
+37.97 and resource 836.86 s. Resource tests alone were 46.7% of that suite's wall
+time. The earlier retained final complete local grid took **2,230.59 s**
+(37.18 minutes); a separate preceding passing trial took 2,226.58 s. These are
+observations at their recorded historical commits, not current runtime promises.
+The original pre-optimization grid took 4,249.33 s (70.82 minutes).
+
+Projected execution savings: a Level 1 wording PR goes from seven local plus five
+hosted full suites to one focused lane; it schedules zero comprehensive coverage,
+resource, packaging or R campaigns. A Level 3 PR uses three hosted functional
+lanes instead of twelve complete local/hosted lanes (75% fewer full-suite lanes),
+and seven dedicated R gates instead of 49 local plus seven hosted (87.5% fewer).
+Linux remains the sole coverage lane. Weekly/manual Level 4 uses the eight-lane
+union rather than duplicating local and hosted campaigns. These are **execution
+count estimates**, not measured wall-time speedups; concurrency, setup, test
+selection and the unchanged SDK/resource workloads affect elapsed time. No new
+broad benchmarking campaign was performed.

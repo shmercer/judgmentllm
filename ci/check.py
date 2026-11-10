@@ -1,4 +1,4 @@
-"""Development, complete local PR, and offline release qualification entry point."""
+"""Fast feedback, risk-based PR verification, and comprehensive qualification."""
 
 from __future__ import annotations
 
@@ -172,7 +172,19 @@ def fast(changed_since: str, output: Path, focused: list[str], workers: int) -> 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--profile", choices=("fast", "pr", "release"), default="fast")
+    parser.add_argument(
+        "--profile", choices=("fast", "pr", "comprehensive", "release"), default="fast"
+    )
+    parser.add_argument(
+        "--risk",
+        type=int,
+        choices=range(5),
+        default=0,
+        help="Minimum risk level; can only strengthen automatic classification",
+    )
+    parser.add_argument(
+        "--plan-only", action="store_true", help="Record a PR plan without running it"
+    )
     parser.add_argument("--changed-since", default="origin/main")
     parser.add_argument(
         "--test",
@@ -216,6 +228,52 @@ def main() -> int:
             "judgmentllm-fast-" + datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
         )
         return fast(options.changed_since, output, options.test, options.workers)
+    if options.profile == "pr":
+        from acceptance import save
+        from risk import git, make_plan
+
+        head = options.ref or git(ROOT, "rev-parse", "HEAD")
+        base = git(ROOT, "rev-parse", options.changed_since)
+        plan = make_plan(ROOT, base, head, minimum=options.risk)
+        output = options.output or Path(tempfile.gettempdir()) / (
+            "judgmentllm-pr-" + datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
+        )
+        if output.resolve().is_relative_to(ROOT):
+            parser.error("Evidence must be outside the checkout")
+        output.mkdir(parents=True, exist_ok=False)
+        save(output / "plan.json", plan)
+        print(f"Risk {plan['risk']}; plan: {output / 'plan.json'}", flush=True)
+        if options.plan_only:
+            return 0
+        python = (
+            ROOT / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+        )
+        code = subprocess.run(
+            [
+                str(python) if python.is_file() else sys.executable,
+                str(ROOT / "ci/acceptance.py"),
+                "lane",
+                "--source",
+                str(ROOT),
+                "--plan",
+                str(output / "plan.json"),
+                "--output",
+                str(output / "primary"),
+                "--workers",
+                str(options.workers),
+                "--run-id",
+                "local",
+            ],
+            cwd=ROOT,
+            check=False,
+        ).returncode
+        pending = [item["id"] for item in plan["lanes"] if item["id"] != "linux-3.11"]
+        print(
+            f"Primary result: {code}; pending hosted lanes: {pending}. "
+            "Deferred verification is not passed verification.",
+            flush=True,
+        )
+        return code
     if options.ref is None:
         parser.error("complete profiles require --ref FULL_COMMIT_SHA")
     if options.profile == "release" and options.mode == "check":

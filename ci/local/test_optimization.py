@@ -552,6 +552,70 @@ def test_documented_test_consolidation_preserves_acceptance_without_a_count_gate
         verify_contract(contract, {"tests/new.py::combined"}, ["tests"])
 
 
+@pytest.mark.parametrize("defer", [False, True])
+def test_resource_deferral_retains_sdk_correctness_and_reports_incomplete_grid(
+    tmp_path: Path,
+    defer: bool,
+) -> None:
+    source = tmp_path / "source"
+    tests = source / "tests"
+    tests.mkdir(parents=True)
+    (source / "pyproject.toml").write_text(
+        '[tool.pytest.ini_options]\nmarkers=["resource"]\nasyncio_default_fixture_loop_scope="function"\n'
+    )
+    (tests / "test_behavior.py").write_text(
+        "import pytest\n"
+        "def test_ordinary(): assert True\n"
+        "@pytest.mark.resource\n"
+        "def test_measurement(): assert True\n"
+    )
+    (tests / "test_native_other_sdk.py").write_text(
+        "import pytest\n@pytest.mark.resource\n"
+        "def test_pinned_sdk_correctness(): assert True\n"
+    )
+    contract = tmp_path / "contract.json"
+    measurement = "tests/test_behavior.py::test_measurement"
+    contract.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "required_nodes": [measurement],
+                "replacements": {},
+            }
+        )
+    )
+    output = tmp_path / "evidence"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(Path(__file__).with_name("suite.py")),
+            "--source",
+            str(source),
+            "--output",
+            str(output),
+            "--workers",
+            "0",
+            "--no-coverage",
+            "--contract",
+            str(contract),
+            *(["--skip-resources"] if defer else []),
+            "tests",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    receipt = json.loads((output / "summary.json").read_text())
+    assert receipt["selection_complete"]
+    assert receipt["manifest_complete"] == (not defer)
+    assert receipt["deferred_resource_cases"] == ([measurement] if defer else [])
+    assert receipt["counts"]["passed"] == (2 if defer else 3)
+    resources = json.loads((output / "resource-selection.json").read_text())
+    assert "tests/test_native_other_sdk.py::test_pinned_sdk_correctness" in resources
+
+
 @pytest.mark.parametrize(
     "loss",
     ["none", "line", "branch", "source", "exclusions", "denominator", "settings"],
@@ -567,10 +631,10 @@ def test_equal_percentages_cannot_hide_lost_coverage(tmp_path: Path, loss: str) 
         + "\n"
     )
     totals = {
-        "covered_lines": 9,
-        "num_statements": 10,
-        "covered_branches": 9,
-        "num_branches": 10,
+        "covered_lines": 2,
+        "num_statements": 2,
+        "covered_branches": 1,
+        "num_branches": 1,
     }
     expected: dict[str, Any] = {
         "measurement_settings": {"run": {"branch": True}},
@@ -581,20 +645,25 @@ def test_equal_percentages_cannot_hide_lost_coverage(tmp_path: Path, loss: str) 
                 "executed_lines": [1, 2],
                 "executed_branches": [[2, 3]],
                 "excluded_lines": [3],
-                "denominators": {"num_statements": 10, "num_branches": 10},
+                "denominators": {"num_statements": 2, "num_branches": 1},
             }
         },
     }
     measured: dict[str, Any] = {
+        "meta": {"branch_coverage": True},
         "totals": totals,
         "files": {
             "sample.py": {
                 "executed_lines": [1, 3] if loss == "line" else [1, 2],
                 "executed_branches": [[2, -1]] if loss == "branch" else [[2, 3]],
                 "excluded_lines": [3, 4] if loss == "exclusions" else [3],
+                "missing_lines": [],
+                "missing_branches": [],
                 "summary": {
-                    "num_statements": 11 if loss == "denominator" else 10,
-                    "num_branches": 10,
+                    "covered_lines": 2,
+                    "covered_branches": 1,
+                    "num_statements": 3 if loss == "denominator" else 2,
+                    "num_branches": 1,
                 },
             }
         },

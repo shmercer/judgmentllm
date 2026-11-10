@@ -12,7 +12,12 @@
         "tests/test_export_validation.py",
         "tests/test_openai_validation.py"
       ],
-      "guarantees": "Strict types, original IDs, complete outcomes and probabilities, negative validation, no repair/truncation"
+      "guarantees": "Strict types, original IDs, complete outcomes and probabilities, negative validation, no repair/truncation",
+      "risk_levels": [
+        2,
+        3,
+        4
+      ]
     },
     "historical-serialization-and-stores": {
       "tests": [
@@ -24,7 +29,12 @@
       "artifacts": [
         "tests/fixtures"
       ],
-      "guarantees": "Genuine historical producers, immutable manifests and exports, old IDs and one-way compatibility"
+      "guarantees": "Genuine historical producers, immutable manifests and exports, old IDs and one-way compatibility",
+      "risk_levels": [
+        2,
+        3,
+        4
+      ]
     },
     "provider-and-sdk-boundary": {
       "tests": [
@@ -37,7 +47,12 @@
         "tests/test_anthropic_response.py",
         "tests/test_anthropic_invalid_utf8.py"
       ],
-      "guarantees": "Pinned actual SDK serialization/parsing, synthetic HTTP transports and byte commitments; no live calls"
+      "guarantees": "Pinned actual SDK serialization/parsing, synthetic HTTP transports and byte commitments; no live calls",
+      "risk_levels": [
+        2,
+        3,
+        4
+      ]
     },
     "native-selection-and-transport": {
       "tests": [
@@ -49,7 +64,12 @@
         "tests/test_durable_native_preparation.py",
         "tests/test_anthropic_transport.py"
       ],
-      "guarantees": "Authority, endpoint/protocol incompatibility, exact request and immutable selection/attempt identity"
+      "guarantees": "Authority, endpoint/protocol incompatibility, exact request and immutable selection/attempt identity",
+      "risk_levels": [
+        2,
+        3,
+        4
+      ]
     },
     "durable-submission-and-recovery": {
       "tests": [
@@ -64,7 +84,12 @@
         "tests/test_anthropic_qualification.py",
         "tests/test_anthropic_processes.py"
       ],
-      "guarantees": "Every durable failure boundary, independent acceptance, conservative retry, no duplicate sends"
+      "guarantees": "Every durable failure boundary, independent acceptance, conservative retry, no duplicate sends",
+      "risk_levels": [
+        2,
+        3,
+        4
+      ]
     },
     "cancellation-and-concurrency": {
       "tests": [
@@ -75,7 +100,12 @@
         "tests/test_persistence_ownership.py",
         "tests/test_anthropic_cancellation.py"
       ],
-      "guarantees": "Owned child exit, cancellation/recovery, lock ownership, bounded independent processes"
+      "guarantees": "Owned child exit, cancellation/recovery, lock ownership, bounded independent processes",
+      "risk_levels": [
+        2,
+        3,
+        4
+      ]
     },
     "credentials-privacy-and-security": {
       "tests": [
@@ -92,7 +122,12 @@
         "tests/test_anthropic_response.py",
         "tests/test_anthropic_integrity.py"
       ],
-      "guarantees": "No credential discovery/leakage, full/minimal capture, reasoning authorization, unsafe evidence rejection"
+      "guarantees": "No credential discovery/leakage, full/minimal capture, reasoning authorization, unsafe evidence rejection",
+      "risk_levels": [
+        2,
+        3,
+        4
+      ]
     },
     "diagnostic-evidence": {
       "tests": [
@@ -104,7 +139,12 @@
         "tests/test_anthropic_diagnostics.py",
         "tests/test_anthropic_lifecycle.py"
       ],
-      "guarantees": "Exact retained component, hash-only privacy, immutable read-only diagnostics and failure classification"
+      "guarantees": "Exact retained component, hash-only privacy, immutable read-only diagnostics and failure classification",
+      "risk_levels": [
+        2,
+        3,
+        4
+      ]
     },
     "resource-and-stress": {
       "tests": [
@@ -118,7 +158,13 @@
         "tests/test_anthropic_resources.py"
       ],
       "separate_release_protocol": "docs/milestone-2-subphase-6-verification.md",
-      "guarantees": "Original workload sizes, 90/180-second child deadlines, 32/8/256 MiB limits and growth bounds, process/queue bounds"
+      "guarantees": "Original workload sizes, 90/180-second child deadlines, 32/8/256 MiB limits and growth bounds, process/queue bounds",
+      "risk_levels": [
+        2,
+        3,
+        4
+      ],
+      "applicability": "Affected behavior at levels 2/3; comprehensive at level 4. See docs/ci-optimization.md."
     },
     "cross-platform": {
       "execution": [
@@ -130,7 +176,13 @@
         "macos-3.11",
         "macos-3.12"
       ],
-      "guarantees": "All selected cases exactly once, only documented platform skips, no xfail, all native installation and R gates"
+      "guarantees": "All planned cases executed exactly once, with only documented skips; supported OS tests retained.",
+      "risk_levels": [
+        2,
+        3,
+        4
+      ],
+      "applicability": "Affected behavior at levels 2/3; comprehensive at level 4. See docs/ci-optimization.md."
     },
     "strict-r-interoperability": {
       "gates": [
@@ -142,21 +194,39 @@
         "grouped-lifecycle",
         "cli-lifecycle"
       ],
-      "execution": "Every one of seven local configurations: 49 strict executions. Hosted Ubuntu 3.11 retains seven required gates. Main pytest retains its actual R checks.",
-      "guarantees": "Actual Python-generated outputs and installed CLI consumed in R/jsonlite; missing dependencies fail; IDs/order/probabilities/missing values unchanged"
+      "execution": "Applicable gates on Linux/Python 3.11 at level 2; all seven there at level 3; all seven on each comprehensive hosted lane at level 4.",
+      "guarantees": "Actual Python-generated outputs and installed CLI consumed in R/jsonlite; missing dependencies fail; IDs/order/probabilities/missing values unchanged",
+      "risk_levels": [
+        2,
+        3,
+        4
+      ],
+      "applicability": "Affected behavior at levels 2/3; comprehensive at level 4. See docs/ci-optimization.md."
     },
     "ruff": {
       "gates": [
         "ruff-lint",
         "ruff-format"
       ],
-      "execution": "Every local lane and every hosted job; retained because current cost is negligible"
+      "execution": "Once in primary quality job; affected files at level 1, complete project at levels 2\u20134.",
+      "risk_levels": [
+        1,
+        2,
+        3,
+        4
+      ]
     },
     "strict-pyright": {
       "gates": [
         "strict-pyright"
       ],
-      "execution": "Every local lane and every hosted job; now checks ci as well as production/tests"
+      "execution": "Once in primary quality job; affected files at level 1, complete project at levels 2\u20134.",
+      "risk_levels": [
+        1,
+        2,
+        3,
+        4
+      ]
     },
     "packaging-and-installation": {
       "gates": [
@@ -165,8 +235,14 @@
         "clean-wheel-installation",
         "clean-source-installation"
       ],
-      "execution": "Every local lane; hosted wheel on every OS and sdist on Linux as before",
-      "guarantees": "Build/twine strict metadata, independent core-only install/import/CLI/offline smoke"
+      "execution": "Primary lane when affected; every comprehensive lane at level 4.",
+      "guarantees": "Build/twine strict metadata, independent core-only install/import/CLI/offline smoke",
+      "risk_levels": [
+        2,
+        3,
+        4
+      ],
+      "applicability": "Affected behavior at levels 2/3; comprehensive at level 4. See docs/ci-optimization.md."
     },
     "ci-infrastructure": {
       "tests": [
@@ -176,22 +252,32 @@
         "ci/local/test_gates.py",
         "ci/local/test_optimization.py"
       ],
-      "execution": "Full infrastructure suite on hosted Ubuntu 3.11 plus portable infrastructure in each native main suite",
-      "guarantees": "Source/lock/archive integrity, exact case receipts, missing shard/worker failure propagation, recovery and ownership"
+      "execution": "Primary quality job before expensive matrix execution.",
+      "guarantees": "Source/lock/archive integrity, exact case receipts, missing shard/worker failure propagation, recovery and ownership",
+      "risk_levels": [
+        3,
+        4
+      ]
     },
     "hosted-required-jobs": {
-      "execution": [
-        "ubuntu-latest/3.11",
-        "ubuntu-latest/3.15",
-        "macos-latest/3.11",
-        "macos-latest/3.15",
-        "windows-latest/3.12"
-      ],
-      "manual": "windows-latest/3.11 complete troubleshooting job",
-      "guarantees": "Pinned actions/dependencies, same PR head SHA, 50-minute job deadline, failed/missing partitions cannot pass"
+      "execution": "Risk plan selects Linux/Python 3.11; representative Windows 3.12/macOS 3.11 for level 3, affected platforms at level 2, full eight-lane union at level 4.",
+      "manual": "Comprehensive workflow_dispatch includes complete Windows 3.11 verification.",
+      "guarantees": "CI acceptance requires all planned lanes, exact source/run identity and required steps; protected-base policy.",
+      "risk_levels": [
+        2,
+        3,
+        4
+      ]
     }
   },
-  "policy_reductions": [],
+  "policy_reductions": [
+    "Routine PRs no longer require a duplicate seven-lane local grid plus five hosted jobs.",
+    "Level 0/1 omit comprehensive coverage, resource campaigns and unrelated R/package checks.",
+    "R gates run on the primary lane for affected PRs; cross-platform campaigns are level 4.",
+    "Static analysis runs once. Resource and packaging work are conditional outside level 4."
+  ],
   "test_replacement_contract": "ci/test-contract.json",
-  "coverage_floor": "ci/coverage-floor.json"
+  "coverage_floor": "ci/coverage-floor.json",
+  "risk_policy": "docs/ci-optimization.md",
+  "classification": "ci/risk.py (protected-base code; AST wording checks, boundary rules and conservative unknowns)"
 }

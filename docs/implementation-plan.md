@@ -4,32 +4,29 @@
 
 **First public PyPI alpha:** Treat [alpha-release readiness](alpha-release-readiness.md) as a **parallel, independently gated workstream**. Start user-facing documentation, package usability and secure release preparation now, but **do not publish until all intended Milestone 3 generative and Milestone 4 native live provider/endpoint families are implemented and specifically live-qualified**. Milestones 5 (batch/bulk-live), 6 (generated catalog/thin R wrapper) and 7 (FastAPI) are later commitments, not prerequisites for the first Python library/CLI alpha. Existing R/export, safety and regression gates continue to apply.
 
-## CI efficiency workstream after Phase 5A
+## Development acceptance and release qualification
 
-Phase 5A PR #24 is merged at `1298bedf5e408d48ef1fd6e113677a0ece27aa24`
-after exact-head offline/hosted acceptance and eight authorized live successes.
-The separate CI/test optimization workstream leaves production source unchanged.
-Its [baseline and necessity audit](ci-test-audit.md),
-[execution profiles and experiment/recovery protocol](ci-optimization.md), and
-[machine-readable requirement map](../ci/verification-map.json) preserve every
-existing platform, resource, historical, security and R acceptance requirement.
+The [risk decision table](ci-optimization.md) is authoritative for new PRs.
+It supersedes the verification frequency in historical phase records below.
+Use the existing fast/PR profiles and protected-base hosted acceptance; unknown
+or shared/security/CI changes escalate. Linux/Python 3.11 supplies full functional
+coverage when required, with applicable real R/jsonlite gates. High-risk PRs add
+representative Windows/macOS verification and all seven strict Linux R gates.
+Do not duplicate these with a universal seven-lane local campaign or 49 R runs.
 
-Priorities are cheaper equivalent tests/fixtures, independent pytest workers,
-then measured complete-grid scheduling. Exact baseline covered lines/branches
-and overall line/branch ratios are blocking, in addition to the existing 90%
-branch-enabled combined gate. No exclusions or acceptance thresholds change.
-Resource experiments begin with isolated references and compare bounded
-concurrency using explicit shared-guest/container CPU and RAM budgets. Global
-serialization requires measurement evidence. Guest overrides require durable
-crash recovery, verified actual restoration and startup admission; current
-guest controls do not support a suitable runtime override, so settings stay fixed.
+Release/compatibility milestones require Level 4 comprehensive platform/Python,
+R, packaging, coverage/regression and resource verification, plus the independent
+installed compatibility, scale/reproducibility and alpha-readiness gates.
+Synthetic offline acceptance never establishes live model qualification or grants
+provider-call/publication authority. Keep existing test assertions, historical
+fixtures, exact source provenance and resource limits. Record failed and deferred
+checks separately from passed checks; retain historical evidence unchanged.
 
-The final source commit requires a fresh complete seven-configuration local grid,
-all 49 strict R gates, original resource/packaging/quality checks and all five
-hosted jobs on the same PR head. Benchmark-only stages cannot establish acceptance.
-Detailed final evidence is recorded externally after the commit is frozen and
-linked from the open, unmerged optimization PR. No live calls or publication are
-authorized by this workstream.
+The [baseline audit](ci-test-audit.md), [requirement map](../ci/verification-map.json)
+and [local CI guide](local-ci.md) describe retained guarantees and the optional
+complete grid. The CI modernization itself is Level 3; focused enforcement tests
+and one representative hosted campaign suffice. No repeated full-grid benchmark
+study is required. Gemini Developer implementation remains a separate milestone.
 
 ## Milestone 0 - Repository and engineering baseline
 
@@ -105,9 +102,9 @@ bounded workers/queues, independent acceptance evidence and conservative recover
 Grouped salvage, explicit subset retries, cancellation, immutable exports, public
 Python services and installed CLI controls are implemented. Seven strict
 R/jsonlite gates cover file exports through independent installed-CLI lifecycle
-operations. Required hosted CI has five configurations; the exact-head local
-grid prospectively requires seven configurations: Linux Python 3.11/3.12/3.15
-and Windows/macOS Python 3.11/3.12. See [local CI](local-ci.md); historical
+operations. Development/PR acceptance follows the [risk policy](ci-optimization.md).
+The optional complete local grid covers Linux Python 3.11/3.12/3.15 and
+Windows/macOS Python 3.11/3.12. See [local CI](local-ci.md); historical
 Subphase 6 qualification below retains its original six-configuration scope.
 
 Subphase 6 benchmark tooling, persistence diagnostics and executable examples are
@@ -151,10 +148,10 @@ request, credential persistence or RunSpec authentication configuration is added
 
 Phase 2 extends the existing installed-CLI R lifecycle gate with actual v2
 execution, durable export and R import; the original six gates and historical
-fixtures remain. Acceptance requires all seven local configurations and all
-49 strict R/jsonlite executions, branch coverage ≥90% only on Linux/Python 3.11,
-and all five hosted configurations at the exact final PR head. Implementation
-status does not substitute for retained qualification evidence.
+fixtures remain. Development acceptance follows the risk table, including
+applicable strict R gates and primary coverage when required. Full platform/R
+qualification belongs to Level 4; implementation status does not substitute
+for retained evidence of the required checks.
 
 Continue through the following small, independently reviewable PRs; each PR
 updates its tests and user documentation and passes applicable R acceptance.
@@ -239,9 +236,9 @@ updates its tests and user documentation and passes applicable R acceptance.
    and a separately reviewed new live plan; no previous live approval transfers.
    This advances only the narrowly scoped OpenAI qualification harness from Phase 7;
    general `providers smoke`, companion exports and other providers remain deferred.
-   Merge recommendation requires all seven local configurations, 49 R gates,
-   existing resource measurements plus OpenAI SDK workloads, five hosted jobs, and
-   independently reviewed live evidence for both exact-model endpoint scopes.
+   The historical Phase 5A merge required its recorded complete offline/platform/R
+   campaign and independently reviewed live evidence. New changes follow the
+   risk table while retaining the affected tests and separate live boundaries.
    The final acceptance of PR #24 records eight separately authorized valid calls
    on `gpt-4.1-mini-2025-04-14` at source `b300a3e5f7fbd59d6ca2d3761d79a5660b9c2633`.
    Earlier pending statements are historical; this does not grant Anthropic consent.
@@ -453,9 +450,8 @@ Apply stage-specific questions where relevant; the required baseline for the est
 
 Durable integration adds schema-2 evidence storage and separate version-1 receipts
 without migrating historical stores or changing assessment/R exports. Execution
-and recovery tests must pass before implementation acceptance, followed by all
-seven exact-head local configurations, 49 R gates, 70 resource measurements,
-primary branch coverage ≥90% and five hosted jobs. Qualification records remain
+and recovery tests must pass under the applicable risk-based acceptance level,
+including strict R and primary coverage for shared durable behavior. Qualification records remain
 outside Dropbox and identify the exact commit; no live requests/authentication
 operations are part of these gates. This records the Phase 4B boundary; the
 standalone Phase 4C1 foundation is described below, with 4C2/4C3 deferred.
@@ -463,10 +459,9 @@ standalone Phase 4C1 foundation is described below, with 4C2/4C3 deferred.
 
 ### Phase 4C1 acceptance boundary
 
-Qualification requires all seven exact-head local lanes, all 49 strict R/jsonlite
-gates and 70 resource measurements, branch coverage at least 90% only on
-Ubuntu/Python 3.11, genuine historical compatibility, and all five required
-hosted jobs. No gate, timeout, resource limit or historical fixture is weakened.
+Development qualification follows the risk table, preserving applicable strict
+R/jsonlite, primary coverage and genuine historical compatibility. Comprehensive
+platform/resource campaigns remain required at Level 4. No gate, timeout, resource limit or historical fixture is weakened.
 Native projection/selection fixtures are credential-free and network-free;
 no live-provider operation or real-model qualification is part of acceptance.
 Exact-head reports are retained outside synchronized folders, separate from
@@ -488,9 +483,9 @@ independently verified enforcement remain distinct; no real-model enforcement
 or live qualification is established. Complete local validation is mandatory.
 Unknown or incompatible capabilities follow the strict native/auto/text policy.
 
-Implementation acceptance requires targeted provider/privacy/historical tests,
-Ruff, strict Pyright, then all seven local exact-head configurations, 49 strict
-R/jsonlite gates, 70 resource measurements and five exact-head hosted jobs. SDK
+Implementation acceptance requires the provider/privacy/historical tests and
+verification selected by the risk table. Shared authority changes are high risk;
+independent adapter work is normally moderate risk. SDK
 probes are mandatory in qualification even when core-only developer environments
 lack optional SDK extras. Keep the 90% branch-coverage gate only on Linux/3.11,
 other lanes without coverage, all existing memory/deadline limits, and genuine
@@ -518,9 +513,9 @@ records are maintained separately in the external qualification ledger;
 implementation status does not establish milestone or real-provider acceptance.
 Required acceptance retains all nine synthetic routes, native/auto/text
 and strict capability matrices, full/minimal integrity/privacy/recovery, genuine
-alpha2/alpha3 compatibility, native Python-to-R checks, seven local configurations,
-49 existing strict R gates, 70 resource measurements, primary branch-aware coverage
-at least 90%, mandatory SDK probes and all five hosted jobs at the final head.
+alpha2/alpha3 compatibility, native Python-to-R checks, primary branch-aware
+coverage at least 90% when required, mandatory SDK probes and the platform/resource
+checks selected by the risk policy at the final head.
 The hosted job ceiling is 50 minutes following the explicit Phase 4C3 review
 request. All resource limits, the native 90-second child deadline and existing
 180-second fixture deadlines remain unchanged.
@@ -543,12 +538,12 @@ diagnostics, normalized outputs and R acceptance. Historical and OpenAI contract
 identities remain unchanged. The [user guide](anthropic.md) defines exact scope.
 
 Offline acceptance extends the actual-SDK byte/security/cancellation/recovery
-matrix and existing required execution R gate; all49 local R executions and five
-hosted jobs remain mandatory at the committed head. New Messages resource cases
+matrix and existing required execution R gate. New development changes follow
+the risk table; shared execution/authority changes retain high-risk acceptance. New Messages resource cases
 use existing deadlines and limits. No workflow scheduling or allocation changes
-are part of Phase5B. Changed/new coverage entries require explicit source and
-measured-set review while unchanged modules retain their exact baseline sets and
-overall coverage ratios remain blocking.
+are part of Phase5B. Changed/new source uses the change-aware coverage policy; baseline entries are
+reconciled individually at reviewed checkpoints. Unchanged modules retain exact
+covered sets and overall historical ratios remain blocking.
 
 The independently reviewable proposal contains exactly four short synthetic cases
 for one Messages endpoint, exact model/source/plan commitments, at most512 output
