@@ -502,7 +502,7 @@ def test_guard_token_duplicate_and_ledger_reset_cannot_replenish(planned: Any) -
     ],
 )
 def test_damaged_authorization_is_not_reconstructed(
-    planned: Any, mutation: str
+    planned: Any, monkeypatch: pytest.MonkeyPatch, mutation: str
 ) -> None:
     directory, plan, arguments = planned
     if mutation == "orphan":
@@ -537,7 +537,15 @@ def test_damaged_authorization_is_not_reconstructed(
             try:
                 target.symlink_to(directory / "original-digest")
             except OSError:
-                pytest.skip("symbolic links unavailable")
+                # Windows may deny symlink creation. Exercise the same admission
+                # predicate without introducing an unexpected qualification skip.
+                target.write_bytes((directory / "original-digest").read_bytes())
+                original_symlink = Path.is_symlink
+
+                def symbolic(path: Path) -> bool:
+                    return path == target or original_symlink(path)
+
+                monkeypatch.setattr(Path, "is_symlink", symbolic)
     with pytest.raises((q.QualificationError, OSError)):
         q.report_plan(directory)
     if mutation in {"orphan", "authorization"}:
