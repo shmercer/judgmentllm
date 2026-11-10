@@ -1,14 +1,16 @@
-"""Offline four-case Developer API proposal. Live execution is deliberately absent.
+"""Four-case Developer API proposal and separately authorized qualification.
 
 This repository harness reuses clean-source admission, immutable file publication,
 physical identities and production preparation. A plan/report cannot grant native
-production authority, read credentials, or submit requests.
+production authority, read credentials, or submit requests. Only the dedicated
+executor can consume a separate exact-plan/source-bound authorization.
 """
 
 from __future__ import annotations
 
 # pyright: reportPrivateUsage=false
 import argparse
+import asyncio
 import importlib.metadata
 import json
 from datetime import UTC, datetime
@@ -27,10 +29,16 @@ from judgmentllm.gemini_transport import (
 )
 from judgmentllm.models import PairTask, ResponseItem
 from judgmentllm.output_contracts import decode_assessment_output
-from judgmentllm.persistence.hashing import bytes_digest, canonical_bytes
+from judgmentllm.persistence.hashing import (
+    bytes_digest,
+    canonical_bytes,
+    semantic_digest,
+)
 from judgmentllm.persistence.models import SHA256
 from judgmentllm.planning import plan_record, stable_id
 from judgmentllm.preparation import prepare_run
+from judgmentllm.preparation.manifest import configuration_digest
+from judgmentllm.preparation.records import record_digest
 from judgmentllm.preparation.session import RequestDependency
 from judgmentllm.qualification import _immutable, _source_commit
 from judgmentllm.transport import physical_identity
@@ -377,8 +385,10 @@ def build_plan(
     return plan
 
 
-def report_plan(directory: Path) -> dict[str, object]:
-    """Read only; the exact plan digest is external consent's review identity."""
+def _load_plan(directory: Path) -> tuple[GeminiQualificationPlanV1, str]:
+    """Reconstruct exact synthetic bodies without clients, credentials or writes."""
+    if directory.is_symlink() or any(p.is_symlink() for p in directory.rglob("*")):
+        raise QualificationError()
     raw = (directory / "plan.json").read_bytes()
     digest = bytes_digest(raw)
     decode_assessment_output(raw)
@@ -386,6 +396,34 @@ def report_plan(directory: Path) -> dict[str, object]:
     if (
         canonical_bytes(plan) != raw
         or (directory / "plan.sha256").read_text().strip() != digest
+    ):
+        raise QualificationError()
+    items = [
+        {
+            "schema_version": 1,
+            "item_id": "001",
+            "text": "The seed grew because water helped it.",
+        },
+        {"schema_version": 1, "item_id": "002", "text": "Water helped the seed grow."},
+    ]
+    expected_inputs = {
+        "responses.jsonl": b"".join(canonical_bytes(item) + b"\n" for item in items),
+        "rubric-responses.jsonl": canonical_bytes(items[0]) + b"\n",
+        "pairs.jsonl": canonical_bytes(
+            {
+                "schema_version": 1,
+                "pair_id": "001",
+                "pair_uid": "001",
+                "left_item_id": "001",
+                "right_item_id": "002",
+                "presented_order": ["002", "001"],
+                "trait_id": "01",
+            }
+        )
+        + b"\n",
+    }
+    if any(
+        (directory / name).read_bytes() != raw for name, raw in expected_inputs.items()
     ):
         raise QualificationError()
     for call in plan.calls:
@@ -413,6 +451,28 @@ def report_plan(directory: Path) -> dict[str, object]:
             )
         )
         request = next(plan_record(spec, record))
+        dependency_digest = semantic_digest(
+            "request-dependencies",
+            {
+                "request_uid": request.request_uid,
+                "configuration_sha256": configuration_digest(spec),
+                "record_sha256": record_digest(record),
+                "response_sha256": record_digest(record)
+                if call.task_kind == "rubric"
+                else None,
+                "left_sha256": record_digest(responses["001"])
+                if call.task_kind == "pairwise"
+                else None,
+                "right_sha256": record_digest(responses["002"])
+                if call.task_kind == "pairwise"
+                else None,
+            },
+        )
+        if (
+            call.dependency_sha256 != dependency_digest
+            or call.request_uid != request.request_uid
+        ):
+            raise QualificationError()
         wire = prepare_production_request(
             spec,
             RequestDependency(
@@ -432,6 +492,18 @@ def report_plan(directory: Path) -> dict[str, object]:
             or wire.task_ids != call.task_ids
         ):
             raise QualificationError()
+    return plan, digest
+
+
+def report_plan(directory: Path) -> dict[str, object]:
+    """Read only, including durable execution; never authorize or resume work."""
+    from judgmentllm.gemini_qualification_execution import report_execution
+
+    plan, digest = _load_plan(directory)
+    return _plan_summary(plan, digest) | report_execution(directory, plan, digest)
+
+
+def _plan_summary(plan: GeminiQualificationPlanV1, digest: str) -> dict[str, object]:
     return {
         "provider": "gemini",
         "plan_sha256": digest,
@@ -454,7 +526,7 @@ def report_plan(directory: Path) -> dict[str, object]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Offline Gemini qualification proposal; no executor is provided"
+        description="Gemini plan / explicitly authorized execute / read-only report"
     )
     sub = parser.add_subparsers(dest="command", required=True)
     plan = sub.add_parser("plan")
@@ -465,6 +537,16 @@ def main() -> None:
     plan.add_argument("--evidence-dir", type=Path, required=True)
     report = sub.add_parser("report")
     report.add_argument("--evidence-dir", type=Path, required=True)
+    execute = sub.add_parser(
+        "execute", help="Billable: exact-plan/source consent required"
+    )
+    execute.add_argument("--evidence-dir", type=Path, required=True)
+    execute.add_argument("--authorize-plan-sha256", required=True)
+    execute.add_argument("--authorize-source-commit", required=True)
+    execute.add_argument("--accept-billable-calls", action="store_true", required=True)
+    execute.add_argument(
+        "--accept-full-synthetic-capture", action="store_true", required=True
+    )
     options = parser.parse_args()
     try:
         if options.command == "plan":
@@ -475,9 +557,23 @@ def main() -> None:
                 max_total_reserved_tokens=options.max_total_reserved_tokens,
                 proposed_budget_usd=options.proposed_budget_usd,
             )
-        print(json.dumps(report_plan(options.evidence_dir), sort_keys=True))
+        if options.command == "execute":
+            from judgmentllm.gemini_qualification_execution import execute_plan
+
+            result = asyncio.run(
+                execute_plan(
+                    options.evidence_dir,
+                    authorized_plan_sha256=options.authorize_plan_sha256,
+                    authorized_source_commit=options.authorize_source_commit,
+                    accept_billable_calls=options.accept_billable_calls,
+                    accept_full_synthetic_capture=options.accept_full_synthetic_capture,
+                )
+            )
+        else:
+            result = report_plan(options.evidence_dir)
+        print(json.dumps(result, sort_keys=True))
     except Exception:
         parser.exit(
             2,
-            "Gemini qualification proposal is incompatible; no provider operation was authorized.\n",
+            "Gemini qualification operation failed; no provider operation is authorized by this diagnostic. Inspect retained evidence before any further action.\n",
         )

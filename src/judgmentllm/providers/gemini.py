@@ -489,6 +489,7 @@ class GeminiAdapter:
 
     def validate_credentials(self) -> None:
         """Explicit execution preflight; never used by offline validation/preview."""
+        self._check_authority()
         try:
             _resolve_credentials("gemini")
         except ValueError:
@@ -501,15 +502,26 @@ class GeminiAdapter:
             raise GeminiReadinessError("sdk_scope_mismatch")
 
     def _check_authority(self) -> None:
-        if (
+        if self.transport_context.kind == "gemini-qualification-candidate-v1":
+            from judgmentllm.gemini_qualification_execution import (
+                _QualificationSubmissionGuard,
+            )
+
+            if type(self._submission_guard) is not _QualificationSubmissionGuard:
+                raise ProviderIntegrityError(
+                    "Offline qualification candidates cannot execute without the dedicated Gemini executor authority"
+                )
+            cast(Any, self._submission_guard).verify_context(self.transport_context)
+        elif (
             self.transport_context.kind != "gemini-production-v1"
             or self._submission_guard is not None
         ):
             raise ProviderIntegrityError(
-                "Offline qualification candidates cannot execute; live qualification execution is deferred"
+                "Gemini production execution cannot use qualification authority"
             )
 
     async def _execution_client(self) -> Any:
+        self._check_authority()
         if self._client is not None:
             return self._client
         sdk, http = _sdk()
@@ -582,6 +594,8 @@ class GeminiAdapter:
                 }
                 adapter.serialization_seconds += time.perf_counter() - started
                 adapter._check_authority()
+                if adapter._submission_guard is not None:
+                    adapter._submission_guard(prepared)
                 state["invoked"] = True
                 adapter.actual_call_count += 1
                 response = await underlying.handle_async_request(request)

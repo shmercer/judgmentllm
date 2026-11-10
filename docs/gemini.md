@@ -183,9 +183,69 @@ an 8192 floor. The four short cases reserve 32,768 estimated input and at most
 Tokenization and injected overhead are unproved, and the endpoint has no enforced
 input-token cap here; this is an estimated reservation, not a guaranteed bill.
 
-**There is no execute command or qualification grant in Phase 5C.** A later
-reviewed executor must bind consent to both the exact plan SHA-256 and source SHA,
-bound every physical request at the HTTP boundary, stop on uncertainty or model
-identity mismatch, and obtain separate human billable-call and capture
-authorization. Prior provider approvals do not transfer. Preparing or reviewing
-this plan is not evidence of live qualification.
+The repository executor is a separate, billable operation. This implementation
+PR authorizes **offline verification only**. After independent review and merge,
+generate a **new** plan from the eventual clean merged commit, recheck official
+model availability/pricing, and independently review its bytes and digest before
+obtaining exact-plan/source billable and full synthetic capture authorization.
+The PR #29 proposal is historical; its source does not authorize this executor.
+Do not edit a proposal to enable it. `execution_enabled: false`, zero authorized
+requests and the deferred status in plan version 1 remain its original immutable
+zero-authority declarations. Execution uses a separate version-1
+`execution-authorization.json` bound to the plan and source.
+
+Only after that separate consent, a future operator may invoke:
+
+```bash
+python scripts/qualify_gemini.py execute --evidence-dir /external/new-gemini-plan \
+  --authorize-plan-sha256 EXACT_REVIEWED_PLAN_SHA256 \
+  --authorize-source-commit EXACT_REVIEWED_MERGED_SOURCE_SHA \
+  --accept-billable-calls --accept-full-synthetic-capture
+```
+
+This is limited to the four original cases, sequentially, at most 512 requested
+output tokens per call, one candidate, no retries, continuation, replacement,
+discovery or token-count calls. The $0.02 ceiling is conservative estimated
+**authorization policy, not a provider-enforced billing cap**. The SDK can use
+thinking within its output budget; no thinking text or signatures are retained.
+
+The private Gemini guard validates source, plan, exact prepared bytes, prompt and
+payload hashes, physical IDs, case, mechanism and unused allocation at the actual
+HTTP forwarding boundary. SQLite FULL-synchronous consumption and an exclusive
+fsynced intent both precede forwarding. A crash after consumption may prevent a
+call from reaching Google; it permanently consumes that allocation regardless.
+Do not delete, relocate or reset evidence to retry. Reopening can recover already
+retained responses, never replace an uncertain call. Definitive HTTP rejection,
+refusal, truncation, missing response or identity mismatch stops the remaining
+matrix. Only a normally completed, durably terminal assessment with exact model
+identity and retained diagnostic can permit the next committed case, including
+strictly invalid JSON; invalid assessments never qualify.
+
+`report` is deterministic, read-only JSON and does not retry, resume or mutate
+anything. It distinguishes consumed allocations (a conservative upper bound on
+physical forwards) from unknown exact network delivery, outstanding, unresolved
+and completed cases, local validity, model identity, finish/refusal diagnostics,
+evidence integrity and actual reported usage. Missing usage stays null. Estimated
+actual cost requires reported input, candidate and thinking counters and explicit
+zero cached input; otherwise cost remains unknown. Reservations stay in the exposure estimate when
+actual costs are unknown; a reported overrun stops the remaining calls. Thinking is added to candidate
+output once, and usage is never multiplied by trait count. Estimates are not
+invoices. Full synthetic capture includes invalid recognized assessment text;
+unsafe components remain withheld under the existing privacy boundary.
+
+Official documentation identifies `modelVersion` as the generating model version
+but supplies no independently verified mapping for a version-specific response to
+this requested ID. Qualification therefore accepts **only** exact
+`modelVersion == "gemini-3.1-flash-lite"`. Missing identities, `models/` prefixes,
+suffixes, aliases and substitutions stop qualification. Requested and actual
+reported identities remain separate in the source-linked durable evidence/report.
+A future alias mapping needs documented evidence and separate code review.
+
+All four cases must be valid, identity-verified and backed by intact evidence for
+an overall successful report. A report grants no production capability promotion.
+Ordinary native registry, historical OpenAI/Anthropic rules, exports and public
+run/resume authority remain unchanged. No live request, money spent or package
+publication is part of this PR.
+
+The [executor verification record](gemini-qualification-executor-verification.md)
+describes offline controls and the exact-head acceptance boundary.
