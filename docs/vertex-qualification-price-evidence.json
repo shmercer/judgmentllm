@@ -1,0 +1,19 @@
+{
+  "evidence_version": 1,
+  "reviewed_on": "2026-11-10",
+  "provider": "vertex",
+  "model": "gemini-3.1-flash-lite",
+  "location": "global",
+  "api_version": "v1beta1",
+  "pricing_class": "standard_global_text_no_discounts",
+  "input_usd_per_million": "0.25",
+  "output_usd_per_million_including_thinking": "1.50",
+  "model_source": "https://docs.cloud.google.com/gemini-enterprise-agent-platform/models/gemini/3-1-flash-lite",
+  "endpoint_source": "https://docs.cloud.google.com/gemini-enterprise-agent-platform/reference/rest/v1beta1/projects.locations.publishers.models/generateContent",
+  "pricing_source": "https://cloud.google.com/gemini-enterprise-agent-platform/generative-ai/pricing",
+  "pricing_resolved_url": "https://cloud.google.com/model-garden/pricing",
+  "review": "Independently reviewed the model card, versioned REST reference and Vertex standard global pricing table. GenerateContent and structured output are documented; listed model locations are global, us and eu. The regional host allowlist does not establish exact-model availability in us-central1. Standard global text input is 0.25 USD per million tokens and text output including reasoning is 1.50 USD per million tokens. Developer API pricing, priority, Flex/Batch, cached input, promotional credits and free usage are not used.",
+  "account_eligibility": "unverified",
+  "credential_type": "unverified_standard_project_authorization_key_required_express_incompatible",
+  "limitations": "Public documentation and offline SDK serialization establish no account eligibility, key type, project association, IAM permission, billing cap or successful API access. Re-review prices and documentation before any future billable authorization."
+}

@@ -219,12 +219,26 @@ return unsupported with zero SDK calls. No suitable protected bounded operation
 has been independently established; public listing, ADC discovery and token
 refresh cannot establish inference permission.
 
-The separate [live proposal](vertex-live-qualification-proposal.md) remains
-**deferred**: no eligible project/account or exact serving model has been
-established within this offline authorization. It does not borrow Gemini
-Developer plans, consent, responses, pricing or authority. A fresh committed-source
-proposal records its explicit auth mode/API/location, four intended synthetic
-text/native rubric/pairwise cases, request/output ceilings and missing prerequisites.
-Complete physical requests/hashes, input/cost reservations and real model scope
-remain absent until eligibility and current documentation are reviewed. There
-is no execute command in this phase.
+The original [Phase 5D1 live proposal](vertex-live-qualification-proposal.md)
+remains a preserved deferred version-1 record. Phase 5D2a adds separately versioned
+complete offline candidate plans for **both `api_key` and `adc`**, each with four
+synthetic cases and **zero authorized requests**. Both explicitly select
+`gemini-3.1-flash-lite` / `global` / `v1beta1` / SDK2.34.0. The model card lists
+`global`, `us`, `eu`; the earlier deferred `us-central1` example did not establish
+availability there. The standard global resource still requires explicit
+`GOOGLE_CLOUD_PROJECT` in both modes.
+
+Use repository commands `candidate-plan`, then `verify` (or `report`) with an
+independently retained expected plan digest. The [complete instructions](vertex-live-qualification-proposal.md#construct-the-final-immutable-plans-after-merge)
+cover clean merged-source construction, private external evidence, redacted
+reports, exact SDK byte reconstruction, separate mode identities and reservations.
+No actual key, ADC file or `gcloud` is needed offline. Neither credential values,
+keyring, OAuth nor metadata servers are consulted.
+
+Account eligibility remains unverified. A stored Vertex key does not establish
+its type or standard project association: independently verify key type, billing,
+enabled API, IAM and restrictions under approved cloud setup before live work.
+Express Mode keys are incompatible with this candidate: stop without route or
+mode fallback. ADC setup is a separate manual step, with its own later consent.
+There is no Vertex qualification execute command or production native promotion;
+offline fixture/CI success is not live qualification.

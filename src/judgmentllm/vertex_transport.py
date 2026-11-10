@@ -183,10 +183,19 @@ def production_context_for_identity(
 
 
 def _qualification_context(  # pyright: ignore[reportUnusedFunction]
-    spec: RunSpecV3, *, source_commit: str
+    spec: RunSpecV3,
+    *,
+    source_commit: str,
+    runtime: VertexRuntimeConfiguration | None = None,
 ) -> VertexProductionContext:
     """Private offline probe compilation; this does not grant API execution."""
-    original = production_context(spec)
+    original = (
+        production_context(spec)
+        if runtime is None
+        else production_context_for_identity(
+            spec.provider, spec.endpoint, spec.model, runtime=runtime
+        )
+    )
     scope = original.scope
     return _checked_context(
         VertexProductionContext(

@@ -540,3 +540,13 @@ for required nonsecret project/location and explicit ADC/separate-key selection.
 are unchanged. `auth verify --provider vertex` and `providers models --provider
 vertex` return unsupported (exit2), with zero SDK calls. Batch/bulk, live
 qualification execution and capability promotion remain deferred.
+
+Phase5D2a extends only repository script `scripts/qualify_vertex.py`, with
+`candidate-plan --source-commit SHA --auth-mode api_key|adc --evidence-dir DIR`
+and `verify|report --evidence-dir DIR --plan-sha256 EXPECTED_SHA256`. Candidate
+planning requires explicit nonsecret `GOOGLE_CLOUD_PROJECT`; global/model/API/SDK
+scope is fixed and credential values are never read. The original `plan` command
+still creates the unchanged deferred version-1 proposal. New version-2 seals are
+private/external, immutable and independently scoped per mode, with zero authorized
+calls. No execute command, installed lifecycle change or CLI-envelope revision
+is added. See the [construction and verification guide](vertex-live-qualification-proposal.md).
