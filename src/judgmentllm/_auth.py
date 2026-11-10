@@ -23,6 +23,7 @@ CredentialSource = Literal[
     "GOOGLE_API_KEY",
     "GEMINI_API_KEY",
     "google_adc",
+    "JUDGMENTLLM_VERTEX_API_KEY",
     "TOGETHER_API_KEY",
     "local_service",
     "TYPESAFE_API_KEY",
@@ -80,6 +81,25 @@ _REGISTRY = (
 _BY_PROVIDER = MappingProxyType({entry.provider: entry for entry in _REGISTRY})
 
 
+# Policy 2 adds an explicitly selected Vertex key source. Historical ADC status
+# keeps its five-field contract; key/unsupported-mode status uses status V2.
+_AUTHENTICATION_POLICY_VERSION = 2
+_VERTEX_KEY_REGISTRATION = _AuthenticationRegistration(
+    "vertex", "api_key", ("JUDGMENTLLM_VERTEX_API_KEY",), True, "google_cloud"
+)
+VertexAuthMode = Literal["adc", "api_key"]
+
+
+def _vertex_auth_mode() -> VertexAuthMode:
+    try:
+        mode = os.environ.get("JUDGMENTLLM_VERTEX_AUTH_MODE", "adc")
+        if mode in ("adc", "api_key"):
+            return mode
+    except Exception:
+        pass
+    raise _CredentialResolutionError("unsupported_authentication_context") from None
+
+
 def _select_providers(providers: Sequence[str] | None) -> tuple[ProviderId, ...]:
     """Validate without echoing input; retain fixed registry order."""
     if providers is None:
@@ -111,8 +131,8 @@ class _CredentialResolutionError(ValueError):
 class _ResolvedCredentials:
     """Ephemeral adapter boundary; deliberately neither a model nor a dataclass.
 
-    Only explicit adapter code may request `_api_key()`. ADC markers defer to a
-    future official SDK chain; local markers contain no credential. This object
+    Only explicit adapter code may request `_api_key()`. ADC markers defer to the execution-only
+    official SDK chain; local markers contain no credential. This object
     is never passed into prepared requests, persistence, or public outputs.
     """
 
@@ -170,11 +190,30 @@ class _ResolvedCredentials:
 
 
 def _inspect_credentials(
-    provider: str, *, endpoint_scope: _EndpointScope | None = None
+    provider: str,
+    *,
+    endpoint_scope: _EndpointScope | None = None,
+    vertex_mode: VertexAuthMode | None = None,
 ) -> _ResolvedCredentials:
     """Inspect only fixed documented environment sources; perform no discovery."""
     selected = _select_providers((provider,))[0]
     registration = _BY_PROVIDER[selected]
+    if selected == "vertex":
+        try:
+            mode = _vertex_auth_mode() if vertex_mode is None else vertex_mode
+            if mode not in ("adc", "api_key"):
+                raise ValueError
+        except ValueError:
+            return _ResolvedCredentials(
+                registration,
+                source=None,
+                status="unsupported",
+                diagnostic_code="unsupported_authentication_context",
+            )
+        if mode == "api_key":
+            registration = _VERTEX_KEY_REGISTRATION
+    elif vertex_mode is not None:
+        raise _CredentialResolutionError("unsupported_authentication_context")
     if endpoint_scope is not None and endpoint_scope != registration.endpoint_scope:
         return _ResolvedCredentials(
             registration,
@@ -229,14 +268,19 @@ def _inspect_credentials(
 
 
 def _resolve_credentials(  # pyright: ignore[reportUnusedFunction]
-    provider: str, *, endpoint_scope: _EndpointScope | None = None
+    provider: str,
+    *,
+    endpoint_scope: _EndpointScope | None = None,
+    vertex_mode: VertexAuthMode | None = None,
 ) -> _ResolvedCredentials:
     """Obtain selected material or a deferred ADC/local marker for an adapter.
 
     Missing/malformed sources fail before SDK construction. This function does
     not construct a client, execute ADC discovery, or verify authentication.
     """
-    resolved = _inspect_credentials(provider, endpoint_scope=endpoint_scope)
+    resolved = _inspect_credentials(
+        provider, endpoint_scope=endpoint_scope, vertex_mode=vertex_mode
+    )
     if resolved.status in {"missing", "unsupported"}:
         raise _CredentialResolutionError(
             cast(DiagnosticCode, resolved.diagnostic_code)

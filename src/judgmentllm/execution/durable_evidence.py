@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from judgmentllm import gemini_types
+from judgmentllm import gemini_types, vertex_types
 from judgmentllm.assessment_diagnostics import (
     AssessmentComponentMetadata,
     diagnose_assessment_output,
@@ -165,7 +165,7 @@ class DurableEvidence:
         )
         if (
             session.prepared is not None
-            and session.prepared.manifest.schema_version in (3, 4, 5, 6)
+            and session.prepared.manifest.schema_version in (3, 4, 5, 6, 7)
         ):
             from judgmentllm.anthropic_transport import PreparedRequestV5
             from judgmentllm.production_transport import PreparedRequestV4
@@ -177,6 +177,7 @@ class DurableEvidence:
                     PreparedRequestV3,
                     PreparedRequestV4,
                     PreparedRequestV5,
+                    vertex_types.PreparedRequestV7,
                     gemini_types.PreparedRequestV6,
                 ),
             ):
@@ -230,7 +231,7 @@ class DurableEvidence:
             authorization=self.authorization,
             transport_context=session.prepared.transport_context
             if session.prepared is not None
-            and session.prepared.manifest.schema_version in (3, 4, 5, 6)
+            and session.prepared.manifest.schema_version in (3, 4, 5, 6, 7)
             else None,
         )
         session.checkpoint("after_evidence_extraction", work.prepared.request_uid)
@@ -286,7 +287,7 @@ class DurableEvidence:
                 and commitment is not None
                 and session.prepared is not None
                 and (session.spec.provider, session.prepared.manifest.schema_version)
-                in {("openai", 4), ("anthropic", 5), ("gemini", 6)}
+                in {("openai", 4), ("anthropic", 5), ("gemini", 6), ("vertex", 7)}
             ):
                 from judgmentllm.anthropic_assessment import (
                     AnthropicAssessmentComponentMetadataV2,
@@ -296,7 +297,9 @@ class DurableEvidence:
                 from judgmentllm.assessment_diagnostics import AssessmentComponent
 
                 component_type = (
-                    gemini_types.GeminiAssessmentComponentV3
+                    vertex_types.VertexAssessmentComponentV4
+                    if session.spec.provider == "vertex"
+                    else gemini_types.GeminiAssessmentComponentV3
                     if session.spec.provider == "gemini"
                     else AnthropicAssessmentComponentV2
                     if session.spec.provider == "anthropic"
@@ -322,14 +325,18 @@ class DurableEvidence:
                         )
                     )
                 metadata_type = (
-                    gemini_types.GeminiAssessmentComponentMetadataV3
+                    vertex_types.VertexAssessmentComponentMetadataV4
+                    if session.spec.provider == "vertex"
+                    else gemini_types.GeminiAssessmentComponentMetadataV3
                     if session.spec.provider == "gemini"
                     else AnthropicAssessmentComponentMetadataV2
                     if session.spec.provider == "anthropic"
                     else AssessmentComponentMetadata
                 )
                 diagnostic_type = (
-                    gemini_types.GeminiAssessmentDiagnosticV3
+                    vertex_types.VertexAssessmentDiagnosticV4
+                    if session.spec.provider == "vertex"
+                    else gemini_types.GeminiAssessmentDiagnosticV3
                     if session.spec.provider == "gemini"
                     else AnthropicAssessmentDiagnosticV2
                     if session.spec.provider == "anthropic"
@@ -436,6 +443,7 @@ class DurableEvidence:
             ("openai", "chat.completions"),
             ("anthropic", "messages"),
             ("gemini", "models.generate_content"),
+            ("vertex", "models.generate_content"),
         }:
             return None
         identity = self.identity(work, None)

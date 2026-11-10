@@ -79,6 +79,14 @@ def register_commands(app: typer.Typer, auth_app: typer.Typer) -> typer.Typer:
     ) -> None:
         """Make one protected non-generative read; does not qualify a model."""
 
+        if provider == "vertex":
+            from judgmentllm.providers.vertex_cli import present_vertex
+            from judgmentllm.vertex_diagnostics import (
+                verify_authentication as verify_vertex,
+            )
+
+            return perform(lambda: verify_vertex(), present=present_vertex)
+
         if provider == "gemini":
             from judgmentllm.gemini_diagnostics import (
                 verify_authentication as verify_gemini,
@@ -120,6 +128,14 @@ def register_commands(app: typer.Typer, auth_app: typer.Typer) -> typer.Typer:
         ] = False,
     ) -> None:
         """List visible models with one read; no generation or pagination."""
+
+        if provider == "vertex":
+            from judgmentllm.providers.vertex_cli import present_vertex
+            from judgmentllm.vertex_diagnostics import (
+                discover_models as discover_vertex,
+            )
+
+            return perform(lambda: discover_vertex(model=model), present=present_vertex)
 
         if provider == "gemini":
             from judgmentllm.gemini_diagnostics import (

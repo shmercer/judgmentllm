@@ -125,7 +125,10 @@ class ExecutionPlan(ExecutionModel):
 
     transport_protocol: (
         Literal[
-            "openai-production-v1", "anthropic-production-v1", "gemini-production-v1"
+            "openai-production-v1",
+            "anthropic-production-v1",
+            "gemini-production-v1",
+            "vertex-production-v1",
         ]
         | None
     ) = Field(default=None, exclude_if=lambda value: value is None)
@@ -136,6 +139,8 @@ class ExecutionPlan(ExecutionModel):
                 "openai.responses.text.format",
                 "openai.chat.response_format",
                 "anthropic.messages.output_config.format",
+                "vertex.generate_content.response_schema",
+                "vertex.generate_content.response_json_schema",
                 "gemini.generate_content.response_schema",
                 "gemini.generate_content.response_json_schema",
             ],

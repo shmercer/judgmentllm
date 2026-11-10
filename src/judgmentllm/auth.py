@@ -8,19 +8,21 @@ from __future__ import annotations
 
 # pyright: reportPrivateUsage=false
 from collections.abc import Mapping, Sequence
-from typing import Any, Self, cast
+from typing import Any, Literal, Self, cast
 
 from pydantic import (
     ConfigDict,
     Field,
     ModelWrapValidatorHandler,
     ValidationError,
+    field_validator,
     model_validator,
 )
 from pydantic_core import PydanticCustomError
 
 from judgmentllm._auth import (
     _BY_PROVIDER,
+    _VERTEX_KEY_REGISTRATION,
     AuthType,
     CredentialSource,
     CredentialState,
@@ -31,7 +33,7 @@ from judgmentllm._auth import (
 )
 from judgmentllm.models import StrictModel
 
-__all__ = ["CredentialStatus", "credential_status"]
+__all__ = ["CredentialStatus", "CredentialStatusV2", "credential_status"]
 
 
 def _invalid_status() -> ValidationError:
@@ -190,20 +192,74 @@ class CredentialStatus(StrictModel):
         return type(self).model_validate(values)
 
 
+class CredentialStatusV2(CredentialStatus):
+    """Explicit additive Vertex key/mode status; historical records stay V1.
+
+    No key, project, credential-file path or cloud identity can be returned.
+    """
+
+    status_version: Literal[2] = 2
+
+    @field_validator("status_version", mode="before")
+    @classmethod
+    def _status_version(cls, value: object) -> object:
+        if type(value) is not int or value != 2:
+            raise ValueError("Invalid credential status record.")
+        return value
+
+    def _registered_combination(self) -> Self:
+        if (
+            type(self.status_version) is not int
+            or self.status_version != 2
+            or self.provider != "vertex"
+            or self.auth_type not in {"api_key", "application_default_credentials"}
+        ):
+            raise ValueError("Invalid credential status record.")
+        if self.status == "unsupported":
+            if (
+                self.source is not None
+                or self.diagnostic_code != "unsupported_authentication_context"
+            ):
+                raise ValueError("Invalid credential status record.")
+            return self
+        if self.auth_type != "api_key":
+            raise ValueError("Invalid credential status record.")
+        valid = (
+            self.status == "configured"
+            and self.source in _VERTEX_KEY_REGISTRATION.sources
+            and self.diagnostic_code is None
+        ) or (
+            self.status == "missing"
+            and self.source is None
+            and self.diagnostic_code
+            in {"missing_api_key", "malformed_api_key", "credential_source_unavailable"}
+        )
+        if not valid:
+            raise ValueError("Invalid credential status record.")
+        return self
+
+
 def credential_status(
     *, providers: Sequence[str] | None = None
-) -> tuple[CredentialStatus, ...]:
+) -> tuple[CredentialStatus | CredentialStatusV2, ...]:
     """Return registry-ordered offline status; explicit empty selection is `()`.
 
     IDs must be exact registered lowercase strings. Unknown/malformed IDs are
     rejected, duplicates are removed, and caller ordering is ignored. Only the
     documented process environment variables are inspected, without mutation.
     """
-    statuses: list[CredentialStatus] = []
+    statuses: list[CredentialStatus | CredentialStatusV2] = []
     for provider in _select_providers(providers):
         resolved = _inspect_credentials(provider)
         statuses.append(
-            CredentialStatus(
+            (
+                CredentialStatusV2
+                if provider == "vertex"
+                and (
+                    resolved.auth_type == "api_key" or resolved.status == "unsupported"
+                )
+                else CredentialStatus
+            )(
                 provider=resolved.provider,
                 auth_type=resolved.auth_type,
                 source=resolved.source,

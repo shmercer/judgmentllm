@@ -6,7 +6,7 @@ from collections.abc import Callable, Iterator
 from hashlib import sha256
 from typing import TYPE_CHECKING, Literal
 
-from judgmentllm import gemini_types
+from judgmentllm import gemini_types, vertex_types
 from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.hashing import (
     bytes_digest,
@@ -88,6 +88,7 @@ def publish_prepared_transport(
     wire: PreparedRequestV3
     | PreparedRequestV4
     | PreparedRequestV5
+    | vertex_types.PreparedRequestV7
     | gemini_types.PreparedRequestV6,
     capture: Literal["full", "minimal"],
 ) -> tuple[ArtifactIdentity, ...]:
@@ -136,10 +137,12 @@ def preseal_transports(
     manifest: ExecutableRunManifestV3
     | ExecutableRunManifestV4
     | ExecutableRunManifestV5
+    | vertex_types.ExecutableRunManifestV7
     | gemini_types.ExecutableRunManifestV6,
     context: TransportContext
     | ProductionContext
     | AnthropicProductionContext
+    | vertex_types.VertexProductionContext
     | gemini_types.GeminiProductionContext,
     checkpoint: Callable[[str, str | None], None],
 ) -> tuple[int, str]:
@@ -250,6 +253,7 @@ def verify_initial_transports(prepared: PreparedRun) -> None:
             ExecutableRunManifestV3,
             ExecutableRunManifestV4,
             ExecutableRunManifestV5,
+            vertex_types.ExecutableRunManifestV7,
             gemini_types.ExecutableRunManifestV6,
         ),
     ):

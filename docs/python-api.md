@@ -1290,3 +1290,15 @@ contracts. Existing result records, per-physical usage evidence readers, read-on
 assessment inspection and JSONL/CSV/R exports retain their formats. No public
 arbitrary SDK config or reasoning-retention interface is added. Details and
 unqualified live scope are in the [Gemini guide](gemini.md).
+
+
+## Vertex Phase 5D1
+
+Existing lifecycle, preview and evidence services also support explicit
+RunSpecV3 `vertex` / `models.generate_content`; see [Vertex configuration](vertex.md).
+The independent production scope is SDK2.34.0/APIv1beta1, with empty live/native
+qualification authority. `credential_status()` retains default ADC records and
+returns additive `CredentialStatusV2` (`status_version:2`) for explicitly selected
+Vertex key mode or unsupported mode. The record is reexported at package top level.
+Provider diagnostics explicitly return unsupported for Vertex, with no SDK or
+credential operations. No public assessment/result fields or exports change.

@@ -610,3 +610,16 @@ reasons and full versus hash-only assessment capture; thought text has no retain
 artifact. No result/export columns or Phase 6 APIs change. Applicable gate
 selection follows [the risk policy](ci-optimization.md); Level 3 requires the seven
 strict Linux R gates, without repeating a full local grid.
+
+
+## Phase 5D1 Vertex adapter acceptance
+
+The existing strict execution gate adds actual pinned Vertex SDK transport with
+synthetic authorization and blocked sockets. Python persists/reopens full/minimal
+rubric/pairwise runs, grouped invalid siblings and authorized subset retries.
+R checks character IDs, mappings, every attempt, original/presented orientation,
+null probabilities/expected scores, once-per-observation Vertex usage and
+independent diagnostic4 identity/retention joins. No result/export column or
+Phase6 interface changes. All seven strict Linux R/jsonlite gates remain mandatory
+under Level3, including failures on missing dependencies. No live Google operation
+or real credential is used.

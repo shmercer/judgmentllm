@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Annotated, Literal, TypeVar, cast
 
 from pydantic import Field, field_validator, model_validator
 
-from judgmentllm import gemini_types
+from judgmentllm import gemini_types, vertex_types
 from judgmentllm.anthropic_assessment import AnthropicAssessmentDiagnosticV2
 from judgmentllm.evidence._base import EvidenceIdentity, EvidenceModel
 from judgmentllm.evidence.assessment import AssessmentDiagnosticV1
@@ -92,6 +92,7 @@ class EvidenceReceipt(EvidenceModel):
     assessment_diagnostic: (
         AssessmentDiagnosticV1
         | AnthropicAssessmentDiagnosticV2
+        | vertex_types.VertexAssessmentDiagnosticV4
         | gemini_types.GeminiAssessmentDiagnosticV3
         | None
     ) = Field(default=None, exclude_if=lambda value: value is None)
@@ -132,6 +133,7 @@ class EvidenceReceipt(EvidenceModel):
                 ("openai", "chat.completions"),
                 ("anthropic", "messages"),
                 ("gemini", "models.generate_content"),
+                ("vertex", "models.generate_content"),
             }
         ):
             raise ValueError(

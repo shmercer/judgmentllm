@@ -189,3 +189,11 @@ Extras remain `openai`, `anthropic`, `google`, `together`, `ollama`, `typesafe`,
 The repository is [shmercer/judgmentllm](https://github.com/shmercer/judgmentllm), licensed under [MIT](LICENSE), and not yet published to PyPI. The core does not implement Bradley–Terry fitting, adaptive pairing, or rubric calibration; these remain in `pairwiseLLM`.
 
 Design references: [design specification](docs/design-spec.md), [decisions](docs/decisions.md), [contributor instructions](AGENTS.md), and [Milestone 1 verification](docs/milestone-1-verification.md).
+
+
+Vertex AI Gemini single-run implementation and offline SDK fixtures are available
+through explicit V3 configurations; see the [Vertex guide](docs/vertex.md).
+ADC and a separate explicitly selected Vertex authorization-key source stay
+isolated from Gemini Developer. Vertex has no live-qualified models/native routes;
+the [qualification proposal](docs/vertex-live-qualification-proposal.md) is deferred
+and unexecuted. Ordinary auth status, planning and validation stay offline.

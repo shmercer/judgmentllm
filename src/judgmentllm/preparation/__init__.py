@@ -15,7 +15,7 @@ from typing import TYPE_CHECKING, BinaryIO, cast
 
 import yaml
 
-from judgmentllm import __version__, gemini_types
+from judgmentllm import __version__, gemini_types, vertex_types
 from judgmentllm.config import (
     InputSpec,
     RunSpec,
@@ -120,6 +120,7 @@ def _manifest(
     transport_context: TransportContext
     | ProductionContext
     | AnthropicProductionContext
+    | vertex_types.VertexProductionContext
     | gemini_types.GeminiProductionContext
     | None = None,
 ) -> ExecutableManifest:
@@ -156,7 +157,10 @@ def _manifest(
     from judgmentllm.transport_dispatch import context_protocol
 
     manifest_type = (
-        gemini_types.ExecutableRunManifestV6
+        vertex_types.ExecutableRunManifestV7
+        if transport_context is not None
+        and context_protocol(transport_context) == "vertex"
+        else gemini_types.ExecutableRunManifestV6
         if transport_context is not None
         and context_protocol(transport_context) == "gemini"
         else ExecutableRunManifestV5
@@ -244,6 +248,7 @@ def prepare_run(
     transport_context: TransportContext
     | ProductionContext
     | AnthropicProductionContext
+    | vertex_types.VertexProductionContext
     | gemini_types.GeminiProductionContext
     | None = None,
 ) -> PreparedRun:
@@ -379,6 +384,7 @@ def prepare_run(
                     ExecutableRunManifestV3,
                     ExecutableRunManifestV4,
                     ExecutableRunManifestV5,
+                    vertex_types.ExecutableRunManifestV7,
                     gemini_types.ExecutableRunManifestV6,
                 ),
             ):
@@ -636,6 +642,7 @@ def open_prepared_run(
     transport_context: TransportContext
     | ProductionContext
     | AnthropicProductionContext
+    | vertex_types.VertexProductionContext
     | gemini_types.GeminiProductionContext
     | None = None,
 ) -> PreparedRun:

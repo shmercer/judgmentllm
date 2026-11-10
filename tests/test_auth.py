@@ -70,7 +70,11 @@ ENV_SOURCES = (
 
 @pytest.fixture(autouse=True)
 def synthetic_environment(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    for source in ENV_SOURCES:
+    for source in (
+        *ENV_SOURCES,
+        "JUDGMENTLLM_VERTEX_AUTH_MODE",
+        "JUDGMENTLLM_VERTEX_API_KEY",
+    ):
         monkeypatch.delenv(source, raising=False)
     yield
 
@@ -366,10 +370,17 @@ def test_multiple_sources_do_not_mutate_environment(
 def test_non_api_markers_do_not_inspect_environment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def forbidden(*args: object, **kwargs: object) -> str:
-        raise AssertionError("Non-API auth inspected the environment.")
+    # Policy V2 may inspect only the public mode selector for ADC. It must
+    # never inspect any credential source, ADC path or cloud identity here.
+    inspected: list[str] = []
 
-    monkeypatch.setattr(os.environ, "get", forbidden)
+    def selected_mode(name: str, default: str | None = None) -> str | None:
+        if name != "JUDGMENTLLM_VERTEX_AUTH_MODE":
+            raise AssertionError("Non-API auth inspected a credential source.")
+        inspected.append(name)
+        return default
+
+    monkeypatch.setattr(os.environ, "get", selected_mode)
     vertex, ollama = credential_status(providers=("ollama", "vertex"))
     assert vertex.model_dump() == {
         "provider": "vertex",
@@ -383,6 +394,7 @@ def test_non_api_markers_do_not_inspect_environment(
         marker = _resolve_credentials(provider)
         with pytest.raises(_CredentialResolutionError):
             marker._api_key()
+    assert inspected == ["JUDGMENTLLM_VERTEX_AUTH_MODE"] * 2
 
 
 @_private_failure
@@ -567,7 +579,11 @@ def test_status_only_reads_registered_api_environment_names(
 
     monkeypatch.setattr(os.environ, "get", get)
     assert len(credential_status()) == 7
-    assert tuple(inspected) == ENV_SOURCES
+    assert tuple(inspected) == (
+        *ENV_SOURCES[:4],
+        "JUDGMENTLLM_VERTEX_AUTH_MODE",
+        *ENV_SOURCES[4:],
+    )
 
 
 @pytest.mark.parametrize("extra", ["allow", "ignore"])

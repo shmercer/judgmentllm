@@ -5,6 +5,7 @@ from typing import Literal, overload
 from judgmentllm import anthropic_diagnostics as anthropic
 from judgmentllm import gemini_diagnostics as gemini
 from judgmentllm import openai_diagnostics as openai
+from judgmentllm import vertex_diagnostics as vertex
 
 @overload
 async def adiscover_models(
@@ -30,7 +31,12 @@ async def adiscover_models(
 @overload
 async def adiscover_models(
     *, provider: str, model: str | None = None, http_transport: object | None = None
-) -> openai.ModelDiscovery | anthropic.ModelDiscovery | gemini.ModelDiscovery: ...
+) -> (
+    openai.ModelDiscovery
+    | anthropic.ModelDiscovery
+    | gemini.ModelDiscovery
+    | vertex.ModelDiscovery
+): ...
 @overload
 async def averify_authentication(
     *, provider: Literal["openai"] = "openai", http_transport: object | None = None
@@ -46,7 +52,12 @@ async def averify_authentication(
 @overload
 async def averify_authentication(
     *, provider: str, http_transport: object | None = None
-) -> openai.AuthVerification | anthropic.AuthVerification | gemini.AuthVerification: ...
+) -> (
+    openai.AuthVerification
+    | anthropic.AuthVerification
+    | gemini.AuthVerification
+    | vertex.AuthVerification
+): ...
 @overload
 def discover_models(
     *,
@@ -71,7 +82,12 @@ def discover_models(
 @overload
 def discover_models(
     *, provider: str, model: str | None = None, http_transport: object | None = None
-) -> openai.ModelDiscovery | anthropic.ModelDiscovery | gemini.ModelDiscovery: ...
+) -> (
+    openai.ModelDiscovery
+    | anthropic.ModelDiscovery
+    | gemini.ModelDiscovery
+    | vertex.ModelDiscovery
+): ...
 @overload
 def verify_authentication(
     *, provider: Literal["openai"] = "openai", http_transport: object | None = None
@@ -87,4 +103,9 @@ def verify_authentication(
 @overload
 def verify_authentication(
     *, provider: str, http_transport: object | None = None
-) -> openai.AuthVerification | anthropic.AuthVerification | gemini.AuthVerification: ...
+) -> (
+    openai.AuthVerification
+    | anthropic.AuthVerification
+    | gemini.AuthVerification
+    | vertex.AuthVerification
+): ...
