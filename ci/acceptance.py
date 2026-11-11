@@ -74,6 +74,7 @@ def run_lane(
     expected = next(item for item in plan["lanes"] if item["id"] == lane)
     systems = {
         "ubuntu-latest": "Linux",
+        "ubuntu-24.04": "Linux",
         "windows-latest": "Windows",
         "macos-latest": "Darwin",
     }

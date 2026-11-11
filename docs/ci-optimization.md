@@ -20,6 +20,27 @@ deadlines, memory ceilings, ownership/credential/privacy safeguards and historic
 fixtures remain unchanged. The [requirement map](../ci/verification-map.json)
 records the protected assertions and applicability, rather than a test-count gate.
 
+## Hosted Linux setup recovery (2026-11-11)
+
+The successful [pre-merge Linux run](https://github.com/shmercer/judgmentllm/actions/runs/42951676363)
+used Ubuntu24.04 and installed R4.6.2 in under a minute. The subsequent
+[main run #122](https://github.com/shmercer/judgmentllm/actions/runs/43038579450)
+resolved `ubuntu-latest` to Ubuntu26.04. Its R setup repeatedly failed DNS for all
+three Ubuntu mirrors, continued using old package indexes and exhausted the
+50-minute job while downloading system requirements. Tests and R gates never ran;
+that cancelled setup and missing diagnostic artifact remain failed evidence.
+
+Pin hosted Linux jobs and all Linux matrix entries to the tested `ubuntu-24.04`
+image. Bound only the R dependency-setup step to five minutes so another network
+failure cannot consume the full functional-suite job. The 50-minute complete-job
+limit, Python/R/jsonlite versions, all seven strict R gates, coverage floors,
+resource deadlines, full platform scopes and protected-base admission are unchanged.
+The image difference is an observed change, not proof that the OS caused DNS
+failure. Restoring the known image is a narrow mitigation; network failure still
+fails acceptance. A candidate CI edit does not alter its own protected-base run:
+review it independently before updating trusted main. Never count unrun R gates
+or a manual candidate-workflow run as protected-base acceptance of another PR.
+
 ## Commands and ordinary workflow
 
 Prepare once with `uv sync --locked --all-extras --group dev --python 3.11`.
