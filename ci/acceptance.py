@@ -218,6 +218,7 @@ def run_lane(
                         python,
                         "scripts/smoke_install.py",
                         str(artifacts[0]),
+                        "--offline",
                     ],
                 )
         if "tests" in needed:

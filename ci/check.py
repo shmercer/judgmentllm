@@ -229,6 +229,8 @@ def main() -> int:
         )
         return fast(options.changed_since, output, options.test, options.workers)
     if options.profile == "pr":
+        # Planning can read an immutable policy copy: imports must not add pyc files.
+        sys.dont_write_bytecode = True
         from acceptance import save
         from risk import git, make_plan
 
@@ -251,6 +253,7 @@ def main() -> int:
         code = subprocess.run(
             [
                 str(python) if python.is_file() else sys.executable,
+                "-B",
                 str(ROOT / "ci/acceptance.py"),
                 "lane",
                 "--source",

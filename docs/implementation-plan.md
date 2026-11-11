@@ -734,3 +734,40 @@ is authorized. After independent review/merge, generate and independently verify
 fresh plans from final merged source, review actual eligibility and reservations,
 obtain separate consent for each mode, then conduct the minimal approved live
 matrix and inspect evidence before any separately reviewed production promotion.
+
+
+## Milestone 3 Phase 5D3: Vertex acceptance and production promotion
+
+The [2026-11-11 acceptance record](vertex-live-qualification-acceptance.md) and
+[complete independent audit](vertex-evidence-verification.json) retain the distinct
+ADC source `59a45ec31e53de7ed9eb833f5876c0000d982bca` and API-key source
+`db98be97654d8e918516618399d57ec8c28e4ec6`. Original clean checkouts and pinned
+dependencies reproduce both canonical reports, each with four accepted requests,
+valid assessments and exact model matches. The seven-line 403 correction changes
+only confirmed rejection handling; success contracts agree. The unsuccessful
+API-key history and all evidence bytes/membership/timestamps remain unchanged.
+
+Two private reviewed profiles independently bind `vertex` /
+`models.generate_content` / `gemini-3.1-flash-lite` / v1beta1 / google-genai2.34.0 /
+global, authentication mode and private-project route hash. Only native
+`vertex.generate_content.response_json_schema` one-trait `rubric_scores` and
+`pairwise_forced_choice` are promoted. Eligible ordinary native/auto execution
+uses that mechanism; other native fails, nonstrict unknown auto retains text,
+and strict unknown fails. Grouping, explanations, ties, response_schema, other
+models/routes and broader generation/batch capabilities remain unqualified.
+No runtime registration API or qualification-to-production grant transfer exists.
+
+Selection1 additively represents native/supported/reviewed decisions under the
+existing manifest7/output7/request7/transport5 contracts. Exact qualified routes'
+authority/context and frozen commitments change, including text and candidate
+contexts; unmatched scopes preserve the historical empty-profile identity. Old
+manifests/plans require their original clean source/dependencies and are never
+migrated, reselected or exempted from integrity checks. Normalized JSONL/CSV/R1
+and all historical provider identities remain unchanged.
+
+Level3 exact-head protected-base CI acceptance requires primary Linux suite and
+change-aware coverage, representative Windows3.12/macOS3.11 and seven strict Linux
+R/jsonlite gates, with cross-provider security/history/recovery regressions.
+Synthetic production fixtures cover each mode and exact routing without real
+projects or credentials. Additional provider calls, qualification, credential or
+keyring access, spending, publication and merging are outside this phase.

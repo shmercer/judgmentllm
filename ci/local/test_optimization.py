@@ -30,6 +30,38 @@ from suite import outcomes, partition, verify_contract, verify_skips
 from telemetry import ProcessSampler
 
 
+def test_execution_r_fixture_is_collected_only_in_the_serial_partition(
+    tmp_path: Path,
+) -> None:
+    source = Path(__file__).resolve().parents[2]
+    receipt = tmp_path / "collected.json"
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "--no-cov",
+            "--collect-only",
+            "-q",
+            "-p",
+            "ci.local.pytest_report",
+            f"--ci-report={receipt}",
+            "tests/test_execution_r.py",
+        ],
+        cwd=source,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    selected = partition(json.loads(receipt.read_text())["collected"])
+    assert not selected["ordinary"] and not selected["resource"]
+    assert set(selected["serial"]) == {
+        "tests/test_execution_r.py::test_execution_reopens_without_duplicate_acceptances",
+        "tests/test_execution_r.py::test_execution_outputs_pass_required_r_assertions",
+    }
+
+
 class FakeControl:
     mechanism = "synthetic-per-run-control"
 

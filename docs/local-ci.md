@@ -225,6 +225,17 @@ recover SSH. The runner does not silently restart services or waive readiness.
 
 ## Gates and evidence
 
+The multi-provider execution-to-R fixture's two pytest cases use the existing
+serial partition to avoid xdist contention during their unchanged 60-second
+persist/export setup. No case, assertion or strict R gate is removed. Resource
+fixtures retain their original independent 90/180-second deadlines and limits.
+
+Local PR planning imports policy with bytecode generation disabled and launches
+acceptance with `-B`. Installation smokes receive `--offline` explicitly, so
+package-cache preparation remains separate and missing dependencies fail without
+network retries during acceptance. Keep protected policy copies and failed
+attempts unchanged; record a fresh source-bound run after correcting setup.
+
 Every explicit complete-grid check runs Ruff lint/format, strict Pyright, locked offline synchronization,
 the full Python suite (branch coverage and the existing 90% gate on Linux/3.11
 only; explicit `--no-cov` elsewhere), all seven

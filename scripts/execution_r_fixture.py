@@ -16,6 +16,7 @@ from anthropic_offline_fixture import export_anthropic, persist_anthropic
 from gemini_offline_fixture import export_gemini, persist_gemini
 from openai_offline_fixture import export_openai, persist_openai
 from vertex_offline_fixture import export_vertex, persist_vertex
+from vertex_promotion_fixture import export_vertex_promotion, persist_vertex_promotion
 
 from judgmentllm.config import load_run_spec
 from judgmentllm.execution import execute_run, recover_run
@@ -254,12 +255,14 @@ def main() -> None:
             await persist_anthropic(options.output / "anthropic")
             await persist_gemini(options.output / "gemini")
             await persist_vertex(options.output / "vertex")
+            await persist_vertex_promotion(options.output / "vertex-promotion")
         else:
             await export(options.output)
             export_openai(options.output / "openai")
             export_anthropic(options.output / "anthropic")
             export_gemini(options.output / "gemini")
             export_vertex(options.output / "vertex")
+            export_vertex_promotion(options.output / "vertex-promotion")
 
     asyncio.run(run_phase())
 

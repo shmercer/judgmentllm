@@ -58,6 +58,8 @@ from judgmentllm.vertex_registry import (
     VERTEX_API_VERSION,
     VERTEX_PRODUCTION_SDK_VERSION,
     VertexMechanism,
+    _profile_for,
+    _QualifiedProfile,
     production_generation_capabilities,
 )
 
@@ -208,9 +210,22 @@ def _qualification_context(  # pyright: ignore[reportUnusedFunction]
 
 
 def _authority_sha256(context: VertexProductionContext) -> str:
+    # Preserve the historical empty-list identity for every unqualified route.
+    profiles = [
+        profile
+        for mechanism in (
+            "vertex.generate_content.response_schema",
+            "vertex.generate_content.response_json_schema",
+        )
+        if (profile := _reviewed_profile(context, mechanism)) is not None
+    ]
     return semantic_digest(
         "vertex-production-authority-v1",
-        {"kind": context.kind, "profiles": [], "source_commit": context.source_commit},
+        {
+            "kind": context.kind,
+            "profiles": profiles,
+            "source_commit": context.source_commit,
+        },
     )
 
 
@@ -231,16 +246,28 @@ def production_context_digest(context: VertexProductionContext) -> str:
         raise TransportIntegrityError() from None
 
 
+def _reviewed_profile(
+    context: VertexProductionContext, mechanism: str | None
+) -> _QualifiedProfile | None:
+    return _profile_for(
+        context.scope,
+        mechanism,
+        route_sha256=context.runtime.route_sha256,
+        authentication_mode=context.runtime.auth_mode,
+        location=context.runtime.location,
+    )
+
+
 class VertexSelectionV1(_TransportModel):
-    """Frozen Vertex choice; the empty registry grants no production native route."""
+    """Frozen production choice independent of historical synthetic decisions."""
 
     selection_version: Literal[1] = 1
-    kind: Literal["text", "qualification_probe", "inherited"]
+    kind: Literal["text", "native", "qualification_probe", "inherited"]
     policy: Literal["auto", "native", "text"]
     requested_mechanism: NativeTransportMechanism | None
     mechanism: VertexMechanism | Literal["text"]
-    native_support: Literal["unknown"] = "unknown"
-    authority_kind: Literal["unqualified", "qualification_probe"]
+    native_support: Literal["supported", "unsupported", "unknown"] = "unknown"
+    authority_kind: Literal["reviewed", "unqualified", "qualification_probe"]
     features: tuple[NativeFeature, ...]
     authority_sha256: SHA256
     parent_commitment_sha256: SHA256 | None = None
@@ -256,12 +283,38 @@ class VertexSelectionV1(_TransportModel):
             or (self.policy == "native" and not native)
             or (self.policy == "text" and native)
             or (native and self.requested_mechanism != self.mechanism)
-            or (native and self.authority_kind != "qualification_probe")
             or (self.kind == "text" and native)
-            or (self.kind == "qualification_probe" and not native)
+            or (self.kind in {"native", "qualification_probe"} and not native)
+            or (
+                native
+                and self.native_support != "supported"
+                and not (
+                    self.native_support == "unknown"
+                    and self.authority_kind == "qualification_probe"
+                )
+            )
+            or (native and self.authority_kind == "unqualified")
+            or (
+                self.kind == "qualification_probe"
+                and self.authority_kind != "qualification_probe"
+            )
         ):
-            raise ValueError("Vertex selection conflicts")
+            raise ValueError("production selection conflicts")
         return self
+
+
+def _support(
+    context: VertexProductionContext,
+    features: tuple[NativeFeature, ...],
+    mechanism: str | None,
+) -> Literal["supported", "unsupported", "unknown"]:
+    profile = _reviewed_profile(context, mechanism)
+    if profile is not None:
+        if set(features) & set(profile.unsupported_features):
+            return "unsupported"
+        if set(features) <= set(profile.supported_features):
+            return "supported"
+    return "unknown"
 
 
 def _verify_selection(
@@ -271,18 +324,22 @@ def _verify_selection(
     context: VertexProductionContext,
     parent: TransportCommitmentV5 | None,
 ) -> None:
-    qualifier = context.kind == "vertex-qualification-candidate-v1"
-    native = selection.mechanism != "text"
+    expected_route = spec.prompt.native_mechanism
+    qualifier = context.kind != "vertex-production-v1"
+    authority_kind = (
+        "qualification_probe"
+        if qualifier
+        else "reviewed"
+        if _reviewed_profile(context, spec.prompt.native_mechanism) is not None
+        else "unqualified"
+    )
     if (
         selection.policy != spec.prompt.structured_output
         or selection.requested_mechanism != spec.prompt.native_mechanism
         or selection.features != _features(contract)
         or selection.authority_sha256 != _authority_sha256(context)
-        or selection.authority_kind
-        != ("qualification_probe" if qualifier else "unqualified")
-        or selection.mechanism not in {"text", spec.prompt.native_mechanism}
-        or (native and not qualifier)
-        or (not native and selection.policy == "auto" and spec.strict_capabilities)
+        or selection.authority_kind != authority_kind
+        or selection.mechanism not in {"text", expected_route}
         or (parent is None) != (selection.parent_commitment_sha256 is None)
         or (
             parent is not None
@@ -293,14 +350,23 @@ def _verify_selection(
                 or selection.requested_mechanism != parent.requested_mechanism
             )
         )
-        or selection.kind
-        != (
-            "inherited"
-            if parent is not None
-            else "qualification_probe"
-            if native
-            else "text"
-        )
+    ):
+        raise TransportIntegrityError()
+    support = _support(context, selection.features, spec.prompt.native_mechanism)
+    if selection.native_support != support:
+        raise TransportIntegrityError()
+    if selection.mechanism != "text":
+        # VertexSelectionV1 already rejects native unsupported/unqualified
+        # choices. The checks above bind that admission to current authority.
+        if selection.kind not in {
+            "inherited",
+            "qualification_probe" if qualifier else "native",
+        }:
+            raise TransportIntegrityError()
+    elif (spec.prompt.structured_output == "auto" and support == "supported") or (
+        spec.prompt.structured_output == "auto"
+        and spec.strict_capabilities
+        and support == "unknown"
     ):
         raise TransportIntegrityError()
 
@@ -312,30 +378,38 @@ def _selection(
     parent: TransportCommitmentV5 | None,
 ) -> VertexSelectionV1:
     policy = spec.prompt.structured_output
-    qualifier = context.kind == "vertex-qualification-candidate-v1"
+    features = _features(contract)
+    support = _support(context, features, spec.prompt.native_mechanism)
+    qualifier = context.kind != "vertex-production-v1"
     if parent is not None:
         mechanism = parent.mechanism
     elif policy == "text":
         mechanism = "text"
-    elif qualifier:
+    elif support == "supported" or (qualifier and support != "unsupported"):
         mechanism = cast(VertexMechanism, spec.prompt.native_mechanism)
-    elif policy == "native" or spec.strict_capabilities:
-        raise ValueError(
-            "Vertex native output requires independently reviewed exact-scope authority"
-        )
+    elif policy == "native" or (spec.strict_capabilities and support == "unknown"):
+        raise ValueError("Native output requires reviewed exact-scope qualification.")
     else:
         mechanism = "text"
+    native = mechanism != "text"
     result = VertexSelectionV1(
         kind="inherited"
         if parent is not None
         else "qualification_probe"
-        if mechanism != "text"
+        if native and qualifier
+        else "native"
+        if native
         else "text",
         policy=policy,
         requested_mechanism=spec.prompt.native_mechanism,
         mechanism=mechanism,
-        authority_kind="qualification_probe" if qualifier else "unqualified",
-        features=_features(contract),
+        native_support=support,
+        authority_kind="qualification_probe"
+        if qualifier
+        else "reviewed"
+        if _reviewed_profile(context, spec.prompt.native_mechanism) is not None
+        else "unqualified",
+        features=features,
         authority_sha256=_authority_sha256(context),
         parent_commitment_sha256=None if parent is None else parent.commitment_sha256,
     )

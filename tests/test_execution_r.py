@@ -15,6 +15,10 @@ from fixture_artifacts import immutable_exports
 
 from judgmentllm.io import read_results, read_results_csv
 
+# This full multi-provider fixture has a fixed 60-second subprocess deadline.
+# Preserve the deadline while keeping SDK/persistence work out of xdist contention.
+pytestmark = pytest.mark.serial
+
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = ROOT / "scripts" / "execution_r_fixture.py"
 R_SCRIPT = ROOT / "examples" / "execution_interoperability.R"
