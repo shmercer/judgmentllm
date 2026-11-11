@@ -349,3 +349,44 @@ stopifnot(all(gp$ID1 == "002"), all(gp$ID2 == "001"), all(as.numeric(gp$result) 
 stopifnot(length(unique(gr$attempt_id)) == 4L)
 for (inspection in read_vertex("inspections.jsonl")) stopifnot(!"output_text" %in% names(inspection))
 cat("Vertex AI interoperability passed\n")
+
+# Phase 5D3: actual production auto/native selection for both independent modes.
+vp_root <- file.path(root, "vertex-promotion")
+read_vp <- function(name) lapply(readLines(file.path(vp_root, name), encoding="UTF-8"), jsonlite::fromJSON, simplifyVector=FALSE)
+vp_rows <- read_vp("results.jsonl")
+vp_evidence <- read_vp("evidence.jsonl")
+vp_transports <- read_vp("transports.jsonl")
+vp_inspections <- read_vp("inspections.jsonl")
+stopifnot(length(vp_rows) == 8L, length(vp_evidence) == 8L, length(vp_transports) == 8L, length(vp_inspections) == 8L)
+vp_keys <- vapply(vp_evidence, function(x) key(x$identity), character(1))
+stopifnot(!anyDuplicated(vp_keys))
+vp_sources <- c(adc="59a45ec31e53de7ed9eb833f5876c0000d982bca", api_key="db98be97654d8e918516618399d57ec8c28e4ec6")
+vp_reports <- c(adc="6843a1b81b0cca2bea08bcae6a5b1e5788fde8f557768f90272a8ecdfb3837ae", api_key="1a523c431b795e7e1d4b4ded26688f8d4cb9ea2746ed409f64b5331e5de84fff")
+for (row in vp_rows) {
+  stopifnot(key(row) %in% vp_keys, row$status == "complete", row$provider == "vertex", row$model == "gemini-3.1-flash-lite", row$trait_id == "01", is.null(row$explanation))
+  if (row$task_kind == "rubric") {
+    stopifnot(row$item_id == "001", row$primary_score_kind == "category_code", row$primary_score == 1, is.null(row$probabilities), is.null(row$expected_value))
+    stopifnot(identical(vapply(row$resolved_levels, function(x) x$numeric_value, numeric(1)), c(1,3,8)))
+  } else {
+    stopifnot(identical(unlist(row$original_order), c("001","002")), identical(unlist(row$presented_order), c("002","001")), row$winner_id == "002", !row$tie, is.null(row$p_left), is.null(row$p_right))
+  }
+}
+for (transport in vp_transports) {
+  mode <- transport$authentication_mode
+  stopifnot(mode %in% c("adc","api_key"), transport$qualification_source_commit == vp_sources[[mode]], transport$independent_live_sha256 == vp_reports[[mode]])
+  stopifnot(transport$mechanism == "vertex.generate_content.response_json_schema", transport$selection$kind == "native", transport$selection$policy == "auto", transport$selection$native_support == "supported", transport$selection$authority_kind == "reviewed")
+  stopifnot(transport$run_id %in% vapply(vp_rows, function(x) x$run_id, character(1)))
+}
+vp_routes <- split(vapply(vp_transports, function(x) x$route_sha256, character(1)), vapply(vp_transports, function(x) x$authentication_mode, character(1)))
+stopifnot(length(unique(vp_routes$adc)) == 1L, length(unique(vp_routes$api_key)) == 1L, vp_routes$adc[[1L]] != vp_routes$api_key[[1L]])
+for (entry in vp_evidence) {
+  stopifnot(entry$usage$reported_model == "gemini-3.1-flash-lite", entry$assessment_diagnostic$canonical_valid)
+  if (grepl("-minimal-", entry$identity$run_id, fixed=TRUE)) stopifnot(is.null(entry$usage$input_tokens), is.null(entry$usage$total_tokens))
+  else stopifnot(entry$usage$input_tokens == 100L, entry$usage$output_tokens == 10L)
+}
+for (inspection in vp_inspections) stopifnot(!"output_text" %in% names(inspection))
+vp_rubric <- read.csv(file.path(vp_root,"rubric.csv"),colClasses="character",na.strings="NA",check.names=FALSE)
+vp_pairs <- read.csv(file.path(vp_root,"pairs.csv"),colClasses="character",na.strings="NA",check.names=FALSE)
+stopifnot(nrow(vp_rubric) == 4L, nrow(vp_pairs) == 4L, all(vp_rubric$item_id == "001"), all(vp_rubric$trait_id == "01"), all(vp_pairs$ID1 == "002"), all(vp_pairs$ID2 == "001"), all(vp_pairs$better_id == "002"))
+
+cat("Vertex production promotion interoperability passed: 8 native observations across ADC and API-key modes\n")

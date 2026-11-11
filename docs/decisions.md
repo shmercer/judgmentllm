@@ -442,3 +442,21 @@ output and reported-model mismatch stop. Strict read-only reporting rechecks
 retained JSON/results and exposes safe provenance/response hashes. Mode-specific
 credential selection stays inside the existing adapter; keyring access and
 production native promotion remain excluded. See the [executor guide](vertex-qualification-executor.md).
+
+
+## Phase 5D3: independent route-scoped Vertex production authority
+
+Adopt the reviewed Gemini registry pattern with independent Vertex digest domains,
+records and provenance. Match mode/project/location route hashes as well as exact
+provider/endpoint/model/API/SDK/mechanism: an ADC success cannot authorize API-key
+execution, another project or a region. Keep each evidence-producing source
+commit in its own record; the later accepting commit is separate. The seven-line
+403 correction changes confirmed rejection handling without changing successful
+assessment contracts. See the [source analysis and accepted digests](vertex-live-qualification-acceptance.md).
+
+Freeze native/auto decisions through existing production contracts and recheck
+native authority before client construction. Keep original empty-profile hashes
+for unmatched scopes. A matching promotion deliberately invalidates older frozen
+contexts, including text and qualification candidates; recover historical stores
+with their original clean source/dependencies. No migration, integrity exception,
+runtime registration, harness-grant reuse or public schema change is introduced.

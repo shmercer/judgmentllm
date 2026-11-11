@@ -3,9 +3,10 @@
 This repository-only executor implements the separately reviewed execution step
 for the [version-2 offline candidates](vertex-live-qualification-proposal.md).
 Implementation and CI are offline. They authorize no provider calls, credential
-access, cloud discovery, spending, registry promotion or publication. The Vertex
-production native registry remains empty. Ordinary `run`/`resume` cannot borrow
-this harness's authority.
+access, cloud discovery, spending, registry promotion or publication. At the executor-only stage the Vertex
+production native registry remained empty. The later [Phase 5D3 acceptance](vertex-live-qualification-acceptance.md)
+adds separate narrowly scoped reviewed production records. Ordinary `run`/`resume`
+cannot borrow this harness's authority.
 
 Each plan is independent: `api_key` resolves only `JUDGMENTLLM_VERTEX_API_KEY`;
 `adc` uses only Google's official ADC chain at explicit execution. Neither mode

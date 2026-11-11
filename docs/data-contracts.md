@@ -746,3 +746,21 @@ Read-only report admission requires an independently supplied plan digest and th
 exact clean source. [The executor guide](vertex-qualification-executor.md) defines
 commands, state, privacy and recovery. No historical plan/evidence migration or
 production qualification promotion is introduced.
+
+
+## Vertex reviewed production selection (Phase 5D3)
+
+`VertexSelectionV1` additively represents kind `native`, native support `supported`
+and authority kind `reviewed`. Existing unknown defaults and serialized historical
+values remain valid. Two private reviewed profiles bind original qualification
+source, plan/report provenance and independent authentication/project/global route
+commitments. Exact native JSON-schema one-trait scores and forced-choice winners
+can execute through the existing manifest7/output7/request7/transport5 boundary.
+See the [accepted records and compatibility policy](vertex-live-qualification-acceptance.md).
+
+Adding a matching profile changes authority/context and frozen output/transport
+commitments for that exact model/route, including text and candidate contexts.
+Unmatched scopes retain the historical empty-profile identity. Old stores/plans
+require their original clean source/dependencies; none are migrated or exempted
+from checks. RunSpec3, SQLite2, canonical assessment2 and normalized JSONL/CSV/R1
+remain unchanged. Production authority contains no qualification execution grant.

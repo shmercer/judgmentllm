@@ -57,6 +57,7 @@ from judgmentllm.providers.vertex_response import (
     _safe_original_envelope,
     _usage,
 )
+from judgmentllm.vertex_config import VertexRuntimeConfiguration
 
 _SDK_LOGGING: ContextVar[bool] = ContextVar(
     "judgmentllm_vertex_sensitive_call", default=False
@@ -417,30 +418,62 @@ class VertexAdapter:
         model: str,
         *,
         mechanism: str | None = None,
+        runtime: VertexRuntimeConfiguration | None = None,
     ) -> CapabilityProfile:
         if (provider, endpoint) != ("vertex", "models.generate_content"):
             raise ProviderError("Unsupported Vertex provider endpoint")
-        # Live describes implemented local orchestration. Model assessment
-        # behavior remains unknown without reviewed exact-scope evidence.
+        # Generic flags cover broader shapes than the two accepted features.
+        # Match complete explicit routing before consulting reviewed facts.
         from judgmentllm.native_schema import NativeProjectionScopeV1
-        from judgmentllm.vertex_registry import production_generation_capabilities
+        from judgmentllm.native_selection import NativeFeature
+        from judgmentllm.vertex_registry import (
+            _profile_for,
+            production_generation_capabilities,
+        )
+
+        scope = NativeProjectionScopeV1(
+            provider="vertex",
+            endpoint=endpoint,
+            model=model,
+            model_scope="exact",
+            sdk_package="google-genai",
+            sdk_version="2.34.0",
+            api_version="v1beta1",
+        )
+        reviewed = (
+            None
+            if runtime is None
+            else _profile_for(
+                scope,
+                mechanism,
+                route_sha256=runtime.route_sha256,
+                authentication_mode=runtime.auth_mode,
+                location=runtime.location,
+            )
+        )
+
+        def support(features: tuple[NativeFeature, ...]) -> bool | None:
+            if reviewed is None:
+                return None
+            if all(feature in reviewed.supported_features for feature in features):
+                return True
+            if all(feature in reviewed.unsupported_features for feature in features):
+                return False
+            return None
 
         return CapabilityProfile(
-            explanations=None,
-            grouped=None,
-            ties=None,
-            modes=("live",),
-            generation=production_generation_capabilities(
-                NativeProjectionScopeV1(
-                    provider="vertex",
-                    endpoint=endpoint,
-                    model=model,
-                    model_scope="exact",
-                    sdk_package="google-genai",
-                    sdk_version="2.34.0",
-                    api_version="v1beta1",
+            explanations=support(
+                (
+                    "rubric_explanations_together",
+                    "rubric_scores_first",
+                    "rubric_explanations_first",
+                    "pairwise_explanations",
                 )
             ),
+            grouped=support(("rubric_grouped",)),
+            ties=support(("pairwise_ties",)),
+            modes=("live",),
+            generation=production_generation_capabilities(scope),
         )
 
     def capabilities(self, spec: RunSpecification) -> CapabilityProfile:
@@ -449,6 +482,7 @@ class VertexAdapter:
             spec.endpoint,
             spec.model,
             mechanism=getattr(spec.prompt, "native_mechanism", None),
+            runtime=self.transport_context.runtime,
         )
 
     def validate(self, spec: RunSpecification) -> None:
@@ -731,15 +765,29 @@ class VertexAdapter:
                 "Vertex sealed transport scope or invocation identity differs"
             )
         self._check_authority()
-        # Production native remains unavailable. Only the dedicated exact-plan
-        # executor can probe native candidate requests, consumed at HTTP forwarding.
+        # Production never borrows the harness's one-shot grants. Recheck exact
+        # route/feature authority before client construction or any HTTP attempt.
+        selection = prepared.output_commitment.selection
         if (
-            prepared.output_commitment.selection.mechanism != "text"
-            and self.transport_context.kind != "vertex-qualification-candidate-v1"
+            selection.mechanism != "text"
+            and self.transport_context.kind == "vertex-production-v1"
         ):
-            raise ProviderIntegrityError(
-                "Vertex native execution requires independent reviewed qualification"
-            )
+            from judgmentllm.native_selection import _features
+            from judgmentllm.vertex_transport import _authority_sha256, _support
+
+            features = _features(prepared.output_commitment.contract)
+            if (
+                selection.features != features
+                or selection.authority_kind != "reviewed"
+                or selection.native_support != "supported"
+                or selection.authority_sha256
+                != _authority_sha256(self.transport_context)
+                or _support(self.transport_context, features, selection.mechanism)
+                != "supported"
+            ):
+                raise ProviderIntegrityError(
+                    "Vertex native execution requires independent reviewed qualification"
+                )
         if submission_id in self._invoked or len(self._responses) >= self._concurrency:
             raise ProviderIntegrityError(
                 "Vertex invocation identity was reused or handoff capacity exceeded"

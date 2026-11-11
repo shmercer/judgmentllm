@@ -433,3 +433,18 @@ result/response/provenance digests and nullable physical usage. Implementation a
 all acceptance tests are offline; fresh merged-source plans and separately approved
 live authorization are still required. Historical Phase5D2a real-project plans and
 all OpenAI/Anthropic/Developer evidence remain immutable.
+
+
+## Milestone 3 Phase 5D3: Vertex evidence acceptance and scoped promotion
+
+The [2026-11-11 acceptance](vertex-live-qualification-acceptance.md) independently
+reconstructs both original-source reports and introduces separate ADC/API-key
+production records for their exact private-project/global routes. Only
+`gemini-3.1-flash-lite` / v1beta1 / google-genai2.34.0 native
+`vertex.generate_content.response_json_schema` one-trait scores and forced-choice
+winners are promoted. Eligible native/auto uses that mechanism; unmatched native
+fails, nonstrict unknown auto retains text and strict unknown fails. Other
+features, projects, regions, models and mechanisms remain unqualified. Changed
+frozen authority requires the original checkout for historical reconstruction;
+normalized exports remain unchanged. Acceptance is Level3, entirely synthetic
+and credential-free, with no additional live qualification or publication.

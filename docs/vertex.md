@@ -1,11 +1,13 @@
 # Vertex AI Gemini execution
 
-Phase 5D1 implements the `vertex` provider's single-run generative adapter with
-**google-genai 2.34.0**, `models.generate_content`, **v1beta1**. Implementation and
-offline fixtures establish transport and validation behavior. **No Vertex model,
-native mechanism or account has been live-qualified. The production qualification
-registry is empty.** No live calls, credential discovery, keyring reads or
-publication are part of this phase.
+Vertex single-run execution uses **google-genai 2.34.0**,
+`models.generate_content`, **v1beta1**. The [2026-11-11 acceptance](vertex-live-qualification-acceptance.md)
+independently verifies separate ADC and API-key evidence and promotes only
+`gemini-3.1-flash-lite` / `global` / the respective qualified private-project route /
+`vertex.generate_content.response_json_schema`, for one-trait scores and forced-choice
+winners. Every other scope remains unqualified. This promotion makes no provider
+calls, reads no credentials/keyring and authorizes no additional qualification or
+package publication.
 
 Google's current documentation calls this service Gemini Enterprise Agent
 Platform. JudgmentLLM retains provider ID `vertex`. Provider `gemini` uses the
@@ -34,7 +36,8 @@ validated offline; this neither probes Google Cloud nor confirms the project
 exists. Locations in this reviewed transport scope are `global`, `us-central1`,
 `us-east4`, `europe-west1`, `europe-west4` and `asia-southeast1`. Other regions,
 multi-regions, private gateways, custom hosts and mTLS-bound transports need a
-separate reviewed extension. Model eligibility remains unknown at every location.
+separate reviewed extension. Live qualification is confined to the exact global
+project/authentication scopes in the acceptance record; other locations remain unknown.
 See Google's [location documentation](https://docs.cloud.google.com/gemini-enterprise-agent-platform/resources/locations).
 
 `global` uses `https://aiplatform.googleapis.com/`; regional execution uses
@@ -84,7 +87,8 @@ describes billing, organization policy, service-account permissions and key
 restrictions. Operators must independently establish eligibility, restrict the
 key to `aiplatform.googleapis.com`, and review the bound account's IAM and quota.
 The adapter cannot infer these facts from a string. SDK forwarding is fixture-
-tested; account authorization for inference remains unqualified.
+tested. The accepted API-key evidence establishes only its recorded project/mode
+route; another key or account still needs independent authorization.
 
 [Express Mode](https://docs.cloud.google.com/gemini-enterprise-agent-platform/reference/express-mode/api-reference)
 uses a distinct global publisher resource without project/location components.
@@ -135,11 +139,18 @@ still run locally. Google's [structured-output guide](https://docs.cloud.google.
 and the pinned types describe different schema surfaces; serialization is not
 proof of serving enforcement.
 
-The Vertex production registry grants **neither mechanism**. Explicit native
-requests fail preflight. Nonstrict `auto` selects text; strict unknown capability
-requests fail. Offline candidate preparation can inspect either native body but
-cannot execute through the production adapter. No executor or grant is provided.
-A failed request never changes the selected mechanism or causes a second call.
+The production registry grants only the exact qualified JSON-schema route above.
+For its two accepted features, explicit native and `auto` choose native; explicit
+text stays text. Unqualified native fails before forwarding. Nonstrict `auto`
+retains text fallback; strict unknown fails. Grouping, explanations, ties and
+`response_schema` gain no live authority. Complete mode/project/location routing
+is required for selection, and changing any route fact cannot borrow another
+record. No runtime registration interface exists.
+
+The [repository-only qualification harness](vertex-qualification-executor.md) has
+separate candidate/source/plan authority; ordinary production cannot use its
+submission grants or historical consumed allowances. A failed request never
+changes its frozen mechanism or causes an automatic fallback call.
 
 Sparse generation maps temperature to `temperature`, top-p to `topP` and output
 limit to `maxOutputTokens`. Omitted values stay omitted; SDK sampling numbers
@@ -235,14 +246,15 @@ reports, exact SDK byte reconstruction, separate mode identities and reservation
 No actual key, ADC file or `gcloud` is needed offline. Neither credential values,
 keyring, OAuth nor metadata servers are consulted.
 
-Account eligibility remains unverified. A stored Vertex key does not establish
+At offline proposal preparation, account eligibility was unverified. A stored Vertex key does not establish
 its type or standard project association: independently verify key type, billing,
 enabled API, IAM and restrictions under approved cloud setup before live work.
 Express Mode keys are incompatible with this candidate: stop without route or
 mode fallback. The operator reports ADC token acquisition, quota-project
 configuration, API enablement and billing enabled; this work does not inspect or
 verify that state. Inference IAM, exact-model eligibility and API-key compatibility
-remain unverified. Each mode still requires its own later consent.
+were unverified at that stage. The later acceptance records only successful
+behavior for the two exact authorized routes; wider account eligibility stays unknown.
 
 Phase 5D2b adds a [dedicated qualification executor](vertex-qualification-executor.md)
 and read-only execution `report`, while preserving the immutable offline verifier.
@@ -251,3 +263,19 @@ mode and location, reviewed count/cost reservations and separate billable/full
 synthetic capture consent. A fixed sibling ledger and final HTTP guard consume
 each original request once. Recovery never replaces uncertain work. No production
 native promotion is included; implementation testing is synthetic and offline.
+
+## Phase 5D3 compatibility and evidence acceptance
+
+Both successful evidence sources and reports remain immutable. The ADC source
+precedes the narrowly scoped privacy-safe 403 correction; the successful API-key
+source includes it. Their successful request/assessment contracts agree, with
+separate original-source provenance. The original unsuccessful API-key run remains
+unresolved historical evidence and is never relabeled. See the complete
+[source analysis and audit](vertex-live-qualification-acceptance.md).
+
+Promotion changes authority/context/output/transport commitments for the exact
+qualified model/project/mode/global scope, including explicit text. New eligible
+`auto` selects native. Other scopes keep their historical empty-profile identities.
+Frozen old manifests are not migrated or reselected: reconstruct or recover them
+using their original clean source/dependencies. Current code rejects changed
+authority. Existing normalized results and JSONL/CSV/R contracts are unchanged.

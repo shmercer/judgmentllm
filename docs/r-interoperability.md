@@ -623,3 +623,18 @@ independent diagnostic4 identity/retention joins. No result/export column or
 Phase6 interface changes. All seven strict Linux R/jsonlite gates remain mandatory
 under Level3, including failures on missing dependencies. No live Google operation
 or real credential is used.
+
+
+## Phase 5D3 Vertex production promotion acceptance
+
+The same strict execution gate now adds eight actual pinned-SDK synthetic
+production runs: ADC/API-key × full/minimal × rubric/forced-choice. Private test
+copies of the two reviewed profiles use distinct synthetic project/mode route
+hashes; no real project identifier or credential is read. `auto` selects native
+JSON Schema, one physical call is retained per run, and recovery makes no new
+call. R consumes reopened Python results, receipts, frozen transport and
+inspection metadata. It checks both original qualification-source/report
+identities, route separation, leading-zero IDs, nonuniform mappings, categorical
+score semantics, reversed presentation, null probabilities/usage and full/minimal
+retention without serialized assessment or reasoning text. Existing seven gates
+and historical fixtures remain required and unchanged in scope.
