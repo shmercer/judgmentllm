@@ -518,7 +518,7 @@ class VertexAdapter:
 
             if type(self._submission_guard) is not _QualificationSubmissionGuard:
                 raise ProviderIntegrityError(
-                    "Vertex qualification requires its dedicated executor authority"
+                    "Offline Vertex qualification candidates cannot execute without the dedicated Vertex executor authority"
                 )
             cast(Any, self._submission_guard).verify_context(self.transport_context)
         elif (
