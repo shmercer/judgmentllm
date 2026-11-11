@@ -123,6 +123,34 @@ def test_workflow_runs_quality_before_dynamic_matrix_and_keeps_diagnostics() -> 
         assert "linux-3.11" in step["if"] and "risk == '4'" in step["if"]
 
 
+def test_linux_image_is_pinned_and_r_setup_has_a_bounded_failure() -> None:
+    from risk import COMPREHENSIVE, PRIMARY, REPRESENTATIVE
+
+    data = workflow()
+    assert data["jobs"]["plan"]["runs-on"] == "ubuntu-24.04"
+    assert data["jobs"]["acceptance"]["runs-on"] == "ubuntu-24.04"
+    assert PRIMARY == {"id": "linux-3.11", "os": "ubuntu-24.04", "python": "3.11"}
+    assert len(REPRESENTATIVE) == 3 and len(COMPREHENSIVE) == 8
+    assert all(
+        lane["os"] == "ubuntu-24.04"
+        for lane in COMPREHENSIVE
+        if lane["id"].startswith("linux-")
+    )
+    verify = data["jobs"]["verify"]
+    assert verify["runs-on"] == "${{ matrix.os }}"
+    setup = next(
+        step for step in verify["steps"] if step.get("name") == "Set up required R"
+    )
+    assert setup["timeout-minutes"] == "5"
+    assert setup["with"]["r-version"] == "4.6.2"
+    jsonlite = next(
+        step
+        for step in verify["steps"]
+        if step.get("name") == "Install pinned jsonlite"
+    )
+    assert '== "2.0.0"' in jsonlite["run"]
+
+
 def test_original_coverage_floor_and_resource_deadlines_remain() -> None:
     project = tomllib.loads((REPOSITORY / "pyproject.toml").read_text())
     assert project["tool"]["coverage"]["report"]["fail_under"] == 90

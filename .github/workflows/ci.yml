@@ -31,7 +31,7 @@ env:
 
 jobs:
   plan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
@@ -117,6 +117,7 @@ jobs:
           name: verification-plan
           path: ${{ runner.temp }}/p
       - name: Set up required R
+        timeout-minutes: 5
         if: needs.plan.outputs.r_required == 'true' && (matrix.id == 'linux-3.11' || needs.plan.outputs.risk == '4')
         uses: r-lib/actions/setup-r@f9a764fea8d5c63df6ef9a5c7795bf7deb5d7e05
         with:
@@ -164,7 +165,7 @@ jobs:
     name: CI acceptance
     if: always()
     needs: [plan, verify]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 5
     # Only this trusted, isolated job can publish the status on the literal PR
     # head. Candidate code never receives this token or runs in this job.
