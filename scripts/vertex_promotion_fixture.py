@@ -1,7 +1,8 @@
-"""Synthetic promoted Vertex production outputs for the existing strict R gate.
+"""Synthetic Vertex promotion compatibility outputs for the strict R gate.
 
 Only this offline fixture substitutes synthetic route hashes into private copies
-of reviewed profiles. Real project identifiers and credentials are never needed.
+of historical reviewed profiles. Their feature sets remain unchanged: revision 2
+must use text until separately qualified. Real credentials are never needed.
 """
 
 from __future__ import annotations
@@ -170,8 +171,14 @@ def export_vertex_promotion(output: Path) -> None:
                         context
                     )
                     assert (
-                        transport.selection.authority_kind == "reviewed"
-                        and transport.mechanism == MECHANISM
+                        transport.presentation_version == 2
+                        and transport.selection.authority_kind == "reviewed"
+                        and transport.selection.kind == "text"
+                        and transport.mechanism == "text"
+                        and transport.selection.native_support == "unknown"
+                        and "assessment_presentation_v2" in transport.selection.features
+                        and "assessment_presentation_v2"
+                        not in profile.supported_features
                     )
                     transports.append(
                         {
@@ -180,6 +187,8 @@ def export_vertex_promotion(output: Path) -> None:
                             "route_sha256": transport.route_sha256,
                             "context_sha256": transport.context_sha256,
                             "mechanism": transport.mechanism,
+                            "presentation_version": transport.presentation_version,
+                            "qualified_features": list(profile.supported_features),
                             "selection": transport.selection.model_dump(mode="json"),
                             "profile_authority_sha256": profile.authority_sha256,
                             "qualification_source_commit": profile.source_commit,

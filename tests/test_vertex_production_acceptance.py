@@ -825,3 +825,39 @@ def test_new_presentation_cannot_borrow_historical_native_authority(
     assert wire.transport_commitment.presentation_version == 2
     assert wire.output_commitment.selection.mechanism == "text"
     assert wire.output_commitment.selection.native_support == "unknown"
+
+
+@pytest.mark.asyncio
+async def test_historical_native_wire_still_executes_with_original_authority(
+    tmp_path: Path, qualified: str
+) -> None:
+    wire, spec, _, context = prepare(tmp_path, policy="native", pairwise=True)
+    assert wire.output_commitment.contract.presentation_version == 1
+    sent: list[bytes] = []
+
+    def respond(request: httpx2.Request) -> httpx2.Response:
+        sent.append(request.content)
+        assert request.content == wire.payload
+        return httpx2.Response(
+            200, json=envelope('{"winner_id":"002"}', modelVersion=MODEL)
+        )
+
+    adapter = VertexAdapter(
+        spec.endpoint,
+        spec.model,
+        context=context,
+        http_transport=httpx2.MockTransport(respond),
+    )
+    identity = wire.transport_plan.identity
+    arguments = {
+        "submission_id": identity.submission_id,
+        "correlation_id": identity.correlation_id,
+    }
+    try:
+        await adapter.submit(wire, **arguments)
+        response = await adapter.retrieve(wire, **arguments)
+        assert adapter.parse(response).kind == "response"
+        assert adapter.actual_call_count == len(sent) == 1
+        assert b"responseJsonSchema" in sent[0]
+    finally:
+        await adapter.aclose()

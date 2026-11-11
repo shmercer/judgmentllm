@@ -650,3 +650,10 @@ probabilities. No columns or score/probability semantics change. Historical
 original-ID wire contracts remain covered by the original fixtures and genuine
 pre-change recovery store. All seven strict gates remain required under Level 3;
 missing R/jsonlite fails. See [revision compatibility](renderer-revision-2.md).
+
+The execution gate also checks that historical Vertex promotion profiles retain
+their original feature sets. Newly prepared revision-2 requests use text with
+unknown native support across both synthetic authentication modes. R checks the
+committed revision, requested native mechanism, fallback selection and absence of
+revision-2 qualification. Historical native execution remains covered separately;
+no reviewed profile or source-bound qualification fixture is rewritten.
