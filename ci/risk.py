@@ -15,7 +15,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
-PRIMARY = {"id": "linux-3.11", "os": "ubuntu-latest", "python": "3.11"}
+PRIMARY = {"id": "linux-3.11", "os": "ubuntu-24.04", "python": "3.11"}
 REPRESENTATIVE = [
     PRIMARY,
     {"id": "windows-3.12", "os": "windows-latest", "python": "3.12"},
@@ -23,8 +23,8 @@ REPRESENTATIVE = [
 ]
 COMPREHENSIVE = [
     *REPRESENTATIVE,
-    {"id": "linux-3.12", "os": "ubuntu-latest", "python": "3.12"},
-    {"id": "linux-3.15", "os": "ubuntu-latest", "python": "3.15"},
+    {"id": "linux-3.12", "os": "ubuntu-24.04", "python": "3.12"},
+    {"id": "linux-3.15", "os": "ubuntu-24.04", "python": "3.15"},
     {"id": "windows-3.11", "os": "windows-latest", "python": "3.11"},
     {"id": "macos-3.12", "os": "macos-latest", "python": "3.12"},
     {"id": "macos-3.15", "os": "macos-latest", "python": "3.15"},
