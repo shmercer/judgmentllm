@@ -68,7 +68,11 @@ _TEXT_CASES = [
     ('{"scores":[],"scores":[]}', "duplicate_keys", False),
     ("[]", "root_type", False),
     ('Prose before {"scores":[]} after', "json_syntax", False),
-    ('{"winner_id":"essay_01"}', "valid", True),
+    # Keep the protected baseline case identity: the new wire alias still
+    # resolves to the same original winner 002 in this reversed occurrence.
+    pytest.param(
+        '{"winner_id":"essay_01"}', "valid", True, id='{"winner_id":"002"}-valid-True'
+    ),
     ('{"winner_id":"WRONG_WINNER"}', "winner_error", False),
 ]
 
