@@ -14,6 +14,7 @@ import re
 import ssl
 import time
 from collections import deque
+from collections.abc import Callable
 from contextvars import ContextVar
 from importlib.metadata import PackageNotFoundError, version
 from typing import Any, Literal, cast
@@ -377,6 +378,7 @@ class VertexAdapter:
         context: vertex_types.VertexProductionContext | None = None,
         concurrency: int = 4,
         http_transport: object | None = None,
+        submission_guard: Callable[[PreparedRequest], None] | None = None,
     ) -> None:
         if (
             endpoint != "models.generate_content"
@@ -401,6 +403,7 @@ class VertexAdapter:
             )
         self._concurrency = concurrency
         self._http_transport = http_transport
+        self._submission_guard = submission_guard
         self._client: Any = None
         self._responses: dict[str, tuple[str, bytes, ProviderResponse]] = {}
         self._invoked: deque[str] = deque(maxlen=2 * concurrency)
@@ -508,9 +511,22 @@ class VertexAdapter:
             raise VertexReadinessError("sdk_scope_mismatch")
 
     def _check_authority(self) -> None:
-        if self.transport_context.kind != "vertex-production-v1":
+        if self.transport_context.kind == "vertex-qualification-candidate-v1":
+            from judgmentllm.vertex_qualification_execution import (
+                _QualificationSubmissionGuard,
+            )
+
+            if type(self._submission_guard) is not _QualificationSubmissionGuard:
+                raise ProviderIntegrityError(
+                    "Vertex qualification requires its dedicated executor authority"
+                )
+            cast(Any, self._submission_guard).verify_context(self.transport_context)
+        elif (
+            self.transport_context.kind != "vertex-production-v1"
+            or self._submission_guard is not None
+        ):
             raise ProviderIntegrityError(
-                "Offline Vertex qualification candidates cannot execute; no executor is implemented"
+                "Vertex production execution cannot use qualification authority"
             )
 
     async def _execution_client(self) -> Any:
@@ -609,6 +625,16 @@ class VertexAdapter:
                 }
                 adapter.serialization_seconds += time.perf_counter() - started
                 adapter._check_authority()
+                if adapter._submission_guard is not None:
+                    from judgmentllm.vertex_qualification_execution import (
+                        _verify_quota_project,
+                    )
+
+                    _verify_quota_project(
+                        adapter.transport_context,
+                        request.headers.get("x-goog-user-project"),
+                    )
+                    adapter._submission_guard(prepared)
                 # Screen against the exact secrets forwarded, even if another
                 # ADC refresh rotates/clears the credentials before response.
                 secrets = [runtime.project]
@@ -698,10 +724,12 @@ class VertexAdapter:
                 "Vertex sealed transport scope or invocation identity differs"
             )
         self._check_authority()
-        # The independent Vertex registry is empty. Descriptive candidate
-        # records, even rehashed into a production context, grant no native
-        # execution authority at this direct adapter boundary.
-        if prepared.output_commitment.selection.mechanism != "text":
+        # Production native remains unavailable. Only the dedicated exact-plan
+        # executor can probe native candidate requests, consumed at HTTP forwarding.
+        if (
+            prepared.output_commitment.selection.mechanism != "text"
+            and self.transport_context.kind != "vertex-qualification-candidate-v1"
+        ):
             raise ProviderIntegrityError(
                 "Vertex native execution requires independent reviewed qualification"
             )

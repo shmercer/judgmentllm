@@ -86,8 +86,8 @@ class VertexProductionContext:
     """Descriptive scoped authority; qualification context is never call consent.
 
     Ordinary execution accepts only the production kind. Candidate contexts
-    compile bodies offline only. This phase supplies no executor or submission
-    grant for unqualified native requests.
+    alone compile bodies offline only. The separate repository qualification
+    executor must supply exact-plan one-shot authority at the HTTP boundary.
     """
 
     scope: NativeProjectionScopeV1

@@ -1,18 +1,16 @@
-"""Create/verify offline Vertex plans; no execution command.
-
-An eligible project/authentication mode and exact serving model have not been
-established. Never invent executable requests or rates from Developer evidence.
-"""
+"""Offline Vertex planning/inspection and separately authorized one-shot execution."""
 
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
 import os
 import subprocess
 import sys
+from decimal import Decimal
 from pathlib import Path
-from typing import Annotated, Literal
+from typing import Annotated, Literal, cast
 
 from pydantic import ConfigDict, Field
 
@@ -131,7 +129,12 @@ def prepare_proposal(
 
 
 def main() -> None:
-    if len(sys.argv) > 1 and sys.argv[1] in {"candidate-plan", "verify", "report"}:
+    if len(sys.argv) > 1 and sys.argv[1] in {
+        "candidate-plan",
+        "verify",
+        "report",
+        "execute",
+    }:
         candidate_main()
         return
     parser = argparse.ArgumentParser(
@@ -182,6 +185,21 @@ def candidate_main() -> None:
         report = sub.add_parser(command, help="Read-only exact-digest reconstruction")
         report.add_argument("--evidence-dir", type=Path, required=True)
         report.add_argument("--plan-sha256", required=True)
+    execute = sub.add_parser(
+        "execute", help="Separately authorized, at most four billable requests"
+    )
+    execute.add_argument("--evidence-dir", type=Path, required=True)
+    execute.add_argument("--authorize-plan-sha256", required=True)
+    execute.add_argument("--authorize-source-commit", required=True)
+    execute.add_argument("--auth-mode", choices=("api_key", "adc"), required=True)
+    execute.add_argument("--location", required=True)
+    execute.add_argument("--reviewed-request-count", type=int, required=True)
+    execute.add_argument("--reviewed-reserved-estimated-usd", required=True)
+    execute.add_argument("--reviewed-estimated-ceiling-usd", required=True)
+    execute.add_argument("--accept-billable-calls", action="store_true", required=True)
+    execute.add_argument(
+        "--accept-full-synthetic-capture", action="store_true", required=True
+    )
     options = parser.parse_args()
     try:
         if options.command == "candidate-plan":
@@ -197,10 +215,43 @@ def candidate_main() -> None:
                 max_output_tokens=options.max_output_tokens,
             )
             print((options.evidence_dir / "plan.sha256").read_text().strip())
-        else:
+        elif options.command == "execute":
+            from judgmentllm.vertex_qualification_execution import execute_plan
+
             print(
                 json.dumps(
-                    verify_plan(
+                    asyncio.run(
+                        execute_plan(
+                            options.evidence_dir,
+                            authorized_plan_sha256=options.authorize_plan_sha256,
+                            authorized_source_commit=options.authorize_source_commit,
+                            authorized_project=os.environ.get(
+                                "GOOGLE_CLOUD_PROJECT", ""
+                            ),
+                            authorized_authentication_mode=cast(
+                                Literal["api_key", "adc"], options.auth_mode
+                            ),
+                            authorized_location=options.location,
+                            reviewed_request_count=options.reviewed_request_count,
+                            reviewed_reserved_estimated_usd=Decimal(
+                                options.reviewed_reserved_estimated_usd
+                            ),
+                            reviewed_estimated_ceiling_usd=Decimal(
+                                options.reviewed_estimated_ceiling_usd
+                            ),
+                            accept_billable_calls=options.accept_billable_calls,
+                            accept_full_synthetic_capture=options.accept_full_synthetic_capture,
+                        )
+                    ),
+                    sort_keys=True,
+                )
+            )
+        else:
+            from judgmentllm.vertex_qualification_execution import report_plan
+
+            print(
+                json.dumps(
+                    (verify_plan if options.command == "verify" else report_plan)(
                         options.evidence_dir, expected_plan_sha256=options.plan_sha256
                     ),
                     sort_keys=True,
@@ -211,7 +262,7 @@ def candidate_main() -> None:
     except Exception:
         parser.exit(
             2,
-            "Vertex offline qualification requires clean exact source, the pinned SDK, a valid explicit project/global/authentication candidate, an external private directory and intact exact-digest evidence. No provider operation is authorized.\n",
+            "Vertex qualification requires clean exact source, intact exact-digest evidence, the pinned SDK, matching explicit project/global/mode, reviewed reservations and separate billable/full synthetic capture consent for execution. Inspect retained evidence before any further action.\n",
         )
 
 

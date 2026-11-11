@@ -98,14 +98,19 @@ def test_exact_source_rejects_dirty_or_unreadable_metadata(
         assert proposal.source_commit(tmp_path) == "a" * 40
 
 
-def test_no_execute_command_can_be_invoked(
+def test_execute_without_new_plan_and_explicit_consent_cannot_be_invoked(
     monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     monkeypatch.setattr(proposal.sys, "argv", ["qualify_vertex.py", "execute"])
     with pytest.raises(SystemExit) as error:
         proposal.main()
     assert error.value.code == 2
-    assert "invalid choice" in capsys.readouterr().err
+    diagnostic = capsys.readouterr().err
+    assert "required" in diagnostic
+    assert "--authorize-plan-sha256" in diagnostic
+    assert "--authorize-source-commit" in diagnostic
+    assert "--accept-billable-calls" in diagnostic
+    assert "--accept-full-synthetic-capture" in diagnostic
 
 
 def test_cli_proposal_failure_is_safe(
