@@ -190,3 +190,46 @@ and request bodies. Complete seals and raw assessment evidence remain private.
 Harness results never publish capabilities. After minimal independently authorized
 live execution, inspect evidence independently before proposing any production
 qualification promotion in another review.
+
+## Offline review of the first API-key execution
+
+At merged source `59a45ec31e53de7ed9eb833f5876c0000d982bca`, the private API-key
+records show one consumed `rubric-text` allocation, one uncertain attempt, no
+observation or normalized result, and three unstarted cases. The receipt records
+`invocation_acceptance: unresolved` with no failure code, response or exception
+details. Its report has zero confirmed HTTP responses and unknown actual forwards.
+These records cannot retrospectively establish an HTTP status or transport cause.
+The operator independently verified that the Google Cloud API key is bound to a
+service account and restricted to Vertex AI. IAM troubleshooting returned
+`CANNOT_ACCESS` for `aiplatform.endpoints.predict`, then `CAN_ACCESS` for the same
+service account after assigning the permission. These findings do not establish
+the earlier HTTP response or confer qualification.
+
+Installed google-genai 2.34.0 raises `ClientError` with integer `.code == 403` for
+a permission-denied response, which `VertexAdapter.submit()` already recognizes
+as `permission_denied`. Synthetic tests reproduce a separate information-loss
+path in the unchanged source: an HTTP 403 body containing the private project
+resource is withheld by the transport privacy guard before SDK classification.
+That raises `SubmissionUncertain`, which `submit()` preserves, leaving the same
+report shape as an unclassified exception or transport failure. Ordinary 403
+bodies without private echoes were classified correctly. The missing IAM
+permission is consistent with this reproduction, but the historical cause remains
+unproven.
+
+The correction recognizes only an actual HTTP response with status 403 returned
+through the sealed Vertex transport. It closes that response without reading,
+retaining, logging, hashing or exporting its body, and raises the existing
+`VertexRequestRejected` with the fixed `permission_denied` failure code. A failed
+body close cannot erase the confirmed status. The existing invocation receipt and
+read-only report then record rejection before assessment acceptance, one consumed
+allocation, one confirmed HTTP response and no retained response or assessment.
+The matrix stops, and execution/reopening never replays that allocation.
+
+Unknown errors remain uncertain after forwarding; error prose and JSON body codes
+cannot supply an HTTP status. Other statuses keep their existing privacy guards.
+API-key and ADC authority remain separate. This correction neither repairs nor
+reclassifies historical records: preserve the original uncertain record and
+consumed allocation. After merge, any new API-key qualification requires a newly
+generated plan bound to the merged source, independent verification and separate
+explicit authorization before execution. No live execution or capability promotion
+is part of this correction.

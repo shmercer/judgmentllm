@@ -649,6 +649,13 @@ class VertexAdapter:
                 state["invoked"] = True
                 adapter.actual_call_count += 1
                 response = await underlying.handle_async_request(request)
+                if isinstance(response, http.Response) and response.status_code == 403:
+                    # The sealed HTTP status establishes rejection independently
+                    # of its body. Discard it before reading, parsing or hashing.
+                    try:
+                        await response.aclose()
+                    finally:
+                        raise VertexRequestRejected("permission_denied") from None
                 body = bytearray()
                 try:
                     async for chunk in response.aiter_bytes():

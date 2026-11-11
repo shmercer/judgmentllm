@@ -9,8 +9,10 @@ from __future__ import annotations
 # pyright: reportPrivateUsage=false
 import asyncio
 import json
+from collections.abc import AsyncIterator
 from pathlib import Path
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, cast
 
 import httpx2
 import pytest
@@ -143,6 +145,127 @@ async def test_exact_vertex_sdk_bytes_and_authorization(
             await adapter.submit(wire, **invocation(wire))
         with pytest.raises(RetrievalUnavailable):
             await adapter.retrieve(wire, **invocation(wire))
+    finally:
+        await adapter.aclose()
+
+
+@pytest.mark.parametrize("mode", ["api_key", "adc"])
+@pytest.mark.parametrize("close_failure", [False, True])
+@pytest.mark.asyncio
+async def test_confirmed_permission_denial_discards_unread_body(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    mode: str,
+    close_failure: bool,
+) -> None:
+    """Even an unreadable body or failed close cannot erase confirmed rejection."""
+    if mode == "adc":
+        adc(monkeypatch)
+    wire, spec, _, context = wire_for(tmp_path)
+    closed: list[bool] = []
+    reads: list[bool] = []
+    states: list[dict[str, Any]] = []
+
+    class PrivateStream(httpx2.AsyncByteStream):
+        async def __aiter__(self) -> AsyncIterator[bytes]:
+            reads.append(True)
+            yield b"PRIVATE_UNREAD_CANARY"
+            raise AssertionError("A rejected response body must never be read")
+
+        async def aclose(self) -> None:
+            closed.append(True)
+            state = p._INVOCATION_STATE.get()
+            assert state is not None
+            states.append(state)
+            if close_failure:
+                raise RuntimeError("PRIVATE_CLOSE_CANARY: 403 PERMISSION_DENIED")
+
+    def forbidden(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("A rejected body must not enter privacy parsing")
+
+    monkeypatch.setattr(p, "_contains_credential", forbidden)
+    response = httpx2.Response(403, stream=PrivateStream())
+    adapter = p.VertexAdapter(
+        spec.endpoint,
+        spec.model,
+        context=context,
+        http_transport=httpx2.MockTransport(lambda request: response),
+    )
+    try:
+        with pytest.raises(p.VertexRequestRejected) as failure:
+            await adapter.submit(wire, **invocation(wire))
+        assert failure.value.diagnostic_code == "permission_denied"
+        assert response.is_closed and closed == [True] and not reads
+        assert states == [{"invoked": True}]  # No raw body or body hash handoff.
+        assert not adapter._responses and adapter.actual_call_count == 1
+        assert "PRIVATE_CLOSE_CANARY" not in str(failure.value) + caplog.text
+        with pytest.raises(ProviderIntegrityError):
+            await adapter.submit(wire, **invocation(wire))
+        assert adapter.actual_call_count == 1
+    finally:
+        await adapter.aclose()
+
+
+@pytest.mark.parametrize("mode", ["api_key", "adc"])
+@pytest.mark.parametrize("status", [400, 401, 404, 422, 429, 500, 503, 307, 418])
+@pytest.mark.asyncio
+async def test_other_statuses_keep_private_bodies_withheld(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str, status: int
+) -> None:
+    if mode == "adc":
+        adc(monkeypatch)
+    wire, spec, _, context = wire_for(tmp_path)
+    response = httpx2.Response(
+        status,
+        json={"error": {"code": 403, "message": context.runtime.project}},
+    )
+    adapter = p.VertexAdapter(
+        spec.endpoint,
+        spec.model,
+        context=context,
+        http_transport=httpx2.MockTransport(lambda request: response),
+    )
+    try:
+        with pytest.raises(SubmissionUncertain) as failure:
+            await adapter.submit(wire, **invocation(wire))
+        assert failure.value.invoked and response.is_closed
+        assert str(failure.value) == "Vertex response cannot be retained safely"
+        assert not adapter._responses and adapter.actual_call_count == 1
+    finally:
+        await adapter.aclose()
+
+
+@pytest.mark.parametrize("mode", ["api_key", "adc"])
+@pytest.mark.parametrize("kind", ["missing_response", "status_only", "connection"])
+@pytest.mark.asyncio
+async def test_permission_classification_requires_an_http_response(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str, kind: str
+) -> None:
+    if mode == "adc":
+        adc(monkeypatch)
+    wire, spec, _, context = wire_for(tmp_path)
+
+    def handler(request: httpx2.Request) -> Any:
+        if kind == "connection":
+            raise httpx2.ConnectError("PRIVATE_CONNECTION_CANARY: HTTP 403")
+        return SimpleNamespace(status_code=403) if kind == "status_only" else None
+
+    adapter = p.VertexAdapter(
+        spec.endpoint,
+        spec.model,
+        context=context,
+        http_transport=httpx2.MockTransport(handler),
+    )
+    try:
+        with pytest.raises(SubmissionUncertain) as failure:
+            await adapter.submit(wire, **invocation(wire))
+        assert failure.value.invoked
+        assert "403" not in str(failure.value)
+        assert not adapter._responses and adapter.actual_call_count == 1
+        with pytest.raises(ProviderIntegrityError):
+            await adapter.submit(wire, **invocation(wire))
+        assert adapter.actual_call_count == 1
     finally:
         await adapter.aclose()
 
@@ -386,5 +509,165 @@ async def test_adc_unavailable_is_distinct_and_does_not_fall_back(
         with pytest.raises(TransportNotSubmitted) as failure:
             await adapter.submit(wire, **invocation(wire))
         assert "PRIVATE" not in str(failure.value) and adapter.actual_call_count == 0
+    finally:
+        await adapter.aclose()
+
+
+@pytest.mark.asyncio
+async def test_pinned_sdk_permission_denial_has_integer_http_code() -> None:
+    """The SDK exposes HTTP 403 as .code, independently of private error prose."""
+    from google.genai import errors
+
+    response = httpx2.Response(
+        403,
+        json={
+            "error": {
+                "code": 403,
+                "status": "PERMISSION_DENIED",
+                "message": (
+                    "Permission 'aiplatform.endpoints.predict' denied on resource "
+                    "'projects/synthetic-project/locations/global/publishers/google/"
+                    "models/synthetic-model' (or it may not exist)."
+                ),
+            }
+        },
+    )
+    assert p.vertex_sdk_version() == "2.34.0"
+    with pytest.raises(errors.ClientError) as failure:
+        await cast(Any, errors.APIError).raise_for_async_response(response)
+    assert type(failure.value.code) is int and failure.value.code == 403
+    assert failure.value.status == "PERMISSION_DENIED"
+    assert cast(Any, failure.value).response is response
+
+
+@pytest.mark.parametrize("mode", ["api_key", "adc"])
+@pytest.mark.parametrize("sensitive", ["project", "credential"])
+@pytest.mark.parametrize("escaped", [False, True])
+@pytest.mark.asyncio
+async def test_private_permission_denial_is_withheld_before_sdk_classification(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    mode: str,
+    sensitive: str,
+    escaped: bool,
+) -> None:
+    """Preserve confirmed 403 status while withholding private/escaped bodies."""
+    from google.genai import errors
+
+    if mode == "adc":
+        adc(monkeypatch)
+    wire, spec, _, context = wire_for(tmp_path)
+    secret = (
+        context.runtime.project
+        if sensitive == "project"
+        else "SYNTHETIC_SELECTED_VERTEX_KEY"
+        if mode == "api_key"
+        else "SYNTHETIC_ADC_ACCESS_TOKEN"
+    )
+    raw = json.dumps(
+        {
+            "error": {
+                "code": 403,
+                "status": "PERMISSION_DENIED",
+                "message": (
+                    "Permission 'aiplatform.endpoints.predict' denied on resource "
+                    f"'projects/{secret}/locations/global/publishers/google/models/"
+                    "synthetic-model' (or it may not exist)."
+                ),
+            }
+        }
+    ).encode()
+    if escaped:
+        raw = raw.replace(
+            secret.encode(), "".join(f"\\u{ord(c):04x}" for c in secret).encode()
+        )
+    classified: list[int] = []
+    original = cast(Any, errors.APIError).raise_for_async_response
+
+    async def classify(response: Any) -> None:
+        classified.append(response.status_code)
+        await original(response)
+
+    monkeypatch.setattr(errors.APIError, "raise_for_async_response", classify)
+    response = httpx2.Response(403, content=raw)
+    adapter = p.VertexAdapter(
+        spec.endpoint,
+        spec.model,
+        context=context,
+        http_transport=httpx2.MockTransport(lambda request: response),
+    )
+    try:
+        with pytest.raises(p.VertexRequestRejected) as failure:
+            await adapter.submit(wire, **invocation(wire))
+        assert failure.value.diagnostic_code == "permission_denied"
+        assert str(failure.value) == (
+            "Vertex rejected the request before assessment acceptance"
+        )
+        assert secret not in str(failure.value)
+        assert secret not in caplog.text and response.is_closed
+        assert not classified and not adapter._responses
+        assert adapter.actual_call_count == 1
+        with pytest.raises(RetrievalUnavailable):
+            await adapter.retrieve(wire, **invocation(wire))
+        with pytest.raises(ProviderIntegrityError):
+            await adapter.submit(wire, **invocation(wire))
+        assert adapter.actual_call_count == 1
+    finally:
+        await adapter.aclose()
+
+
+@pytest.mark.parametrize("mode", ["api_key", "adc"])
+@pytest.mark.parametrize("when", ["before_forward", "after_forward"])
+@pytest.mark.parametrize("kind", ["runtime", "value", "timeout", "unknown_sdk"])
+@pytest.mark.asyncio
+async def test_unclassified_errors_preserve_forwarding_uncertainty(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+    when: str,
+    kind: str,
+) -> None:
+    from google.genai import errors
+
+    if mode == "adc":
+        adc(monkeypatch)
+    wire, spec, _, context = wire_for(tmp_path)
+    detail = "PRIVATE_EXCEPTION_CANARY: 403 PERMISSION_DENIED"
+    error = {
+        "runtime": RuntimeError(detail),
+        "value": ValueError(detail),
+        "timeout": httpx2.ReadTimeout(detail),
+        "unknown_sdk": errors.APIError(418, {"message": detail}),
+    }[kind]
+
+    def fail(*args: Any, **kwargs: Any) -> Any:
+        raise error
+
+    if when == "before_forward":
+        monkeypatch.setattr(p, "_sdk_arguments", fail)
+    adapter = p.VertexAdapter(
+        spec.endpoint,
+        spec.model,
+        context=context,
+        http_transport=httpx2.MockTransport(fail),
+    )
+    forwarded = when == "after_forward"
+    try:
+        with pytest.raises(
+            SubmissionUncertain if forwarded else TransportNotSubmitted
+        ) as failure:
+            await adapter.submit(wire, **invocation(wire))
+        if isinstance(failure.value, SubmissionUncertain):
+            assert failure.value.invoked
+        else:
+            assert failure.value.diagnostic_code is None
+        assert "PRIVATE_EXCEPTION_CANARY" not in str(failure.value)
+        assert "403" not in str(failure.value)
+        assert not adapter._responses
+        assert adapter.actual_call_count == int(forwarded)
+        with pytest.raises(ProviderIntegrityError):
+            await adapter.submit(wire, **invocation(wire))
+        assert adapter.actual_call_count == int(forwarded)
     finally:
         await adapter.aclose()
