@@ -421,3 +421,24 @@ all historical harnesses/evidence and canonical result/R contracts. No executor
 or billable authority is added. Each plan reserves body-derived estimated input
 plus output including thinking, admits only a fitting proposed $0.02 ceiling and
 authorizes zero requests. Offline acceptance follows Level3 protected-base CI.
+
+
+## Phase 5D2b: source-bound Vertex one-shot execution
+
+Adapt the proven Gemini/Anthropic harness controls without changing historical
+plan versions, production authority digests, normalized exports or other providers.
+Use the existing engine and permanent cross-platform OS locks. Exact source,
+independent plan digest, project/global/mode and explicit reviewed count, reservation,
+$0.02 ceiling, billable consent and full synthetic capture consent are mandatory.
+The ceiling is an estimate, not a provider-enforced cap.
+
+The complete plan2 artifact inventory forbids adding execution files to its
+sealed directory. Use one fixed private sibling, with immutable authorization,
+atomic SQLite consumption and independent exclusive intents before forwarding.
+A consumed request never receives replacement authority. Only positively terminal,
+exact-model, supported canonically invalid assessments can advance under the
+established matrix rule. Uncertainty, rejection, refusal, truncation, unsupported
+output and reported-model mismatch stop. Strict read-only reporting rechecks
+retained JSON/results and exposes safe provenance/response hashes. Mode-specific
+credential selection stays inside the existing adapter; keyring access and
+production native promotion remain excluded. See the [executor guide](vertex-qualification-executor.md).

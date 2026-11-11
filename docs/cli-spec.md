@@ -550,3 +550,23 @@ still creates the unchanged deferred version-1 proposal. New version-2 seals are
 private/external, immutable and independently scoped per mode, with zero authorized
 calls. No execute command, installed lifecycle change or CLI-envelope revision
 is added. See the [construction and verification guide](vertex-live-qualification-proposal.md).
+
+
+## Vertex qualification script (Phase 5D2b)
+
+Repository-only `scripts/qualify_vertex.py execute` adds explicit one-shot
+qualification; installed CLI commands/envelope1 remain unchanged. Required options
+are `--evidence-dir`, `--authorize-plan-sha256`, `--authorize-source-commit`,
+`--auth-mode api_key|adc`, `--location`, `--reviewed-request-count`,
+`--reviewed-reserved-estimated-usd`, `--reviewed-estimated-ceiling-usd`,
+`--accept-billable-calls` and `--accept-full-synthetic-capture`.
+`GOOGLE_CLOUD_PROJECT` must explicitly match the private plan. The script prints
+safe report JSON on completion and fixed diagnostics on failure. This command can
+make billable calls only during separately approved future execution.
+
+`verify --evidence-dir DIR --plan-sha256 EXPECTED_SHA256` preserves the original
+offline verifier. `report` now provides read-only execution inspection with the
+same required independent digest. Both work without credentials or SDK clients.
+The [executor guide](vertex-qualification-executor.md) documents the immutable
+sidecar, uncertainty/recovery rules, report digests and post-merge reconstruction.
+No live calls are authorized by implementation or CI.

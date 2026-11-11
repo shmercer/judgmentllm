@@ -156,7 +156,9 @@ python scripts/qualify_vertex.py verify \
   --plan-sha256 INDEPENDENTLY_RETAINED_FULL_SHA256
 ```
 
-`report` is an alias for the same read-only verification. The verifier checks the
+At Phase 5D2a, `report` was an alias for this read-only verification. Phase 5D2b
+preserves `verify` and adds execution inspection to `report`, as described in the
+[executor guide](vertex-qualification-executor.md). The verifier checks the
 canonical plan bytes/digest, exact clean source, installed SDK version/source
 hashes, complete artifact inventory, fixed scope, request limits and zero authority.
 It independently reconstructs each dependency, physical identity, strict contract,
@@ -240,3 +242,12 @@ full synthetic assessment-capture consent. Qualification and eventual reviewed
 production promotion remain distinct later reviews. Passing offline fixtures or
 CI establishes neither live Vertex qualification nor eligibility. Historical
 Developer, Anthropic, OpenAI and deferred Vertex evidence is never rewritten.
+
+## Phase 5D2b: executor implementation
+
+The [dedicated executor guide](vertex-qualification-executor.md) documents the
+new source/plan/mode-bound consent command, separately reviewed reservations,
+fixed sibling consumption ledger, final HTTP guard, conservative recovery and
+read-only reports. Its implementation and adversarial tests are offline only.
+Generate new plans from the final merged source; the original Phase 5D2a plans
+remain immutable historical evidence and are not execution authorizations.

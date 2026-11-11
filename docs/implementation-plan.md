@@ -702,3 +702,35 @@ strict Linux R/jsonlite gates, including historical qualification/security
 regressions. Local fast checks are development evidence; deferred hosted gates
 cannot be called passed. After merge, construct fresh plans from clean merged
 source following the [proposal guide](vertex-live-qualification-proposal.md).
+
+
+## Milestone 3 Phase 5D2b: Vertex qualification executor
+
+Implement the [dedicated executor](vertex-qualification-executor.md) by adapting
+Gemini/Anthropic one-shot controls and reusing the shared engine, ownership,
+preparation, receipt, diagnostic and recovery services. Keep source-bound plan2
+and historical evidence immutable. Each api_key/adc plan separately binds the
+fixed four-case global/v1beta1/SDK2.34.0/gemini-3.1-flash-lite scope, reviewed count
+and cost reservation, independent digest, source, billable and capture consent.
+Only the dedicated final HTTP guard can consume a candidate allocation. Production
+native restrictions and the empty Vertex registry remain intact.
+
+Use a fixed private sibling for the lock, separate authorization, durable SQLite
+consumption and independent intent journal; verify all prepared bytes before any
+credentials. Recover retained receipts without replacement requests. Uncertainty
+stops the plan. Read-only reports verify strict assessments, exact model identity,
+physical IDs, response/provenance hashes, orientation and nullable usage/charges.
+Tests must intercept actual SDK HTTP using synthetic projects/credentials only,
+block local ADC/keyring/metadata/network and exercise both modes, crashes,
+concurrency, corruption, replay, cancellation, rejection and invalid output.
+
+Acceptance is **Level 3**: record the automatic protected-base plan and require
+exact-head CI acceptance, Linux/Python3.11 suite/change-aware coverage, full
+representative Windows3.12/macOS3.11 and all seven strict Linux R/jsonlite gates,
+including affected cross-provider security, historical evidence and recovery
+regressions. Preserve failures and deferred checks accurately. No live operation,
+credential retrieval, discovery, spending, merge, capability promotion or publication
+is authorized. After independent review/merge, generate and independently verify
+fresh plans from final merged source, review actual eligibility and reservations,
+obtain separate consent for each mode, then conduct the minimal approved live
+matrix and inspect evidence before any separately reviewed production promotion.

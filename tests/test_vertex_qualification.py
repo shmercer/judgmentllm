@@ -20,6 +20,7 @@ from vertex_offline import adc, envelope, isolate
 
 from judgmentllm import _auth, gemini_qualification_execution
 from judgmentllm import vertex_qualification as q
+from judgmentllm import vertex_qualification_execution as executor
 from judgmentllm import vertex_qualification_sdk as sdk_probe
 from judgmentllm.persistence.hashing import bytes_digest, canonical_bytes
 from judgmentllm.providers import vertex as adapter
@@ -53,6 +54,7 @@ def _deny(*args: Any, **kwargs: Any) -> Any:
 def offline(monkeypatch: pytest.MonkeyPatch) -> None:
     isolate(monkeypatch)
     monkeypatch.setattr(q, "_source_commit", lambda: SOURCE)
+    monkeypatch.setattr(executor, "_source_commit", lambda: SOURCE)
 
 
 @pytest.fixture(params=["api_key", "adc"])

@@ -724,3 +724,25 @@ explicit authentication mode; reports expose only redacted routes and hashes.
 Both API-key and ADC plans authorize zero requests and keep account eligibility
 unverified. No production manifest/result/export/CLI envelope version changes,
 execution authority, registry grant or historical evidence migration is introduced.
+
+
+## Vertex qualification execution records (Phase 5D2b)
+
+Repository-only executor authorization1 and report1 are separate from immutable
+Vertex candidate plan2 and from every production/result/export/CLI-envelope schema.
+Authorization binds plan/source, explicit authentication mode, credential-source
+name, route hash, fixed model/endpoint/API/SDK, count and reviewed token/cost
+reservation plus billable/full synthetic capture consent. Keys, ADC identities,
+paths, tokens and headers never enter these records. The unchanged plan still
+records zero authority; execution authority resides only in its private sibling.
+
+Per-case reports distinguish consumption, confirmed forwarding/acceptance,
+terminal/nonterminal state, canonical validity, exact reported-model identity,
+text/native scope, original/presented orientation and nullable physical usage.
+Response receipt, retained response, evidence receipt, assessment and normalized
+result hashes are separate; case provenance and full report hashes are independently
+reproducible. Missing evidence and unknown counts/costs remain unavailable.
+Read-only report admission requires an independently supplied plan digest and the
+exact clean source. [The executor guide](vertex-qualification-executor.md) defines
+commands, state, privacy and recovery. No historical plan/evidence migration or
+production qualification promotion is introduced.

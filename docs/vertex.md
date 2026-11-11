@@ -228,7 +228,7 @@ synthetic cases and **zero authorized requests**. Both explicitly select
 availability there. The standard global resource still requires explicit
 `GOOGLE_CLOUD_PROJECT` in both modes.
 
-Use repository commands `candidate-plan`, then `verify` (or `report`) with an
+Use repository commands `candidate-plan`, then `verify` with an
 independently retained expected plan digest. The [complete instructions](vertex-live-qualification-proposal.md#construct-the-final-immutable-plans-after-merge)
 cover clean merged-source construction, private external evidence, redacted
 reports, exact SDK byte reconstruction, separate mode identities and reservations.
@@ -239,9 +239,15 @@ Account eligibility remains unverified. A stored Vertex key does not establish
 its type or standard project association: independently verify key type, billing,
 enabled API, IAM and restrictions under approved cloud setup before live work.
 Express Mode keys are incompatible with this candidate: stop without route or
-mode fallback. The operator reports ADC/CLI setup, quota-project matching and API
-enablement completed; this work does not inspect or verify that state. Billing,
-inference IAM and model eligibility remain independently unverified. Each mode
-still requires its own later consent.
-There is no Vertex qualification execute command or production native promotion;
-offline fixture/CI success is not live qualification.
+mode fallback. The operator reports ADC token acquisition, quota-project
+configuration, API enablement and billing enabled; this work does not inspect or
+verify that state. Inference IAM, exact-model eligibility and API-key compatibility
+remain unverified. Each mode still requires its own later consent.
+
+Phase 5D2b adds a [dedicated qualification executor](vertex-qualification-executor.md)
+and read-only execution `report`, while preserving the immutable offline verifier.
+It requires a fresh exact-merged-source plan, independent digest, matching project,
+mode and location, reviewed count/cost reservations and separate billable/full
+synthetic capture consent. A fixed sibling ledger and final HTTP guard consume
+each original request once. Recovery never replaces uncertain work. No production
+native promotion is included; implementation testing is synthetic and offline.

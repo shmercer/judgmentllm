@@ -413,3 +413,23 @@ protected-base exact-head CI acceptance, primary coverage, representative
 Windows/macOS, all seven strict Linux R/jsonlite gates and affected security,
 credential, recovery and cross-provider regressions. No live requests,
 credential/keyring access, capability promotion or publication is authorized.
+
+
+## Milestone 3 Phase 5D2b: Vertex qualification executor
+
+The [repository-only executor](vertex-qualification-executor.md) reuses the shared
+execution engine, preparation, receipts, diagnostics, ownership and recovery, with
+Gemini/Anthropic one-shot controls under separate Vertex authority. Each mode
+requires independently reviewed exact-source/plan consent and reservations, four
+original synthetic requests at most and full assessment capture with no reasoning
+retention. Native probing is confined to the candidate context; production native
+remains unavailable and the registry stays empty.
+
+Immutable plan2 bytes and inventory remain unchanged. A fixed private sibling
+stores authorization, consumption intents, a FULL-sync ledger and per-case engine
+stores. Uncertain forwarding stops the matrix; retained responses can be recovered
+without another call. Read-only reports verify exact model identity, strict JSON,
+result/response/provenance digests and nullable physical usage. Implementation and
+all acceptance tests are offline; fresh merged-source plans and separately approved
+live authorization are still required. Historical Phase5D2a real-project plans and
+all OpenAI/Anthropic/Developer evidence remain immutable.
