@@ -208,7 +208,7 @@ all credentials/accounts. Credentials and inaccessible provider internals were
 not inspected. Wider capability requires a separately authorized qualification
 and reviewed promotion.
 
-Level 3 acceptance requires the exact-head protected-base **CI acceptance**:
+Ordinary Level 3 acceptance requires the exact-head protected-base **CI acceptance**:
 Linux/Python 3.11 complete required suite and primary change-aware coverage,
 representative Windows 3.12/macOS 3.11, all seven strict Linux R/jsonlite gates,
 and affected cross-provider security/recovery/history regressions. The PR records
@@ -216,3 +216,26 @@ its automatic plan, exact-head hosted artifacts and separate passed/failed/defer
 results. Fast development checks establish no full acceptance. Comprehensive and
 unaffected packaging checks remain deferred unless the protected plan requires
 them; deferred work is never reported as passed.
+
+### PR #36 resumption after CI repair PR #37
+
+PR #37 merged into main as `cf694805ceeeef69ccd75c27ada168e9eafcfa93`.
+PR #36 incorporates that main through a merge, retaining original promotion
+commit `22f2b7cffb5bdd2a6a67ad94438d6c9de3f1b23f` and both original
+qualification-source identities above. The two ADC/API-key instances of the
+outdated empty-registry assertion now verify an unchanged reviewed registry and
+an unmatched synthetic candidate route; all actual authority-denial checks remain.
+
+The operator-authorized temporary Azure DNS exception requires three independently
+reconciled results at one final PR head: complete local Ubuntu/Python 3.11 Level 3
+including all resource cases and package validation, passing GitHub Windows3.12,
+and passing GitHub macOS3.11. Hosted Linux and aggregate failures remain failed
+infrastructure evidence; no replacement aggregate success is manufactured. The
+operator retains responsibility for restoring required aggregate CI acceptance.
+The agent makes no ruleset changes.
+
+The [PR verification record](vertex-pr36-verification.md) locates the exact-head
+external ledger, automatic and supplemental local plans, individual job links,
+independent reconciliation and separate passed/failed/deferred results. This
+resumption changes no reviewed profile, scope, source provenance, original audit
+record or live evidence. PR #36 remains open and unmerged for independent review.

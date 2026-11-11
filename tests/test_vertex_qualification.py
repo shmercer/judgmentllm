@@ -423,6 +423,12 @@ def test_candidate_cannot_execute_or_forge_production_native_authority(
 ) -> None:
     from judgmentllm import vertex_registry
 
+    reviewed_profiles = vertex_registry._QUALIFIED_PROFILES
+    assert len(reviewed_profiles) == 2
+    assert {profile.authentication_mode for profile in reviewed_profiles} == {
+        "adc",
+        "api_key",
+    }
     record = q.VertexQualificationPlanV2.model_validate_json(
         (plan / "plan.json").read_bytes()
     )
@@ -435,11 +441,21 @@ def test_candidate_cannot_execute_or_forge_production_native_authority(
 
     monkeypatch.setattr(q, "sdk_request", capture)
     q.verify_plan(plan, expected_plan_sha256=_digest(plan))
-    assert vertex_registry._QUALIFIED_PROFILES == ()
+    assert vertex_registry._QUALIFIED_PROFILES == reviewed_profiles
     for wire, call in zip(wires, record.calls, strict=True):
         spec = q._specification(plan, call.task_kind, call.mode, 512)
         context = _qualification_context(
             spec, source_commit=SOURCE, runtime=record.runtime()
+        )
+        assert (
+            vertex_registry._profile_for(
+                context.scope,
+                spec.prompt.native_mechanism,
+                route_sha256=context.runtime.route_sha256,
+                authentication_mode=context.runtime.auth_mode,
+                location=context.runtime.location,
+            )
+            is None
         )
         contexts = [context]
         if call.mode == "native":
