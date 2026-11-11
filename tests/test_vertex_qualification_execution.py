@@ -1751,3 +1751,121 @@ async def test_known_usage_overage_stops_even_with_incomplete_charge_metadata(
     assert (
         cast(dict[str, Any], report["reported_usage_totals"])["input_tokens"] == 100000
     )
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        "permission",
+        "private_permission",
+        "unclassified",
+        "credential_permission",
+        "escaped_credential_permission",
+        "connection",
+        "timeout",
+        "private_500",
+        "ordinary_500",
+    ],
+)
+@pytest.mark.asyncio
+async def test_permission_and_unclassified_failures_keep_one_shot_evidence(
+    planned: Any, monkeypatch: pytest.MonkeyPatch, failure: str
+) -> None:
+    """Only confirmed 403 responses establish rejection, with no retained body."""
+    directory, plan, arguments = planned
+    original_plan = files(directory)
+    marker = "PRIVATE_PERMISSION_EXCEPTION_CANARY"
+    credential = (
+        "SYNTHETIC_SELECTED_VERTEX_KEY"
+        if plan.authentication_mode == "api_key"
+        else "SYNTHETIC_ADC_ACCESS_TOKEN"
+    )
+
+    def customize(body: dict[str, Any], index: int) -> Any:
+        if failure == "unclassified":
+            raise RuntimeError(marker + ": 403 PERMISSION_DENIED")
+        if failure == "connection":
+            raise httpx2.ConnectError(marker + ": 403 PERMISSION_DENIED")
+        if failure == "timeout":
+            raise httpx2.ReadTimeout(marker + ": 403 PERMISSION_DENIED")
+        resource = (
+            f"projects/{PROJECT}/locations/global/publishers/google/models/{plan.model}"
+            if failure in {"private_permission", "private_500"}
+            else credential
+            if failure in {"credential_permission", "escaped_credential_permission"}
+            else "the requested model"
+        )
+        raw = json.dumps(
+            {
+                "error": {
+                    "code": 403,
+                    "status": "PERMISSION_DENIED",
+                    "message": (
+                        "Permission 'aiplatform.endpoints.predict' denied on resource "
+                        f"'{resource}' (or it may not exist). {marker}"
+                    ),
+                }
+            }
+        ).encode()
+        if failure == "escaped_credential_permission":
+            raw = raw.replace(
+                credential.encode(),
+                "".join(f"\\u{ord(c):04x}" for c in credential).encode(),
+            )
+        return httpx2.Response(
+            500 if failure in {"private_500", "ordinary_500"} else 403,
+            content=raw,
+        )
+
+    sent = install(monkeypatch, directory, plan, customize)
+    result = cast(dict[str, Any], await e.execute_plan(directory, **arguments))
+    row = result["calls"][0]
+    classified = failure in {
+        "permission",
+        "private_permission",
+        "credential_permission",
+        "escaped_credential_permission",
+    }
+    assert len(sent) == result["attempted_requests"] == 1
+    assert result["executed_requests"] == result["physical_send_attempts"] == 1
+    assert result["consumed_allocations"] == [plan.calls[0].case_id]
+    assert row["submission_certainty"] == ("not_submitted" if classified else "unknown")
+    assert row["http_response_observed"] == classified
+    assert result["confirmed_http_response_count"] == int(classified)
+    assert result["actual_http_forwards"] == (1 if classified else None)
+    assert result["confirmed_accepted_requests"] == 0
+    assert result["uncertain_outcomes"] == int(not classified)
+    assert row["terminal_state"] == (
+        "provider_rejected" if classified else "uncertain_submission"
+    )
+    assert row["invocation_failure_code"] == (
+        "permission_denied" if classified else None
+    )
+    assert row["invocation_acceptance"] == (None if classified else "unresolved")
+    assert row["response_receipt_sha256"] is None
+    assert row["retained_response_sha256"] is None
+    assert row["assessment_sha256"] is None
+    assert row["evidence_receipt_sha256"] is not None
+    assert row["diagnostic"] is None and row["usage"]["input_tokens"] is None
+    assert not row["assessment_continuation_allowed"]
+    assert row["status"] == ("unsuccessful" if classified else "unresolved")
+    assert all(not call["allocation_consumed"] for call in result["calls"][1:])
+    assert not result["live_qualified"] and result["estimated_actual_usd"] is None
+    assert await e.execute_plan(directory, **arguments) == result and len(sent) == 1
+    retained = files(directory)
+    assert {k: v for k, v in retained.items() if k.startswith("plan/")} == original_plan
+    assert all(
+        marker.encode() not in raw and credential.encode() not in raw
+        for raw in retained.values()
+    )
+    encoded = json.dumps(result)
+    assert (
+        marker not in encoded and credential not in encoded and PROJECT not in encoded
+    )
+    assert (
+        e.report_plan(
+            directory, expected_plan_sha256=arguments["authorized_plan_sha256"]
+        )
+        == result
+    )
+    assert files(directory) == retained
