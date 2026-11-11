@@ -202,6 +202,7 @@ def _manifest(
             for e in spec.exemplars
         ),
         template=template_type(
+            presentation_version=2,
             sha256=semantic_digest("prompt-template", template),
             preset=spec.prompt.preset,
             advanced=spec.prompt.advanced,

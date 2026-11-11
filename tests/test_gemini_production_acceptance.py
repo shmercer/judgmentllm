@@ -36,6 +36,7 @@ from judgmentllm.persistence.repository import ReadOnlyRepository
 from judgmentllm.planning import plan_record
 from judgmentllm.preparation import open_prepared_run, prepare_run
 from judgmentllm.preparation.session import RequestDependency
+from judgmentllm.presentation import PresentationVersion
 from judgmentllm.providers.gemini import GeminiAdapter
 from judgmentllm.transport import TransportIntegrityError, physical_identity
 
@@ -53,6 +54,7 @@ def prepare(
     *,
     model: str = MODEL,
     frozen: TransportCommitmentV4 | None = None,
+    presentation_version: PresentationVersion = 1,
     **settings: Any,
 ) -> tuple[PreparedRequestV6, RunSpecV3, RequestDependency, GeminiProductionContext]:
     strict = settings.pop("strict", False)
@@ -91,6 +93,7 @@ def prepare(
         context,
         lookup=lookup,
         frozen=frozen,
+        presentation_version=presentation_version,
         template=(
             "Compare.\n{{ criterion }}\n{{ first_response }}\n{{ second_response }}\n{{ output_instructions }}"
             if spec.allow_ties
@@ -348,7 +351,7 @@ async def test_actual_sdk_bytes_native_failure_and_frozen_recovery(
         explanations=False,
     )
     spec.model = MODEL
-    spec.prompt.structured_output = "native"
+    spec.prompt.structured_output = "auto"
     spec.prompt.native_mechanism = MECHANISM
     store = tmp_path / "store"
     with prepare_run(
@@ -388,7 +391,30 @@ async def test_actual_sdk_bytes_native_failure_and_frozen_recovery(
                 row.status == "invalid" for row in repository.iter_results("001")
             )
         assert sent == [wire.payload] and adapter.actual_call_count == 1
-        assert b"responseJsonSchema" in sent[0]
+        assert b"responseJsonSchema" not in sent[0]
+        assert wire.transport_commitment.mechanism == "text"
         assert canonical_bytes(wire.transport_commitment)
     finally:
         await adapter.aclose()
+
+
+@pytest.mark.parametrize("pairwise", [False, True])
+def test_new_presentation_cannot_borrow_historical_native_authority(
+    tmp_path: Path, pairwise: bool
+) -> None:
+    with pytest.raises(ValueError):
+        prepare(tmp_path, pairwise=pairwise, policy="native", presentation_version=2)
+    with pytest.raises(ValueError):
+        prepare(
+            tmp_path,
+            pairwise=pairwise,
+            policy="auto",
+            strict=True,
+            presentation_version=2,
+        )
+    wire, *_ = prepare(
+        tmp_path, pairwise=pairwise, policy="auto", presentation_version=2
+    )
+    assert wire.transport_commitment.presentation_version == 2
+    assert wire.output_commitment.selection.mechanism == "text"
+    assert wire.output_commitment.selection.native_support == "unknown"

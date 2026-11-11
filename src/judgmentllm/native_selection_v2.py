@@ -77,7 +77,7 @@ class _FixtureProfileV2(NativeModel):
     mechanism: NativeMechanismV2
     schema_dialect: NativeSchemaDialectV2
     implementation_version: Literal[1] = 1
-    features: tuple[NativeFeature, ...] = Field(min_length=1, max_length=8)
+    features: tuple[NativeFeature, ...] = Field(min_length=1, max_length=9)
     documentation_sha256: SHA256
     fixture_sha256: SHA256
 
@@ -120,7 +120,7 @@ class TransportDecisionV2(NativeModel):
     source_schema_sha256: SHA256
     source_sha256: SHA256
     evidence_sha256: SHA256 | None
-    features: tuple[NativeFeature, ...] = Field(min_length=1, max_length=8)
+    features: tuple[NativeFeature, ...] = Field(min_length=1, max_length=9)
     mechanism: NativeMechanismV2 | Literal["text"]
     native_support: NativeSupport
     model_support: NativeSupport
@@ -158,7 +158,8 @@ class TransportDecisionV2(NativeModel):
             self.native_support != self.diagnostic.native_support
             or self.reason != expected_reason
             or len(set(self.features)) != len(self.features)
-            or not set(self.features) <= set(_FEATURES_V2)
+            or not set(self.features)
+            <= (set(_FEATURES_V2) | {"assessment_presentation_v2"})
             or self.implemented != (self.implementation_version is not None)
             or self.fixture_tested
             != (

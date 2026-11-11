@@ -178,7 +178,7 @@ async def test_exact_physical_sdk_bytes(
         return httpx2.Response(
             200,
             json=envelope(
-                '{"winner_id":"001"}'
+                '{"winner_id":"essay_02"}'
                 if spec.task_kind == "pairwise"
                 else '{"scores":[]}'
             ),

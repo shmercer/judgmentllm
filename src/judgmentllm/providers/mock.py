@@ -25,9 +25,11 @@ from judgmentllm.output_commitments import (
     validate_output_commitment,
 )
 from judgmentllm.output_contracts import (
+    PairwiseOutputContract,
     RubricOutputContract,
     decode_assessment_output,
     generate_output_schema,
+    wire_winner_ids,
 )
 from judgmentllm.persistence.hashing import (
     bytes_digest,
@@ -231,6 +233,18 @@ class MockResponseEnvelopeV2(MockResponseEnvelope):
     protocol: Literal["judgmentllm-mock-v2"] = "judgmentllm-mock-v2"
 
 
+def _v2_envelope(raw: bytes) -> MockResponseEnvelopeV2:
+    decoded = decode_assessment_output(raw)
+    if (
+        not isinstance(decoded, dict)
+        or cast(dict[str, object], decoded).get("protocol") != "judgmentllm-mock-v2"
+    ):
+        raise ValueError("v2 response requires its explicit protocol")
+    # Duplicate-safe decoding precedes JSON-mode typed ingress. Python-mode
+    # validation would reject legitimate JSON arrays for probability tuples.
+    return MockResponseEnvelopeV2.model_validate_json(raw)
+
+
 def _response_evidence(
     raw: bytes, payload: MockPayload, *, terminal: bool
 ) -> ProviderEvidence:
@@ -271,10 +285,17 @@ def _response_evidence(
                 else:
                     pair = cast(dict[str, JsonValue], decoded)
                     safe = not bool(set(pair) - {"winner_id", "tie", "explanation"})
-                    safe = safe and pair.get("winner_id") in (
-                        None,
-                        *payload.members[0].presented_order,
+                    contract = (
+                        payload.output_commitment.contract
+                        if isinstance(payload, MockPayloadV2)
+                        else None
                     )
+                    winners = (
+                        wire_winner_ids(contract)
+                        if isinstance(contract, PairwiseOutputContract)
+                        else payload.members[0].presented_order
+                    )
+                    safe = safe and pair.get("winner_id") in (None, *winners)
     except (ValueError, TypeError):
         safe = False
     return ProviderEvidence(
@@ -421,6 +442,7 @@ class MockAdapter:
             )
             if type(rendered) not in (RenderedPrompt, RenderedPromptV2):
                 raise ValueError("historical mock cannot accept native rendering")
+            assert isinstance(rendered, (RenderedPrompt, RenderedPromptV2))
             if (spec.schema_version == 2) != isinstance(rendered, RenderedPromptV2):
                 raise ValueError("renderer version differs from the RunSpec version")
             request = dependency.request
@@ -517,12 +539,11 @@ class MockAdapter:
                         )
                     )
             commitment = None
-            if spec.schema_version == 2:
-                commitment = (
-                    rendered.output_commitment
-                    if isinstance(rendered, RenderedPromptV2)
-                    else None
-                )
+            if (
+                isinstance(rendered, RenderedPromptV2)
+                or rendered.output_commitment is not None
+            ):
+                commitment = rendered.output_commitment
                 if commitment is None:
                     raise ValueError("v2 rendering requires an output commitment")
                 commitment = validate_output_commitment(commitment, spec, request)
@@ -708,6 +729,13 @@ class MockAdapter:
             output: dict[str, JsonValue] = {"winner_id": winner, "tie": tie}
             if payload.explanations:
                 output["explanation"] = scenario.explanation
+            if isinstance(payload, MockPayloadV2):
+                contract = payload.output_commitment.contract
+                assert isinstance(contract, PairwiseOutputContract)
+                if winner is not None and contract.presentation_version == 2:
+                    output["winner_id"] = wire_winner_ids(contract)[
+                        0 if scenario.winner == "first" else 1
+                    ]
             fields["output"] = output
             if scenario.probabilities:
                 if payload.allow_ties:
@@ -988,16 +1016,12 @@ class MockAdapter:
         try:
             response = _revalidate_record(response)
             if strict_output:
-                decoded = decode_assessment_output(response.raw)
-                if (
-                    not isinstance(decoded, dict)
-                    or cast(dict[str, object], decoded).get("protocol")
-                    != "judgmentllm-mock-v2"
-                ):
-                    raise ValueError("v2 response requires its explicit protocol")
-                envelope = MockResponseEnvelopeV2.model_validate(decoded)
+                envelope = _v2_envelope(response.raw)
             else:
-                envelope = MockResponseEnvelope.model_validate_json(response.raw)
+                try:
+                    envelope = MockResponseEnvelope.model_validate_json(response.raw)
+                except ValueError:
+                    envelope = _v2_envelope(response.raw)
         except ValueError:
             raise ValueError("mock response envelope is invalid") from None
         if (envelope.observation_key, envelope.kind) != (

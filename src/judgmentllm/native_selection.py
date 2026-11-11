@@ -40,6 +40,7 @@ NativeSupport = Literal["supported", "unsupported", "unknown"]
 NativePolicy = Literal["native", "auto", "text"]
 NativeMechanism = Literal["openai.responses.text.format", "openai.chat.response_format"]
 NativeFeature = Literal[
+    "assessment_presentation_v2",
     "rubric_scores",
     "rubric_grouped",
     "rubric_explanations_together",
@@ -107,7 +108,7 @@ class _FixtureProfile(NativeModel):
     mechanism: NativeMechanism
     schema_dialect: Literal["openai.strict-json-schema.v1"] = _DIALECT
     implementation_version: Literal[1] = 1
-    features: tuple[NativeFeature, ...] = Field(min_length=1, max_length=8)
+    features: tuple[NativeFeature, ...] = Field(min_length=1, max_length=9)
     documentation_sha256: SHA256
     fixture_sha256: SHA256
 
@@ -300,6 +301,9 @@ def _decision_digest(values: object) -> str:
 
 
 def _features(contract: AssessmentOutputContract) -> tuple[NativeFeature, ...]:
+    revision: list[NativeFeature] = (
+        ["assessment_presentation_v2"] if contract.presentation_version == 2 else []
+    )
     if isinstance(contract, RubricOutputContract):
         result: list[NativeFeature] = ["rubric_scores"]
         if len(contract.traits) > 1:
@@ -311,11 +315,11 @@ def _features(contract: AssessmentOutputContract) -> tuple[NativeFeature, ...]:
                 result.append("rubric_scores_first")
             else:
                 result.append("rubric_explanations_first")
-        return tuple(result)
+        return tuple([*result, *revision])
     result = ["pairwise_ties" if contract.allow_ties else "pairwise_forced_choice"]
     if contract.explanations:
         result.append("pairwise_explanations")
-    return tuple(result)
+    return tuple([*result, *revision])
 
 
 def _checked_evidence(
@@ -427,7 +431,9 @@ def _resolve_native_transport(
         or schema_dialect != _DIALECT
     ):
         support, diagnostic = "unsupported", "translator_scope_incompatible"
-    elif not set(features) <= set(implementation.features):
+    elif not (set(features) - {"assessment_presentation_v2"}) <= set(
+        implementation.features
+    ):
         support, diagnostic = "unsupported", "projection_features_incompatible"
     else:
         if policy != "text":

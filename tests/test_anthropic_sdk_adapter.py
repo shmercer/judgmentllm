@@ -148,7 +148,9 @@ async def test_actual_sdk_exact_bytes(
             200,
             json=envelope(
                 "messages",
-                '{"winner_id":"001"}' if scenario == "pairwise" else '{"scores":[]}',
+                '{"winner_id":"essay_02"}'
+                if scenario == "pairwise"
+                else '{"scores":[]}',
             ),
         )
 

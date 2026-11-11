@@ -1,5 +1,10 @@
 # Vertex AI Gemini execution
 
+**Current assessment contract:** new preparations use [presentation revision 2](renderer-revision-2.md), including positional CJ aliases. Historical native evidence
+remains scoped to revision 1. New `auto` requests use text until separately
+qualified for revision 2; explicit `native` and strict unknown `auto` fail before
+submission. Historical sealed requests keep their original commitments.
+
 Vertex single-run execution uses **google-genai 2.34.0**,
 `models.generate_content`, **v1beta1**. The [2026-11-11 acceptance](vertex-live-qualification-acceptance.md)
 independently verifies separate ADC and API-key evidence and promotes only

@@ -764,3 +764,18 @@ Unmatched scopes retain the historical empty-profile identity. Old stores/plans
 require their original clean source/dependencies; none are migrated or exempted
 from checks. RunSpec3, SQLite2, canonical assessment2 and normalized JSONL/CSV/R1
 remain unchanged. Production authority contains no qualification execution grant.
+
+## Assessment presentation revision 2 (issue #38)
+
+New preparations select `presentation_version: 2` independently of RunSpec and
+provider protocol versions. Omission on persisted contracts, native sources,
+template commitments or transport receipts means historical revision 1 and is
+omitted again during serialization. Old prompt/schema/output interpretations
+remain exact. [The compatibility guide](renderer-revision-2.md) specifies the
+compound version boundary, recovery and qualification safeguards.
+
+New CJ `winner_id` values are exact presentation aliases `essay_01`/`essay_02`,
+resolved once through the committed occurrence's `presented_order` before
+original-ID normalization. Ties retain explicit `tie` and null-winner semantics;
+forced choice rejects extra fields. Rubric category labels/codes, all normalized
+schema-1 columns, probabilities, expected scores and R exports are unchanged.

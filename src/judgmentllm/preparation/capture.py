@@ -334,6 +334,7 @@ class SourceBuilder:
             plan = plan_run(spec, capabilities=capabilities)
             for group in plan.trait_groups:
                 validate_prompt_template(
+                    presentation_version=2,
                     renderer_version=2,
                     kind=spec.task_kind,
                     trait_ids=group,
@@ -369,6 +370,7 @@ class SourceBuilder:
         plan = plan_run(spec, capabilities=capabilities)
         for group in plan.trait_groups:
             validate_prompt_template(
+                presentation_version=2,
                 renderer_version=1 if spec.schema_version == 1 else 2,
                 kind=spec.task_kind,
                 trait_ids=group,

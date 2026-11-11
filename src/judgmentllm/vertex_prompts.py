@@ -26,7 +26,7 @@ class RenderedVertexPromptV1(RenderedPrompt, _TransportModel):
     renderer_version: Literal[3] = 3
     text: str = Field(repr=False)
     output_schema: dict[str, JsonValue] = Field(repr=False)
-    output_commitment: OutputCommitmentV7 = Field(repr=False)
+    output_commitment: OutputCommitmentV7 = Field(repr=False)  # pyright: ignore[reportIncompatibleVariableOverride]
 
     @model_validator(mode="after")
     def exact_schema(self) -> RenderedVertexPromptV1:

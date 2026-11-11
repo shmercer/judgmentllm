@@ -68,7 +68,7 @@ _TEXT_CASES = [
     ('{"scores":[],"scores":[]}', "duplicate_keys", False),
     ("[]", "root_type", False),
     ('Prose before {"scores":[]} after', "json_syntax", False),
-    ('{"winner_id":"002"}', "valid", True),
+    ('{"winner_id":"essay_01"}', "valid", True),
     ('{"winner_id":"WRONG_WINNER"}', "winner_error", False),
 ]
 

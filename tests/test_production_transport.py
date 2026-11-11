@@ -543,7 +543,11 @@ def test_controlled_registry_exact_features_and_scope(
             )
         ),
         scope=context.scope,
-        supported_features=("rubric_scores", "rubric_grouped"),
+        supported_features=(
+            "rubric_scores",
+            "rubric_grouped",
+            "assessment_presentation_v2",
+        ),
         documentation_sha256="a" * 64,
         offline_fixture_sha256="b" * 64,
         independent_live_sha256="c" * 64,
@@ -697,7 +701,11 @@ def _reviewed_profile(context: ProductionContext, **changes: Any) -> _QualifiedP
         "request_acceptance": "accepted",
         "assessment_behavior": "verified",
         "native_schema_behavior": "verified",
-        "supported_features": ("rubric_scores", "rubric_grouped"),
+        "supported_features": (
+            "rubric_scores",
+            "rubric_grouped",
+            "assessment_presentation_v2",
+        ),
         "documentation_sha256": "a" * 64,
         "offline_fixture_sha256": "b" * 64,
         "independent_live_sha256": "c" * 64,

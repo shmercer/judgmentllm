@@ -306,7 +306,7 @@ def test_v2_exemplars_complete_ordered_and_zero_omission(
         spec
     ).exemplar_ids
     if count:
-        assert text.index("Exemplar 000") < text.index("Response essay_001")
+        assert text.index("Exemplar 000") < text.index("The class planted seeds.")
         assert text.count('"grammar": "high"') == count
         assert text.count("Complete evidence.") == count
         assert text.count('"source": "synthetic"') == count
@@ -487,8 +487,8 @@ def test_pairwise_reversed_orientation_and_required_explanation(
     spec.pairs.path.write_text(pair.model_dump_json() + "\n", encoding="utf-8")
     spec.execution.explanations = True
     actual = render(spec)
-    assert actual.text.index("First response essay_002") < actual.text.index(
-        "Second response essay_001"
+    assert actual.text.index("essay_01:\nWe planted seeds") < actual.text.index(
+        "essay_02:\nSeeds grew."
     )
     contract = actual.output_commitment.contract
     assert contract.task_kind == "pairwise"
@@ -499,7 +499,7 @@ def test_pairwise_reversed_orientation_and_required_explanation(
         if number == 6
         else ("winner_id", "explanation")
     )
-    assert "nonblank explanation" in actual.text
+    assert "exactly one concise sentence" in actual.text
 
 
 @pytest.mark.parametrize(

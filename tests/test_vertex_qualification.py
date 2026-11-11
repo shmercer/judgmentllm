@@ -554,11 +554,11 @@ def test_original_strict_contracts_reject_ties_explanations_and_unknown_members(
                 contract.pair.presented_order == ["002", "001"]
                 and not contract.allow_ties
             )
-            validate_pairwise_contract_output('{"winner_id":"001"}', contract)
+            validate_pairwise_contract_output('{"winner_id":"essay_02"}', contract)
             for output in (
                 '{"winner_id":null,"tie":true}',
                 '{"winner_id":"003"}',
-                '{"winner_id":"001","explanation":"forbidden"}',
+                '{"winner_id":"essay_02","explanation":"forbidden"}',
             ):
                 with pytest.raises(ValueError):
                     validate_pairwise_contract_output(output, contract)

@@ -254,7 +254,7 @@ def _install_transport(
         output = json.dumps(
             {"scores": [{"trait_id": "01", "category_label": "high"}]}
             if case.task_kind == "rubric"
-            else {"winner_id": "001"}
+            else {"winner_id": "essay_01"}
         )
         if assessment_output is not None:
             output = assessment_output

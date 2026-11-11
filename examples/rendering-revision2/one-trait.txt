@@ -1,0 +1,41 @@
+## Writing Task
+
+The following writing task was provided to students. The time limit was 15 minutes.
+
+“The internet makes traveling unnecessary.”
+
+What do you think?
+
+Write an argumentative essay in English, in which you discuss the statement.
+
+## Rubric
+
+Use only the stated descriptors.
+
+### 1. Introductory Sentence
+Trait ID: `introductory_sentence`
+
+**Score 2**
+
+There is an introductory sentence (or several), which leads to the essay’s topic.
+
+**Score 1**
+
+Any one of the following:
+
+- There is an introductory sentence, but it does not align with the topic of the writing prompt.
+- There is an introductory sentence, but it does not align with the rest of the essay.
+- There is an introductory sentence, but it does not align with the topic or the rest of the essay.
+
+**Score 0**
+
+Criterion not yet fulfilled.
+
+## Student Essay
+
+The internet can replace some journeys, but it cannot replace every experience. A video call lets relatives speak without a long flight.
+
+However, visiting a city also means hearing its streets and meeting people outside a screen. Online information helps us choose a journey; it does not make every journey unnecessary.
+
+Return only a JSON object matching this schema. Include every requested trait exactly once. Preserve category labels exactly. Do not include explanations.
+{"type":"object","properties":{"scores":{"type":"array","minItems":1,"maxItems":1,"items":{"oneOf":[{"type":"object","properties":{"trait_id":{"const":"introductory_sentence"},"category_label":{"type":"string","enum":["0","1","2"]}},"required":["trait_id","category_label"],"additionalProperties":false}]}}},"required":["scores"],"additionalProperties":false}

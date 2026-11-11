@@ -1,5 +1,10 @@
 # Assess synthetic responses with Gemini Developer
 
+**Current assessment contract:** new preparations use [presentation revision 2](renderer-revision-2.md), including positional CJ aliases. Historical native evidence
+remains scoped to revision 1. New `auto` requests use text until separately
+qualified for revision 2; explicit `native` and strict unknown `auto` fail before
+submission. Historical sealed requests keep their original commitments.
+
 Phase 5C implements ordinal rubric scoring and pairwise comparison using the
 official `google-genai==2.34.0` SDK, endpoint `models.generate_content`, API
 `v1beta`. This is the **Gemini Developer API** at

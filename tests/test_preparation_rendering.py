@@ -328,8 +328,8 @@ def test_pair_representative_preserves_actual_ids_and_presented_orientation(
     template = tmp_path / "pair-conditional.txt"
     template.write_text(
         "{{ criterion }}\n{{ exemplars }}\n"
-        "{% if 'First response 001 (assessment data):' in first_response "
-        "and 'Second response 000 (assessment data):' in second_response %}"
+        "{% if 'essay_01:' in first_response "
+        "and 'essay_02:' in second_response %}"
         "{{ first_response }}\n{{ second_response }}{% endif %}\n"
         "{{ output_instructions }}\n",
         encoding="utf-8",
@@ -346,9 +346,7 @@ def test_pair_representative_preserves_actual_ids_and_presented_orientation(
             assert request.pair.presented_order == ["001", "000"]
         for dependency in prepared.iter_request_dependencies():
             prompt = prepared.render(dependency).text
-            assert prompt.index("First response 001") < prompt.index(
-                "Second response 000"
-            )
+            assert prompt.index("essay_01:") < prompt.index("essay_02:")
 
 
 @pytest.mark.parametrize("pairwise", [False, True])

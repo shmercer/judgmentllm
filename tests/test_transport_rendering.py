@@ -73,7 +73,7 @@ def offline(monkeypatch: pytest.MonkeyPatch) -> None:
 def fixture_request(
     mechanism: str, contract: AssessmentOutputContract
 ) -> tuple[RunSpecV3, PlannedRequest, dict[str, ResponseItem], str | None]:
-    context = context_for(mechanism)
+    context = context_for(mechanism, presentation_version=1)
     prompt: dict[str, object] = {
         "structured_output": "native",
         "native_mechanism": mechanism,
@@ -143,7 +143,12 @@ def fixture_request(
 
 def rendered_fixture(mechanism: str, contract: AssessmentOutputContract) -> str:
     spec, request, responses, template = fixture_request(mechanism, contract)
-    output = build_output_commitment_v3(spec, request, context_for(mechanism))
+    output = build_output_commitment_v3(
+        spec,
+        request,
+        context_for(mechanism, presentation_version=1),
+        presentation_version=1,
+    )
     return render_request_v3(
         spec,
         template,
@@ -167,7 +172,12 @@ def test_native_prompt_repetition_is_exact_projection(mechanism: str) -> None:
     spec, request, responses, template = fixture_request(
         mechanism, cases()["grouped_explanations_first"]
     )
-    output = build_output_commitment_v3(spec, request, context_for(mechanism))
+    output = build_output_commitment_v3(
+        spec,
+        request,
+        context_for(mechanism, presentation_version=1),
+        presentation_version=1,
+    )
     text = render_request_v3(
         spec, template, request, lambda kind, ident: responses[ident], output
     ).text
@@ -202,7 +212,7 @@ def test_exact_prepared_payload_recovery_and_rehashed_tampering(
     spec, request, responses, template = fixture_request(
         mechanism, cases()["grouped_scores"]
     )
-    context = context_for(mechanism)
+    context = context_for(mechanism, presentation_version=1)
     dependency = RequestDependency(request=request, dependency_sha256="1" * 64)
     identity = physical_identity("001", request.request_uid, "attempt-001")
     prepared = prepare_transport_request(
@@ -210,6 +220,7 @@ def test_exact_prepared_payload_recovery_and_rehashed_tampering(
         dependency,
         identity,
         context,
+        presentation_version=1,
         template=template,
         lookup=lambda kind, ident: responses[ident],
     )
@@ -225,6 +236,7 @@ def test_exact_prepared_payload_recovery_and_rehashed_tampering(
         dependency,
         identity,
         context,
+        presentation_version=1,
         template=template,
         lookup=lambda kind, ident: responses[ident],
         frozen=prepared.transport_commitment,
@@ -327,7 +339,12 @@ def test_public_renderer_still_revalidates_before_private_text_rendering(
     spec, request, responses, template = fixture_request(
         mechanism, cases()["grouped_scores"]
     )
-    output = build_output_commitment_v3(spec, request, context_for(mechanism))
+    output = build_output_commitment_v3(
+        spec,
+        request,
+        context_for(mechanism, presentation_version=1),
+        presentation_version=1,
+    )
     canary = "synthetic-private-renderer-tamper-canary"
     if change == "unknown":
         vars(output)[canary] = canary

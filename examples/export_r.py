@@ -34,6 +34,11 @@ from judgmentllm.providers import ParsedResponse
 from judgmentllm.r_exports import export_pairwise_r_csv, export_rubric_r_csv
 from judgmentllm.results import CategoryProbability
 
+if __package__:
+    from .rendering_revision2 import generate as generate_presentation_examples
+else:
+    from rendering_revision2 import generate as generate_presentation_examples
+
 
 def synthetic_pairwise_results() -> list[PairwiseResult]:
     """Six audit rows: retry, reversal, tie, failure, and missing probabilities."""
@@ -372,6 +377,7 @@ def main() -> None:
     )
     directory: Path = parser.parse_args().output
     directory.mkdir(parents=True, exist_ok=True)
+    generate_presentation_examples(directory / "presentation")
     pairwise = synthetic_pairwise_results()
     rubric = synthetic_rubric_results()
     export_pairwise_r_csv(directory / "pairwise_r.csv", iter(pairwise))

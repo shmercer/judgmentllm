@@ -1,0 +1,1 @@
+{"type":"object","properties":{"winner_id":{"enum":["essay_01","essay_02"]},"explanation":{"type":"string","minLength":1}},"required":["winner_id","explanation"],"additionalProperties":false}

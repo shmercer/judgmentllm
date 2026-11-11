@@ -771,3 +771,20 @@ R/jsonlite gates, with cross-provider security/history/recovery regressions.
 Synthetic production fixtures cover each mode and exact routing without real
 projects or credentials. Additional provider calls, qualification, credential or
 keyring access, spending, publication and merging are outside this phase.
+
+## Milestone 3 corrective work: issue #38
+
+Implement shared Markdown rubric/criterion/essay blocks, exact positional CJ wire
+validation and original-ID normalization. Seal assessment presentation revision 2
+on new requests, preserve omission-as-1 historical reconstruction and retries,
+and keep source-bound qualification fixtures immutable. Do not implement issue
+#39. Native selection must require evidence specific to the changed contract.
+
+Acceptance follows Level 3: focused rendering/schema/protection/provider/recovery
+regressions, genuine main-produced historical stores, primary Python 3.11 suite
+and change-aware coverage, all seven strict Linux R gates and representative
+hosted Windows/macOS. Applicable resource/package stages follow the automatic
+risk plan. Extend the existing export-to-R gate with actual alias-derived
+original-ID results. Exact offline prompts/schemas use synthetic essays and the
+supplied Internet/travel writing task. Final-source verification and the unmerged
+PR are reported separately from implementation and live qualification.

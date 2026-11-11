@@ -30,6 +30,7 @@ from judgmentllm.native_schema_v2 import _ROUTES_V2
 from judgmentllm.output_contracts import (
     RubricOutputContract,
     decode_assessment_output,
+    wire_winner_ids,
 )
 from judgmentllm.persistence.hashing import (
     bytes_digest,
@@ -37,6 +38,7 @@ from judgmentllm.persistence.hashing import (
 )
 from judgmentllm.planning import CapabilityProfile, stable_id, validate_run
 from judgmentllm.preparation.session import RequestDependency
+from judgmentllm.presentation import PresentationVersion
 from judgmentllm.prompts import RenderedAssessmentPrompt
 from judgmentllm.providers.evidence import ProviderEvidence
 from judgmentllm.providers.ledger import (
@@ -74,6 +76,7 @@ def context_for(
     *,
     supported: bool | None = True,
     trusted: bool = True,
+    presentation_version: PresentationVersion = 2,
 ) -> TransportContext:
     if mechanism.startswith("openai."):
         scope = openai_scope(
@@ -82,13 +85,44 @@ def context_for(
         return TransportContext(
             scope=scope,
             evidence=openai_evidence(scope, supported),
-            openai_catalog=openai_catalog(scope) if trusted else None,
+            openai_catalog=replace(
+                openai_catalog(scope),
+                profiles=tuple(
+                    profile.model_copy(
+                        update={
+                            "features": (
+                                *profile.features,
+                                "assessment_presentation_v2",
+                            )
+                        }
+                    )
+                    if presentation_version == 2
+                    else profile
+                    for profile in openai_catalog(scope).profiles
+                ),
+            )
+            if trusted
+            else None,
         )
     route = next(route for route in _ROUTES_V2 if route.mechanism == mechanism)
     return TransportContext(
         scope=provider_scope(route),
         evidence=provider_evidence(route, supported),
-        provider_catalog=provider_catalog(route) if trusted else None,
+        provider_catalog=replace(
+            provider_catalog(route),
+            profiles=tuple(
+                profile.model_copy(
+                    update={
+                        "features": (*profile.features, "assessment_presentation_v2")
+                    }
+                )
+                if presentation_version == 2
+                else profile
+                for profile in provider_catalog(route).profiles
+            ),
+        )
+        if trusted
+        else None,
     )
 
 
@@ -304,9 +338,7 @@ class NativeFixtureAdapter:
             output = {
                 "winner_id": None
                 if scenario.winner == "tie"
-                else contract.pair.presented_order[
-                    0 if scenario.winner == "first" else 1
-                ]
+                else wire_winner_ids(contract)[0 if scenario.winner == "first" else 1]
             }
             if contract.allow_ties:
                 output["tie"] = scenario.winner == "tie"

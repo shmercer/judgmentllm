@@ -74,7 +74,7 @@ def install(
         assessment = (
             {"scores": [{"trait_id": "01", "category_label": "high"}]}
             if call.task_kind == "rubric"
-            else {"winner_id": "002"}
+            else {"winner_id": "essay_01"}
         )
         body = envelope(
             json.dumps(assessment),

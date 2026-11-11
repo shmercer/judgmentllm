@@ -279,9 +279,20 @@ def test_prompt_reversal_observed_winner_and_export_positions_agree(
             trait_id="quality", name="Quality", description="Synthetic comparison"
         ),
     )
-    assert rendered.text.index("First response 002") < rendered.text.index(
-        "Second response 001"
+    assert rendered.text.index("essay_01:\nSynthetic right") < rendered.text.index(
+        "essay_02:\nSynthetic left"
     )
+    from judgmentllm.output_contracts import (
+        PairwiseOutputContract,
+        validate_pairwise_contract_output,
+    )
+
+    assert rendered.output_commitment is not None
+    assert isinstance(rendered.output_commitment.contract, PairwiseOutputContract)
+    selected = validate_pairwise_contract_output(
+        {"winner_id": "essay_02"}, rendered.output_commitment.contract
+    )
+    assert selected.winner_id == result.winner_id
     path = tmp_path / "reversed.csv"
     export_pairwise_r_csv(path, [result])
     row = rows(path)[0]

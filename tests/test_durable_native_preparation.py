@@ -10,7 +10,6 @@ from typing import Literal
 
 import pytest
 from pydantic import ValidationError
-from test_native_selection import catalog, evidence, scope
 from test_native_transport_integration import offline as offline
 
 from judgmentllm.config import RunSpecV3, load_run_spec
@@ -80,10 +79,9 @@ def native_specification(
         },
     }
     config.write_text(json.dumps(document), encoding="utf-8")
-    selected_scope = scope()
-    return config, TransportContext(
-        selected_scope, evidence(selected_scope), catalog(selected_scope)
-    )
+    from native_transport_fixture import context_for
+
+    return config, context_for("openai.responses.text.format")
 
 
 @pytest.mark.parametrize("capture", ["full", "minimal"])
