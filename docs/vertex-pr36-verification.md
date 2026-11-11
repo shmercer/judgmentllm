@@ -20,8 +20,8 @@ A later source, test, documentation or harness change requires fresh final-head
 acceptance. The report distinguishes completed checks, failures and deferrals;
 this document alone is not evidence that a gate passed.
 
-Retain the protected-base automatic plan unchanged. A separately identified
-supplemental local plan adds all resource cases and package validation requested
+Retain the protected-base automatic plan unchanged. If it defers resources or
+packaging, a separately identified supplemental local plan adds the checks requested
 by the operator, preserving risk3, coverage, all seven R gates, complete test
 selection, thresholds and the representative hosted matrix. Its derivation and
 hash must be independently checked against the original automatic plan. It must
@@ -80,7 +80,27 @@ successful exact-head protected-base Level3 hosted acceptance and restore requir
 the temporary Windows/macOS checks while preserving every other protection.
 Retain both the restored configuration and earlier failed infrastructure evidence.
 
+The first revised head `3deb20f647e3bbce40ffb7786d397ef8214dbd5e` has a separate
+[hosted run](https://github.com/shmercer/judgmentllm/actions/runs/43077701605):
+Linux and macOS passed, Windows failed, and the aggregate failed. Local Linux
+and hosted Windows both exceeded the execution-R pytest fixture's unchanged
+60-second persist deadline under parallel execution. These are retained fixture
+setup failures, distinct from the earlier Azure DNS failures. The isolated
+unchanged fixture subsequently passed both strict tests with 16.03-second setup;
+that development result does not qualify a later head. Its full local failed
+attempt and digest-verified hosted artifacts remain under the external ledger
+for that earlier commit. The serial scheduling repair requires fresh acceptance.
+
 ## Unchanged live authority
+
+Following the first revised-head run, the operator also authorized local CI
+setup repairs. Local planning avoids bytecode writes; installation acceptance
+passes `--offline`; and the existing execution-to-R pytest module uses the serial
+partition with its original 60-second deadline and all assertions. These CI/test
+changes require a new committed head and a fresh complete Level3 campaign. The
+earlier fixture-timeout and package-cache failures remain unsuccessful evidence.
+No runtime provider module, profile, historical audit or qualification source
+changes as part of these repairs.
 
 The original [qualification acceptance](vertex-live-qualification-acceptance.md)
 and [independent evidence audit](vertex-evidence-verification.json) retain their

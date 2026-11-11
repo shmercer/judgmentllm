@@ -77,10 +77,11 @@ complete Windows 3.11 troubleshooting without a lightweight success status.
 
 Static checks and CI selftests execute once, before scheduling expensive lanes.
 When packaging is affected, build/metadata/install smokes precede the full suite.
-The existing installer may fetch locked core/build dependencies during isolated
-environment preparation; installed-package checks themselves stay offline. This
-avoids assuming that locked sync populated index metadata for an offline pip
-resolver. Native complete-grid check mode retains its prepared offline caches.
+Prepare locked core/build dependencies in the separate environment preparation
+stage. Acceptance passes `--offline` explicitly to wheel/sdist installation
+smokes, matching the native runner; missing cache entries fail rather than trying
+package-index DNS from an isolated check. Native complete-grid check mode retains
+its prepared offline caches.
 Pytest uses the existing complete collection/partition/case-receipt runner.
 Ordinary and serial functional cases remain; expensive resource measurements are
 conditional outside Level 4. Cold pinned-SDK byte-identity probes retain their
@@ -90,6 +91,14 @@ skips/xfails and selection completeness stay enforced. Coverage is explicitly
 disabled in every nonprimary lane. If deferring resource tests loses required
 coverage, acceptance fails; investigate that dependency or request resources,
 never credit old measurements as fresh execution.
+
+The expanded multi-provider execution-to-R fixture runs in the existing serial
+partition. Its two original tests, complete persist/export pipeline, immutable
+artifact checks and 60-second subprocess deadline are unchanged. Serial execution
+avoids competing xdist workers during that bounded setup; the seven separate
+strict R gates remain mandatory. Local PR planning disables bytecode before
+importing policy modules, and its acceptance subprocess uses `-B`, so a copied
+policy tree does not gain untracked bytecode during source verification.
 
 The fast profile remains a development aid with caller-selected targets. Its
 receipt cannot establish PR acceptance. Benchmarks and partial suite stages

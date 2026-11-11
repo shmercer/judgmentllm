@@ -167,6 +167,82 @@ def test_credentials_and_execution_overrides_do_not_reach_tests(
     assert os.environ["GH_TOKEN"] == "synthetic-never-forward"
 
 
+def test_pr_planning_does_not_write_bytecode_to_its_policy_copy(
+    documentation: Any, tmp_path: Path
+) -> None:
+    source, plan = documentation
+    policy = Path(acceptance.__file__).parent
+    for name in ("check.py", "acceptance.py", "risk.py", "verification-map.json"):
+        destination = source / "ci" / name
+        destination.parent.mkdir(exist_ok=True)
+        destination.write_bytes((policy / name).read_bytes())
+    freeze(source)
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(source / "ci/check.py"),
+            "--profile",
+            "pr",
+            "--plan-only",
+            "--changed-since",
+            plan["source_sha"],
+            "--output",
+            str(tmp_path / "plan"),
+        ],
+        env={**os.environ, "PYTHONDONTWRITEBYTECODE": "0"},
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not list((source / "ci").rglob("*.pyc"))
+    assert not subprocess.check_output(
+        ["git", "status", "--porcelain"], cwd=source, text=True
+    ).strip()
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="primary runner uses Linux")
+@pytest.mark.parametrize("installer_exit", [0, 2])
+def test_package_installation_is_offline_and_missing_cache_fails_closed(
+    documentation: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    installer_exit: int,
+) -> None:
+    source, plan = documentation
+    (source / ".gitignore").write_text("dist/\n")
+    plan.update(source_sha=freeze(source), packaging=True)
+    original = subprocess.run
+    installers: list[list[str]] = []
+
+    def execute(command: list[str], **kwargs: Any) -> Any:
+        if command[0] == "git" or any(arg.endswith("docs_check.py") for arg in command):
+            return cast(Any, original(command, **kwargs))
+        assert kwargs["env"]["UV_OFFLINE"] == "1"
+        if command[:2] == ["uv", "build"]:
+            assert "--offline" in command
+            (source / "dist").mkdir()
+            for name in ("synthetic.whl", "synthetic.tar.gz"):
+                (source / "dist" / name).write_bytes(b"synthetic package")
+        elif "scripts/smoke_install.py" in command:
+            assert "--offline" in command
+            installers.append(command)
+            return subprocess.CompletedProcess[str](command, installer_exit)
+        else:
+            assert command[1:5] == ["-m", "twine", "check", "--strict"]
+        return subprocess.CompletedProcess[str](command, 0)
+
+    monkeypatch.setattr(acceptance.subprocess, "run", execute)
+    output = tmp_path / "packages"
+    assert acceptance.run_lane(plan, source, output, "linux-3.11", "run:1") == bool(
+        installer_exit
+    )
+    assert len(installers) == (1 if installer_exit else 2)
+    receipt = json.loads((output / "receipt.json").read_text())
+    assert receipt["status"] == ("failed" if installer_exit else "passed")
+    assert receipt["steps"][-1]["name"] == ("wheel" if installer_exit else "sdist")
+
+
 @pytest.mark.skipif(sys.platform != "linux", reason="primary runner uses Linux")
 def test_packaging_failure_prevents_expensive_tests(
     documentation: Any,
