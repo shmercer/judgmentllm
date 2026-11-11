@@ -1,8 +1,8 @@
 # Genuine pre-change preparation fixture
 
-`store.tar.gz` was produced from unchanged main commit
+`store.tar.gz.base64` is an ASCII transport of the exact gzip archive produced from unchanged main commit
 `38bda981a46330b73fec6e80a9b1c0c7a3c1c61a` using the exact script retained in
-`producer.py.txt`. `provenance.json` records both hashes. The three full-capture
+`producer.py.txt`. `provenance.json` records the decoded archive and producer hashes. Base64 avoids the protected CI planner's UTF-8-only changed-file reader; decoding restores byte-identical evidence. The three full-capture
 synthetic runs cover pending RunSpec 1/2 and RunSpec 2 interrupted immediately
 after receipt/evidence commit. Both original item IDs deliberately spell the new
 aliases; a historical winner `essay_01` selects the original second item, while

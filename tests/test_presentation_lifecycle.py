@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import base64
 import hashlib
+import io
 import json
 import tarfile
 from pathlib import Path
@@ -28,15 +30,15 @@ async def test_genuine_pre_change_prepared_and_received_requests(
     fixture = Path(__file__).parent / "fixtures/presentation-history"
     provenance = json.loads((fixture / "provenance.json").read_text())
     assert provenance["source_commit"] == "38bda981a46330b73fec6e80a9b1c0c7a3c1c61a"
-    assert (
-        hashlib.sha256((fixture / "store.tar.gz").read_bytes()).hexdigest()
-        == provenance["archive_sha256"]
+    raw_archive = base64.b64decode(
+        (fixture / "store.tar.gz.base64").read_bytes(), validate=True
     )
+    assert hashlib.sha256(raw_archive).hexdigest() == provenance["archive_sha256"]
     assert (
         hashlib.sha256((fixture / "producer.py.txt").read_bytes()).hexdigest()
         == provenance["producer_script_sha256"]
     )
-    with tarfile.open(fixture / "store.tar.gz") as archive:
+    with tarfile.open(fileobj=io.BytesIO(raw_archive), mode="r:gz") as archive:
         archive.extractall(tmp_path, filter="data")
     store = tmp_path / "store"
     adapter = MockAdapter(
