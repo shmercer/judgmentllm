@@ -93,7 +93,7 @@ def fast(changed_since: str, output: Path, focused: list[str], workers: int) -> 
             "-ra",
             *targets,
             "-m",
-            "not resource and not serial",
+            "not resource and not serial and not r_interop",
             "-n",
             str(workers),
             "--dist=loadfile",

@@ -101,6 +101,8 @@ def run_lane(
         "deferred": {
             **plan["deferred"],
             "resource_measurements": execution_scope == "hosted" and plan["resources"],
+            "coverage": execution_scope == "hosted" and plan["coverage"],
+            "r_interoperability": execution_scope == "hosted",
         },
         "risk": plan["risk"],
         "python": sys.version,
@@ -109,7 +111,7 @@ def run_lane(
     }
     environment = clean_environment()
     environment["JUDGMENTLLM_CI_RUN_ID"] = f"{run_id}:{lane}"
-    if any(step.startswith("r-") for step in needed):
+    if execution_scope == "local":
         environment["JUDGMENTLLM_R_STRICT"] = "1"
     environment["JUDGMENTLLM_OPENAI_RESOURCE_EVIDENCE"] = str(
         output / "openai-resources"
@@ -261,6 +263,8 @@ def run_lane(
                 command.append("--no-coverage")
             if "resources" not in needed:
                 command.append("--skip-resources")
+            if execution_scope == "hosted":
+                command.append("--skip-r")
             command += plan["targets"]
             step("tests", command)
             suite = json.loads(
@@ -273,6 +277,13 @@ def run_lane(
                 or suite["source"]["dirty"] is not False
             ):
                 raise ValueError("Incomplete or mismatched test evidence")
+            if (
+                execution_scope == "hosted"
+                and suite.get("coverage_enabled") is not False
+            ):
+                raise ValueError("Hosted lanes must not measure coverage")
+            if execution_scope == "local" and suite.get("deferred_r_cases"):
+                raise ValueError("Required local R cases were deferred")
             for alias in ("coverage", "resources"):
                 if alias in needed:
                     if (
@@ -322,6 +333,8 @@ def run_lane(
 
 
 def r_gate(name: str, source: Path, output: Path) -> int:
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        raise ValueError("R interoperability gates run locally, not in GitHub Actions")
     fixtures = {
         "exports": ("examples/export_r.py", "examples/r_interoperability.R"),
         "persistence": (
@@ -402,7 +415,6 @@ def main() -> int:
             ) as stream:
                 stream.write("matrix=" + json.dumps({"include": plan["lanes"]}) + "\n")
                 stream.write(f"risk={plan['risk']}\n")
-                stream.write(f"r_required={str(bool(plan['r_gates'])).lower()}\n")
                 stream.write(f"packaging={str(plan['packaging']).lower()}\n")
         return 0
     if args.operation == "r-gate":
@@ -435,6 +447,12 @@ def main() -> int:
         {
             "source_sha": plan["source_sha"],
             "risk": plan["risk"],
+            "execution_scope": "hosted",
+            "local_requirements": {
+                "coverage": plan["coverage"],
+                "r_gates": plan["r_gates"],
+                "resources": plan["resources"],
+            },
             "passed": not errors,
             "errors": errors,
         },

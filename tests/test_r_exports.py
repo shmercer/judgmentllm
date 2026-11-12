@@ -357,6 +357,7 @@ def test_wrong_record_kinds_and_empty_streams(tmp_path: Path) -> None:
         export_rubric_r_csv(tmp_path / "wrong.csv", [pair_result()])  # pyright: ignore[reportArgumentType]
 
 
+@pytest.mark.r_interop
 def test_python_export_example_and_optional_r_smoke(tmp_path: Path) -> None:
     root = Path(__file__).resolve().parents[1]
     subprocess.run(
@@ -433,10 +434,11 @@ def test_expected_scores_and_probabilities_are_not_rounded(tmp_path: Path) -> No
     assert row["category_label"] == "NA" and row["response_id"] == "00001"
 
 
+@pytest.mark.r_interop
 def test_strict_r_mode_cannot_skip_missing_jsonlite(tmp_path: Path) -> None:
     executable = shutil.which("Rscript")
     if executable is None:
-        pytest.skip("Rscript is optional outside the required R CI step")
+        pytest.skip("Rscript is optional outside required local R validation")
     script = Path(__file__).resolve().parents[1] / "examples" / "r_interoperability.R"
     harness = tmp_path / "without-jsonlite.R"
     harness.write_text(
@@ -468,11 +470,12 @@ source(arguments[[1L]])
     assert "R interoperability smoke passed" not in completed.stdout
 
 
+@pytest.mark.r_interop
 @pytest.mark.parametrize("corruption", ["missing_column", "probability_values"])
 def test_strict_r_mode_rejects_invalid_export(tmp_path: Path, corruption: str) -> None:
     executable = shutil.which("Rscript")
     if executable is None:
-        pytest.skip("Rscript is optional outside the required R CI step")
+        pytest.skip("Rscript is optional outside required local R validation")
     probe = subprocess.run(
         [
             executable,
@@ -486,7 +489,7 @@ def test_strict_r_mode_rejects_invalid_export(tmp_path: Path, corruption: str) -
         timeout=30,
     )
     if probe.returncode == 42:
-        pytest.skip("jsonlite is optional outside the required R CI step")
+        pytest.skip("jsonlite is optional outside required local R validation")
     assert probe.returncode == 0, probe.stderr
     root = Path(__file__).resolve().parents[1]
     subprocess.run(

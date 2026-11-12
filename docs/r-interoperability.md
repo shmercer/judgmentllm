@@ -11,12 +11,20 @@ Milestone 1 supplies provider-independent CSV views through
 neither R nor pandas in the Python installation. The functional thin `rubricLLM`
 R wrapper is a Milestone 6 deliverable. FastAPI remains committed for Milestone 7
 as an optional local service; ordinary R use does not require that server.
-Seven strict offline R/jsonlite gates now cover the implemented mock lifecycle,
+Seven strict offline R/jsonlite gates run in required local validation and cover the implemented mock lifecycle,
 including independent installed-CLI processes. Subphase 6 adds a separate
 bounded-read checker for large rubric exports and is merged with retained
 qualification evidence for its final implementation head; see the
 [historical qualification scope](design-spec.md#milestone-2-implementation-boundary).
 Large exports are not added to every routine R gate.
+
+All actual R execution is local, including pytest cases marked `r_interop`.
+GitHub Actions runs Python export/recovery checks and serial correctness tests,
+with R consumers explicitly deferred. Required local Linux/Python 3.11 acceptance
+retains all applicable gates and fails on missing Rscript/jsonlite or failed
+assertions. Review local and hosted evidence at the same source before accepting
+a change; a hosted pass does not replace local R acceptance. See the authoritative
+[verification policy](ci-optimization.md).
 
 These exports are **all-attempts audit views**: every supplied record remains,
 including failures, observed ties, reversals, repeated judgments, and multiple

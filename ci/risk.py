@@ -511,10 +511,12 @@ def make_plan(
         "lanes": lanes,
         "targets": PROMPT_TESTS if level == 1 else ["tests"],
         "r_gates": r_gates,
+        "r_execution": "local",
         "resources": level == 4 or level >= 2 and resource_sensitive,
         "resource_execution": "local",
         "packaging": packaging,
         "coverage": level >= 2,
+        "coverage_execution": "local",
         "verification_map_sha256": hashlib.sha256(
             Path(__file__).with_name("verification-map.json").read_bytes()
         ).hexdigest(),
@@ -537,15 +539,18 @@ def required_steps(
 ) -> set[str]:
     if execution_scope not in {"local", "hosted"}:
         raise ValueError("Execution scope must be local or hosted")
-    if plan.get("resource_execution") != "local":
-        raise ValueError("Plan must declare local resource measurement policy")
+    if any(
+        plan.get(name) != "local"
+        for name in ("resource_execution", "coverage_execution", "r_execution")
+    ):
+        raise ValueError("Plan must declare local resource, coverage and R policy")
     primary = lane == "linux-3.11"
     names: set[str] = {"docs"} if primary else set()
     if plan["risk"] >= 1 and primary:
         names.update(("ruff", "format", "pyright"))
     if plan["risk"] >= 1:
         names.add("tests")
-    if plan["risk"] >= 2 and primary:
+    if execution_scope == "local" and plan["risk"] >= 2 and primary:
         names.add("coverage")
     if plan["risk"] >= 3 and primary:
         names.add("infrastructure")
@@ -555,7 +560,7 @@ def required_steps(
         and (primary or plan["risk"] == 4)
     ):
         names.add("resources")
-    if primary or plan["risk"] == 4:
+    if execution_scope == "local" and (primary or plan["risk"] == 4):
         names.update(f"r-{name}" for name in plan["r_gates"])
     if plan["packaging"] and (primary or plan["risk"] == 4):
         names.update(("build", "metadata", "wheel", "sdist"))
@@ -587,6 +592,13 @@ def admit(
             errors.append(f"Failed or incorrect source/plan/run identity: {lane}")
         steps = receipt.get("steps", [])
         names = [step.get("name") for step in steps]
+        if any(
+            name in {"coverage", "resources"}
+            or isinstance(name, str)
+            and name.startswith("r-")
+            for name in names
+        ):
+            errors.append(f"Local-only checks claimed in a hosted receipt: {lane}")
         if len(names) != len(set(names)) or not required_steps(plan, lane) <= set(
             names
         ):

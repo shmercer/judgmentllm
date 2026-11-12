@@ -2,16 +2,20 @@
 
 Use the authoritative [risk decision table and commands](ci-optimization.md)
 for development and PR acceptance. Targeted feedback uses the existing locked
-worktree environment; Linux/Python 3.11 is the principal full-suite and coverage
+worktree environment; local Linux/Python 3.11 is the principal full-suite and coverage
 lane. Routine PRs do **not** need a duplicate local platform campaign before
 hosted CI. A passing primary lane does not imply deferred platforms or R gates
-passed. Hosted CI records the requirements and the named acceptance status.
+passed. Complete acceptance needs applicable local evidence and hosted functional
+evidence at the same source. The GitHub status covers only its hosted scope.
 
-Resource measurement workloads execute locally only. `ci/check.py --profile pr`
-includes affected measurements in its local primary lane; native comprehensive
+Coverage, all actual R checks and resource measurement workloads execute locally
+only. `ci/check.py --profile pr` retains the combined 90% floor, strict historical
+comparison, all applicable R/jsonlite gates and affected resource measurements in
+its local primary lane; missing required R dependencies fail. Native comprehensive
 and release checks retain all existing workloads and bounds. GitHub Actions
-defers measurements even for comprehensive runs, while keeping cold SDK byte
-identity, functional tests, strict coverage and required R gates. Local measurement
+defers those local checks even for comprehensive runs, while keeping cold SDK byte
+identity, ordinary tests and serial correctness. Actual R pytest consumers are
+marked `r_interop` and excluded explicitly rather than relying on missing R. Local
 receipts never count as hosted acceptance evidence.
 
 The native grid remains an explicit complete-qualification option. The details

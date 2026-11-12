@@ -118,6 +118,7 @@ testpaths = ["tests"]
 markers = [
     "resource: resource measurements run in bounded, process-isolated batches",
     "serial: tests requiring a single pytest process",
+    "r_interop: actual R/jsonlite interoperability checks run in local validation",
     "smoke: short essential development regressions",
 ]
 addopts = "--strict-config --strict-markers --cov=judgmentllm --cov-branch --cov-report=term-missing --cov-report=xml --cov-fail-under=90"

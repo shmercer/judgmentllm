@@ -324,7 +324,15 @@ def test_stronger_request_and_complete_matrix_are_recorded(repository: Any) -> N
         "resources" not in required_steps(strong, lane["id"]) for lane in COMPREHENSIVE
     )
     assert all(
-        f"r-{gate}" in required_steps(strong, "windows-3.11") for gate in R_GATES
+        f"r-{gate}" in required_steps(strong, "windows-3.11", execution_scope="local")
+        for gate in R_GATES
+    )
+    assert all(
+        "coverage" not in required_steps(strong, lane["id"])
+        and not any(
+            name.startswith("r-") for name in required_steps(strong, lane["id"])
+        )
+        for lane in COMPREHENSIVE
     )
     assert "coverage" not in required_steps(strong, "windows-3.11")
 
@@ -338,6 +346,11 @@ def test_moderate_adapter_gets_primary_coverage_and_affected_r(repository: Any) 
     assert plan["risk"] == 2 and len(plan["lanes"]) == 1
     assert plan["r_gates"] == ["exports", "execution"]
     assert plan["coverage"] and not plan["resources"]
+    assert plan["coverage_execution"] == plan["r_execution"] == "local"
+    assert "coverage" not in required_steps(plan, "linux-3.11")
+    assert {"coverage", "r-exports", "r-execution"} <= required_steps(
+        plan, "linux-3.11", execution_scope="local"
+    )
 
 
 def test_manual_dispatch_resolves_main_and_keeps_affected_ci_gates(
@@ -414,9 +427,10 @@ def passing_receipts(plan: dict[str, Any]) -> list[dict[str, Any]]:
         "wrong-source",
         "wrong-plan",
         "wrong-run",
-        "missing-r",
-        "failed-r",
-        "missing-coverage",
+        pytest.param("unexpected-hosted-r", id="missing-r"),
+        pytest.param("failed-hosted-r", id="failed-r"),
+        pytest.param("unexpected-hosted-coverage", id="missing-coverage"),
+        "unexpected-hosted-resources",
         "partial-quality",
         "unverified-source",
         "duplicate-step",
@@ -444,15 +458,21 @@ def test_admission_never_conceals_failed_or_omitted_requirements(
             "wrong-run": "run_id",
         }[fault]
         receipts[0][key] = "stale"
-    elif fault in {"missing-r", "missing-coverage"}:
-        target = "r-execution" if fault == "missing-r" else "coverage"
-        receipts[0]["steps"] = [
-            item for item in receipts[0]["steps"] if item["name"] != target
-        ]
-    elif fault == "failed-r":
-        next(item for item in receipts[0]["steps"] if item["name"] == "r-execution")[
-            "exit_code"
-        ] = 1
+    elif fault in {
+        "unexpected-hosted-r",
+        "failed-hosted-r",
+        "unexpected-hosted-coverage",
+        "unexpected-hosted-resources",
+    }:
+        name = {
+            "unexpected-hosted-r": "r-execution",
+            "failed-hosted-r": "r-execution",
+            "unexpected-hosted-coverage": "coverage",
+            "unexpected-hosted-resources": "resources",
+        }[fault]
+        receipts[0]["steps"].append(
+            {"name": name, "exit_code": 1 if fault == "failed-hosted-r" else 0}
+        )
     elif fault == "partial-quality":
         receipts[0]["phase"] = "quality"
     elif fault == "unverified-source":
@@ -501,7 +521,14 @@ def test_malformed_receipt_is_a_failing_command(
 
 
 @pytest.mark.parametrize(
-    "fault", ["none", "plan-tamper", "missing-r", "missing-receipt", "wrong-source"]
+    "fault",
+    [
+        "none",
+        "plan-tamper",
+        pytest.param("hosted-r-step", id="missing-r"),
+        "missing-receipt",
+        "wrong-source",
+    ],
 )
 def test_aggregate_reconstructs_trusted_plan_and_checks_artifacts(
     tmp_path: Path,
@@ -515,10 +542,8 @@ def test_aggregate_reconstructs_trusted_plan_and_checks_artifacts(
     receipts = passing_receipts(plan)
     if fault == "plan-tamper":
         plan["risk"] = 0
-    elif fault == "missing-r":
-        receipts[0]["steps"] = [
-            item for item in receipts[0]["steps"] if item["name"] != "r-execution"
-        ]
+    elif fault == "hosted-r-step":
+        receipts[0]["steps"].append({"name": "r-execution", "exit_code": 0})
     elif fault == "missing-receipt":
         receipts.pop()
     elif fault == "wrong-source":

@@ -9,9 +9,9 @@ risk. Unknowns and ambiguity escalate. Deferred checks are **not passed checks**
 |---|---|---|
 | 0 — Documentation | Non-executable prose | Relevant offline links and example syntax checks |
 | 1 — Low | Designated prompt-instruction wording or template prose with unchanged schema, selection, sandbox and control flow | Affected Ruff/format/Pyright, focused unit/regression and prompt/serialization contracts; no comprehensive coverage, platform, resource, R or package campaign |
-| 2 — Moderate | Independent adapter or response handling | Primary Linux/Python 3.11 functional suite and coverage; affected integration/R gates, platforms and packaging; affected resource measurements locally |
-| 3 — High | Execution, persistence/recovery, schemas/exports, authentication/privacy, CI/selection/coverage controls | Primary suite/coverage, representative full functional Windows 3.12 and macOS 3.11, all seven strict Linux R gates, relevant security/durability/concurrency/compatibility tests; affected resource measurements locally and package checks when affected |
-| 4 — Release/comprehensive | Publication, compatibility milestone, weekly/manual complete check | Supported platform/version union, all strict R gates across platforms, primary coverage, resource workloads locally, wheel/sdist metadata and isolated installs; releases additionally require compatibility, scale/reproducibility and alpha-readiness evidence |
+| 2 — Moderate | Independent adapter or response handling | Local Linux/Python 3.11 suite/coverage and affected strict R/resource checks; hosted functional suite, affected platforms and packaging |
+| 3 — High | Execution, persistence/recovery, schemas/exports, authentication/privacy, CI/selection/coverage controls | Local primary suite/coverage, all seven strict R gates and affected resources; hosted full functional Linux 3.11, Windows 3.12 and macOS 3.11, including serial correctness; relevant security/durability/concurrency/compatibility tests and package checks |
+| 4 — Release/comprehensive | Publication, compatibility milestone, weekly/manual complete check | Supported platform/version union; all strict R gates, primary coverage and resource workloads locally; hosted functional matrix, wheel/sdist metadata and isolated installs; releases additionally require compatibility, scale/reproducibility and alpha-readiness evidence |
 
 All existing critical tests remain available. No provider calls are authorized.
 Synthetic offline implementation acceptance and explicitly authorized live
@@ -43,7 +43,7 @@ or a manual candidate-workflow run as protected-base acceptance of another PR.
 
 ## Commands and ordinary workflow
 
-### Resource measurements execute locally
+### Coverage, R interoperability and resource measurements execute locally
 
 Resource measurement workloads run only in local verification, including at
 Level 4. Hosted GitHub Actions lanes defer them. The plan retains their risk-based
@@ -52,12 +52,30 @@ applicability as `resources` and declares `resource_execution: local`.
 and release runners retain their existing workloads. Workload dimensions, memory
 ceilings and child deadlines are unchanged.
 
-Hosted lanes explicitly select hosted execution, retain every functional case,
-the isolated cold SDK byte-identity correctness probe, strict primary coverage and
-all applicable R/jsonlite gates. If deferring measurements loses required coverage,
-acceptance fails. Local receipts identify their execution scope and cannot satisfy
-hosted admission; quality receipts also require the same scope. GitHub Actions
-rejects the local-execution option.
+Coverage instrumentation, the combined 90% floor and historical/change-aware
+comparison also run locally only. All actual R checks run locally: the seven named
+R/jsonlite gates and pytest cases marked `r_interop`. The plan seals
+`coverage_execution: local` and `r_execution: local` as well as resource location.
+Required local validation sets strict R mode; missing Rscript/jsonlite, failed
+assertions or deferred local R cases fail acceptance. The pytest collection still
+includes every protected case before hosted selection defers R/resource cases.
+
+Hosted lanes explicitly select hosted execution, retain Python functional checks,
+the isolated cold SDK byte-identity correctness probe and other serial correctness
+tests. All hosted lanes disable coverage and defer actual R checks, even if R is
+already installed on a runner. Pure Python export/recovery tests and tests of
+missing-dependency handling remain hosted. GitHub does not install R/jsonlite.
+Local receipts identify their execution scope and cannot satisfy hosted admission;
+quality receipts also require the same scope. GitHub Actions rejects local
+execution and direct R-gate execution. Hosted admission rejects receipts claiming
+coverage, R gates or resource measurement execution.
+
+Complete PR acceptance requires source-bound local evidence for the applicable
+coverage/R/resource requirements **and** protected-base hosted functional evidence.
+The hosted status and aggregate describe hosted verification only and list the
+separate local requirements. Reviewers must check local results before merging;
+a green GitHub status does not certify unrun local gates. This execution-location
+policy supersedes earlier hosted coverage/R requirements in milestone records.
 
 The [Issue #38 run](https://github.com/shmercer/judgmentllm/actions/runs/43125144700)
 passed all 7,035 tests and the strict coverage comparison. Its ordinary partition
@@ -98,8 +116,10 @@ gh workflow run ci.yml -f risk=4
 
 Local `pr` runs the primary lane only, with a clean committed source and Python
 3.11. Its exit status reports that lane; its output lists pending hosted lanes.
-Use hosted **CI acceptance** for complete PR acceptance. Do not routinely run
-both the primary suite locally and again hosted, or both complete grids. Use
+Use hosted **CI acceptance** for the hosted portion of PR acceptance. Avoid
+duplicating complete grids. Required local coverage/R/resource acceptance and
+hosted functional verification have separate scopes; both are required when
+selected by the risk plan. Use
 `--risk` to request stronger acceptance; it never downgrades inferred risk.
 A manual hosted run can select a feature branch with `--ref BRANCH`.
 The complete hosted matrix includes Linux 3.11/3.12/3.15, Windows 3.11/3.12,
@@ -125,15 +145,15 @@ workloads. Cold pinned-SDK byte-identity probes retain their
 isolation and remain correctness requirements even when resource measurements
 are deferred. Case existence/replacement, crash propagation, no unexpected
 skips/xfails and selection completeness stay enforced. Coverage is explicitly
-disabled in every nonprimary lane. If deferring resource tests loses required
-coverage, acceptance fails; investigate that dependency or request resources,
-never credit old measurements as fresh execution.
+disabled in every hosted lane. Local acceptance retains branch coverage and the
+strict historical floor; never credit old measurements as fresh execution.
 
 The expanded multi-provider execution-to-R fixture runs in the existing serial
 partition. Its two original tests, complete persist/export pipeline, immutable
 artifact checks and 60-second subprocess deadline are unchanged. Serial execution
-avoids competing xdist workers during that bounded setup; the seven separate
-strict R gates remain mandatory. Local PR planning disables bytecode before
+avoids competing xdist workers during that bounded setup. Its Python recovery
+checks stay hosted; the R consumer is explicitly local. The seven separate strict
+R gates remain mandatory locally. Local PR planning disables bytecode before
 importing policy modules, and its acceptance subprocess uses `-B`, so a copied
 policy tree does not gain untracked bytecode during source verification.
 
@@ -168,7 +188,7 @@ modules escalate; a directory name never downgrades a shared boundary. Touching
 shared execution raises the whole change to Level 3. Path/process/OS-sensitive moderate code adds
 representative platforms. All CI, risk-map, coverage, dependency, selection and
 exclusion controls are Level 3, regardless of their size. Level 3 runs all seven
-R gates on Linux; Level 2 runs relevant export/execution gates for provider output
+R gates locally on Linux; Level 2 runs relevant local export/execution gates for provider output
 changes. Unknown R-facing modules escalate to Level 3. Packaging is conditional;
 CI/package/dependency changes exercise it. Resource-sensitive execution,
 preparation, persistence and CI orchestration changes request resource tests.
@@ -181,7 +201,8 @@ permissions, no secrets, no persisted Git credentials and no shared uv cache.
 Only the separate trusted aggregator can write a commit status; it never runs
 candidate code. It rejects missing/extra/duplicate/failed/stale lane receipts,
 wrong source/plan/run identities, partial quality receipts and omitted required
-steps (including R/coverage). It independently reconstructs the plan from the
+hosted steps. Local coverage/R/resource requirements remain separate and are
+listed in the aggregate. It independently reconstructs the plan from the
 protected policy and literal base/head commits, so a replaced plan artifact
 cannot reduce acceptance. It also requires successful plan/matrix job results.
 Diagnostic artifacts are retained on failure and superseded runs are cancelled.

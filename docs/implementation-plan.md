@@ -416,9 +416,9 @@ See [alpha-release readiness](alpha-release-readiness.md).
 
 ## Cross-language interoperability acceptance gate
 
-Every relevant milestone that changes assessment schemas, normalized results, data exports, execution/shared services, or CLI interfaces must preserve the established Python-to-R contracts. The required baseline is the Milestone 1 Python-generated pairwise/rubric export smoke test in base R plus `jsonlite`, running in CI on Ubuntu/Python 3.11. It must remain required even before later R wrapper or execution features exist. Add stage-specific execution, adapter, batch, wrapper, and HTTP checks in their assigned milestones; mandatory actual `pairwiseLLM` integration begins in Milestone 6.
+Every relevant milestone that changes assessment schemas, normalized results, data exports, execution/shared services, or CLI interfaces must preserve the established Python-to-R contracts. The required baseline is the Milestone 1 Python-generated pairwise/rubric export smoke test in base R plus `jsonlite`, running in required local validation on Linux/Python 3.11. All actual R checks, including the installed-CLI gate and pytest R consumers, run locally only; hosted CI explicitly defers them. Missing local evidence cannot be replaced by a hosted pass. This execution-location policy supersedes earlier hosted-R requirements; historical qualification records remain unchanged. The baseline remains required even before later R wrapper or execution features exist. Add stage-specific execution, adapter, batch, wrapper, and HTTP checks in their assigned milestones; mandatory actual `pairwiseLLM` integration begins in Milestone 6.
 
-Applicable deterministic, synthetic, offline, credential-free CI fixtures must verify:
+Applicable deterministic, synthetic, offline, credential-free local fixtures must verify:
 
 - Response/item/trait/pair/task/request/run/attempt identifiers, leading-zero character IDs, source/repetition/reversal metadata, order, and original versus presented positions.
 - Observed winners, explicitly permitted ties, unsuccessful/partial records, repeated judgments, and every attempt without silent selection or deduplication. Analysis datasets require explicit attempt/outcome selection and remain distinct from audit exports.

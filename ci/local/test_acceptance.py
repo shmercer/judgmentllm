@@ -169,6 +169,7 @@ def test_quality_receipt_cannot_cross_execution_scopes(
 def test_missing_required_r_executable_is_not_a_skip(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
     calls: list[list[str]] = []
 
     def missing(command: list[str], **kwargs: Any) -> Any:
@@ -235,6 +236,68 @@ def test_credentials_and_execution_overrides_do_not_reach_tests(
     assert environment["JUDGMENTLLM_REQUIRE_NATIVE_SDK_PROBES"] == "1"
     assert environment["PATH"]
     assert os.environ["GH_TOKEN"] == "synthetic-never-forward"
+
+
+def test_actual_r_gate_is_forbidden_in_github_actions(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    with pytest.raises(ValueError, match="run locally"):
+        acceptance.r_gate("exports", tmp_path, tmp_path / "output")
+    assert not (tmp_path / "output").exists()
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="primary runner uses Linux")
+@pytest.mark.parametrize("fault", ["hosted-coverage", "deferred-local-r"])
+def test_suite_cannot_cross_local_check_boundaries(
+    documentation: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: str,
+) -> None:
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    source, plan = documentation
+    scope = "hosted" if fault == "hosted-coverage" else "local"
+    output = tmp_path / "run"
+    original = subprocess.run
+
+    def required(*args: Any, **kwargs: Any) -> set[str]:
+        return {"tests"}
+
+    def execute(command: list[str], **kwargs: Any) -> Any:
+        if command[0] == "git":
+            return cast(Any, original(command, **kwargs))
+        suite = output / "suite"
+        suite.mkdir()
+        (suite / "summary.json").write_text(
+            json.dumps(
+                {
+                    "status": "passed",
+                    "selection_complete": True,
+                    "source": {"commit": plan["source_sha"], "dirty": False},
+                    "coverage_enabled": fault == "hosted-coverage",
+                    "deferred_r_cases": ["synthetic R check"]
+                    if scope == "local"
+                    else [],
+                }
+            )
+        )
+        return subprocess.CompletedProcess[str](command, 0)
+
+    monkeypatch.setattr(acceptance, "required_steps", required)
+    monkeypatch.setattr(acceptance.subprocess, "run", execute)
+    assert (
+        acceptance.run_lane(
+            plan, source, output, "linux-3.11", "run:1", execution_scope=scope
+        )
+        == 1
+    )
+    receipt = json.loads((output / "receipt.json").read_text())
+    expected = (
+        "must not measure coverage" if scope == "hosted" else "R cases were deferred"
+    )
+    assert expected in receipt["error"]
 
 
 def test_pr_planning_does_not_write_bytecode_to_its_policy_copy(
@@ -451,6 +514,10 @@ def test_resource_measurement_selection_follows_execution_scope(
                     "deferred_resource_cases": ["synthetic resource workload"]
                     if scope == "hosted"
                     else [],
+                    "coverage_enabled": False,
+                    "deferred_r_cases": ["synthetic R case"]
+                    if scope == "hosted"
+                    else [],
                 }
             )
         )
@@ -471,6 +538,7 @@ def test_resource_measurement_selection_follows_execution_scope(
     )
     assert len(selections) == 1
     assert ("--skip-resources" in selections[0]) == (scope == "hosted")
+    assert ("--skip-r" in selections[0]) == (scope == "hosted")
     receipt = json.loads((output / "receipt.json").read_text())
     assert ("resources" in {step["name"] for step in receipt["steps"]}) == (
         scope == "local"
