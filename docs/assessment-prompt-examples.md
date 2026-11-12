@@ -106,6 +106,8 @@ Adequate control with an error.
 
 Limited control.
 
+## Output Format
+
 Return only a JSON object matching this schema. Include every requested trait exactly once. Preserve category labels exactly. Do not include explanations.
 {"type":"object","properties":{"scores":{"type":"array","minItems":2,"maxItems":2,"items":{"oneOf":[{"type":"object","properties":{"trait_id":{"const":"cohesion"},"category_label":{"type":"string","enum":["low","medium","high"]}},"required":["trait_id","category_label"],"additionalProperties":false},{"type":"object","properties":{"trait_id":{"const":"grammar"},"category_label":{"type":"string","enum":["low","medium","high"]}},"required":["trait_id","category_label"],"additionalProperties":false}]}}},"required":["scores"],"additionalProperties":false}
 
@@ -191,6 +193,8 @@ Adequate control with an error.
 **Category `low`**
 
 Limited control.
+
+## Output Format
 
 Return only a JSON object matching this schema. Include every requested trait exactly once. Preserve category labels exactly. In scores, put each category_label before its explanation. Explanations must be nonblank.
 {"type":"object","properties":{"scores":{"type":"array","minItems":2,"maxItems":2,"items":{"oneOf":[{"type":"object","properties":{"trait_id":{"const":"cohesion"},"category_label":{"type":"string","enum":["low","medium","high"]},"explanation":{"type":"string","minLength":1}},"required":["trait_id","category_label","explanation"],"additionalProperties":false},{"type":"object","properties":{"trait_id":{"const":"grammar"},"category_label":{"type":"string","enum":["low","medium","high"]},"explanation":{"type":"string","minLength":1}},"required":["trait_id","category_label","explanation"],"additionalProperties":false}]}}},"required":["scores"],"additionalProperties":false}
@@ -279,6 +283,8 @@ Adequate control with an error.
 **Category `low`**
 
 Limited control.
+
+## Output Format
 
 Return only a JSON object matching this schema. Include every requested trait exactly once. Preserve category labels exactly. Emit the scores key before the explanations key. Return all scores first, then all explanations. Match both arrays by trait_id; explanations must be nonblank.
 {"type":"object","properties":{"scores":{"type":"array","minItems":2,"maxItems":2,"items":{"oneOf":[{"type":"object","properties":{"trait_id":{"const":"cohesion"},"category_label":{"type":"string","enum":["low","medium","high"]}},"required":["trait_id","category_label"],"additionalProperties":false},{"type":"object","properties":{"trait_id":{"const":"grammar"},"category_label":{"type":"string","enum":["low","medium","high"]}},"required":["trait_id","category_label"],"additionalProperties":false}]}},"explanations":{"type":"array","minItems":2,"maxItems":2,"items":{"type":"object","properties":{"trait_id":{"type":"string","enum":["cohesion","grammar"]},"text":{"type":"string","minLength":1}},"required":["trait_id","text"],"additionalProperties":false}}},"required":["scores","explanations"],"additionalProperties":false}
@@ -375,6 +381,8 @@ Adequate control with an error.
 **Category `low`**
 
 Limited control.
+
+## Output Format
 
 Return only a JSON object matching this schema. Include every requested trait exactly once. Preserve category labels exactly. Emit the explanations key before the scores key. Return all explanations first, then all scores. Match both arrays by trait_id; explanations must be nonblank.
 {"type":"object","properties":{"explanations":{"type":"array","minItems":2,"maxItems":2,"items":{"type":"object","properties":{"trait_id":{"type":"string","enum":["cohesion","grammar"]},"text":{"type":"string","minLength":1}},"required":["trait_id","text"],"additionalProperties":false}},"scores":{"type":"array","minItems":2,"maxItems":2,"items":{"oneOf":[{"type":"object","properties":{"trait_id":{"const":"cohesion"},"category_label":{"type":"string","enum":["low","medium","high"]}},"required":["trait_id","category_label"],"additionalProperties":false},{"type":"object","properties":{"trait_id":{"const":"grammar"},"category_label":{"type":"string","enum":["low","medium","high"]}},"required":["trait_id","category_label"],"additionalProperties":false}]}}},"required":["explanations","scores"],"additionalProperties":false}
@@ -512,7 +520,7 @@ Choose the response that communicates the sequence most clearly.
 
 Return only a JSON object containing "winner_id" and "tie".
 
-The value of "winner_id" must be exactly "essay_01" or "essay_02", identifying the essay that better fulfills the comparison criterion. For a tie, use "winner_id": null and "tie": true. For a winning essay, use "tie": false.
+When selecting a winner, the value of "winner_id" must be exactly "essay_01" or "essay_02", identifying the essay that better fulfills the comparison criterion. For a tie, use "winner_id": null and "tie": true. For a winning essay, use "tie": false.
 
 Do not include explanations or additional fields.
 {"type":"object","properties":{"winner_id":{"enum":["essay_01","essay_02",null]},"tie":{"type":"boolean"}},"required":["winner_id","tie"],"additionalProperties":false,"oneOf":[{"properties":{"winner_id":{"const":null},"tie":{"const":true}}},{"properties":{"winner_id":{"enum":["essay_01","essay_02"]},"tie":{"const":false}}}]}

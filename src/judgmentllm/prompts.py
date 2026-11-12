@@ -665,6 +665,8 @@ def _output_instructions_v2(commitment: OutputCommitmentV2) -> str:
                 if contract.explanations
                 else "Return only winner_id; do not include tie or explanation."
             )
+    if contract.presentation_version == 2:
+        text = "## Output Format\n\n" + text
     return text + "\n" + commitment.schema_text
 
 

@@ -12,7 +12,7 @@ import pytest
 from native_transport_fixture import context_for, specification
 from test_durable_native_preparation import native_specification
 from test_mock_provider import request
-from test_presentation_revision import pair
+from test_presentation_revision import pair, rubric
 from test_production_transport import case
 
 from judgmentllm.native_schema_v2 import (
@@ -26,14 +26,14 @@ from judgmentllm.output_commitments import (
     detached_output_commitment,
     validate_output_commitment,
 )
-from judgmentllm.output_contracts import PairwiseOutputContract
+from judgmentllm.output_contracts import PairwiseOutputContract, RubricOutputContract
 from judgmentllm.preparation import prepare_run
 from judgmentllm.preparation.freezing import PreparationError
 from judgmentllm.production_transport import (
     prepare_production_request,
     production_context,
 )
-from judgmentllm.prompts import PromptError, render_prompt
+from judgmentllm.prompts import PromptError, _output_instructions_v2, render_prompt
 from judgmentllm.providers import MockAdapter
 from judgmentllm.transport import PreparedRequestV3, physical_identity
 
@@ -89,6 +89,30 @@ def test_historical_pair_instructions_remain_original_id_based(
     assert "essay_01" not in rendered.text
     assert rendered.output_commitment is not None
     assert '"student_A034"' in rendered.output_commitment.schema_text
+
+
+@pytest.mark.parametrize("explanations", [False, True])
+def test_historical_rubric_output_instructions_keep_exact_bytes(
+    explanations: bool,
+) -> None:
+    contract = RubricOutputContract(
+        traits=(rubric().traits[8],), explanations=explanations
+    )
+    commitment = detached_output_commitment(contract)
+    expected = (
+        "Return only a JSON object matching this schema. Include every requested "
+        "trait exactly once. Preserve category labels exactly. "
+        + (
+            "In scores, put each category_label before its explanation. Explanations must be nonblank."
+            if explanations
+            else "Do not include explanations."
+        )
+        + "\n"
+        + commitment.schema_text
+    )
+    assert _output_instructions_v2(commitment).encode("utf-8") == expected.encode(
+        "utf-8"
+    )
 
 
 def test_v1_contract_admission_cannot_reinterpret_historical_requests(

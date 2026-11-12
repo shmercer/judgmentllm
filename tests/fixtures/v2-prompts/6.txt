@@ -11,7 +11,7 @@ Choose the response that communicates the sequence most clearly.
 
 Return only a JSON object containing "winner_id" and "tie".
 
-The value of "winner_id" must be exactly "essay_01" or "essay_02", identifying the essay that better fulfills the comparison criterion. For a tie, use "winner_id": null and "tie": true. For a winning essay, use "tie": false.
+When selecting a winner, the value of "winner_id" must be exactly "essay_01" or "essay_02", identifying the essay that better fulfills the comparison criterion. For a tie, use "winner_id": null and "tie": true. For a winning essay, use "tie": false.
 
 Do not include explanations or additional fields.
 {"type":"object","properties":{"winner_id":{"enum":["essay_01","essay_02",null]},"tie":{"type":"boolean"}},"required":["winner_id","tie"],"additionalProperties":false,"oneOf":[{"properties":{"winner_id":{"const":null},"tie":{"const":true}}},{"properties":{"winner_id":{"enum":["essay_01","essay_02"]},"tie":{"const":false}}}]}

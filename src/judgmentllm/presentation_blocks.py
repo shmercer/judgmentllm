@@ -81,10 +81,13 @@ def pairwise_instructions(contract: PairwiseOutputContract) -> str:
         fields += ' and "tie"'
     if contract.explanations:
         fields += ' and "explanation"'
+    winner_condition = (
+        "When selecting a winner, the value" if contract.allow_ties else "The value"
+    )
     parts = [
         "## Output Format",
         f"Return only a JSON object containing {fields}.",
-        'The value of "winner_id" must be exactly "essay_01" or "essay_02", '
+        f'{winner_condition} of "winner_id" must be exactly "essay_01" or "essay_02", '
         "identifying the essay that better fulfills the comparison criterion.",
     ]
     if contract.allow_ties:

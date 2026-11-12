@@ -24,6 +24,8 @@ must preserve that order. Adjacent redundant template headings for Rubric,
 Comparison Criterion and Output Format are removed before inserting the complete
 protected blocks; assessment text is never searched or rewritten.
 Template source size limits apply before redundant headings or whitespace are removed.
+Revision-2 rubric output instructions supply one `## Output Format` heading on
+every rendering path, including custom templates with an adjacent duplicate heading.
 
 The exact CJ wire enum is `essay_01`, `essay_02`, plus null for permitted ties.
 Validation checks aliases before resolving once through that occurrence's
@@ -33,6 +35,8 @@ contracts still require `tie`, with null winner iff true. Unknown, malformed and
 source-ID wire winners fail. If a source ID itself equals an alias, only the
 committed revision decides its interpretation. Normalized results and R exports
 retain original item IDs, occurrence IDs, attempts and orientation.
+Ties-enabled instructions apply the alias restriction when selecting a winner
+and explicitly permit a null winner for a tie.
 
 ## Compatibility and qualification
 
