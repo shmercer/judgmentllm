@@ -507,6 +507,8 @@ def _prompt_source(
             source = source.replace("Reference exemplars:\n{{ exemplars }}\n\n", "")
     else:
         source = template
+    if len(source.encode("utf-8")) > limits.max_source_bytes:
+        raise PromptError("Template exceeds the source size rendering safeguard.")
     if presentation_version == 2:
         # Remove only adjacent template headings whose protected placeholder owns
         # the same heading. Never scan or rewrite supplied assessment content.
@@ -520,8 +522,6 @@ def _prompt_source(
                 "",
                 source,
             )
-    if len(source.encode("utf-8")) > limits.max_source_bytes:
-        raise PromptError("Template exceeds the source size rendering safeguard.")
     return source
 
 

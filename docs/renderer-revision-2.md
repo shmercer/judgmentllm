@@ -23,6 +23,7 @@ description, without ordinal categories. The default template supplies `## Essay
 must preserve that order. Adjacent redundant template headings for Rubric,
 Comparison Criterion and Output Format are removed before inserting the complete
 protected blocks; assessment text is never searched or rewritten.
+Template source size limits apply before redundant headings or whitespace are removed.
 
 The exact CJ wire enum is `essay_01`, `essay_02`, plus null for permitted ties.
 Validation checks aliases before resolving once through that occurrence's

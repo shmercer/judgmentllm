@@ -20,7 +20,7 @@ from judgmentllm.output_contracts import (
     generate_output_schema,
     validate_pairwise_contract_output,
 )
-from judgmentllm.prompts import PromptError, render_prompt
+from judgmentllm.prompts import PromptError, RenderLimits, render_prompt
 
 
 def rubric() -> Rubric:
@@ -103,6 +103,21 @@ def test_independent_parent_number_and_standalone_without_invented_number() -> N
     standalone = render_prompt(traits=[trait], response=essay)
     assert "### Rephrasing of the Thesis Statement" in standalone.text
     assert essay.text in standalone.text
+
+
+def test_redundant_heading_cannot_hide_an_oversized_template() -> None:
+    template = (
+        "## Rubric\n"
+        + "\n" * 512
+        + "{{ rubric }}\n{{ response }}\n{{ output_instructions }}"
+    )
+    with pytest.raises(PromptError, match="source size"):
+        render_prompt(
+            rubric=rubric(),
+            response=ResponseItem(item_id="001", text="Synthetic essay."),
+            template=template,
+            limits=RenderLimits(max_source_bytes=256),
+        )
 
 
 @pytest.mark.parametrize(
