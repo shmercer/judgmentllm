@@ -117,10 +117,9 @@ def test_workflow_runs_quality_before_dynamic_matrix_and_keeps_diagnostics() -> 
     assert diagnostic["with"]["if-no-files-found"] == "error"
     assert "suite/*.json" in diagnostic["with"]["path"]
     assert "suite/*.xml" in diagnostic["with"]["path"]
-    for name in ("Set up required R", "Install pinned jsonlite"):
-        step = next(step for step in verify["steps"] if step.get("name") == name)
-        assert "r_required == 'true'" in step["if"]
-        assert "linux-3.11" in step["if"] and "risk == '4'" in step["if"]
+    assert "r_required" not in plan["outputs"]
+    assert "Rscript" not in json.dumps(verify["steps"])
+    assert "jsonlite" not in json.dumps(verify["steps"])
 
 
 def test_linux_image_is_pinned_and_r_setup_has_a_bounded_failure() -> None:
@@ -138,17 +137,44 @@ def test_linux_image_is_pinned_and_r_setup_has_a_bounded_failure() -> None:
     )
     verify = data["jobs"]["verify"]
     assert verify["runs-on"] == "${{ matrix.os }}"
-    setup = next(
-        step for step in verify["steps"] if step.get("name") == "Set up required R"
+    # The historical test ID is retained; R preparation is now explicitly local.
+    assert not any(
+        step.get("uses", "").startswith("r-lib/") for step in verify["steps"]
     )
-    assert setup["timeout-minutes"] == "5"
-    assert setup["with"]["r-version"] == "4.6.2"
-    jsonlite = next(
+    assert "Rscript" not in json.dumps(verify)
+
+
+def test_offline_package_cache_is_prepared_only_for_planned_installation_lanes() -> (
+    None
+):
+    data = workflow()
+    assert data["jobs"]["plan"]["outputs"]["packaging"] == (
+        "${{ steps.plan.outputs.packaging }}"
+    )
+    steps = data["jobs"]["verify"]["steps"]
+    prepare = next(
         step
-        for step in verify["steps"]
-        if step.get("name") == "Install pinned jsonlite"
+        for step in steps
+        if step.get("name") == "Prepare offline core installation cache"
     )
-    assert '== "2.0.0"' in jsonlite["run"]
+    assert prepare["if"] == (
+        "needs.plan.outputs.packaging == 'true' && "
+        "(matrix.id == 'linux-3.11' || needs.plan.outputs.risk == '4')"
+    )
+    assert prepare["shell"] == "bash"
+    assert (
+        "uv export --project candidate --locked --no-default-groups --no-emit-project"
+        in prepare["run"]
+    )
+    assert (
+        '--target "$RUNNER_TEMP/core-dependencies" --require-hashes' in prepare["run"]
+    )
+    assert '--requirements "$RUNNER_TEMP/core-requirements.txt"' in prepare["run"]
+    execute = next(
+        step for step in steps if step.get("name") == "Execute planned checks"
+    )
+    assert steps.index(prepare) < steps.index(execute)
+    assert "--offline --no-sync" in execute["run"]
 
 
 def test_original_coverage_floor_and_resource_deadlines_remain() -> None:

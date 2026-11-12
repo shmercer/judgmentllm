@@ -59,13 +59,14 @@ def test_separate_process_persistence_preserves_all_attempt_exports(
         assert list(repository.iter_results("foundation-rubric")) == rubric
 
 
+@pytest.mark.r_interop
 def test_persistence_outputs_pass_required_r_assertions(tmp_path: Path) -> None:
     executable = shutil.which("Rscript")
     if executable is None:
         if os.environ.get("JUDGMENTLLM_R_STRICT") == "1":
             pytest.fail("Required Rscript is unavailable")
         pytest.skip(
-            "Rscript unavailable locally; required Ubuntu CI step does not skip"
+            "Rscript unavailable locally; required local validation does not skip"
         )
     available = subprocess.run(
         [
@@ -82,7 +83,7 @@ def test_persistence_outputs_pass_required_r_assertions(tmp_path: Path) -> None:
         if os.environ.get("JUDGMENTLLM_R_STRICT") == "1":
             pytest.fail("Required jsonlite is unavailable")
         pytest.skip(
-            "jsonlite unavailable locally; required Ubuntu CI step does not skip"
+            "jsonlite unavailable locally; required local validation does not skip"
         )
     generate(tmp_path)
     completed = subprocess.run(

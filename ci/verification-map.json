@@ -164,7 +164,8 @@
         3,
         4
       ],
-      "applicability": "Affected behavior at levels 2/3; comprehensive at level 4. See docs/ci-optimization.md."
+      "applicability": "Affected behavior at levels 2/3; comprehensive at level 4. See docs/ci-optimization.md.",
+      "execution": "Local verification only, including Level 4. GitHub Actions defers measurement workloads; cold SDK byte-identity correctness remains required."
     },
     "cross-platform": {
       "execution": [
@@ -194,7 +195,7 @@
         "grouped-lifecycle",
         "cli-lifecycle"
       ],
-      "execution": "Applicable gates on Linux/Python 3.11 at level 2; all seven there at level 3; all seven on each comprehensive hosted lane at level 4.",
+      "execution": "Local only: applicable gates on Linux/Python 3.11 at level 2; all seven there at level 3; all seven on each comprehensive local lane at level 4. All actual R pytest consumers are marked r_interop and deferred by hosted lanes.",
       "guarantees": "Actual Python-generated outputs and installed CLI consumed in R/jsonlite; missing dependencies fail; IDs/order/probabilities/missing values unchanged",
       "risk_levels": [
         2,
@@ -202,6 +203,19 @@
         4
       ],
       "applicability": "Affected behavior at levels 2/3; comprehensive at level 4. See docs/ci-optimization.md."
+    },
+    "local-coverage": {
+      "gates": [
+        "combined-90-percent-floor",
+        "historical-change-aware-comparison"
+      ],
+      "execution": "Local Linux/Python 3.11 at levels 2, 3 and 4; all hosted lanes disable coverage instrumentation.",
+      "guarantees": "Branch coverage, unchanged baseline, changed origins and historical losses remain strictly checked locally; hosted status cannot replace local evidence.",
+      "risk_levels": [
+        2,
+        3,
+        4
+      ]
     },
     "ruff": {
       "gates": [
@@ -273,8 +287,9 @@
   "policy_reductions": [
     "Routine PRs no longer require a duplicate seven-lane local grid plus five hosted jobs.",
     "Level 0/1 omit comprehensive coverage, resource campaigns and unrelated R/package checks.",
-    "R gates run on the primary lane for affected PRs; cross-platform campaigns are level 4.",
-    "Static analysis runs once. Resource and packaging work are conditional outside level 4."
+    "R gates run locally on the primary lane for affected PRs; local cross-platform campaigns are level 4.",
+    "Static analysis runs once. Resource and packaging work are conditional outside level 4.",
+    "Coverage instrumentation/history, all R checks and resource workloads run locally only; hosted ordinary/serial correctness and SDK byte identity remain required. Complete PR acceptance needs both applicable local and hosted evidence."
   ],
   "test_replacement_contract": "ci/test-contract.json",
   "coverage_floor": "ci/coverage-floor.json",
