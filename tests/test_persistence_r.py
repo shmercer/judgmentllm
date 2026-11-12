@@ -3,13 +3,12 @@
 from __future__ import annotations
 
 import json
-import os
-import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+from r_dependencies import require_rscript
 
 from judgmentllm.io import read_results, read_results_csv
 from judgmentllm.persistence.repository import Repository
@@ -61,30 +60,7 @@ def test_separate_process_persistence_preserves_all_attempt_exports(
 
 @pytest.mark.r_interop
 def test_persistence_outputs_pass_required_r_assertions(tmp_path: Path) -> None:
-    executable = shutil.which("Rscript")
-    if executable is None:
-        if os.environ.get("JUDGMENTLLM_R_STRICT") == "1":
-            pytest.fail("Required Rscript is unavailable")
-        pytest.skip(
-            "Rscript unavailable locally; required local validation does not skip"
-        )
-    available = subprocess.run(
-        [
-            executable,
-            "--vanilla",
-            "-e",
-            "quit(status=if(requireNamespace('jsonlite',quietly=TRUE)) 0L else 1L)",
-        ],
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    if available.returncode:
-        if os.environ.get("JUDGMENTLLM_R_STRICT") == "1":
-            pytest.fail("Required jsonlite is unavailable")
-        pytest.skip(
-            "jsonlite unavailable locally; required local validation does not skip"
-        )
+    executable = require_rscript()
     generate(tmp_path)
     completed = subprocess.run(
         [executable, "--vanilla", str(R_SCRIPT), str(tmp_path)],
