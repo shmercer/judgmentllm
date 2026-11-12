@@ -9,3 +9,7 @@ aliases; a historical winner `essay_01` selects the original second item, while
 new positional interpretation would select the first. This fixture must remain
 immutable. Reopening explicitly authorizes the verified frozen snapshots because
 original producer paths are unavailable. No provider or real student data exists.
+
+The additional [portable fixture](portable/) uses Python-origin specifications
+with relative input filenames for replay on both Windows and POSIX. This original
+archive and producer remain unchanged and independently hash-checked.

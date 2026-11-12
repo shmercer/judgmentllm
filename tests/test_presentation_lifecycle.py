@@ -27,7 +27,7 @@ from judgmentllm.results import PairwiseResult
 async def test_genuine_pre_change_prepared_and_received_requests(
     tmp_path: Path, run_id: str
 ) -> None:
-    fixture = Path(__file__).parent / "fixtures/presentation-history"
+    fixture = Path(__file__).parent / "fixtures/presentation-history/portable"
     provenance = json.loads((fixture / "provenance.json").read_text())
     assert provenance["source_commit"] == "38bda981a46330b73fec6e80a9b1c0c7a3c1c61a"
     raw_archive = base64.b64decode(
@@ -72,6 +72,25 @@ async def test_genuine_pre_change_prepared_and_received_requests(
         assert row.presented_order == ["essay_02", "essay_01"]
         assert len(tuple(repository.iter_attempts(run_id))) == 1
     assert manifest_path.read_bytes() == before
+
+
+@pytest.mark.parametrize("variant", ["", "portable"])
+def test_historical_evidence_bytes_remain_exact(variant: str) -> None:
+    fixture = Path(__file__).parent / "fixtures/presentation-history" / variant
+    provenance = json.loads((fixture / "provenance.json").read_bytes())
+    assert provenance["source_commit"] == "38bda981a46330b73fec6e80a9b1c0c7a3c1c61a"
+    assert (
+        hashlib.sha256(
+            base64.b64decode(
+                (fixture / "store.tar.gz.base64").read_bytes(), validate=True
+            )
+        ).hexdigest()
+        == provenance["archive_sha256"]
+    )
+    assert (
+        hashlib.sha256((fixture / "producer.py.txt").read_bytes()).hexdigest()
+        == provenance["producer_script_sha256"]
+    )
 
 
 @pytest.mark.asyncio

@@ -1,0 +1,9 @@
+# These artifacts are compared or hashed byte-for-byte across all platforms.
+/tests/fixtures/presentation-history/producer.py.txt -text
+/tests/fixtures/presentation-history/store.tar.gz.base64 -text
+/tests/fixtures/presentation-history/portable/producer.py.txt -text
+/tests/fixtures/presentation-history/portable/store.tar.gz.base64 -text
+/examples/rendering-revision2/*.txt -text
+/examples/rendering-revision2/*.json -text
+/examples/rendering-revision2/*.jsonl -text
+/examples/rendering-revision2/*.csv -text

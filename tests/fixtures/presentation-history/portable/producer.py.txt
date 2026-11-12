@@ -1,0 +1,49 @@
+from __future__ import annotations
+import asyncio
+import os
+import hashlib
+import json
+from pathlib import Path
+import tarfile
+from judgmentllm.config import RunSpec, RunSpecV2
+from judgmentllm.execution import execute_run
+from judgmentllm.preparation import prepare_run
+from judgmentllm.providers import MockAdapter, MockScenario
+
+root=Path('/tmp/issue38-portable-history-producer')
+root.mkdir()
+os.chdir(root)
+records=Path('responses.jsonl')
+records.write_text(''.join(json.dumps({'item_id':ident,'text':text})+'\n' for ident,text in [('essay_02','Synthetic original left.\n\nParagraph two.'),('essay_01','Synthetic original right.')]))
+pairs=Path('pairs.jsonl')
+pairs.write_text(json.dumps({'pair_id':'0001','pair_uid':'0001','left_item_id':'essay_02','right_item_id':'essay_01','trait_id':'overall'})+'\n')
+store=root/'store'
+ledger=root/'ledger.sqlite3'
+async def produce():
+    for version,run_id in [(1,'v1-pending'),(2,'v2-pending'),(2,'v2-recovery')]:
+        model=RunSpec if version==1 else RunSpecV2
+        spec=model.model_validate({'schema_version':version,'task_kind':'pairwise','input':records,'pairs':pairs,'criteria':[{'trait_id':'overall','name':'Overall','description':'Prefer clear synthetic evidence.'}],'provider':'mock','endpoint':'synthetic','model':'offline-history','execution':{'explanations':True,'concurrency':1},'capture':'full'})
+        assert str(spec.input.path)=='responses.jsonl'
+        assert spec.pairs is not None and str(spec.pairs.path)=='pairs.jsonl'
+        adapter=MockAdapter(ledger,scenario=MockScenario(winner='second'))
+        with prepare_run(spec,store=store,run_id=run_id,capabilities=adapter.capabilities(spec)) as prepared:
+            dependency=next(prepared.iter_request_dependencies())
+            rendered=prepared.render(dependency)
+            assert 'First response essay_02' in rendered.text
+            assert 'presentation_version' not in prepared.manifest.model_dump()['template']
+        if run_id=='v2-recovery':
+            def fault(point,request):
+                if point=='after_evidence_commit':
+                    raise RuntimeError('Synthetic producer interruption after original response')
+            try:
+                await execute_run(run_id,store=store,adapter=adapter,fault=fault,spec=spec)
+            except ExceptionGroup:
+                pass
+            assert adapter.submit_calls==1
+asyncio.run(produce())
+archive=Path('/tmp/issue38-portable-presentation-history.tar.gz')
+with tarfile.open(archive,'w:gz') as tar:
+    for path in sorted(root.rglob('*')):
+        if path.is_file():
+            tar.add(path,arcname=str(path.relative_to(root)),recursive=False)
+print(json.dumps({'source_commit':'38bda981a46330b73fec6e80a9b1c0c7a3c1c61a','archive_sha256':hashlib.sha256(archive.read_bytes()).hexdigest(),'producer_script_sha256':hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),'bytes':archive.stat().st_size}))

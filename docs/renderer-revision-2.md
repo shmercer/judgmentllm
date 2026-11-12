@@ -51,8 +51,11 @@ omitted when serializing revision 1, preserving old bytes/digests. No store or
 historical evidence is migrated, repaired or rehashed. Historical v1 requests
 retain their explicit-tie parser; new v1 preparations use a committed generated
 contract through the existing mock-v2 protocol. RunSpec parsing defaults remain
-unchanged. The genuine main-produced fixture covers pending v1/v2 and received
-v2 requests, including a source-ID/alias collision.
+unchanged. Genuine main-produced fixtures cover pending v1/v2 and received v2
+requests, including a source-ID/alias collision. Cross-platform replay uses an
+additional Python-origin fixture with relative single-component input paths;
+the original POSIX-path archive remains unchanged and independently hash-checked.
+Scoped Git attributes preserve exact fixture and example bytes on checkout.
 
 Native selection additionally requires the explicit
 `assessment_presentation_v2` qualification feature. Historical reviewed profiles
