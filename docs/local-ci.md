@@ -7,6 +7,13 @@ lane. Routine PRs do **not** need a duplicate local platform campaign before
 hosted CI. A passing primary lane does not imply deferred platforms or R gates
 passed. Hosted CI records the requirements and the named acceptance status.
 
+Resource measurement workloads execute locally only. `ci/check.py --profile pr`
+includes affected measurements in its local primary lane; native comprehensive
+and release checks retain all existing workloads and bounds. GitHub Actions
+defers measurements even for comprehensive runs, while keeping cold SDK byte
+identity, functional tests, strict coverage and required R gates. Local measurement
+receipts never count as hosted acceptance evidence.
+
 The native grid remains an explicit complete-qualification option. The details
 below apply **when this grid is requested**, not to every PR. It runs Ubuntu
 CPython 3.11.18/3.12.16/3.15.2 and Windows/macOS 3.11.18/3.12.16, including all

@@ -73,7 +73,7 @@ jobs:
         run: |
           launcher=(python)
           if [ "$RISK" != 0 ]; then launcher=(uv run --project candidate --offline --no-sync python); fi
-          "${launcher[@]}" policy/ci/acceptance.py lane --source candidate --plan "$RUNNER_TEMP/p/plan.json" --run-id "$RUN_ID" --quality-only --output "$RUNNER_TEMP/p/quality"
+          "${launcher[@]}" policy/ci/acceptance.py lane --source candidate --plan "$RUNNER_TEMP/p/plan.json" --run-id "$RUN_ID" --execution-scope hosted --quality-only --output "$RUNNER_TEMP/p/quality"
       - name: Preserve plan and quality evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
@@ -145,6 +145,7 @@ jobs:
           if [ "$RISK" != 0 ]; then launcher=(uv run --project candidate --offline --no-sync python); fi
           "${launcher[@]}" policy/ci/acceptance.py lane \
             --source candidate --plan "$RUNNER_TEMP/p/plan.json" --lane "${{ matrix.id }}" \
+            --execution-scope hosted \
             --quality-receipt "$RUNNER_TEMP/p/quality/quality.json" --run-id "$RUN_ID" --output "$RUNNER_TEMP/v"
       - name: Preserve diagnostics even on failure
         if: always()

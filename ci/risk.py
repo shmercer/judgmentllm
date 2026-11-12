@@ -512,6 +512,7 @@ def make_plan(
         "targets": PROMPT_TESTS if level == 1 else ["tests"],
         "r_gates": r_gates,
         "resources": level == 4 or level >= 2 and resource_sensitive,
+        "resource_execution": "local",
         "packaging": packaging,
         "coverage": level >= 2,
         "verification_map_sha256": hashlib.sha256(
@@ -531,7 +532,13 @@ def make_plan(
     return plan
 
 
-def required_steps(plan: dict[str, Any], lane: str) -> set[str]:
+def required_steps(
+    plan: dict[str, Any], lane: str, *, execution_scope: str = "hosted"
+) -> set[str]:
+    if execution_scope not in {"local", "hosted"}:
+        raise ValueError("Execution scope must be local or hosted")
+    if plan.get("resource_execution") != "local":
+        raise ValueError("Plan must declare local resource measurement policy")
     primary = lane == "linux-3.11"
     names: set[str] = {"docs"} if primary else set()
     if plan["risk"] >= 1 and primary:
@@ -542,7 +549,11 @@ def required_steps(plan: dict[str, Any], lane: str) -> set[str]:
         names.add("coverage")
     if plan["risk"] >= 3 and primary:
         names.add("infrastructure")
-    if plan["resources"] and (primary or plan["risk"] == 4):
+    if (
+        execution_scope == "local"
+        and plan["resources"]
+        and (primary or plan["risk"] == 4)
+    ):
         names.add("resources")
     if primary or plan["risk"] == 4:
         names.update(f"r-{name}" for name in plan["r_gates"])
@@ -571,6 +582,7 @@ def admit(
             or receipt.get("status") != "passed"
             or receipt.get("source_verified") is not True
             or receipt.get("phase") != "complete"
+            or receipt.get("execution_scope") != "hosted"
         ):
             errors.append(f"Failed or incorrect source/plan/run identity: {lane}")
         steps = receipt.get("steps", [])

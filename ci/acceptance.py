@@ -67,7 +67,12 @@ def run_lane(
     workers: int = 4,
     quality_only: bool = False,
     quality_receipt: Path | None = None,
+    execution_scope: str = "hosted",
 ) -> int:
+    if execution_scope not in {"local", "hosted"}:
+        raise ValueError("Execution scope must be local or hosted")
+    if execution_scope == "local" and os.environ.get("GITHUB_ACTIONS") == "true":
+        raise ValueError("Local resource measurements cannot run in GitHub Actions")
     source, output = source.resolve(), output.resolve()
     if output.is_relative_to(source):
         raise ValueError("Evidence must be outside the checkout")
@@ -83,16 +88,20 @@ def run_lane(
     ):
         raise ValueError("Lane interpreter/OS does not match its plan")
     output.mkdir(parents=True, exist_ok=False)
-    needed = required_steps(plan, lane)
+    needed = required_steps(plan, lane, execution_scope=execution_scope)
     report: dict[str, Any] = {
         "source_sha": plan["source_sha"],
         "plan_sha256": plan["plan_sha256"],
         "lane": lane,
         "run_id": run_id,
+        "execution_scope": execution_scope,
         "status": "failed",
         "source_verified": False,
         "steps": [],
-        "deferred": plan["deferred"],
+        "deferred": {
+            **plan["deferred"],
+            "resource_measurements": execution_scope == "hosted" and plan["resources"],
+        },
         "risk": plan["risk"],
         "python": sys.version,
         "os": platform.platform(),
@@ -150,7 +159,13 @@ def run_lane(
             if (
                 any(
                     prior.get(key) != report[key]
-                    for key in ("source_sha", "plan_sha256", "lane", "run_id")
+                    for key in (
+                        "source_sha",
+                        "plan_sha256",
+                        "lane",
+                        "run_id",
+                        "execution_scope",
+                    )
                 )
                 or prior.get("phase") != "quality"
                 or prior.get("status") != "passed"
@@ -368,6 +383,9 @@ def main() -> int:
     parser.add_argument("--name", choices=R_GATES)
     parser.add_argument("--quality-only", action="store_true")
     parser.add_argument("--quality-receipt", type=Path)
+    parser.add_argument(
+        "--execution-scope", choices=("local", "hosted"), default="hosted"
+    )
     args = parser.parse_args()
     if args.operation in {"plan", "aggregate"} and args.base:
         # Dispatch has no event.before SHA. Resolve main to a literal commit
@@ -399,6 +417,7 @@ def main() -> int:
             workers=args.workers,
             quality_only=args.quality_only,
             quality_receipt=args.quality_receipt,
+            execution_scope=args.execution_scope,
         )
     if not args.base or not args.head:
         parser.error("aggregation requires independently supplied --base and --head")

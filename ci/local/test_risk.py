@@ -319,6 +319,10 @@ def test_stronger_request_and_complete_matrix_are_recorded(repository: Any) -> N
     strong = make_plan(source, base, head, minimum=4)
     assert strong["lanes"] == COMPREHENSIVE
     assert strong["coverage"] and strong["resources"] and strong["packaging"]
+    assert strong["resource_execution"] == "local"
+    assert all(
+        "resources" not in required_steps(strong, lane["id"]) for lane in COMPREHENSIVE
+    )
     assert all(
         f"r-{gate}" in required_steps(strong, "windows-3.11") for gate in R_GATES
     )
@@ -374,7 +378,8 @@ def test_manual_dispatch_resolves_main_and_keeps_affected_ci_gates(
     assert plan["base_sha"] == base and plan["source_sha"] == head
     assert plan["risk"] == 3 and plan["changes"][0]["path"] == "ci/control.py"
     assert plan["resources"] and plan["packaging"]
-    assert "resources" in required_steps(plan, "linux-3.11")
+    assert "resources" not in required_steps(plan, "linux-3.11")
+    assert "resources" in required_steps(plan, "linux-3.11", execution_scope="local")
     assert "sdist" in required_steps(plan, "linux-3.11")
 
 
@@ -388,6 +393,7 @@ def passing_receipts(plan: dict[str, Any]) -> list[dict[str, Any]]:
             "source_verified": True,
             "status": "passed",
             "phase": "complete",
+            "execution_scope": "hosted",
             "steps": [
                 {"name": name, "exit_code": 0}
                 for name in required_steps(plan, lane["id"])
@@ -414,6 +420,8 @@ def passing_receipts(plan: dict[str, Any]) -> list[dict[str, Any]]:
         "partial-quality",
         "unverified-source",
         "duplicate-step",
+        "local-scope",
+        "missing-scope",
     ],
 )
 def test_admission_never_conceals_failed_or_omitted_requirements(
@@ -451,6 +459,10 @@ def test_admission_never_conceals_failed_or_omitted_requirements(
         receipts[0]["source_verified"] = False
     elif fault == "duplicate-step":
         receipts[0]["steps"].append(copy.deepcopy(receipts[0]["steps"][0]))
+    elif fault == "local-scope":
+        receipts[0]["execution_scope"] = "local"
+    elif fault == "missing-scope":
+        receipts[0].pop("execution_scope")
     assert bool(admit(plan, receipts, "run:1")) == (fault != "none")
 
 

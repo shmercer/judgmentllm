@@ -266,6 +266,8 @@ def main() -> int:
                 str(options.workers),
                 "--run-id",
                 "local",
+                "--execution-scope",
+                "local",
             ],
             cwd=ROOT,
             check=False,

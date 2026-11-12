@@ -460,3 +460,16 @@ for unmatched scopes. A matching promotion deliberately invalidates older frozen
 contexts, including text and qualification candidates; recover historical stores
 with their original clean source/dependencies. No migration, integrity exception,
 runtime registration, harness-grant reuse or public schema change is introduced.
+
+
+## Resource measurements run locally only
+
+Resource workload applicability remains risk-based, and workload sizes, memory
+ceilings and deadlines remain unchanged. Measurements execute locally, including
+comprehensive and release verification. Hosted lanes retain functional coverage,
+cold SDK byte identity, strict historical coverage and required R gates. Plans
+declare the resource execution location; receipts distinguish local from hosted
+execution, and local receipts cannot qualify hosted CI. The measured Issue #38
+run spent 13m14s on resource cases without adding covered production lines and
+reached the 50-minute limit in its final R gate. See the authoritative
+[CI policy](ci-optimization.md) for timing evidence and protected-base rollout.

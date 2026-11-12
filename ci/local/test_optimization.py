@@ -62,6 +62,38 @@ def test_execution_r_fixture_is_collected_only_in_the_serial_partition(
     }
 
 
+def test_cold_sdk_probe_remains_serial_correctness_without_measurements(
+    tmp_path: Path,
+) -> None:
+    source = Path(__file__).resolve().parents[2]
+    receipt = tmp_path / "collected.json"
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "--no-cov",
+            "--collect-only",
+            "-q",
+            "-p",
+            "ci.local.pytest_report",
+            f"--ci-report={receipt}",
+            "tests/test_native_other_sdk.py",
+        ],
+        cwd=source,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    selected = partition(json.loads(receipt.read_text())["collected"])
+    assert selected["serial"] == [
+        "tests/test_native_other_sdk.py::test_pinned_sdk_preserves_sixteen_fragments_under_offline_guards[anthropic]"
+    ]
+    assert not selected["resource"]
+    assert len(selected["ordinary"]) == 2
+
+
 class FakeControl:
     mechanism = "synthetic-per-run-control"
 

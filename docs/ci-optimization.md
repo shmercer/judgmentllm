@@ -9,9 +9,9 @@ risk. Unknowns and ambiguity escalate. Deferred checks are **not passed checks**
 |---|---|---|
 | 0 — Documentation | Non-executable prose | Relevant offline links and example syntax checks |
 | 1 — Low | Designated prompt-instruction wording or template prose with unchanged schema, selection, sandbox and control flow | Affected Ruff/format/Pyright, focused unit/regression and prompt/serialization contracts; no comprehensive coverage, platform, resource, R or package campaign |
-| 2 — Moderate | Independent adapter or response handling | Primary Linux/Python 3.11 functional suite and coverage; affected integration/R gates, platforms and packaging |
-| 3 — High | Execution, persistence/recovery, schemas/exports, authentication/privacy, CI/selection/coverage controls | Primary suite/coverage, representative full functional Windows 3.12 and macOS 3.11, all seven strict Linux R gates, relevant security/durability/concurrency/compatibility tests; resource/package checks when affected |
-| 4 — Release/comprehensive | Publication, compatibility milestone, weekly/manual complete check | Supported platform/version union, all strict R gates across platforms, primary coverage, resource workloads, wheel/sdist metadata and isolated installs; releases additionally require compatibility, scale/reproducibility and alpha-readiness evidence |
+| 2 — Moderate | Independent adapter or response handling | Primary Linux/Python 3.11 functional suite and coverage; affected integration/R gates, platforms and packaging; affected resource measurements locally |
+| 3 — High | Execution, persistence/recovery, schemas/exports, authentication/privacy, CI/selection/coverage controls | Primary suite/coverage, representative full functional Windows 3.12 and macOS 3.11, all seven strict Linux R gates, relevant security/durability/concurrency/compatibility tests; affected resource measurements locally and package checks when affected |
+| 4 — Release/comprehensive | Publication, compatibility milestone, weekly/manual complete check | Supported platform/version union, all strict R gates across platforms, primary coverage, resource workloads locally, wheel/sdist metadata and isolated installs; releases additionally require compatibility, scale/reproducibility and alpha-readiness evidence |
 
 All existing critical tests remain available. No provider calls are authorized.
 Synthetic offline implementation acceptance and explicitly authorized live
@@ -42,6 +42,37 @@ review it independently before updating trusted main. Never count unrun R gates
 or a manual candidate-workflow run as protected-base acceptance of another PR.
 
 ## Commands and ordinary workflow
+
+### Resource measurements execute locally
+
+Resource measurement workloads run only in local verification, including at
+Level 4. Hosted GitHub Actions lanes defer them. The plan retains their risk-based
+applicability as `resources` and declares `resource_execution: local`.
+`ci/check.py --profile pr` explicitly selects local execution; native comprehensive
+and release runners retain their existing workloads. Workload dimensions, memory
+ceilings and child deadlines are unchanged.
+
+Hosted lanes explicitly select hosted execution, retain every functional case,
+the isolated cold SDK byte-identity correctness probe, strict primary coverage and
+all applicable R/jsonlite gates. If deferring measurements loses required coverage,
+acceptance fails. Local receipts identify their execution scope and cannot satisfy
+hosted admission; quality receipts also require the same scope. GitHub Actions
+rejects the local-execution option.
+
+The [Issue #38 run](https://github.com/shmercer/judgmentllm/actions/runs/43125144700)
+passed all 7,035 tests and the strict coverage comparison. Its ordinary partition
+took 33m29s and resource measurements another 13m14s. The 50-minute job expired in
+the last R CLI gate after six separate R gates passed. The same local ordinary and
+complete suites both covered 18,804 of 19,580 statements: the resource partition
+added no covered production lines in that run. This supports moving measurement
+work locally, retaining functional tests, coverage, R gates and fixture deadlines.
+The timeout remains failed evidence.
+
+This is a protected policy change. Its PR's automatic base-policy workflow is
+cancelled before resource execution, and the proposed hosted workflow is tested
+with an explicit manual dispatch for review. A candidate policy cannot reduce its
+own protected-base requirements. Independent review and an accepted update to
+trusted main are required before dependent PRs can use the new hosted policy.
 
 Prepare once with `uv sync --locked --all-extras --group dev --python 3.11`.
 Use these from the checkout; outputs default to fresh external temporary paths:
@@ -84,7 +115,8 @@ package-index DNS from an isolated check. Native complete-grid check mode retain
 its prepared offline caches.
 Pytest uses the existing complete collection/partition/case-receipt runner.
 Ordinary and serial functional cases remain; expensive resource measurements are
-conditional outside Level 4. Cold pinned-SDK byte-identity probes retain their
+local and conditional outside Level 4. Hosted lanes never run measurement
+workloads. Cold pinned-SDK byte-identity probes retain their
 isolation and remain correctness requirements even when resource measurements
 are deferred. Case existence/replacement, crash propagation, no unexpected
 skips/xfails and selection completeness stay enforced. Coverage is explicitly

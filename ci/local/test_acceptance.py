@@ -129,6 +129,43 @@ def test_stale_quality_reuse_is_rejected(documentation: Any, tmp_path: Path) -> 
     )
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="primary runner uses Linux")
+def test_quality_receipt_cannot_cross_execution_scopes(
+    documentation: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    source, plan = documentation
+    quality = tmp_path / "local-quality"
+    assert (
+        acceptance.run_lane(
+            plan,
+            source,
+            quality,
+            "linux-3.11",
+            "run:1",
+            quality_only=True,
+            execution_scope="local",
+        )
+        == 0
+    )
+    output = tmp_path / "hosted"
+    assert (
+        acceptance.run_lane(
+            plan,
+            source,
+            output,
+            "linux-3.11",
+            "run:1",
+            quality_receipt=quality / "quality.json",
+            execution_scope="hosted",
+        )
+        == 1
+    )
+    receipt = json.loads((output / "receipt.json").read_text())
+    assert "Quality receipt" in receipt["error"]
+    assert receipt["steps"] == []
+
+
 def test_missing_required_r_executable_is_not_a_skip(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
@@ -260,6 +297,7 @@ def test_packaging_failure_prevents_expensive_tests(
                 "lane": "linux-3.11",
                 "run_id": "run:1",
                 "phase": "quality",
+                "execution_scope": "hosted",
                 "status": "passed",
                 "source_verified": True,
                 "steps": [
@@ -293,3 +331,115 @@ def test_packaging_failure_prevents_expensive_tests(
     receipt = json.loads((output / "receipt.json").read_text())
     assert receipt["steps"][-1]["name"] == "build"
     assert not (output / "suite").exists()
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="primary runner uses Linux")
+def test_local_receipt_cannot_establish_hosted_acceptance(
+    documentation: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    source, plan = documentation
+    output = tmp_path / "local"
+    assert (
+        acceptance.run_lane(
+            plan, source, output, "linux-3.11", "run:1", execution_scope="local"
+        )
+        == 0
+    )
+    receipt = json.loads((output / "receipt.json").read_text())
+    assert receipt["execution_scope"] == "local"
+    assert admit(plan, [receipt], "run:1")
+
+
+def test_github_cannot_request_local_measurements(
+    documentation: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source, plan = documentation
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    with pytest.raises(ValueError, match="cannot run in GitHub Actions"):
+        acceptance.run_lane(
+            plan,
+            source,
+            tmp_path / "forbidden",
+            "linux-3.11",
+            "run:1",
+            execution_scope="local",
+        )
+    assert not (tmp_path / "forbidden").exists()
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="primary runner uses Linux")
+@pytest.mark.parametrize("scope", ["local", "hosted"])
+def test_resource_measurement_selection_follows_execution_scope(
+    documentation: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    scope: str,
+) -> None:
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    source, plan = documentation
+    plan.update(risk=1, resources=True)
+    quality = tmp_path / "quality.json"
+    quality.write_text(
+        json.dumps(
+            {
+                "source_sha": plan["source_sha"],
+                "plan_sha256": plan["plan_sha256"],
+                "lane": "linux-3.11",
+                "run_id": "run:1",
+                "phase": "quality",
+                "execution_scope": scope,
+                "status": "passed",
+                "source_verified": True,
+                "steps": [
+                    {"name": name, "exit_code": 0}
+                    for name in ("docs", "ruff", "format", "pyright")
+                ],
+            }
+        )
+    )
+    output = tmp_path / scope
+    original = subprocess.run
+    selections: list[list[str]] = []
+
+    def execute(command: list[str], **kwargs: Any) -> Any:
+        if command[0] == "git":
+            return cast(Any, original(command, **kwargs))
+        assert command[1].endswith("suite.py")
+        selections.append(command)
+        suite = output / "suite"
+        suite.mkdir()
+        (suite / "summary.json").write_text(
+            json.dumps(
+                {
+                    "status": "passed",
+                    "selection_complete": True,
+                    "source": {"commit": plan["source_sha"], "dirty": False},
+                    "deferred_resource_cases": ["synthetic resource workload"]
+                    if scope == "hosted"
+                    else [],
+                }
+            )
+        )
+        return subprocess.CompletedProcess[str](command, 0)
+
+    monkeypatch.setattr(acceptance.subprocess, "run", execute)
+    assert (
+        acceptance.run_lane(
+            plan,
+            source,
+            output,
+            "linux-3.11",
+            "run:1",
+            quality_receipt=quality,
+            execution_scope=scope,
+        )
+        == 0
+    )
+    assert len(selections) == 1
+    assert ("--skip-resources" in selections[0]) == (scope == "hosted")
+    receipt = json.loads((output / "receipt.json").read_text())
+    assert ("resources" in {step["name"] for step in receipt["steps"]}) == (
+        scope == "local"
+    )
+    assert receipt["deferred"]["resource_measurements"] == (scope == "hosted")
