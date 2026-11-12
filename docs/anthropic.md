@@ -47,7 +47,7 @@ used descriptively and in permitted text mode. A schema fixture, installed SDK,
 visible model, configured credential, or qualification-harness response grants no
 native production authority. There is no mechanism or model fallback on failure.
 
-Text-mode rubric instructions explicitly request one raw JSON object without
+Text-mode rubric and CJ instructions explicitly request one raw JSON object without
 Markdown code fences or any surrounding text. Prompting does not guarantee
 compliance: malformed output, including fenced JSON, remains an unsuccessful
 assessment. Prefer native structured output for stronger format enforcement when

@@ -218,3 +218,55 @@ must appear in that order. Custom templates cannot reveal source IDs through
 these standard placeholders. CJ output uses `essay_01` or `essay_02`, mapped to
 original IDs internally. Historical sealed requests keep their original revision.
 Alternative-descriptor instructions belong explicitly in rubric data.
+
+## Production JSON output instructions (issue #45)
+
+Current revision-2 production prompts share one `## Output Format` section with
+blank lines between short paragraphs. Text mode requests one raw JSON object,
+starting with `{` and ending with `}`, without Markdown fences or surrounding
+commentary. Native mode specifies the same required fields and assessment rules
+without text-level boundary requirements. Provider-native schemas remain
+authoritative for transport; full local validation always applies.
+
+All four rubric layouts specify exact trait IDs, string category labels (including
+numeric-looking labels), every requested trait exactly once, requested field
+order and nonblank explanations where enabled. Separated arrays each cover all
+traits and join by `trait_id`. All four CJ tie/explanation combinations specify
+their exact fields, presented winner aliases, tie/null semantics and, when
+requested, a concise evidence-based explanation. Additional fields are forbidden.
+Requested JSON key order does not establish model reasoning order or an
+endpoint enforcement guarantee; existing order diagnostics remain unchanged.
+
+Appended complete schemas have the label `Required JSON schema:` and a blank
+line before their exact serialized text. Routes repeating a partial native
+projection use `Native schema guidance (full requirements above still apply):`.
+Schemas are not sample answers and are never fenced inside the prompt. Existing
+production native routes continue omitting schema repetition; projected guidance
+is also exercised through the synthetic Together/Ollama routes, without adding
+production adapters or qualification.
+
+The wording change is limited to the shared renderer-3 revision-2 instructions.
+Historical presentation revision 1, including its original winner IDs and
+Anthropic safeguard, and legacy renderer-1/2 prompt bytes remain unchanged.
+User rubric, criterion, essay and exemplar text stays verbatim, including the
+word `protected` and original whitespace. The package-generated current output
+instructions refer simply to the rubric.
+
+Revision-2 rendered prompt hashes and the downstream exact payload, transport,
+manifest-index and provenance commitments change. Canonical schema bytes,
+native projections, output commitments, validators, normalized exports and
+provider authority records do not. Existing frozen revision-2 production or
+synthetic requests and source-bound qualification plans require their original
+source checkout to reproduce their original prompts; they must not be rewritten,
+rehashed or resumed against changed bytes. Prepare fresh requests/plans from
+the new source. Historical live evidence does not qualify these newly worded
+prompts. Current production native selection retains its existing revision-2
+qualification boundary; offline fixtures grant no live authority.
+
+[Complete prompt goldens](../tests/fixtures/output-instructions/prompts.json)
+cover a 12-trait numeric-label rubric in every layout and all CJ combinations,
+each in text and native modes. The
+[pre-change commitments](../tests/fixtures/output-instructions/baseline.json)
+come from unchanged source `c6e4ef9ffe36d8900c00732c4ba3d0bd63778b1e` and freeze
+224 production output commitments plus 112 historical prompt hashes. No historical
+fixtures or example snapshots were regenerated.

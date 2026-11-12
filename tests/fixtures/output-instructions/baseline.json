@@ -1,0 +1,901 @@
+{
+  "source_commit": "c6e4ef9ffe36d8900c00732c4ba3d0bd63778b1e",
+  "cases": {
+    "openai.responses/rubric_scores/text/1": {
+      "output": "7e98c1b0d90c9b722faf541d0770e6723afe3d2316c41831e2fd3d8aa84b461e",
+      "prompt": "41f35ed4a83db57e0be7b61385a9c4dd6efc0c3c1f690d039c31f1503ab3d6fb"
+    },
+    "openai.responses/rubric_scores/text/2": {
+      "output": "98f27943cf38b44d29537c252171295109778c6b1d9c508bb78e0a2f97e4b1ee",
+      "prompt": "a52a8c21b2c2947ff6baebab17ce76805358c9cf4249c757cd795a7dd4aef923"
+    },
+    "openai.responses/rubric_scores/native/1": {
+      "output": "8250ff6504b9a77b94f359f0bf9498464f07ba1219da89413d87e61807b8c4c1",
+      "prompt": "3548d16695dcc6c96f455a8d90a84eb1c03dbbece03ec284a027ee4192f09b64"
+    },
+    "openai.responses/rubric_scores/native/2": {
+      "output": "8d148249cfb1cd921ab60f1b23e2e3520e568f1b75636801539767e41d6b0a51",
+      "prompt": "a7943c50239d6768576ca8dc17860ddf1cdb219461be0e2936d7822f222f56c9"
+    },
+    "openai.responses/rubric_together/text/1": {
+      "output": "09fb4e6bd23862253153c999ba1fd52b23f7099632ade37b5718b50eae1b58e8",
+      "prompt": "28a8f844756a6148784962c5e4c66e0c24426758e63f825b7d153335dfd07c2d"
+    },
+    "openai.responses/rubric_together/text/2": {
+      "output": "92428cd23a684622c31715ec4d17b6cb45be927c72f76c18b019f79fc9c6ac96",
+      "prompt": "2c16c76f41a5f32d56ff1fa5cce945501209cd1826fc96f9b345c051d5b8dc3f"
+    },
+    "openai.responses/rubric_together/native/1": {
+      "output": "05c07d92227d24b68e1967b8ec34b76c7a546e47dae767638523eee9d788e692",
+      "prompt": "97318d7d8b6e83f033e7645711077f9d6d0dca7ec8d3d055bb57bf793fcfadb9"
+    },
+    "openai.responses/rubric_together/native/2": {
+      "output": "6fe90e5932b269394338e1f942c579b9a0ef9a0afebb0a6944781bb7eacb6de0",
+      "prompt": "6271ae18ed84b915a1031f7d37d027bf7d23667a305857e04de99c757e950915"
+    },
+    "openai.responses/rubric_scores_first/text/1": {
+      "output": "5e6ee496e59586315578d094e5f4c4b42ced011d542faaacc067ff79d84a37a6",
+      "prompt": "4c21a8cdfcc7abb3bdebf189039250f782cfccaf7dba0642130acc5bb0fc83d9"
+    },
+    "openai.responses/rubric_scores_first/text/2": {
+      "output": "c78ae7083e6daf38100ec34674ea1dc6953a79533fdfa73fabee7c549caf0355",
+      "prompt": "70a16369566d5e7ac2f74ad7bed86a4ded5aa9f70a45e954e2a70687c19f7c0a"
+    },
+    "openai.responses/rubric_scores_first/native/1": {
+      "output": "3d6e9c23308be7552c8aca1375b83af9979340b39c7a32a7e25599f1ccdeb5a9",
+      "prompt": "edd425cdb05e2c27daa7a0f2abe410c628560c41dec34c73c5c66702f3aad7be"
+    },
+    "openai.responses/rubric_scores_first/native/2": {
+      "output": "0451dabafca9e2296a6390f1d028d12344a1849210a33ca3cb4e6a04ce3be045",
+      "prompt": "b171a7e105f4c8ee13323ffe8e4e85b6349ac90fd79681c867966480196cd691"
+    },
+    "openai.responses/rubric_explanations_first/text/1": {
+      "output": "19071221f324e7775611232d65076427368a685e81f5f6b847c986d734312266",
+      "prompt": "ec3771f33cdd59ac2d040451acf432feb5be3e17857106957bdef9ad1e243c2c"
+    },
+    "openai.responses/rubric_explanations_first/text/2": {
+      "output": "4c650b840ab64de7fc5a193a978a0667c6dac31699173dae20874d84b9e89500",
+      "prompt": "dac797ad91acb7a091b5967d71b4be36ddeff6b0bacec3d6fb784c67882a4c78"
+    },
+    "openai.responses/rubric_explanations_first/native/1": {
+      "output": "b77961f6e4d26eb1502bd6e1833cce6dc4464185d40edf13e116445cafbe843e",
+      "prompt": "062cb0be9485fc94b9815f8b12d45662924ced80f373bea1f844688b7dd4779b"
+    },
+    "openai.responses/rubric_explanations_first/native/2": {
+      "output": "8796c41ab6e8bfcce11569b6ffaa645f35d4e7544bcdc6894afdef38760c0808",
+      "prompt": "671b02963ffb70d897979ac4079fad3ec516fa2aa9e7e72a8e2e5ad507c029f2"
+    },
+    "openai.responses/cj_winner/text/1": {
+      "output": "c1c9c441823f153f9602e47c9f8b0eef0d73e60f5e4719d5751c1237ba4d3031",
+      "prompt": "d9e18e0de6a93d734fcd7e8a1b9dd991f2d7165a64dbc9e1186874ceb4fb5b95"
+    },
+    "openai.responses/cj_winner/text/2": {
+      "output": "253f79fa018bb6661c50bc386718110db8959ceed1d2e46888dd2d6dcef6ab68",
+      "prompt": "5bcd6273c7e88b49f0cabfe0b27b1003b37b79873d4ddef8526082313531e72e"
+    },
+    "openai.responses/cj_winner/native/1": {
+      "output": "b8acede0cfb35a1c9d9358262888707580cc52260cc4695dd82daf1ddfb26322",
+      "prompt": "61994cb3883668700774d7db16e82286a6502370b689dbcdfa3f9834c4059432"
+    },
+    "openai.responses/cj_winner/native/2": {
+      "output": "9f829009ea270f8279557d914b801ae91b28db32aefc706ce8b14c9bcb4e6bde",
+      "prompt": "eee74dff7998d5d8249d1cd4961d398da9d936281b6dd5af9763d475a12563c4"
+    },
+    "openai.responses/cj_explanation/text/1": {
+      "output": "5a4b3ed51ff5f041dc278eee1a80b73fa0eb3842768fbfebe038520b1ef9d15e",
+      "prompt": "1af1fa9e5e6dd3ed1cfce5e2851e317cb4de99534cdd55e087ab26fe67189b38"
+    },
+    "openai.responses/cj_explanation/text/2": {
+      "output": "0585deaf88ddf0ba60704d64797e1761a0d63fe2d74fd999799d40d64afa0212",
+      "prompt": "9d9e12f29bbdc914c53d63f6345ae0771b63edc23323efddcf10acf164d4ec09"
+    },
+    "openai.responses/cj_explanation/native/1": {
+      "output": "127b00e5cb25fbae52a3114a99bba1ff213cb45c78ccf54fd3dedfd137bafa99",
+      "prompt": "ebbf41b1f6f4fd027f2939ef006c46a0d7c0fd5221bfbe58c7e6a04a91bff188"
+    },
+    "openai.responses/cj_explanation/native/2": {
+      "output": "8637074d7ea506e271e040069305f135d9092a9311481fb595a5f783b383d456",
+      "prompt": "ec2e4de64ef73f78b7cd4b38e4bf94ba2d47163851bf9a70cf4c5895c5205deb"
+    },
+    "openai.responses/cj_ties/text/1": {
+      "output": "4b79ab8bfaa3214e072238b04797ea96caf60163f5da3783a9b561739d9b25a4",
+      "prompt": "b1088db96d21b614897621e81359a18fc5c38cbd69d8abffd64c4299bae4cb85"
+    },
+    "openai.responses/cj_ties/text/2": {
+      "output": "5b30b54413ab4d2c3e0b81b6f550ee2919cb5816d6ab0bc22b9b542dd41e5cb1",
+      "prompt": "1e6bdf96a555f27330ed176d1a7af09b044e8d4bdac58157fdf7f5d1ea227f3b"
+    },
+    "openai.responses/cj_ties/native/1": {
+      "output": "6caa07756bdc080587907205c7f9601635ec9816887293fe94a28082126e7c89",
+      "prompt": "bf25033b3826cb57ae2bf5f3f634621c3cffec6bb01b8ffd1c019a9bc8b32d3e"
+    },
+    "openai.responses/cj_ties/native/2": {
+      "output": "d0b5fe1d3178aba5717b023709b7b25f350534e318cdfc9f6d8851ef56164c61",
+      "prompt": "37b3ed8ab7680e8819e208c82c3c4a686cba42f8761fd4ba8b3c7b05d1110fa0"
+    },
+    "openai.responses/cj_ties_explanation/text/1": {
+      "output": "b3f00ee90b38fcbe058942b0f44544e8162e0710444a9a90b3203c03a536edd1",
+      "prompt": "4e3cff3c592cea9c1bc308e3ec75b8121608d2429a9525e80e0fcfbedb57c872"
+    },
+    "openai.responses/cj_ties_explanation/text/2": {
+      "output": "e4cc6880bf90a79c2eeabbf4f7a6e51685a30dff661b4ab683d1888b3ce75dad",
+      "prompt": "bc1664691d20e56380414f22b341d6f1c37f13abe89e80f04cc64ace9b79c8f3"
+    },
+    "openai.responses/cj_ties_explanation/native/1": {
+      "output": "24289944e2b69aa104ffa0ef79af1faefc16c8431c715a60eb87fa4aa2bd4847",
+      "prompt": "6fca6f341d0286ef2868deb359c231e79e446ee9e7ceacbc1f76453c2512f048"
+    },
+    "openai.responses/cj_ties_explanation/native/2": {
+      "output": "d588f017af801df57eaf6b0f53c8a43ab6eece4fd6589c4233461276414dd79b",
+      "prompt": "6c73c96df7f57156bd8c86d04503712a2a39e3aebe5838ea3d722b81b15585d1"
+    },
+    "openai.chat/rubric_scores/text/1": {
+      "output": "244446255f27d5f29467ed33560ee7f87359f1191cfd843fc318c3e9e0099c40",
+      "prompt": "41f35ed4a83db57e0be7b61385a9c4dd6efc0c3c1f690d039c31f1503ab3d6fb"
+    },
+    "openai.chat/rubric_scores/text/2": {
+      "output": "6ccf91e3b5a33bf23193ce20e3ee27a332c58f74593c9a51fa6698a4824a86c1",
+      "prompt": "a52a8c21b2c2947ff6baebab17ce76805358c9cf4249c757cd795a7dd4aef923"
+    },
+    "openai.chat/rubric_scores/native/1": {
+      "output": "05ce0c5cdda5b82197ba52bc431c28ef636b774e780a2da0426a606e00eadb07",
+      "prompt": "3548d16695dcc6c96f455a8d90a84eb1c03dbbece03ec284a027ee4192f09b64"
+    },
+    "openai.chat/rubric_scores/native/2": {
+      "output": "bcda070f6de65bdc96a5fea1a7f47e342ced6e8427ac9cb5e3f1fb3f5b12db62",
+      "prompt": "a7943c50239d6768576ca8dc17860ddf1cdb219461be0e2936d7822f222f56c9"
+    },
+    "openai.chat/rubric_together/text/1": {
+      "output": "a90b34cbac5d8d96e1dd223f155185910accc7a79d84f83e950c309641c64175",
+      "prompt": "28a8f844756a6148784962c5e4c66e0c24426758e63f825b7d153335dfd07c2d"
+    },
+    "openai.chat/rubric_together/text/2": {
+      "output": "01e918adc2db3e5e5ffab43de1417a8785fd415157ff447dccfced5d887e103f",
+      "prompt": "2c16c76f41a5f32d56ff1fa5cce945501209cd1826fc96f9b345c051d5b8dc3f"
+    },
+    "openai.chat/rubric_together/native/1": {
+      "output": "802e08cfe8ffd167ad5fee4f6a1ec609173d83b90e884b6a18de3b30d8877ed1",
+      "prompt": "97318d7d8b6e83f033e7645711077f9d6d0dca7ec8d3d055bb57bf793fcfadb9"
+    },
+    "openai.chat/rubric_together/native/2": {
+      "output": "7b5701dc33d1d73b492684a24c9abcac8e10d6cae762714177bff79c46e3532b",
+      "prompt": "6271ae18ed84b915a1031f7d37d027bf7d23667a305857e04de99c757e950915"
+    },
+    "openai.chat/rubric_scores_first/text/1": {
+      "output": "7fc74100ddcd575f642f5b7166e093ac5d49b6080b462305a0993e76e6f7c672",
+      "prompt": "4c21a8cdfcc7abb3bdebf189039250f782cfccaf7dba0642130acc5bb0fc83d9"
+    },
+    "openai.chat/rubric_scores_first/text/2": {
+      "output": "ba5ce90c00e9989d10b880e10e42098b768e5784d1a5882369e82b3829f35188",
+      "prompt": "70a16369566d5e7ac2f74ad7bed86a4ded5aa9f70a45e954e2a70687c19f7c0a"
+    },
+    "openai.chat/rubric_scores_first/native/1": {
+      "output": "546ac30a8e59489803528ef1b6878a9b31a143cc1b203ca9cc5d31b63cd67882",
+      "prompt": "edd425cdb05e2c27daa7a0f2abe410c628560c41dec34c73c5c66702f3aad7be"
+    },
+    "openai.chat/rubric_scores_first/native/2": {
+      "output": "013b1157f34e99a87de71157cc88637cefd892bdaf057bbf9df8491f96c31618",
+      "prompt": "b171a7e105f4c8ee13323ffe8e4e85b6349ac90fd79681c867966480196cd691"
+    },
+    "openai.chat/rubric_explanations_first/text/1": {
+      "output": "6ee617b48e8d8db43ec4e8bf096b8f235a155126c44b71a5e26a06df81a03925",
+      "prompt": "ec3771f33cdd59ac2d040451acf432feb5be3e17857106957bdef9ad1e243c2c"
+    },
+    "openai.chat/rubric_explanations_first/text/2": {
+      "output": "15826781494642e46425750eb223c1c5d5520c2fc74fccda5eab555c9e2c5534",
+      "prompt": "dac797ad91acb7a091b5967d71b4be36ddeff6b0bacec3d6fb784c67882a4c78"
+    },
+    "openai.chat/rubric_explanations_first/native/1": {
+      "output": "a67863be98623dffb8337b879eb0d528736b2b2bcf8ffa9fdfbf864f3025d4b4",
+      "prompt": "062cb0be9485fc94b9815f8b12d45662924ced80f373bea1f844688b7dd4779b"
+    },
+    "openai.chat/rubric_explanations_first/native/2": {
+      "output": "f72c83c532572d24682c2fc4173f3161805e2685df84f989eeec293e69a778a9",
+      "prompt": "671b02963ffb70d897979ac4079fad3ec516fa2aa9e7e72a8e2e5ad507c029f2"
+    },
+    "openai.chat/cj_winner/text/1": {
+      "output": "2750575d66a7a86d6be04c80c6e811bb45bcf1175d1cd67d320544be3edbf2d7",
+      "prompt": "d9e18e0de6a93d734fcd7e8a1b9dd991f2d7165a64dbc9e1186874ceb4fb5b95"
+    },
+    "openai.chat/cj_winner/text/2": {
+      "output": "0dcbece3f5aa6124dc1fdcfe5e4e06176db2abcddd9137fb5f2934388be5fc07",
+      "prompt": "5bcd6273c7e88b49f0cabfe0b27b1003b37b79873d4ddef8526082313531e72e"
+    },
+    "openai.chat/cj_winner/native/1": {
+      "output": "71a372b6acb3ae96e9115828f5d92e8530c1afae1d12ffdc19a5b76f140ae97a",
+      "prompt": "61994cb3883668700774d7db16e82286a6502370b689dbcdfa3f9834c4059432"
+    },
+    "openai.chat/cj_winner/native/2": {
+      "output": "a8f05e4aa713be1d1ee46928c5aea2339e8a410deac25acc145b335c1276001e",
+      "prompt": "eee74dff7998d5d8249d1cd4961d398da9d936281b6dd5af9763d475a12563c4"
+    },
+    "openai.chat/cj_explanation/text/1": {
+      "output": "bbd82dd87e831c2161fe71e01ec2e515b0c961dc0ca8e2d011c3932c896fefa6",
+      "prompt": "1af1fa9e5e6dd3ed1cfce5e2851e317cb4de99534cdd55e087ab26fe67189b38"
+    },
+    "openai.chat/cj_explanation/text/2": {
+      "output": "d86cd66876781fb542aa3c5713724cb513f661d9518ae8b7b72d108ba01cd4a6",
+      "prompt": "9d9e12f29bbdc914c53d63f6345ae0771b63edc23323efddcf10acf164d4ec09"
+    },
+    "openai.chat/cj_explanation/native/1": {
+      "output": "d18a52918f6260e73426ec01f045c7a16a3feaeffbba63934f58ddc9d10197d7",
+      "prompt": "ebbf41b1f6f4fd027f2939ef006c46a0d7c0fd5221bfbe58c7e6a04a91bff188"
+    },
+    "openai.chat/cj_explanation/native/2": {
+      "output": "b32c1aee9cc2b59e803c28cd2093947c4a540f6668e9fff5556f450e5118e5e8",
+      "prompt": "ec2e4de64ef73f78b7cd4b38e4bf94ba2d47163851bf9a70cf4c5895c5205deb"
+    },
+    "openai.chat/cj_ties/text/1": {
+      "output": "792832b8e718fd425896fcc47b62f3be9e4bc7377d7ef82247cea7ada306ee09",
+      "prompt": "b1088db96d21b614897621e81359a18fc5c38cbd69d8abffd64c4299bae4cb85"
+    },
+    "openai.chat/cj_ties/text/2": {
+      "output": "e968b7dc22cc45aa39bb5cb6b2c0e415fe9e7eedc997377ce8a60f0a01ed8834",
+      "prompt": "1e6bdf96a555f27330ed176d1a7af09b044e8d4bdac58157fdf7f5d1ea227f3b"
+    },
+    "openai.chat/cj_ties/native/1": {
+      "output": "9e1f84a681c76d626e43472e3983d8407b59bc7c78dc2736bca21d784cff78db",
+      "prompt": "bf25033b3826cb57ae2bf5f3f634621c3cffec6bb01b8ffd1c019a9bc8b32d3e"
+    },
+    "openai.chat/cj_ties/native/2": {
+      "output": "683d125630f0c07bb0487efd5c72ddeb9b164175cba3904f4b1e91ab3e32415e",
+      "prompt": "37b3ed8ab7680e8819e208c82c3c4a686cba42f8761fd4ba8b3c7b05d1110fa0"
+    },
+    "openai.chat/cj_ties_explanation/text/1": {
+      "output": "875f7e3be688a8cfa6fe4749639b43c4b9f973e3d2530cccbd558bd3e78d47ea",
+      "prompt": "4e3cff3c592cea9c1bc308e3ec75b8121608d2429a9525e80e0fcfbedb57c872"
+    },
+    "openai.chat/cj_ties_explanation/text/2": {
+      "output": "ea72db09e6a2d5d9cd9a1294a38f13ee57933a8f7629b84bbf8258eb4484673b",
+      "prompt": "bc1664691d20e56380414f22b341d6f1c37f13abe89e80f04cc64ace9b79c8f3"
+    },
+    "openai.chat/cj_ties_explanation/native/1": {
+      "output": "31d12d6829745df17e02a81986acba7f3ff11c5adaaf8c8a5359775b1afa8f03",
+      "prompt": "6fca6f341d0286ef2868deb359c231e79e446ee9e7ceacbc1f76453c2512f048"
+    },
+    "openai.chat/cj_ties_explanation/native/2": {
+      "output": "19868e888b6015868fd898114135c0ef1921efdde70924e36d71c1a77c3c78e9",
+      "prompt": "6c73c96df7f57156bd8c86d04503712a2a39e3aebe5838ea3d722b81b15585d1"
+    },
+    "anthropic/rubric_scores/text/1": {
+      "output": "4476c611b27c077b63adbc5d244344dd84ace391188e6f63e80889f858ea5cda",
+      "prompt": "1fcd5dac20a9bf5df047007f2bcec50bb9bfca75ddcc367ecf198aea7d8a4eda"
+    },
+    "anthropic/rubric_scores/text/2": {
+      "output": "6018583f2f04a0fd78435c80af3a1b60a18af403caeb15b5c102dbaa180d6a85",
+      "prompt": "44b3f9acc3dd5e11227f0ad28aa8c2eeb31741e57c552cb4b80c41a3cf4afaf0"
+    },
+    "anthropic/rubric_scores/native/1": {
+      "output": "12b401d93f14596fb9c2ade0f75cfab68c9915f376b1088979e71f558b03fe2d",
+      "prompt": "3548d16695dcc6c96f455a8d90a84eb1c03dbbece03ec284a027ee4192f09b64"
+    },
+    "anthropic/rubric_scores/native/2": {
+      "output": "5888c0553ea0330e928b0e223fd19bcaa8f313515d5977f10e990879031120c5",
+      "prompt": "a7943c50239d6768576ca8dc17860ddf1cdb219461be0e2936d7822f222f56c9"
+    },
+    "anthropic/rubric_together/text/1": {
+      "output": "1eee9eab9588339274a6fee43e4cdb8319561ffce475efec1d86d621e669f010",
+      "prompt": "f9fe069da772bf04a860b3746078af6ab3305dee11b684a18044ed3c4231f313"
+    },
+    "anthropic/rubric_together/text/2": {
+      "output": "49529c70ae7ac24a3a5048d487a3bcd4744f94bb9d010ba30b41e439835d1399",
+      "prompt": "3c6febc8cc7ad7caa773a0594f6ae2a5a5b8193ec6ba1cb3f8d5a514f90dc225"
+    },
+    "anthropic/rubric_together/native/1": {
+      "output": "33095db085a521d40c124fbec852a015f075fc2c153a672354a0a184fffb1c25",
+      "prompt": "97318d7d8b6e83f033e7645711077f9d6d0dca7ec8d3d055bb57bf793fcfadb9"
+    },
+    "anthropic/rubric_together/native/2": {
+      "output": "41d551ff0aa317c0d6f951c175898a47266c308a264c6809bda7f0e68128b9b5",
+      "prompt": "6271ae18ed84b915a1031f7d37d027bf7d23667a305857e04de99c757e950915"
+    },
+    "anthropic/rubric_scores_first/text/1": {
+      "output": "2837008b015fddb8331bb9dffa116986694a54ba7f61582a3067689fd6f7189f",
+      "prompt": "41af6401efd0f97c889bac4f2b9263c9ca58c0e4887cf02c8a2238d50e46101a"
+    },
+    "anthropic/rubric_scores_first/text/2": {
+      "output": "5145565abbce53776d976c8c67fac2cb736a0b1eb3a3b9cdbc69c7939b301f9d",
+      "prompt": "91277c535a26eac0d0cd4c7bd610eea7668c244b4eafdbb62f8d351d82b7566b"
+    },
+    "anthropic/rubric_scores_first/native/1": {
+      "output": "c2e9ceae159b7b3e18aaf25172e3b602096caddae314b67298ce8e5a4938c589",
+      "prompt": "edd425cdb05e2c27daa7a0f2abe410c628560c41dec34c73c5c66702f3aad7be"
+    },
+    "anthropic/rubric_scores_first/native/2": {
+      "output": "c35dcdfc56c3d09cf7dcb97bcd153dd8cae30593b8c54bf13aca315d228d32d5",
+      "prompt": "b171a7e105f4c8ee13323ffe8e4e85b6349ac90fd79681c867966480196cd691"
+    },
+    "anthropic/rubric_explanations_first/text/1": {
+      "output": "f2330dbfec7ca8b67dcb4da3b75b82eea8932b69494170099e0f7dc4f33331a4",
+      "prompt": "d4981b54ac2909203a8b9bbcf75a2e42b7a65c714148cc306cf4a63db5d22988"
+    },
+    "anthropic/rubric_explanations_first/text/2": {
+      "output": "cde52869e5091932bf7b2024b67007ec17ad31a625cd9caf0f2008e7700a98dd",
+      "prompt": "5739c3d47e59442ab93df3e4a6fb13be502be75dafe466a73bf252221367fbad"
+    },
+    "anthropic/rubric_explanations_first/native/1": {
+      "output": "2d55846c6d44a4439c91b820b2801fb5315d57069bb6360e6aba8e67328dbed4",
+      "prompt": "062cb0be9485fc94b9815f8b12d45662924ced80f373bea1f844688b7dd4779b"
+    },
+    "anthropic/rubric_explanations_first/native/2": {
+      "output": "d50c19855be33c00494261263b8e14cdc77cf234e7182bf1d64b0219f980cd90",
+      "prompt": "671b02963ffb70d897979ac4079fad3ec516fa2aa9e7e72a8e2e5ad507c029f2"
+    },
+    "anthropic/cj_winner/text/1": {
+      "output": "51ef1c4c268966dc5b0a55dc692bf8f9ac184f41ce785ea89e1a63de50001972",
+      "prompt": "d9e18e0de6a93d734fcd7e8a1b9dd991f2d7165a64dbc9e1186874ceb4fb5b95"
+    },
+    "anthropic/cj_winner/text/2": {
+      "output": "e7182c65f262aedc778103c0f6894075f4f0bb303092e5507bb8604055ef9fa5",
+      "prompt": "5bcd6273c7e88b49f0cabfe0b27b1003b37b79873d4ddef8526082313531e72e"
+    },
+    "anthropic/cj_winner/native/1": {
+      "output": "66ea7d364ca730d0a8a69ccb47bdbca9faa080ad5dab40e8b2fbb961de65d24d",
+      "prompt": "61994cb3883668700774d7db16e82286a6502370b689dbcdfa3f9834c4059432"
+    },
+    "anthropic/cj_winner/native/2": {
+      "output": "4ba0a5282b9f4f29dc8033a8160cc9476268bf794770523100aac447921b295e",
+      "prompt": "eee74dff7998d5d8249d1cd4961d398da9d936281b6dd5af9763d475a12563c4"
+    },
+    "anthropic/cj_explanation/text/1": {
+      "output": "9c9a0b22d0517a400021ab384e0893fac8c6ed6eb240667a4d18d713cf55eecb",
+      "prompt": "1af1fa9e5e6dd3ed1cfce5e2851e317cb4de99534cdd55e087ab26fe67189b38"
+    },
+    "anthropic/cj_explanation/text/2": {
+      "output": "cbdfece363ba7794c78e80013f15136d62329c17d15f15d6f5f04a77ac2fb27b",
+      "prompt": "9d9e12f29bbdc914c53d63f6345ae0771b63edc23323efddcf10acf164d4ec09"
+    },
+    "anthropic/cj_explanation/native/1": {
+      "output": "1566e8e384d065be7c93aef071e9b6793f51673313026b0089db78fb66961f4b",
+      "prompt": "ebbf41b1f6f4fd027f2939ef006c46a0d7c0fd5221bfbe58c7e6a04a91bff188"
+    },
+    "anthropic/cj_explanation/native/2": {
+      "output": "c7e5afab1b6c1a555c801d89ae5fa40ebbc61f697591e1e353c967067acecff3",
+      "prompt": "ec2e4de64ef73f78b7cd4b38e4bf94ba2d47163851bf9a70cf4c5895c5205deb"
+    },
+    "anthropic/cj_ties/text/1": {
+      "output": "8949ae1d121483480b3b335a618524d175e7d864c908f35fee2bb24c60f6587b",
+      "prompt": "b1088db96d21b614897621e81359a18fc5c38cbd69d8abffd64c4299bae4cb85"
+    },
+    "anthropic/cj_ties/text/2": {
+      "output": "960a4c6895a9803e9914831ef4b995ff6b8c230491393e7c583b3658c2c17ab1",
+      "prompt": "1e6bdf96a555f27330ed176d1a7af09b044e8d4bdac58157fdf7f5d1ea227f3b"
+    },
+    "anthropic/cj_ties/native/1": {
+      "output": "b507aeafc5008c2b46bc8ab6b9f771b81fe0caa8a18ef40e7fb1907307f57d5d",
+      "prompt": "bf25033b3826cb57ae2bf5f3f634621c3cffec6bb01b8ffd1c019a9bc8b32d3e"
+    },
+    "anthropic/cj_ties/native/2": {
+      "output": "2b683b2a8ae745f1cc004f19b0900dbf80e315d868cd56b1cdc89689ce1550e3",
+      "prompt": "37b3ed8ab7680e8819e208c82c3c4a686cba42f8761fd4ba8b3c7b05d1110fa0"
+    },
+    "anthropic/cj_ties_explanation/text/1": {
+      "output": "5b2cb5766d6470613f29f9658c5642c8fa8f3d7750825b008f484343399ae64e",
+      "prompt": "4e3cff3c592cea9c1bc308e3ec75b8121608d2429a9525e80e0fcfbedb57c872"
+    },
+    "anthropic/cj_ties_explanation/text/2": {
+      "output": "b29241088c876c3bedced1c680b8d9609c798bbb1c1e4ad55aa040a450f1fb7e",
+      "prompt": "bc1664691d20e56380414f22b341d6f1c37f13abe89e80f04cc64ace9b79c8f3"
+    },
+    "anthropic/cj_ties_explanation/native/1": {
+      "output": "227ae023e05ca5ddd993b62630f1031762b8797a1832e0357e7cf37ee28c25c0",
+      "prompt": "6fca6f341d0286ef2868deb359c231e79e446ee9e7ceacbc1f76453c2512f048"
+    },
+    "anthropic/cj_ties_explanation/native/2": {
+      "output": "8d158d9956237d7e2a9c5a9626a5fab824331522735a250eadb7894713b0679a",
+      "prompt": "6c73c96df7f57156bd8c86d04503712a2a39e3aebe5838ea3d722b81b15585d1"
+    },
+    "gemini.json/rubric_scores/text/1": {
+      "output": "935d4f0139f47e03e39d079651f7658e0a8f147a9ec83bd6afe0f3a62a67c725",
+      "prompt": "41f35ed4a83db57e0be7b61385a9c4dd6efc0c3c1f690d039c31f1503ab3d6fb"
+    },
+    "gemini.json/rubric_scores/text/2": {
+      "output": "059566b0c96ac8b94bb79f2dd0deed80ff8ba50e6cc83bc1704161afafad19c8",
+      "prompt": "a52a8c21b2c2947ff6baebab17ce76805358c9cf4249c757cd795a7dd4aef923"
+    },
+    "gemini.json/rubric_scores/native/1": {
+      "output": "6abcf1d5ed0c31556bc22a58f32fc1d41c7d00792314b30e6c5a70bfcf47e35a",
+      "prompt": "3548d16695dcc6c96f455a8d90a84eb1c03dbbece03ec284a027ee4192f09b64"
+    },
+    "gemini.json/rubric_scores/native/2": {
+      "output": "ad1d125623a666541fcae688f925c451e23089be7fd2100c29cfb0a239b0b585",
+      "prompt": "a7943c50239d6768576ca8dc17860ddf1cdb219461be0e2936d7822f222f56c9"
+    },
+    "gemini.json/rubric_together/text/1": {
+      "output": "457b22078c615dd41f2cd118751fc85bf11a79a7ded6289cf2f021125fbf4b6e",
+      "prompt": "28a8f844756a6148784962c5e4c66e0c24426758e63f825b7d153335dfd07c2d"
+    },
+    "gemini.json/rubric_together/text/2": {
+      "output": "91731ba00985425caa8fea0f08579bc4253cb5a744063021b317a5ea103bcd9e",
+      "prompt": "2c16c76f41a5f32d56ff1fa5cce945501209cd1826fc96f9b345c051d5b8dc3f"
+    },
+    "gemini.json/rubric_together/native/1": {
+      "output": "aa8db82148c8d398f9779b75eca7096d66071828a36d5799619a29ef2c4a34b9",
+      "prompt": "97318d7d8b6e83f033e7645711077f9d6d0dca7ec8d3d055bb57bf793fcfadb9"
+    },
+    "gemini.json/rubric_together/native/2": {
+      "output": "5edfc6c4c96ec8452dbfdc00f6ac8842db2b0e87d8c5e60e064948400894482e",
+      "prompt": "6271ae18ed84b915a1031f7d37d027bf7d23667a305857e04de99c757e950915"
+    },
+    "gemini.json/rubric_scores_first/text/1": {
+      "output": "f692bac9e7dc528445a608e4c1e546c182fc61493a6fd4d66b0f0215e8b6a0ba",
+      "prompt": "4c21a8cdfcc7abb3bdebf189039250f782cfccaf7dba0642130acc5bb0fc83d9"
+    },
+    "gemini.json/rubric_scores_first/text/2": {
+      "output": "fa08879548ebdd6ba6e4fee20e78a94fe2086c0a6969841b68ccad75a65211a0",
+      "prompt": "70a16369566d5e7ac2f74ad7bed86a4ded5aa9f70a45e954e2a70687c19f7c0a"
+    },
+    "gemini.json/rubric_scores_first/native/1": {
+      "output": "2090d333568c09ca8e954ef82481a40ae9a646d267c90d1d6b05e1cde5f31190",
+      "prompt": "edd425cdb05e2c27daa7a0f2abe410c628560c41dec34c73c5c66702f3aad7be"
+    },
+    "gemini.json/rubric_scores_first/native/2": {
+      "output": "f7897115931c5256bc6e78ddefa8555c79af9ea9b63fc423ec684c2dec24174c",
+      "prompt": "b171a7e105f4c8ee13323ffe8e4e85b6349ac90fd79681c867966480196cd691"
+    },
+    "gemini.json/rubric_explanations_first/text/1": {
+      "output": "181116b0d483faaada87117da940229f7bbb998802228c28ec8e1cd41c71a615",
+      "prompt": "ec3771f33cdd59ac2d040451acf432feb5be3e17857106957bdef9ad1e243c2c"
+    },
+    "gemini.json/rubric_explanations_first/text/2": {
+      "output": "6123432de60d1d6080aa7ff1ed13e18e27a5cea9ebf0a471d28e17f58162b732",
+      "prompt": "dac797ad91acb7a091b5967d71b4be36ddeff6b0bacec3d6fb784c67882a4c78"
+    },
+    "gemini.json/rubric_explanations_first/native/1": {
+      "output": "df17c4265c37778744927bf669029d32416726d089c849b2b907293b5a638dd9",
+      "prompt": "062cb0be9485fc94b9815f8b12d45662924ced80f373bea1f844688b7dd4779b"
+    },
+    "gemini.json/rubric_explanations_first/native/2": {
+      "output": "8ac74caf959369993f5d7b1c422faf15e64f271ba0118d1ad73cb4cb711ed409",
+      "prompt": "671b02963ffb70d897979ac4079fad3ec516fa2aa9e7e72a8e2e5ad507c029f2"
+    },
+    "gemini.json/cj_winner/text/1": {
+      "output": "d90cb19464c99601c5ef1ec3d0174544115a6427d3600930ef4c0bbc517c2be7",
+      "prompt": "d9e18e0de6a93d734fcd7e8a1b9dd991f2d7165a64dbc9e1186874ceb4fb5b95"
+    },
+    "gemini.json/cj_winner/text/2": {
+      "output": "784923ebab2c8b4539981f8af22cd304d435026814eca98786fe77279e438bd1",
+      "prompt": "5bcd6273c7e88b49f0cabfe0b27b1003b37b79873d4ddef8526082313531e72e"
+    },
+    "gemini.json/cj_winner/native/1": {
+      "output": "cebda988e2b01065b885c809a3095c3120bdbb2b89fb67b889584b51899fa4ea",
+      "prompt": "61994cb3883668700774d7db16e82286a6502370b689dbcdfa3f9834c4059432"
+    },
+    "gemini.json/cj_winner/native/2": {
+      "output": "52f48cb5d6cf3180fdf2fdd5dd92bf136c6fe817a39c514496f94576834a6bee",
+      "prompt": "eee74dff7998d5d8249d1cd4961d398da9d936281b6dd5af9763d475a12563c4"
+    },
+    "gemini.json/cj_explanation/text/1": {
+      "output": "91f58e1476eafcca0f04335dcdb1bae400952bfde2a6a56e22a9b43e8bb2c857",
+      "prompt": "1af1fa9e5e6dd3ed1cfce5e2851e317cb4de99534cdd55e087ab26fe67189b38"
+    },
+    "gemini.json/cj_explanation/text/2": {
+      "output": "9c2d6c96b5553deff30ceb31103e5c5232d8319286915d6ad24a3ba5e2d3af3f",
+      "prompt": "9d9e12f29bbdc914c53d63f6345ae0771b63edc23323efddcf10acf164d4ec09"
+    },
+    "gemini.json/cj_explanation/native/1": {
+      "output": "f6f2a04dffbea1bc3c1ef54a719b57b1120fad1a93b5921fa80206545fcf3a16",
+      "prompt": "ebbf41b1f6f4fd027f2939ef006c46a0d7c0fd5221bfbe58c7e6a04a91bff188"
+    },
+    "gemini.json/cj_explanation/native/2": {
+      "output": "94de4763c9102858ee57a3c715ee74559869dc82b1ccfb6ffaf98b9740f59599",
+      "prompt": "ec2e4de64ef73f78b7cd4b38e4bf94ba2d47163851bf9a70cf4c5895c5205deb"
+    },
+    "gemini.json/cj_ties/text/1": {
+      "output": "eb72ecc5917b28524bbe1172a6111f1e572541e727921107b84ae2e8263cd6f1",
+      "prompt": "b1088db96d21b614897621e81359a18fc5c38cbd69d8abffd64c4299bae4cb85"
+    },
+    "gemini.json/cj_ties/text/2": {
+      "output": "c0b494104f8d9940f054defa8d1e5309210142c695e254ab57e60b8bf36a3eba",
+      "prompt": "1e6bdf96a555f27330ed176d1a7af09b044e8d4bdac58157fdf7f5d1ea227f3b"
+    },
+    "gemini.json/cj_ties/native/1": {
+      "output": "94829b646ef296c574e226b041487e349c1965629b85efbd3803c48c17d4c168",
+      "prompt": "bf25033b3826cb57ae2bf5f3f634621c3cffec6bb01b8ffd1c019a9bc8b32d3e"
+    },
+    "gemini.json/cj_ties/native/2": {
+      "output": "17979eae1e9fb66d3a77874f7665d51fca0f78b66b829a69eb484583c4073f30",
+      "prompt": "37b3ed8ab7680e8819e208c82c3c4a686cba42f8761fd4ba8b3c7b05d1110fa0"
+    },
+    "gemini.json/cj_ties_explanation/text/1": {
+      "output": "697bdde59489c5b033d845b16c8d4ef575a635b494df2a8774df01af7a3ebf15",
+      "prompt": "4e3cff3c592cea9c1bc308e3ec75b8121608d2429a9525e80e0fcfbedb57c872"
+    },
+    "gemini.json/cj_ties_explanation/text/2": {
+      "output": "285d2dbd74af8cbe882dd154d27012603f9648a8bfe325c134e2424fddda7b03",
+      "prompt": "bc1664691d20e56380414f22b341d6f1c37f13abe89e80f04cc64ace9b79c8f3"
+    },
+    "gemini.json/cj_ties_explanation/native/1": {
+      "output": "35c85b4b4825208cced41915a9ad08871e2ac9b1f8c78126a46faf86e47b15da",
+      "prompt": "6fca6f341d0286ef2868deb359c231e79e446ee9e7ceacbc1f76453c2512f048"
+    },
+    "gemini.json/cj_ties_explanation/native/2": {
+      "output": "aff149c7414fc3982dc0a02af72649021aab8e1c6e9353f3fd33ce7e5a8ce4f1",
+      "prompt": "6c73c96df7f57156bd8c86d04503712a2a39e3aebe5838ea3d722b81b15585d1"
+    },
+    "gemini.schema/rubric_scores/text/1": {
+      "output": "2586dd003084a06e470bcae70fb7050b7d8fea0f766cdc956a3a47a872259514",
+      "prompt": "41f35ed4a83db57e0be7b61385a9c4dd6efc0c3c1f690d039c31f1503ab3d6fb"
+    },
+    "gemini.schema/rubric_scores/text/2": {
+      "output": "f98781a8b39f80f4dabeeb91d895e5034d14d200ebc111fe6148d189383f0b38",
+      "prompt": "a52a8c21b2c2947ff6baebab17ce76805358c9cf4249c757cd795a7dd4aef923"
+    },
+    "gemini.schema/rubric_scores/native/1": {
+      "output": "f4d61dc1b46107fe6aad8144f5ee3e76ab5430d6a24767cb03143f61e4f13f16",
+      "prompt": "3548d16695dcc6c96f455a8d90a84eb1c03dbbece03ec284a027ee4192f09b64"
+    },
+    "gemini.schema/rubric_scores/native/2": {
+      "output": "76e03002a9b5245082cedecfe13c059ac3fb0ad55ba87091a0f5c2a85faf94fe",
+      "prompt": "a7943c50239d6768576ca8dc17860ddf1cdb219461be0e2936d7822f222f56c9"
+    },
+    "gemini.schema/rubric_together/text/1": {
+      "output": "9d9ab55dd9e780816fe54620cc5db2efe548ab246180ce9397258ec336fedb21",
+      "prompt": "28a8f844756a6148784962c5e4c66e0c24426758e63f825b7d153335dfd07c2d"
+    },
+    "gemini.schema/rubric_together/text/2": {
+      "output": "9215bee7b20d7dd9ea126b296eecf677ae39c18ec9af55127f41dfb2ddb85165",
+      "prompt": "2c16c76f41a5f32d56ff1fa5cce945501209cd1826fc96f9b345c051d5b8dc3f"
+    },
+    "gemini.schema/rubric_together/native/1": {
+      "output": "cd74ab35c547edc5eecd0d9fab1031e50dc92ebb2f82c4ef7e271c5f5dc480fb",
+      "prompt": "97318d7d8b6e83f033e7645711077f9d6d0dca7ec8d3d055bb57bf793fcfadb9"
+    },
+    "gemini.schema/rubric_together/native/2": {
+      "output": "777f730785217fbe717b31a6ad851c5ff98722751463a386cc9c6abe8454d93b",
+      "prompt": "6271ae18ed84b915a1031f7d37d027bf7d23667a305857e04de99c757e950915"
+    },
+    "gemini.schema/rubric_scores_first/text/1": {
+      "output": "ecf1bcd35474dc2f78bff449791361c48f9c334ce68a9c99e1714b3ab11c0f0f",
+      "prompt": "4c21a8cdfcc7abb3bdebf189039250f782cfccaf7dba0642130acc5bb0fc83d9"
+    },
+    "gemini.schema/rubric_scores_first/text/2": {
+      "output": "aa17af99535b1efdeaff8b9224faa303f7f3b7227424c07a9be026f01bf56880",
+      "prompt": "70a16369566d5e7ac2f74ad7bed86a4ded5aa9f70a45e954e2a70687c19f7c0a"
+    },
+    "gemini.schema/rubric_scores_first/native/1": {
+      "output": "5b79e6986693efb8748c32adac09d248a7557bbf15a1cbb9110e5263194a018c",
+      "prompt": "edd425cdb05e2c27daa7a0f2abe410c628560c41dec34c73c5c66702f3aad7be"
+    },
+    "gemini.schema/rubric_scores_first/native/2": {
+      "output": "1957e08860e61efd090f58ab6bb7c7b57d1065933c8dec55371432d122b172d6",
+      "prompt": "b171a7e105f4c8ee13323ffe8e4e85b6349ac90fd79681c867966480196cd691"
+    },
+    "gemini.schema/rubric_explanations_first/text/1": {
+      "output": "65903269d798b58ecfa5273b4614fe5e5402c72716bb7dc940063ab75f70f019",
+      "prompt": "ec3771f33cdd59ac2d040451acf432feb5be3e17857106957bdef9ad1e243c2c"
+    },
+    "gemini.schema/rubric_explanations_first/text/2": {
+      "output": "41ee87553b9d16ed9f01fa34486b05e00bc4ace237bdefeab6248ceafb41e1e2",
+      "prompt": "dac797ad91acb7a091b5967d71b4be36ddeff6b0bacec3d6fb784c67882a4c78"
+    },
+    "gemini.schema/rubric_explanations_first/native/1": {
+      "output": "55246bf1af4dc403c77dc2144f633739544dd167a98f3dff7baae17865b1451a",
+      "prompt": "062cb0be9485fc94b9815f8b12d45662924ced80f373bea1f844688b7dd4779b"
+    },
+    "gemini.schema/rubric_explanations_first/native/2": {
+      "output": "977257c34a3d4fa8a13e7bc7e29f6ef0a226bec077745c0a2cde28a1936f1843",
+      "prompt": "671b02963ffb70d897979ac4079fad3ec516fa2aa9e7e72a8e2e5ad507c029f2"
+    },
+    "gemini.schema/cj_winner/text/1": {
+      "output": "3b4f951d120aefbb1080f6fe7acccdcee06feb3bb699acccddaaa4a17fd2f5fd",
+      "prompt": "d9e18e0de6a93d734fcd7e8a1b9dd991f2d7165a64dbc9e1186874ceb4fb5b95"
+    },
+    "gemini.schema/cj_winner/text/2": {
+      "output": "67e2591ecd3c9796699a1d9dd10946a9520218b814a6f942b1de6f70758c30b1",
+      "prompt": "5bcd6273c7e88b49f0cabfe0b27b1003b37b79873d4ddef8526082313531e72e"
+    },
+    "gemini.schema/cj_winner/native/1": {
+      "output": "694bf5f0f859137bffd9ad0db26e416cd89b6907832473dbe7c283c4059cfb14",
+      "prompt": "61994cb3883668700774d7db16e82286a6502370b689dbcdfa3f9834c4059432"
+    },
+    "gemini.schema/cj_winner/native/2": {
+      "output": "dfc651883ac3dcbdbada278e146e2f6ebe541dddd01c94007d1182e437a1cfda",
+      "prompt": "eee74dff7998d5d8249d1cd4961d398da9d936281b6dd5af9763d475a12563c4"
+    },
+    "gemini.schema/cj_explanation/text/1": {
+      "output": "7677eaa98d126e8e854ddad0a71c8d2507d6a7e68491f698caa003a6787daf44",
+      "prompt": "1af1fa9e5e6dd3ed1cfce5e2851e317cb4de99534cdd55e087ab26fe67189b38"
+    },
+    "gemini.schema/cj_explanation/text/2": {
+      "output": "f1deb385e39d314f137fdf58caee28c2c8793a761cb6471ab3eaa9b2ce001a1d",
+      "prompt": "9d9e12f29bbdc914c53d63f6345ae0771b63edc23323efddcf10acf164d4ec09"
+    },
+    "gemini.schema/cj_explanation/native/1": {
+      "output": "e6829605672616494821c4e32280d3c5e0b1598b302d99db9bd537156c75e0fa",
+      "prompt": "ebbf41b1f6f4fd027f2939ef006c46a0d7c0fd5221bfbe58c7e6a04a91bff188"
+    },
+    "gemini.schema/cj_explanation/native/2": {
+      "output": "fd4235c40200e57de762d8376998cf093c9a607b716f31dca3b1f8ec6be282f0",
+      "prompt": "ec2e4de64ef73f78b7cd4b38e4bf94ba2d47163851bf9a70cf4c5895c5205deb"
+    },
+    "gemini.schema/cj_ties/text/1": {
+      "output": "236af4ed61078d132ec95d621493c15a3c7f8b017d2d4c5ce9d6925189d2b0ee",
+      "prompt": "b1088db96d21b614897621e81359a18fc5c38cbd69d8abffd64c4299bae4cb85"
+    },
+    "gemini.schema/cj_ties/text/2": {
+      "output": "e5df60498445377c85a0e0781c92e3cc07dce15b7887b0ab2ab30395932b8957",
+      "prompt": "1e6bdf96a555f27330ed176d1a7af09b044e8d4bdac58157fdf7f5d1ea227f3b"
+    },
+    "gemini.schema/cj_ties/native/1": {
+      "output": "84f6a9d5d137e1c4626daafdbc6596005c9156d40fa313a84c26c99654af32af",
+      "prompt": "bf25033b3826cb57ae2bf5f3f634621c3cffec6bb01b8ffd1c019a9bc8b32d3e"
+    },
+    "gemini.schema/cj_ties/native/2": {
+      "output": "143e76cc00c387c6db88d45b4ec030b62f83dde287bd26507cb6bdad5f526fa3",
+      "prompt": "37b3ed8ab7680e8819e208c82c3c4a686cba42f8761fd4ba8b3c7b05d1110fa0"
+    },
+    "gemini.schema/cj_ties_explanation/text/1": {
+      "output": "68bd0432ece7ee03c0ba0ee10d7a95fe9d951513ced3aa26bd11c5b7fb8649c2",
+      "prompt": "4e3cff3c592cea9c1bc308e3ec75b8121608d2429a9525e80e0fcfbedb57c872"
+    },
+    "gemini.schema/cj_ties_explanation/text/2": {
+      "output": "8589751cf8a080ec68bfe97c910809c28cd2aa9adeb36c80926f7f9e33bc794a",
+      "prompt": "bc1664691d20e56380414f22b341d6f1c37f13abe89e80f04cc64ace9b79c8f3"
+    },
+    "gemini.schema/cj_ties_explanation/native/1": {
+      "output": "6d6e007d536d29cc4fed321536de3d63a7e2b1ec4f596c4d412d7f1c865ee8ca",
+      "prompt": "6fca6f341d0286ef2868deb359c231e79e446ee9e7ceacbc1f76453c2512f048"
+    },
+    "gemini.schema/cj_ties_explanation/native/2": {
+      "output": "5992e8d4d4d9bc97d0189bcd2aeb060b332b2df999be6c6a63110f7066dd718a",
+      "prompt": "6c73c96df7f57156bd8c86d04503712a2a39e3aebe5838ea3d722b81b15585d1"
+    },
+    "vertex.json/rubric_scores/text/1": {
+      "output": "6fba21c104bceffa1b9362ba5e7b255899cf51513c494870fbfb90bc83baada5",
+      "prompt": "41f35ed4a83db57e0be7b61385a9c4dd6efc0c3c1f690d039c31f1503ab3d6fb"
+    },
+    "vertex.json/rubric_scores/text/2": {
+      "output": "98004aae8a22f5bfdf0e4e13a718a223a310b88cc31fca7a786c64c2f5ed7dfd",
+      "prompt": "a52a8c21b2c2947ff6baebab17ce76805358c9cf4249c757cd795a7dd4aef923"
+    },
+    "vertex.json/rubric_scores/native/1": {
+      "output": "cd26fab25661df4ec41799963047ecd3c155d6158f159e7b23a9045cae3350e4",
+      "prompt": "3548d16695dcc6c96f455a8d90a84eb1c03dbbece03ec284a027ee4192f09b64"
+    },
+    "vertex.json/rubric_scores/native/2": {
+      "output": "e4f7924eb1387827b7a024c6432edfb36f997a764e71141a11ecb4083375bfce",
+      "prompt": "a7943c50239d6768576ca8dc17860ddf1cdb219461be0e2936d7822f222f56c9"
+    },
+    "vertex.json/rubric_together/text/1": {
+      "output": "1020f7545b5b018c8b83ed799142884c203d6e4ee451d1d44d27b23f670507e9",
+      "prompt": "28a8f844756a6148784962c5e4c66e0c24426758e63f825b7d153335dfd07c2d"
+    },
+    "vertex.json/rubric_together/text/2": {
+      "output": "940533063374f509926377ae7da4e2dd126092cc3ccbfe5dc13083ef8c77ee61",
+      "prompt": "2c16c76f41a5f32d56ff1fa5cce945501209cd1826fc96f9b345c051d5b8dc3f"
+    },
+    "vertex.json/rubric_together/native/1": {
+      "output": "1b30d4bc81a2adb970f663eb893aa8fcc248ca109db5df535abb78d3f8430a94",
+      "prompt": "97318d7d8b6e83f033e7645711077f9d6d0dca7ec8d3d055bb57bf793fcfadb9"
+    },
+    "vertex.json/rubric_together/native/2": {
+      "output": "4e5f2af29bf1cbac2cabb389e106d3b4956aa9bb4d738a0bf30166cc5ff9c279",
+      "prompt": "6271ae18ed84b915a1031f7d37d027bf7d23667a305857e04de99c757e950915"
+    },
+    "vertex.json/rubric_scores_first/text/1": {
+      "output": "585169861965d8a0a5a70a8caadf7ba9b3d117315f798f87bbd6d4147e9525a8",
+      "prompt": "4c21a8cdfcc7abb3bdebf189039250f782cfccaf7dba0642130acc5bb0fc83d9"
+    },
+    "vertex.json/rubric_scores_first/text/2": {
+      "output": "501b6e41b6e64bc3ec3684cb07ff93d46074b22a62408ca06a6b42237604a97a",
+      "prompt": "70a16369566d5e7ac2f74ad7bed86a4ded5aa9f70a45e954e2a70687c19f7c0a"
+    },
+    "vertex.json/rubric_scores_first/native/1": {
+      "output": "704d9a420466f1c644ab5044ddeffa5e5804d140ff78ac9576d4a38633737737",
+      "prompt": "edd425cdb05e2c27daa7a0f2abe410c628560c41dec34c73c5c66702f3aad7be"
+    },
+    "vertex.json/rubric_scores_first/native/2": {
+      "output": "9dc02646cc789bd37e45ff9853300c00d45f096e64674d3edd7b0f82b07f553a",
+      "prompt": "b171a7e105f4c8ee13323ffe8e4e85b6349ac90fd79681c867966480196cd691"
+    },
+    "vertex.json/rubric_explanations_first/text/1": {
+      "output": "ca8347b419031be786ea83cfd9cab3762de0d87dd180bc6289054a9a95b01e28",
+      "prompt": "ec3771f33cdd59ac2d040451acf432feb5be3e17857106957bdef9ad1e243c2c"
+    },
+    "vertex.json/rubric_explanations_first/text/2": {
+      "output": "1990503d616bde6d40000bd5858884ac87e3149e5593c1fb0a7c1f5e7cdd3c98",
+      "prompt": "dac797ad91acb7a091b5967d71b4be36ddeff6b0bacec3d6fb784c67882a4c78"
+    },
+    "vertex.json/rubric_explanations_first/native/1": {
+      "output": "3872422ead044a4f10559ee3a04dedd8e758565d3f80f4b414e25c05f4516c02",
+      "prompt": "062cb0be9485fc94b9815f8b12d45662924ced80f373bea1f844688b7dd4779b"
+    },
+    "vertex.json/rubric_explanations_first/native/2": {
+      "output": "adbb1084d94c40a6e54a47e275a3f810433d8dc05ec50090f05b914523caec59",
+      "prompt": "671b02963ffb70d897979ac4079fad3ec516fa2aa9e7e72a8e2e5ad507c029f2"
+    },
+    "vertex.json/cj_winner/text/1": {
+      "output": "47bf5da541c33f95e11bd1527acd4f70ea48cdefe6f8297e1925f439b542bc57",
+      "prompt": "d9e18e0de6a93d734fcd7e8a1b9dd991f2d7165a64dbc9e1186874ceb4fb5b95"
+    },
+    "vertex.json/cj_winner/text/2": {
+      "output": "f9c0bd0baab100331c75356facb19a9d252d23452ef00d01353cc9ab66773309",
+      "prompt": "5bcd6273c7e88b49f0cabfe0b27b1003b37b79873d4ddef8526082313531e72e"
+    },
+    "vertex.json/cj_winner/native/1": {
+      "output": "95441dd8b4e698d0074b6ad9e72d6ad2b5ca4277ad63d29a899dd5a623cf4cc5",
+      "prompt": "61994cb3883668700774d7db16e82286a6502370b689dbcdfa3f9834c4059432"
+    },
+    "vertex.json/cj_winner/native/2": {
+      "output": "7a78cbbcb0f5227afe1686c298863f40a8881c0c0eff5963e75edc0d65bdeae3",
+      "prompt": "eee74dff7998d5d8249d1cd4961d398da9d936281b6dd5af9763d475a12563c4"
+    },
+    "vertex.json/cj_explanation/text/1": {
+      "output": "956dfdebb73b12e11e3899618cadd45aed6a989a97ac2ae106395a9936b4d7a8",
+      "prompt": "1af1fa9e5e6dd3ed1cfce5e2851e317cb4de99534cdd55e087ab26fe67189b38"
+    },
+    "vertex.json/cj_explanation/text/2": {
+      "output": "ebca0ce9ac1e095f7843ee8896395b27fb9067c5299dbe5acc0c2ba54edfdad4",
+      "prompt": "9d9e12f29bbdc914c53d63f6345ae0771b63edc23323efddcf10acf164d4ec09"
+    },
+    "vertex.json/cj_explanation/native/1": {
+      "output": "3b3ba76a6f50484b8041900a756b37b73c805589280537cd3f8a7f8d2ea654d9",
+      "prompt": "ebbf41b1f6f4fd027f2939ef006c46a0d7c0fd5221bfbe58c7e6a04a91bff188"
+    },
+    "vertex.json/cj_explanation/native/2": {
+      "output": "9e71e0b60ba26bf8d6ba8cee25183d995aaaf4f6de5f6f17b75aa7b8ff096e14",
+      "prompt": "ec2e4de64ef73f78b7cd4b38e4bf94ba2d47163851bf9a70cf4c5895c5205deb"
+    },
+    "vertex.json/cj_ties/text/1": {
+      "output": "30502883c30213b0e2806b20f16d2c11df9a18aabc34fdef1d041ed93573cf89",
+      "prompt": "b1088db96d21b614897621e81359a18fc5c38cbd69d8abffd64c4299bae4cb85"
+    },
+    "vertex.json/cj_ties/text/2": {
+      "output": "9d0392279e7d891b8dc2c9ddd5ae5c94e8d3be8fe9646d2dd0b87db1b54ae91a",
+      "prompt": "1e6bdf96a555f27330ed176d1a7af09b044e8d4bdac58157fdf7f5d1ea227f3b"
+    },
+    "vertex.json/cj_ties/native/1": {
+      "output": "d5bf288262ce801ba4705497864a9e33750991a88b8ccf1aa400746df5516eb8",
+      "prompt": "bf25033b3826cb57ae2bf5f3f634621c3cffec6bb01b8ffd1c019a9bc8b32d3e"
+    },
+    "vertex.json/cj_ties/native/2": {
+      "output": "a3d5f9459be071e5914a2a41bf7e29a8c05d6af58d6fd0e41653a64cc3a9a101",
+      "prompt": "37b3ed8ab7680e8819e208c82c3c4a686cba42f8761fd4ba8b3c7b05d1110fa0"
+    },
+    "vertex.json/cj_ties_explanation/text/1": {
+      "output": "ab0b3f14656c061edf32e5937cd176b7bc0d7c54d61f6cc813757ab0a135d52d",
+      "prompt": "4e3cff3c592cea9c1bc308e3ec75b8121608d2429a9525e80e0fcfbedb57c872"
+    },
+    "vertex.json/cj_ties_explanation/text/2": {
+      "output": "d4ea48c9df275082276189c34a66024363b53c700c7ec1fd1dc4a10f33a2bf97",
+      "prompt": "bc1664691d20e56380414f22b341d6f1c37f13abe89e80f04cc64ace9b79c8f3"
+    },
+    "vertex.json/cj_ties_explanation/native/1": {
+      "output": "a2b0c3c9624e65678637dd52e17ee00796214805fae15fb5e3e2e141e5de9aee",
+      "prompt": "6fca6f341d0286ef2868deb359c231e79e446ee9e7ceacbc1f76453c2512f048"
+    },
+    "vertex.json/cj_ties_explanation/native/2": {
+      "output": "802dbf7f589c3e6c60a91d55393bfc17c73de5e482ba4cac4c1bec1e7b3120e3",
+      "prompt": "6c73c96df7f57156bd8c86d04503712a2a39e3aebe5838ea3d722b81b15585d1"
+    },
+    "vertex.schema/rubric_scores/text/1": {
+      "output": "7af71c8a059b6acb03da93b5523943ff2301d2f9c3ba0d5d7faec445da8ab83a",
+      "prompt": "41f35ed4a83db57e0be7b61385a9c4dd6efc0c3c1f690d039c31f1503ab3d6fb"
+    },
+    "vertex.schema/rubric_scores/text/2": {
+      "output": "c688611306a1279780496ac970823d06632cfb3ec2c5fda26778b033b1d101ae",
+      "prompt": "a52a8c21b2c2947ff6baebab17ce76805358c9cf4249c757cd795a7dd4aef923"
+    },
+    "vertex.schema/rubric_scores/native/1": {
+      "output": "3a81c67f847f93d0b63a482b33ed517eea39d4c3d5980936b850161e7c765b1d",
+      "prompt": "3548d16695dcc6c96f455a8d90a84eb1c03dbbece03ec284a027ee4192f09b64"
+    },
+    "vertex.schema/rubric_scores/native/2": {
+      "output": "4503582407a29ad76a27469523781334e3649dd87143e631f23f9dd1242190da",
+      "prompt": "a7943c50239d6768576ca8dc17860ddf1cdb219461be0e2936d7822f222f56c9"
+    },
+    "vertex.schema/rubric_together/text/1": {
+      "output": "cfbf9f815550309583dbf6b077949945e620a9f5bc2b81f407cb6f8db538134a",
+      "prompt": "28a8f844756a6148784962c5e4c66e0c24426758e63f825b7d153335dfd07c2d"
+    },
+    "vertex.schema/rubric_together/text/2": {
+      "output": "62de8eb87d1272601ab813df279db5ef46b194efb4f73781d2bf621ce8e40601",
+      "prompt": "2c16c76f41a5f32d56ff1fa5cce945501209cd1826fc96f9b345c051d5b8dc3f"
+    },
+    "vertex.schema/rubric_together/native/1": {
+      "output": "33ae5463f9ab9d9b0f6bc612585a726a369187cb60456873018cc9df2fac751c",
+      "prompt": "97318d7d8b6e83f033e7645711077f9d6d0dca7ec8d3d055bb57bf793fcfadb9"
+    },
+    "vertex.schema/rubric_together/native/2": {
+      "output": "6377bbea2cb5cf3109ae1a760c6d67df28a1d554c7c0b1589dd577c4d0e1ad38",
+      "prompt": "6271ae18ed84b915a1031f7d37d027bf7d23667a305857e04de99c757e950915"
+    },
+    "vertex.schema/rubric_scores_first/text/1": {
+      "output": "567e6662078e31c00cc4b37678206014599a1df51e3813a0ace6d6257213ba5c",
+      "prompt": "4c21a8cdfcc7abb3bdebf189039250f782cfccaf7dba0642130acc5bb0fc83d9"
+    },
+    "vertex.schema/rubric_scores_first/text/2": {
+      "output": "5661540910b85d82c390b52d308ed5b18ae54b2840b0fc5a9ed6b54c8005c35a",
+      "prompt": "70a16369566d5e7ac2f74ad7bed86a4ded5aa9f70a45e954e2a70687c19f7c0a"
+    },
+    "vertex.schema/rubric_scores_first/native/1": {
+      "output": "9a498960ca99dfc538a80b4a8450111b325d957c73d2c417882d5bf8f5f70078",
+      "prompt": "edd425cdb05e2c27daa7a0f2abe410c628560c41dec34c73c5c66702f3aad7be"
+    },
+    "vertex.schema/rubric_scores_first/native/2": {
+      "output": "84eb861ab4968982af98e28da2b625e805befe850c6b0c5b90501c18b632c7d3",
+      "prompt": "b171a7e105f4c8ee13323ffe8e4e85b6349ac90fd79681c867966480196cd691"
+    },
+    "vertex.schema/rubric_explanations_first/text/1": {
+      "output": "61edffc82ab811ecd541d982af43d16c65eee1c3ad36b14aa18e444b432b5115",
+      "prompt": "ec3771f33cdd59ac2d040451acf432feb5be3e17857106957bdef9ad1e243c2c"
+    },
+    "vertex.schema/rubric_explanations_first/text/2": {
+      "output": "92e04ce3522ef239c42f18cbbf653c251cf1a8f10fdb003c84f41e871dfc5c71",
+      "prompt": "dac797ad91acb7a091b5967d71b4be36ddeff6b0bacec3d6fb784c67882a4c78"
+    },
+    "vertex.schema/rubric_explanations_first/native/1": {
+      "output": "6bda43561a0f644890c66ade5d0f78377cffbca9d8ef063269e81368a5c53459",
+      "prompt": "062cb0be9485fc94b9815f8b12d45662924ced80f373bea1f844688b7dd4779b"
+    },
+    "vertex.schema/rubric_explanations_first/native/2": {
+      "output": "6c215ec0c3e4de369e3ee0a01bd4c0e7aa91b615bc5a82c4046db425e5bcbfc4",
+      "prompt": "671b02963ffb70d897979ac4079fad3ec516fa2aa9e7e72a8e2e5ad507c029f2"
+    },
+    "vertex.schema/cj_winner/text/1": {
+      "output": "ab41be709d7bd9c68002740b920fdd50bfcdf90a6de52bfd514e525bb67ebf13",
+      "prompt": "d9e18e0de6a93d734fcd7e8a1b9dd991f2d7165a64dbc9e1186874ceb4fb5b95"
+    },
+    "vertex.schema/cj_winner/text/2": {
+      "output": "685fff5d087a8630467498d46ffa77173ca70e3ce389edc79ac0ace7a86edcf7",
+      "prompt": "5bcd6273c7e88b49f0cabfe0b27b1003b37b79873d4ddef8526082313531e72e"
+    },
+    "vertex.schema/cj_winner/native/1": {
+      "output": "76e5256ebdd85c6225082cf5c2dcbe9f0c3c5f43267eda5bc4d1431c2033de03",
+      "prompt": "61994cb3883668700774d7db16e82286a6502370b689dbcdfa3f9834c4059432"
+    },
+    "vertex.schema/cj_winner/native/2": {
+      "output": "aabaf9ab302ec60e8613ccb453962de8584555db56e9d2f51fda171147f9f052",
+      "prompt": "eee74dff7998d5d8249d1cd4961d398da9d936281b6dd5af9763d475a12563c4"
+    },
+    "vertex.schema/cj_explanation/text/1": {
+      "output": "cba7432c577a139ccb9e6d49fbf8080954ab8d024ff558905fd1dba630662f83",
+      "prompt": "1af1fa9e5e6dd3ed1cfce5e2851e317cb4de99534cdd55e087ab26fe67189b38"
+    },
+    "vertex.schema/cj_explanation/text/2": {
+      "output": "6ae238b0cacf2890e69263bca81c8677c8d385f030bacddc0782cdfb393b14d0",
+      "prompt": "9d9e12f29bbdc914c53d63f6345ae0771b63edc23323efddcf10acf164d4ec09"
+    },
+    "vertex.schema/cj_explanation/native/1": {
+      "output": "aefe6ec60fea5abface9f2ee70b4caed6e3eb731699e356667ec5ae765e90fb6",
+      "prompt": "ebbf41b1f6f4fd027f2939ef006c46a0d7c0fd5221bfbe58c7e6a04a91bff188"
+    },
+    "vertex.schema/cj_explanation/native/2": {
+      "output": "e5640c5c69c26f1bd059930f3b3a3124d690c38225e421b6179ac868086b5822",
+      "prompt": "ec2e4de64ef73f78b7cd4b38e4bf94ba2d47163851bf9a70cf4c5895c5205deb"
+    },
+    "vertex.schema/cj_ties/text/1": {
+      "output": "ef16519d5bcf28f2ff8b88d0da39b41995a0a22eee7ac42e87e3e0ccac57999b",
+      "prompt": "b1088db96d21b614897621e81359a18fc5c38cbd69d8abffd64c4299bae4cb85"
+    },
+    "vertex.schema/cj_ties/text/2": {
+      "output": "f0ffdad3cde26b1a2f8c9c7e5eff2f562fd4f28d9ffcb8693290595af3171fa1",
+      "prompt": "1e6bdf96a555f27330ed176d1a7af09b044e8d4bdac58157fdf7f5d1ea227f3b"
+    },
+    "vertex.schema/cj_ties/native/1": {
+      "output": "29c4b530b4c1214b5b238137bb4082136feb017499d91e71bb8871c91497a8e1",
+      "prompt": "bf25033b3826cb57ae2bf5f3f634621c3cffec6bb01b8ffd1c019a9bc8b32d3e"
+    },
+    "vertex.schema/cj_ties/native/2": {
+      "output": "1476351cb994b7d28f2f4eb46e471396bbf665ab59a40ea9caf90fb508b203be",
+      "prompt": "37b3ed8ab7680e8819e208c82c3c4a686cba42f8761fd4ba8b3c7b05d1110fa0"
+    },
+    "vertex.schema/cj_ties_explanation/text/1": {
+      "output": "ee65701a3c4097f68d84b24dd40e862a054faa95945d4bfd23dabc9315973fd1",
+      "prompt": "4e3cff3c592cea9c1bc308e3ec75b8121608d2429a9525e80e0fcfbedb57c872"
+    },
+    "vertex.schema/cj_ties_explanation/text/2": {
+      "output": "cf68e97ba535c0bd9c47befa47018902032d08f5cb0a915450d9ea37b38bf7f2",
+      "prompt": "bc1664691d20e56380414f22b341d6f1c37f13abe89e80f04cc64ace9b79c8f3"
+    },
+    "vertex.schema/cj_ties_explanation/native/1": {
+      "output": "7a193ef87fb19ecf086d69c41f2a49ac663966d1f2d1e3844f739145fa7c7e7f",
+      "prompt": "6fca6f341d0286ef2868deb359c231e79e446ee9e7ceacbc1f76453c2512f048"
+    },
+    "vertex.schema/cj_ties_explanation/native/2": {
+      "output": "a1c182afb0bd543666435826f253228891b12ff323bdb34a41e199c5d4d93412",
+      "prompt": "6c73c96df7f57156bd8c86d04503712a2a39e3aebe5838ea3d722b81b15585d1"
+    }
+  }
+}

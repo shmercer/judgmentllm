@@ -15,12 +15,12 @@ from judgmentllm.output_contracts import (
     PairwiseOutputContract,
     RubricOutputContract,
     generate_output_schema,
+    wire_winner_ids,
 )
 from judgmentllm.planning import PlannedRequest
 from judgmentllm.presentation_blocks import (
     criterion_blocks,
     essay_blocks,
-    pairwise_instructions,
     rubric_blocks,
 )
 from judgmentllm.prompts import (
@@ -62,6 +62,9 @@ class RenderedPromptV3(_TransportModel):
 def output_instructions_v3(output: OutputCommitmentV3 | OutputCommitmentV5) -> str:
     """Full local requirements remain binding even when omitted from projection."""
     contract = output.contract
+    if contract.presentation_version == 2:
+        return _current_output_instructions(output)
+    # Revision 1 is frozen, including the Anthropic text-mode safeguard.
     native = output.selection.mechanism != "text"
     instructions = [
         "Return only a JSON object. Use exactly the requested fields and category labels."
@@ -120,12 +123,6 @@ def output_instructions_v3(output: OutputCommitmentV3 | OutputCommitmentV5) -> s
             if contract.explanations
             else "Do not include explanation."
         )
-    if contract.presentation_version == 2:
-        instructions = (
-            [pairwise_instructions(contract)]
-            if isinstance(contract, PairwiseOutputContract)
-            else ["## Output Format", *instructions]
-        )
     if output.repetition == "canonical_neutral":
         instructions.append(output.schema_text)
     elif output.repetition == "projected_native":
@@ -135,6 +132,102 @@ def output_instructions_v3(output: OutputCommitmentV3 | OutputCommitmentV5) -> s
         )
         instructions.append(output.projection.native_schema_text)
     return "\n".join(instructions)
+
+
+def _current_output_instructions(
+    output: OutputCommitmentV3 | OutputCommitmentV5,
+) -> str:
+    contract = output.contract
+    parts = [
+        "## Output Format",
+        "Return one JSON object with the fields specified below."
+        if output.selection.mechanism != "text"
+        else (
+            "Return one JSON object matching the schema below. The response must "
+            "start with { and end with }. Do not use Markdown code fences or "
+            "include text outside the JSON object."
+        ),
+    ]
+    if isinstance(contract, RubricOutputContract):
+        if contract.output_order == "together":
+            fields = (
+                '"trait_id", "category_label", and "explanation"'
+                if contract.explanations
+                else '"trait_id" and "category_label"'
+            )
+            parts.append(
+                'Include only a "scores" array, with every requested trait exactly once. '
+                f"Each entry must contain {fields}, in that order."
+            )
+        else:
+            roots = (
+                '"scores" before "explanations"'
+                if contract.output_order == "scores_first"
+                else '"explanations" before "scores"'
+            )
+            parts.append(
+                f"Include {roots}. Each array must contain every requested trait "
+                'exactly once, matched by "trait_id". Each score must contain '
+                '"trait_id", then "category_label". Each explanation must contain '
+                '"trait_id", then nonblank "text".'
+            )
+        parts.append(
+            "Use the exact trait IDs and category labels from the rubric. "
+            "Category labels must be JSON strings, even when they look numeric. "
+            + (
+                "Explanations must be nonblank. "
+                if contract.explanations and contract.output_order == "together"
+                else ""
+            )
+            + "Do not add other fields."
+        )
+    else:
+        fields = ['"winner_id"']
+        if contract.allow_ties:
+            fields.append('"tie"')
+        if contract.explanations:
+            fields.append('"explanation"')
+        parts.append(
+            (
+                "Include only these fields, in order: "
+                if len(fields) > 1
+                else "Include only "
+            )
+            + ", ".join(fields)
+            + "."
+        )
+        first, second = (
+            json.dumps(identifier, ensure_ascii=False)
+            for identifier in wire_winner_ids(contract)
+        )
+        verb = "When selecting a winner, set" if contract.allow_ties else "Set"
+        choice = (
+            f'{verb} "winner_id" to {first} or {second}, whichever better fulfills '
+            "the comparison criterion."
+        )
+        parts.append(
+            choice
+            + ' Set "tie" to false. For a tie, set "winner_id" to null and "tie" to true.'
+            if contract.allow_ties
+            else choice + " Ties are not allowed."
+        )
+        if contract.explanations:
+            parts.append(
+                'Provide a nonblank "explanation": exactly one concise sentence '
+                "explaining how specific evidence in the essays supports the judgment. "
+                "Give a judgment justification rather than improvement advice."
+            )
+    if output.repetition == "canonical_neutral":
+        parts.extend(("Required JSON schema:", output.schema_text))
+    elif output.repetition == "projected_native":
+        assert output.projection is not None
+        parts.extend(
+            (
+                "Native schema guidance (full requirements above still apply):",
+                output.projection.native_schema_text,
+            )
+        )
+    return "\n\n".join(parts)
 
 
 def render_request_v3(
