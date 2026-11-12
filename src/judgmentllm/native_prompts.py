@@ -188,9 +188,13 @@ def _current_output_instructions(
         if contract.explanations:
             fields.append('"explanation"')
         parts.append(
-            "Include only "
+            (
+                "Include only these fields, in order: "
+                if len(fields) > 1
+                else "Include only "
+            )
             + ", ".join(fields)
-            + (", in that order." if len(fields) > 1 else ".")
+            + "."
         )
         first, second = (
             json.dumps(identifier, ensure_ascii=False)
