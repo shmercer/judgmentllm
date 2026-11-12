@@ -6,18 +6,18 @@ from __future__ import annotations
 import os
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import pytest
+from transport_contract import (
+    assert_frozen_reconstruction_and_subset_lineage,
+    assert_probe_selection_does_not_claim_serving_model_support,
+    assert_protected_templates_limits_and_mutation_guard,
+)
 from vertex_fixture import case, wire_for
 
 from judgmentllm.config import (
     GenerationSpec,
-)
-from judgmentllm.execution.retry import subset_dependency
-from judgmentllm.models import (
-    PairTask,
-    ResponseItem,
 )
 from judgmentllm.persistence.hashing import (
     canonical_bytes,
@@ -45,49 +45,9 @@ def test_unqualified_native_and_strict_auto_cannot_execute(tmp_path: Path) -> No
 
 
 def test_frozen_reconstruction_and_subset_lineage(tmp_path: Path) -> None:
-    wire, spec, dep, context = wire_for(tmp_path, policy="native", probe=True)
-    frozen = prepare_production_request(
-        spec,
-        dep,
-        wire.transport_plan.identity,
-        context,
-        frozen=wire.transport_commitment,
+    assert_frozen_reconstruction_and_subset_lineage(
+        tmp_path, wire_for, prepare_production_request
     )
-    assert frozen == wire
-    subset = subset_dependency(dep, wire.task_ids[:1])
-    retry = prepare_production_request(
-        spec,
-        subset,
-        physical_identity("run-001", dep.request.request_uid, "attempt-002"),
-        context,
-        parent=wire.transport_commitment,
-    )
-    assert (
-        retry.transport_commitment.parent_commitment_sha256
-        == wire.transport_commitment.commitment_sha256
-    )
-    assert retry.transport_commitment.mechanism == wire.transport_commitment.mechanism
-    assert retry.task_ids == wire.task_ids[:1]
-    assert retry.payload != wire.payload
-    assert (
-        prepare_production_request(
-            spec,
-            subset,
-            retry.transport_plan.identity,
-            context,
-            frozen=retry.transport_commitment,
-            parent=wire.transport_commitment,
-        )
-        == retry
-    )
-    with pytest.raises(TransportIntegrityError):
-        prepare_production_request(
-            spec,
-            subset,
-            retry.transport_plan.identity,
-            context,
-            frozen=retry.transport_commitment,
-        )
 
 
 @pytest.mark.parametrize(
@@ -146,39 +106,9 @@ def test_receipt_round_trip_duplicate_ingress_and_versions(tmp_path: Path) -> No
 
 
 def test_protected_templates_limits_and_mutation_guard(tmp_path: Path) -> None:
-    from judgmentllm.prompts import RenderLimits
-
-    wire, spec, dep, context = wire_for(tmp_path)
-    for template in (
-        "{{ response }}",
-        "{{ rubric }} {{ response }}",
-        "{{ output_instructions }}",
-    ):
-        with pytest.raises(TransportIntegrityError):
-            prepare_production_request(
-                spec, dep, wire.transport_plan.identity, context, template=template
-            )
-    small = spec.model_copy(
-        update={
-            "prompt": spec.prompt.model_copy(
-                update={"limits": RenderLimits(max_output_bytes=30)}
-            )
-        }
+    assert_protected_templates_limits_and_mutation_guard(
+        tmp_path, wire_for, prepare_production_request
     )
-    with pytest.raises(TransportIntegrityError):
-        prepare_production_request(small, dep, wire.transport_plan.identity, context)
-
-    def lookup(
-        kind: Literal["response", "pair"], identifier: str
-    ) -> ResponseItem | PairTask:
-        assert dep.request.response is not None
-        spec.model = "mutated-private-canary"
-        return dep.request.response
-
-    with pytest.raises(TransportIntegrityError):
-        prepare_production_request(
-            spec, dep, wire.transport_plan.identity, context, lookup=lookup
-        )
 
 
 def test_scope_generation_and_parent_changes_fail_closed(tmp_path: Path) -> None:
@@ -286,28 +216,9 @@ def test_production_output_current_values_and_duplicate_keys_are_strict(
 
 
 def test_probe_selection_does_not_claim_serving_model_support(tmp_path: Path) -> None:
-    wire, spec, dep, context = wire_for(tmp_path, policy="native", probe=True)
-    selection = wire.output_commitment.selection
-    assert selection.kind == "qualification_probe"
-    assert selection.authority_kind == "qualification_probe"
-    assert selection.native_support == "unknown"
-    assert wire.transport_commitment.selection.native_support == "unknown"
-    subset = subset_dependency(dep, wire.task_ids[:1])
-    retry = prepare_production_request(
-        spec,
-        subset,
-        physical_identity("run-001", dep.request.request_uid, "attempt-002"),
-        context,
-        parent=wire.transport_commitment,
+    assert_probe_selection_does_not_claim_serving_model_support(
+        tmp_path, wire_for, prepare_production_request
     )
-    assert retry.output_commitment.selection.kind == "inherited"
-    assert retry.output_commitment.selection.authority_kind == "qualification_probe"
-    assert retry.output_commitment.selection.native_support == "unknown"
-    from pydantic import BaseModel
-
-    forged = BaseModel.model_copy(selection, update={"authority_kind": "reviewed"})
-    with pytest.raises(ValueError):
-        type(selection).model_validate(dict(forged))
 
 
 @pytest.mark.parametrize(
