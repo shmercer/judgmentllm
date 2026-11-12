@@ -579,19 +579,12 @@ def test_rubric_text_instructions_require_raw_json_in_every_layout(
     )
     assert wire.output_commitment.selection.mechanism == "text"
     text = wire.rendered_text
+    assert text.count("Return one JSON object matching the schema below.") == 1
     assert (
-        text.count("Return exactly one raw JSON object matching the required schema.")
-        == 1
-    )
-    assert (
-        "Do not wrap the JSON in Markdown code fences, including ```json fences."
+        "Do not use Markdown code fences or include text outside the JSON object."
         in text
     )
-    assert (
-        "Do not include commentary, explanations, prefixes, suffixes, or other text outside the JSON object."
-        in text
-    )
-    assert "The entire response must begin with `{` and end with `}`." in text
+    assert "The response must start with { and end with }." in text
     assert wire.output_commitment.schema_text in text
 
 
@@ -716,4 +709,4 @@ def test_raw_json_wording_preserves_editable_templates_and_protected_data(
     assert wire.rendered_text.endswith("\nEditable ending.")
     assert wire.rendered_text.count(canary) == 2
     assert "Exact rationale 雪" in wire.rendered_text
-    assert "Return exactly one raw JSON object" in wire.rendered_text
+    assert "Return one JSON object matching the schema below." in wire.rendered_text

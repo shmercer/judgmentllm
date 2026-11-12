@@ -205,7 +205,7 @@ def test_untrusted_text_and_exemplars_are_preserved_as_data(
     ) as prepared:
         rendered = prepared.render(next(prepared.iter_request_dependencies()))
         assert rendered.text.count(malicious) == 2
-        assert "Include every requested trait exactly once" in rendered.text
+        assert "every requested trait exactly once" in rendered.text
 
 
 def test_prompt_limit_fails_without_truncation(tmp_path: Path) -> None:
