@@ -184,6 +184,39 @@ def test_missing_required_r_executable_is_not_a_skip(
     assert len(calls) == 2
 
 
+@pytest.mark.parametrize("packaging", [False, True])
+def test_plan_exposes_conditional_package_preparation_to_workflow(
+    documentation: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    packaging: bool,
+) -> None:
+    source, plan = documentation
+    plan["packaging"] = packaging
+
+    def planned(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        return plan
+
+    monkeypatch.setattr(acceptance, "make_plan", planned)
+    destination = tmp_path / "github-output"
+    monkeypatch.setenv("GITHUB_OUTPUT", str(destination))
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "acceptance.py",
+            "plan",
+            "--source",
+            str(source),
+            "--output",
+            str(tmp_path / "plan.json"),
+        ],
+    )
+    assert acceptance.main() == 0
+    fields = dict(line.split("=", 1) for line in destination.read_text().splitlines())
+    assert fields["packaging"] == str(packaging).lower()
+
+
 def test_credentials_and_execution_overrides_do_not_reach_tests(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

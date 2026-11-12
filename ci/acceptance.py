@@ -403,6 +403,7 @@ def main() -> int:
                 stream.write("matrix=" + json.dumps({"include": plan["lanes"]}) + "\n")
                 stream.write(f"risk={plan['risk']}\n")
                 stream.write(f"r_required={str(bool(plan['r_gates'])).lower()}\n")
+                stream.write(f"packaging={str(plan['packaging']).lower()}\n")
         return 0
     if args.operation == "r-gate":
         return r_gate(args.name, args.source, args.output)

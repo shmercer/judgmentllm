@@ -109,7 +109,12 @@ complete Windows 3.11 troubleshooting without a lightweight success status.
 Static checks and CI selftests execute once, before scheduling expensive lanes.
 When packaging is affected, build/metadata/install smokes precede the full suite.
 Prepare locked core/build dependencies in the separate environment preparation
-stage. Acceptance passes `--offline` explicitly to wheel/sdist installation
+stage. For lanes that install distributions, export the locked core requirements
+with hashes and install them into a separate temporary target during preparation.
+`uv sync --locked` can cache wheels without caching the package-index metadata
+needed by a later isolated installation. This explicit preparation supplies both;
+it does not change the verification environment or substitute for the clean
+installation checks. Acceptance passes `--offline` explicitly to wheel/sdist installation
 smokes, matching the native runner; missing cache entries fail rather than trying
 package-index DNS from an isolated check. Native complete-grid check mode retains
 its prepared offline caches.

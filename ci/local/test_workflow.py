@@ -151,6 +151,39 @@ def test_linux_image_is_pinned_and_r_setup_has_a_bounded_failure() -> None:
     assert '== "2.0.0"' in jsonlite["run"]
 
 
+def test_offline_package_cache_is_prepared_only_for_planned_installation_lanes() -> (
+    None
+):
+    data = workflow()
+    assert data["jobs"]["plan"]["outputs"]["packaging"] == (
+        "${{ steps.plan.outputs.packaging }}"
+    )
+    steps = data["jobs"]["verify"]["steps"]
+    prepare = next(
+        step
+        for step in steps
+        if step.get("name") == "Prepare offline core installation cache"
+    )
+    assert prepare["if"] == (
+        "needs.plan.outputs.packaging == 'true' && "
+        "(matrix.id == 'linux-3.11' || needs.plan.outputs.risk == '4')"
+    )
+    assert prepare["shell"] == "bash"
+    assert (
+        "uv export --project candidate --locked --no-default-groups --no-emit-project"
+        in prepare["run"]
+    )
+    assert (
+        '--target "$RUNNER_TEMP/core-dependencies" --require-hashes' in prepare["run"]
+    )
+    assert '--requirements "$RUNNER_TEMP/core-requirements.txt"' in prepare["run"]
+    execute = next(
+        step for step in steps if step.get("name") == "Execute planned checks"
+    )
+    assert steps.index(prepare) < steps.index(execute)
+    assert "--offline --no-sync" in execute["run"]
+
+
 def test_original_coverage_floor_and_resource_deadlines_remain() -> None:
     project = tomllib.loads((REPOSITORY / "pyproject.toml").read_text())
     assert project["tool"]["coverage"]["report"]["fail_under"] == 90

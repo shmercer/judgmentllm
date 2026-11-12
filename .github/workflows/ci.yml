@@ -37,6 +37,7 @@ jobs:
       matrix: ${{ steps.plan.outputs.matrix }}
       risk: ${{ steps.plan.outputs.risk }}
       r_required: ${{ steps.plan.outputs.r_required }}
+      packaging: ${{ steps.plan.outputs.packaging }}
     steps:
       - name: Check out trusted policy
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -136,6 +137,12 @@ jobs:
       - name: Prepare locked environment
         if: needs.plan.outputs.risk != '0'
         run: uv sync --project candidate --locked --all-extras --group dev
+      - name: Prepare offline core installation cache
+        if: needs.plan.outputs.packaging == 'true' && (matrix.id == 'linux-3.11' || needs.plan.outputs.risk == '4')
+        shell: bash
+        run: |
+          uv export --project candidate --locked --no-default-groups --no-emit-project --output-file "$RUNNER_TEMP/core-requirements.txt"
+          uv pip install --python candidate/.venv --target "$RUNNER_TEMP/core-dependencies" --require-hashes --requirements "$RUNNER_TEMP/core-requirements.txt"
       - name: Execute planned checks
         shell: bash
         env:
