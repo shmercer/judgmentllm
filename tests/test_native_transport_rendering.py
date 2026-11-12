@@ -6,15 +6,28 @@ import json
 from pathlib import Path
 
 import pytest
-from native_transport_fixture import MECHANISMS, NativeFixtureAdapter, specification
+from native_transport_fixture import (
+    MECHANISMS,
+    NativeFixtureAdapter,
+    context_for,
+    specification,
+)
 from test_native_transport_integration import offline as offline
 
 from judgmentllm.config import RunSpecV3, load_run_spec
+from judgmentllm.io import read_pairs, read_responses
 from judgmentllm.native_prompts import output_instructions_v3
 from judgmentllm.persistence.hashing import bytes_digest
+from judgmentllm.planning import plan_record
 from judgmentllm.preparation import prepare_run
 from judgmentllm.preparation.freezing import PreparationError
-from judgmentllm.transport import PreparedRequestV3, physical_identity
+from judgmentllm.preparation.session import RequestDependency
+from judgmentllm.presentation import PresentationVersion
+from judgmentllm.transport import (
+    PreparedRequestV3,
+    physical_identity,
+    prepare_transport_request,
+)
 
 CASES = (
     "single_scores",
@@ -30,7 +43,12 @@ GOLDEN = Path(__file__).parent / "fixtures/native_transport_prompts/prompts.json
 
 
 def rendered_case(
-    root: Path, mechanism: str, case: str, *, policy: str = "native"
+    root: Path,
+    mechanism: str,
+    case: str,
+    *,
+    policy: str = "native",
+    presentation_version: PresentationVersion = 2,
 ) -> PreparedRequestV3:
     pairwise = case.startswith("pairwise")
     source = specification(
@@ -53,22 +71,39 @@ def rendered_case(
     assert isinstance(spec, RunSpecV3)
     store = root / "runtime"
     adapter = NativeFixtureAdapter(store / "service.sqlite3", mechanism)
-    with prepare_run(
-        source,
-        store=store,
-        run_id="001",
-        capabilities=adapter.capabilities(spec),
-        transport_context=adapter.transport_context,
-    ) as prepared:
-        dependency = next(prepared.iter_request_dependencies())
-        attempt = next(prepared.repository.iter_attempts("001"))
-        wire = prepared.prepare_transport_attempt(
-            dependency,
-            physical_identity("001", attempt.request_uid, attempt.attempt_id),
-            frozen=prepared.transport_for_attempt(attempt.attempt_id),
+    # This corpus freezes historical revision-1 bytes. New durable defaults are
+    # covered by the integration suite and the separate presentation fixtures.
+    adapter = NativeFixtureAdapter(
+        store / "historical-service.sqlite3",
+        mechanism,
+        context=context_for(mechanism, presentation_version=presentation_version),
+    )
+    records = {item.item_id: item for item in read_responses(spec.input)}
+    template = (
+        spec.prompt.file.read_text(encoding="utf-8") if spec.prompt.file else None
+    )
+    record = (
+        next(read_pairs(spec.pairs)) if spec.pairs else next(iter(records.values()))
+    )
+    request = next(
+        plan_record(
+            spec,
+            record,
+            template_text=template,
+            capabilities=adapter.capabilities(spec),
         )
-        assert isinstance(wire, PreparedRequestV3)
-        return wire
+    )
+    dependency = RequestDependency(request=request, dependency_sha256="1" * 64)
+    wire = prepare_transport_request(
+        spec,
+        dependency,
+        physical_identity("001", request.request_uid, "historical-attempt"),
+        adapter.transport_context,
+        template=template,
+        lookup=lambda kind, ident: record if kind == "pair" else records[ident],
+        presentation_version=presentation_version,
+    )
+    return wire
 
 
 @pytest.mark.parametrize("mechanism", MECHANISMS)
@@ -76,7 +111,7 @@ def rendered_case(
 def test_new_renderer_exact_byte_goldens(
     tmp_path: Path, mechanism: str, case: str
 ) -> None:
-    wire = rendered_case(tmp_path, mechanism, case)
+    wire = rendered_case(tmp_path, mechanism, case, presentation_version=1)
     expected = json.loads(GOLDEN.read_text(encoding="utf-8"))[mechanism + "/" + case]
     assert wire.rendered_text == expected["prompt"]
     assert bytes_digest(wire.rendered_text.encode()) == expected["prompt_sha256"]

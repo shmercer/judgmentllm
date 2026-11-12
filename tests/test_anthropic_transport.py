@@ -242,7 +242,11 @@ def test_controlled_registry_exact_features_and_scope(
             )
         ),
         scope=context.scope,
-        supported_features=("rubric_scores", "rubric_grouped"),
+        supported_features=(
+            "rubric_scores",
+            "rubric_grouped",
+            "assessment_presentation_v2",
+        ),
         documentation_sha256="a" * 64,
         offline_fixture_sha256="b" * 64,
         independent_live_sha256="c" * 64,
@@ -398,7 +402,11 @@ def _reviewed_profile(
         "request_acceptance": "accepted",
         "assessment_behavior": "verified",
         "native_schema_behavior": "verified",
-        "supported_features": ("rubric_scores", "rubric_grouped"),
+        "supported_features": (
+            "rubric_scores",
+            "rubric_grouped",
+            "assessment_presentation_v2",
+        ),
         "documentation_sha256": "a" * 64,
         "offline_fixture_sha256": "b" * 64,
         "independent_live_sha256": "c" * 64,
@@ -737,6 +745,29 @@ def test_native_rubric_and_pairwise_prompts_keep_main_bytes(
         layout=layout,
         explanations=explanations,
         probe=policy == "native",
+    )
+    # Rebuild the old revision explicitly; never rewrite these source-bound hashes.
+    spec, dep, records = case(
+        tmp_path,
+        pairwise=pairwise,
+        policy=cast(Any, policy),
+        layout=cast(Any, layout),
+        explanations=explanations,
+    )
+    context = (
+        _qualification_context(spec, source_commit="a" * 40)
+        if policy == "native"
+        else production_context(spec)
+    )
+    wire = prepare_production_request(
+        spec,
+        dep,
+        wire.transport_plan.identity,
+        context,
+        lookup=lambda kind, ident: (
+            cast(Any, dep.request.pair) if kind == "pair" else records[ident]
+        ),
+        presentation_version=1,
     )
     assert sha256(wire.rendered_text.encode("utf-8")).hexdigest() == digest
 

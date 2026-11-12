@@ -461,6 +461,24 @@ contexts, including text and qualification candidates; recover historical stores
 with their original clean source/dependencies. No migration, integrity exception,
 runtime registration, harness-grant reuse or public schema change is introduced.
 
+## Issue #38: independently committed assessment presentation
+
+Use additive `presentation_version` 2 for all newly prepared requests and
+previews, including existing RunSpec versions. Persisted omission selects 1;
+serialization omits historical defaults. This revision versions both exact text
+and CJ winner encoding without renumbering unrelated provider protocols or
+migrating historical stores. Parent rubric ordering determines trait numbers;
+descriptors never acquire inferred AND/OR semantics. CJ aliases are fixed by the
+occurrence's presentation order, not another randomization seed. Validate wire
+aliases before resolving to original IDs, even when source IDs spell an alias.
+
+Share Markdown blocks across offline and production renderers; preserve legacy
+branches, templates and source-bound native fixtures. Require a distinct
+`assessment_presentation_v2` native qualification feature; old evidence never
+qualifies the changed prompt/wire contract. New production text fallback and
+strict/native rejection remain explicit until separately qualified. See the
+[revision guide](renderer-revision-2.md). No issue #39 study package, provider
+call, qualification promotion or publication is included.
 
 ## Resource measurements run locally only
 

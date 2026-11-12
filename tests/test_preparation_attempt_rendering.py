@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import pytest
 from test_preparation_rendering import specification
@@ -51,9 +51,10 @@ def counted_renders(monkeypatch: pytest.MonkeyPatch) -> list[tuple[str, ...]]:
         template: str | None,
         request: PlannedRequest,
         lookup: Callable[[Literal["response", "pair"], str], ResponseItem | PairTask],
+        **kwargs: Any,
     ) -> RenderedAssessmentPrompt:
         rendered.append(tuple(task.task_id for task in request.tasks))
-        return original(spec, template, request, lookup)
+        return original(spec, template, request, lookup, **kwargs)
 
     monkeypatch.setattr(session, "_render_request", render)
     return rendered

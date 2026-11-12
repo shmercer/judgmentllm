@@ -29,7 +29,11 @@ from judgmentllm.native_schema_v2 import (
     NativeMechanismV2,
     NativeProjectionErrorV2,
 )
-from judgmentllm.output_contracts import generate_output_schema
+from judgmentllm.output_contracts import (
+    PairwiseOutputContract,
+    generate_output_schema,
+    wire_winner_ids,
+)
 
 GOOGLE_SDK_VERSION = "2.34.0"
 GOOGLE_DOCUMENTATION_SHA256 = (
@@ -317,7 +321,9 @@ def _pairwise(
         + (["tie"] if source.allow_ties else [])
         + (["explanation"] if source.explanations else [])
     )
-    winners: list[JsonValue] = list(source.presented_order)
+    contract = source_contract(source)
+    assert isinstance(contract, PairwiseOutputContract)
+    winners: list[JsonValue] = list(wire_winner_ids(contract))
     if list(fields) != expected or fields["winner_id"] != {
         "enum": [*winners, None] if source.allow_ties else winners
     }:

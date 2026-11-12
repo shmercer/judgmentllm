@@ -21,6 +21,7 @@ from judgmentllm.output_contracts import (
     serialize_output_schema,
 )
 from judgmentllm.persistence.models import SHA256
+from judgmentllm.presentation import PresentationVersion
 
 if TYPE_CHECKING:
     from judgmentllm.config import RunSpecification
@@ -119,17 +120,23 @@ def validate_schema_selection(
 
 
 def build_output_contract(
-    spec: RunSpecification, request: PlannedRequest
+    spec: RunSpecification,
+    request: PlannedRequest,
+    *,
+    presentation_version: PresentationVersion = 2,
 ) -> AssessmentOutputContract:
     """Build only from exact planned membership and the validated v2 run."""
-    if spec.schema_version != 2:
+    if spec.schema_version != 2 and not (
+        spec.schema_version == 1 and presentation_version == 2
+    ):
         raise ValueError("output contracts require RunSpec v2")
     if request.pair is not None:
         contract = PairwiseOutputContract(
+            presentation_version=presentation_version,
             pair=request.pair,
             allow_ties=spec.allow_ties,
             explanations=spec.execution.explanations,
-            output_order=spec.prompt.output_order,
+            output_order=getattr(spec.prompt, "output_order", "together"),
         )
     else:
         if spec.rubric is None:
@@ -137,9 +144,10 @@ def build_output_contract(
         by_id = {trait.trait_id: trait for trait in spec.rubric.traits}
         try:
             contract = RubricOutputContract(
+                presentation_version=presentation_version,
                 traits=tuple(by_id[trait_id] for trait_id in request.trait_ids),
                 explanations=spec.execution.explanations,
-                output_order=spec.prompt.output_order,
+                output_order=getattr(spec.prompt, "output_order", "together"),
             )
         except KeyError:
             raise ValueError("request references an unknown trait") from None
@@ -228,15 +236,36 @@ def build_output_commitment(
     spec: RunSpecification,
     request: PlannedRequest,
     selection: SchemaSelectionV2 | None = None,
+    *,
+    presentation_version: PresentationVersion = 2,
 ) -> OutputCommitmentV2:
-    contract = build_output_contract(spec, request)
+    contract = build_output_contract(
+        spec, request, presentation_version=presentation_version
+    )
+    if spec.schema_version == 1:
+        if selection is not None:
+            raise ValueError("v1 configuration has no historical schema selection")
+        return detached_output_commitment(contract)
+    return detached_output_commitment(
+        contract,
+        validate_schema_selection(spec, selection)
+        if selection is not None
+        else resolve_schema_selection(spec),
+    )
+
+
+def detached_output_commitment(
+    contract: AssessmentOutputContract, selection: SchemaSelectionV2 | None = None
+) -> OutputCommitmentV2:
+    """Commit an offline contract, including revision-2 standalone/v1 previews."""
     raw = serialize_output_schema(contract)
     root, members = _property_orders(contract)
     return OutputCommitmentV2(
         contract=contract,
-        selection=validate_schema_selection(spec, selection)
-        if selection is not None
-        else resolve_schema_selection(spec),
+        selection=selection
+        or SchemaSelectionV2(
+            policy="text", native_support="unsupported", reason="explicit_text"
+        ),
         schema_text=raw.decode("utf-8"),
         schema_sha256=sha256(raw).hexdigest(),
         root_properties=root,
@@ -251,13 +280,20 @@ def validate_output_commitment(
 ) -> OutputCommitmentV2:
     from judgmentllm.persistence.hashing import canonical_bytes
 
-    if spec.schema_version != 2:
+    if spec.schema_version != 2 and not (
+        spec.schema_version == 1 and commitment.contract.presentation_version == 2
+    ):
         raise ValueError("output commitments require RunSpec v2")
     checked = OutputCommitmentV2.model_validate_json(canonical_bytes(commitment))
-    expected = build_output_commitment(spec, request, checked.selection)
-    if checked.selection.policy != spec.prompt.structured_output or canonical_bytes(
-        checked
-    ) != canonical_bytes(expected):
+    expected = build_output_commitment(
+        spec,
+        request,
+        checked.selection if spec.schema_version == 2 else None,
+        presentation_version=checked.contract.presentation_version,
+    )
+    if checked.selection.policy != getattr(
+        spec.prompt, "structured_output", "text"
+    ) or canonical_bytes(checked) != canonical_bytes(expected):
         raise ValueError(
             "output commitment differs from the committed run or membership"
         )

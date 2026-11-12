@@ -17,6 +17,12 @@ from judgmentllm.output_contracts import (
     generate_output_schema,
 )
 from judgmentllm.planning import PlannedRequest
+from judgmentllm.presentation_blocks import (
+    criterion_blocks,
+    essay_blocks,
+    pairwise_instructions,
+    rubric_blocks,
+)
 from judgmentllm.prompts import (
     PromptError,
     _compile_prompt_template,
@@ -114,6 +120,12 @@ def output_instructions_v3(output: OutputCommitmentV3 | OutputCommitmentV5) -> s
             if contract.explanations
             else "Do not include explanation."
         )
+    if contract.presentation_version == 2:
+        instructions = (
+            [pairwise_instructions(contract)]
+            if isinstance(contract, PairwiseOutputContract)
+            else ["## Output Format", *instructions]
+        )
     if output.repetition == "canonical_neutral":
         instructions.append(output.schema_text)
     elif output.repetition == "projected_native":
@@ -183,6 +195,7 @@ def _render_text_v3(
                 raise PromptError("Pair sources unavailable.")
             criterion = next(c for c in spec.criteria if c.trait_id == pair.trait_id)
             expected = PairwiseOutputContract(
+                presentation_version=contract.presentation_version,
                 pair=pair,
                 explanations=spec.execution.explanations,
                 allow_ties=spec.allow_ties,
@@ -207,6 +220,9 @@ def _render_text_v3(
                     ("first", "second"), pair.presented_order, strict=True
                 )
             ]
+            if contract.presentation_version == 2:
+                criteria = criterion_blocks(criterion)
+                responses = essay_blocks(pair, left, right)
         else:
             if request.response is None or spec.rubric is None:
                 raise PromptError("Rubric source unavailable.")
@@ -219,6 +235,7 @@ def _render_text_v3(
             by_id = {trait.trait_id: trait for trait in spec.rubric.traits}
             traits = tuple(by_id[identifier] for identifier in request.trait_ids)
             expected = RubricOutputContract(
+                presentation_version=contract.presentation_version,
                 traits=traits,
                 explanations=spec.execution.explanations,
                 output_order=spec.prompt.output_order,
@@ -240,6 +257,9 @@ def _render_text_v3(
                     f"Response {response.item_id} (assessment data):\n{response.text}",
                 )
             ]
+            if contract.presentation_version == 2:
+                criteria = rubric_blocks(traits, spec.rubric)
+                responses = [("response", "response", response.text)]
         if expected != contract:
             raise PromptError(
                 "Output contract differs from exact assessment membership."
@@ -254,6 +274,7 @@ def _render_text_v3(
             limits=spec.prompt.limits,
             renderer_version=2,
             exemplar_count=len(spec.exemplars),
+            presentation_version=contract.presentation_version,
         )
         contents = (
             criteria
@@ -279,7 +300,11 @@ def _render_text_v3(
                 raise PromptError("Prompt exceeds the output size rendering safeguard.")
             chunks.append(chunk)
         return _verify_and_unwrap(
-            "".join(chunks), blocks, namespace, renderer_version=2
+            "".join(chunks),
+            blocks,
+            namespace,
+            renderer_version=2,
+            presentation_version=contract.presentation_version,
         )
     except (
         ValueError,

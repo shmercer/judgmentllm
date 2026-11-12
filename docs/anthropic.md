@@ -1,5 +1,10 @@
 # Assess synthetic responses with Anthropic Messages
 
+**Current assessment contract:** new preparations use [presentation revision 2](renderer-revision-2.md), including positional CJ aliases. Historical native evidence
+remains scoped to revision 1. New `auto` requests use text until separately
+qualified for revision 2; explicit `native` and strict unknown `auto` fail before
+submission. Historical sealed requests keep their original commitments.
+
 Phase 5B implements ordinal rubric assessment, complete grouped rubric outputs,
 and forced-choice pairwise judgment over `POST https://api.anthropic.com/v1/messages`.
 It uses the official async `anthropic==2.3.0` SDK and API version `2026-10-21`.

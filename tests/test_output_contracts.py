@@ -211,8 +211,8 @@ def test_all_six_approved_example_schemas_and_ordered_serializations() -> None:
         RubricOutputContract(
             traits=selected, explanations=True, output_order="explanations_first"
         ),
-        PairwiseOutputContract(pair=presented),
-        PairwiseOutputContract(pair=presented, allow_ties=True),
+        PairwiseOutputContract(presentation_version=2, pair=presented),
+        PairwiseOutputContract(presentation_version=2, pair=presented, allow_ties=True),
     )
     for specification, example in zip(configured, examples, strict=True):
         assert generate_output_schema(specification) == json.loads(example)

@@ -1,0 +1,15 @@
+# Genuine pre-change preparation fixture
+
+`store.tar.gz.base64` is an ASCII transport of the exact gzip archive produced from unchanged main commit
+`38bda981a46330b73fec6e80a9b1c0c7a3c1c61a` using the exact script retained in
+`producer.py.txt`. `provenance.json` records the decoded archive and producer hashes. Base64 avoids the protected CI planner's UTF-8-only changed-file reader; decoding restores byte-identical evidence. The three full-capture
+synthetic runs cover pending RunSpec 1/2 and RunSpec 2 interrupted immediately
+after receipt/evidence commit. Both original item IDs deliberately spell the new
+aliases; a historical winner `essay_01` selects the original second item, while
+new positional interpretation would select the first. This fixture must remain
+immutable. Reopening explicitly authorizes the verified frozen snapshots because
+original producer paths are unavailable. No provider or real student data exists.
+
+The additional [portable fixture](portable/) uses Python-origin specifications
+with relative input filenames for replay on both Windows and POSIX. This original
+archive and producer remain unchanged and independently hash-checked.

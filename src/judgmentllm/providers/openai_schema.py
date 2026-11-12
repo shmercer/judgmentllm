@@ -36,6 +36,7 @@ from judgmentllm.output_contracts import (
     RubricOutputContract,
     generate_output_schema,
     serialize_output_schema,
+    wire_winner_ids,
 )
 from judgmentllm.persistence.hashing import canonical_bytes
 
@@ -104,7 +105,7 @@ def _pre_expansion_budget(contract: object) -> None:
                         "schema_limit_exceeded", limit="string_characters"
                     )
     elif isinstance(contract, PairwiseOutputContract):
-        if sum(len(item) for item in contract.pair.presented_order) > 120000:
+        if sum(len(item) for item in wire_winner_ids(contract)) > 120000:
             raise NativeProjectionError(
                 "schema_limit_exceeded", limit="string_characters"
             )
@@ -370,7 +371,9 @@ def _pairwise(
         + (["tie"] if source.allow_ties else [])
         + (["explanation"] if source.explanations else [])
     )
-    winners: list[JsonValue] = list(source.presented_order)
+    contract = source_contract(source)
+    assert isinstance(contract, PairwiseOutputContract)
+    winners: list[JsonValue] = list(wire_winner_ids(contract))
     values = [*winners, None] if source.allow_ties else winners
     if list(fields) != expected or fields["winner_id"] != {"enum": values}:
         raise _unsupported()

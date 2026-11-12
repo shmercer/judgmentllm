@@ -109,7 +109,7 @@ async def test_exact_vertex_sdk_bytes_and_authorization(
         return httpx2.Response(
             200,
             json=envelope(
-                '{"winner_id":"001"}'
+                '{"winner_id":"essay_02"}'
                 if spec.task_kind == "pairwise"
                 else '{"scores":[]}'
             ),
@@ -320,7 +320,7 @@ async def test_native_candidate_full_http_bytes_without_production_authority(
         return httpx2.Response(
             200,
             json=envelope(
-                '{"winner_id":"001"}'
+                '{"winner_id":"essay_02"}'
                 if spec.task_kind == "pairwise"
                 else '{"scores":[]}'
             ),

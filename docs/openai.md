@@ -1,5 +1,10 @@
 # Assess synthetic responses with OpenAI
 
+**Current assessment contract:** new preparations use [presentation revision 2](renderer-revision-2.md), including positional CJ aliases. Historical native evidence
+remains scoped to revision 1. New `auto` requests use text until separately
+qualified for revision 2; explicit `native` and strict unknown `auto` fail before
+submission. Historical sealed requests keep their original commitments.
+
 JudgmentLLM requires Python 3.11 or newer on Linux, macOS or Windows. Phase 5A
 implements OpenAI Responses and Chat Completions. Serving-model qualification is
 separate: this implementation does not claim that every model accepts every

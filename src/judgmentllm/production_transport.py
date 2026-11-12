@@ -39,6 +39,7 @@ from judgmentllm.persistence.hashing import (
 from judgmentllm.persistence.models import SHA256
 from judgmentllm.planning import PlannedRequest, validate_generation
 from judgmentllm.preparation.session import RequestDependency
+from judgmentllm.presentation import PresentationVersion
 from judgmentllm.production_registry import (
     OPENAI_API_SCOPE,
     OPENAI_PRODUCTION_SDK_VERSION,
@@ -443,11 +444,18 @@ def _build_output_commitment_v4(
     *,
     inherited_commitment: TransportCommitmentV2 | None = None,
     frozen_selection: ProductionSelectionV1 | None = None,
+    presentation_version: PresentationVersion = 2,
 ) -> OutputCommitmentV4:
     """Select once, or verify an original frozen choice without resolving auto."""
     context = _checked_context(context)
     _validate_scope(spec, context)
-    contract = _contract(spec, request)
+    contract = _contract(
+        spec,
+        request,
+        presentation_version=inherited_commitment.presentation_version
+        if inherited_commitment
+        else presentation_version,
+    )
     selection = (
         _selection(spec, contract, context, inherited_commitment)
         if frozen_selection is None
@@ -485,6 +493,7 @@ def build_output_commitment_v4(
     *,
     inherited_commitment: TransportCommitmentV2 | None = None,
     frozen_selection: ProductionSelectionV1 | None = None,
+    presentation_version: PresentationVersion = 2,
 ) -> OutputCommitmentV4:
     """Sanitized boundary for new selection and pinned output reconstruction."""
     try:
@@ -494,6 +503,7 @@ def build_output_commitment_v4(
             context,
             inherited_commitment=inherited_commitment,
             frozen_selection=frozen_selection,
+            presentation_version=presentation_version,
         )
     except (ValueError, TypeError, AttributeError, KeyError, RecursionError):
         raise TransportIntegrityError() from None
@@ -569,6 +579,9 @@ class TransportCommitmentV2(_TransportModel):
     transport_protocol: Literal["openai-production-v1"] = "openai-production-v1"
     api_scope: Literal["openai-v1"] = "openai-v1"
     renderer_version: Literal[3] = 3
+    presentation_version: PresentationVersion = Field(
+        default=1, exclude_if=lambda value: value == 1
+    )
     context_kind: ProductionContextKind
     scope: NativeProjectionScopeV1 = Field(repr=False)
     store: Literal[False] = False
@@ -677,6 +690,7 @@ def _receipt(
         transport_protocol="openai-production-v1",
         api_scope=OPENAI_API_SCOPE,
         renderer_version=3,
+        presentation_version=output.contract.presentation_version,
         context_kind=context_kind,
         scope=output.scope.model_dump(mode="json"),
         store=False,
@@ -700,6 +714,8 @@ def _receipt(
         payload_bytes=len(payload),
         local_validation_required=True,
     )
+    if output.contract.presentation_version == 1:
+        values.pop("presentation_version")
     return TransportCommitmentV2.model_validate_json(
         canonical_bytes(
             {
@@ -819,6 +835,7 @@ def prepare_production_request(
     frozen: TransportCommitmentV2 | None = None,
     parent: TransportCommitmentV2 | None = None,
     committed_output: OutputCommitmentV4 | None = None,
+    presentation_version: PresentationVersion = 2,
 ) -> PreparedRequestV4:
     """Prepare before sealing, or verify immutable reconstruction without fallback."""
     from judgmentllm.production_prompts import render_production_request
@@ -857,6 +874,11 @@ def prepare_production_request(
             context,
             inherited_commitment=parent,
             frozen_selection=None if frozen is None else frozen.selection,
+            presentation_version=frozen.presentation_version
+            if frozen
+            else parent.presentation_version
+            if parent
+            else presentation_version,
         )
         if (
             committed_output is not None

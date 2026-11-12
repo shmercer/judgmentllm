@@ -98,6 +98,7 @@ def test_frozen_v1_rubric_prompt_and_schema_bytes(
 ) -> None:
     # These digests were captured from the unmodified 6d79503 baseline renderer.
     rendered = render_prompt(
+        presentation_version=1,
         rubric=rubric(),
         response=ResponseItem(item_id="001", text="Synthetic response."),
         explanations=explanations,
@@ -109,6 +110,7 @@ def test_frozen_v1_rubric_prompt_and_schema_bytes(
 
 def test_frozen_v1_pairwise_prompt_keeps_historical_explicit_tie_contract() -> None:
     rendered = render_prompt(
+        presentation_version=1,
         pair=pair(),
         left=ResponseItem(item_id="001", text="Synthetic response."),
         right=ResponseItem(item_id="002", text="Other synthetic response."),

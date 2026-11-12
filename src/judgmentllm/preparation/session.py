@@ -64,6 +64,7 @@ from judgmentllm.preparation.records import (  # pyright: ignore[reportPrivateUs
     record_digest,
     record_locator,
 )
+from judgmentllm.presentation import PresentationVersion
 from judgmentllm.prompts import RenderedAssessmentPrompt
 
 if TYPE_CHECKING:
@@ -146,10 +147,18 @@ def _render_request(
     request: PlannedRequest,
     lookup: Callable[[Literal["response", "pair"], str], ResponseItem | PairTask],
     selection: SchemaSelectionV2 | None = None,
+    presentation_version: PresentationVersion = 2,
 ) -> RenderedAssessmentPrompt:
     from judgmentllm.request_rendering import render_request
 
-    return render_request(spec, template, request, lookup, selection=selection)
+    return render_request(
+        spec,
+        template,
+        request,
+        lookup,
+        selection=selection,
+        presentation_version=presentation_version,
+    )
 
 
 class PreparedRun:
@@ -497,9 +506,16 @@ class PreparedRun:
                 request,
                 self._get,
                 selection=self.manifest.output_selection,
+                presentation_version=self.manifest.template.presentation_version,
             )
         else:
-            rendered = _render_request(spec, template, request, self._get)
+            rendered = _render_request(
+                spec,
+                template,
+                request,
+                self._get,
+                presentation_version=self.manifest.template.presentation_version,
+            )
         if context is not None:
             self.verify_compatibility(capabilities=self.capabilities)
             if self._context is not context:
@@ -703,6 +719,13 @@ class PreparedRun:
             frozen=frozen,
             parent=parent,
         )
+        if (
+            wire.output_commitment.contract.presentation_version
+            != self.manifest.template.presentation_version
+        ):
+            raise PreparationError(
+                "transport presentation differs from its sealed manifest"
+            )
         if frozen is not None:
             # Reopening an attempt verifies every promised retained artifact,
             # including subset-specific schemas and fragments, before replay.

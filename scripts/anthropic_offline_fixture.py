@@ -23,7 +23,7 @@ from judgmentllm.config import RunSpecV3
 from judgmentllm.execution import execute_run, recover_run
 from judgmentllm.execution.retry import authorize_subset_retry
 from judgmentllm.io import write_results_jsonl
-from judgmentllm.output_contracts import RubricOutputContract
+from judgmentllm.output_contracts import RubricOutputContract, wire_winner_ids
 from judgmentllm.persistence.hashing import bytes_digest
 from judgmentllm.persistence.repository import ReadOnlyRepository
 from judgmentllm.preparation import prepare_run
@@ -172,7 +172,7 @@ class FixtureTransport:
                 ]
             }
         else:
-            output = {"winner_id": contract.pair.presented_order[0]}
+            output = {"winner_id": wire_winner_ids(contract)[0]}
         self.calls += 1
         text = (
             json.dumps(output) if self.assessment_text is None else self.assessment_text

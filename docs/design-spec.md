@@ -448,3 +448,11 @@ features, projects, regions, models and mechanisms remain unqualified. Changed
 frozen authority requires the original checkout for historical reconstruction;
 normalized exports remain unchanged. Acceptance is Level3, entirely synthetic
 and credential-free, with no additional live qualification or publication.
+
+## Issue #38 assessment presentation
+
+New previews/preparations now use the shared Markdown presentation and positional
+CJ wire aliases described in [assessment revision 2](renderer-revision-2.md).
+An independently sealed revision preserves every historical protocol and original
+normalized/R identity. Native qualification of earlier prompt contracts does not
+transfer to the new revision; no live qualification is part of this change.

@@ -49,6 +49,7 @@ from judgmentllm.persistence.hashing import (
 from judgmentllm.persistence.models import SHA256
 from judgmentllm.planning import PlannedRequest, validate_generation
 from judgmentllm.preparation.session import RequestDependency
+from judgmentllm.presentation import PresentationVersion
 from judgmentllm.providers.anthropic_schema import ANTHROPIC_API_VERSION
 from judgmentllm.providers.protocol import PreparedRequest
 from judgmentllm.transport import (
@@ -492,11 +493,18 @@ def _build_output_commitment_v5(
     *,
     inherited_commitment: TransportCommitmentV3 | None = None,
     frozen_selection: AnthropicSelectionV1 | None = None,
+    presentation_version: PresentationVersion = 2,
 ) -> OutputCommitmentV5:
     """Select once, or verify an original frozen choice without resolving auto."""
     context = _checked_context(context)
     _validate_scope(spec, context)
-    contract = _contract(spec, request)
+    contract = _contract(
+        spec,
+        request,
+        presentation_version=inherited_commitment.presentation_version
+        if inherited_commitment
+        else presentation_version,
+    )
     selection = (
         _selection(spec, contract, context, inherited_commitment)
         if frozen_selection is None
@@ -535,6 +543,7 @@ def build_output_commitment_v5(
     *,
     inherited_commitment: TransportCommitmentV3 | None = None,
     frozen_selection: AnthropicSelectionV1 | None = None,
+    presentation_version: PresentationVersion = 2,
 ) -> OutputCommitmentV5:
     """Sanitized boundary for new selection and pinned output reconstruction."""
     try:
@@ -544,6 +553,7 @@ def build_output_commitment_v5(
             context,
             inherited_commitment=inherited_commitment,
             frozen_selection=frozen_selection,
+            presentation_version=presentation_version,
         )
     except (ValueError, TypeError, AttributeError, KeyError, RecursionError):
         raise TransportIntegrityError() from None
@@ -621,6 +631,9 @@ class TransportCommitmentV3(_TransportModel):
         "anthropic-messages-2026-10-21-v1"
     )
     renderer_version: Literal[3] = 3
+    presentation_version: PresentationVersion = Field(
+        default=1, exclude_if=lambda value: value == 1
+    )
     context_kind: AnthropicProductionContextKind
     scope: NativeProjectionScopeV1 = Field(repr=False)
     request_policy: AnthropicRequestPolicyV1
@@ -722,6 +735,7 @@ def _receipt(
         transport_protocol="anthropic-production-v1",
         api_scope=ANTHROPIC_API_SCOPE,
         renderer_version=3,
+        presentation_version=output.contract.presentation_version,
         context_kind=context_kind,
         scope=output.scope.model_dump(mode="json"),
         request_policy=output.request_policy.model_dump(mode="json"),
@@ -745,6 +759,8 @@ def _receipt(
         payload_bytes=len(payload),
         local_validation_required=True,
     )
+    if output.contract.presentation_version == 1:
+        values.pop("presentation_version")
     return TransportCommitmentV3.model_validate_json(
         canonical_bytes(
             {
@@ -871,6 +887,7 @@ def prepare_production_request(
     frozen: TransportCommitmentV3 | None = None,
     parent: TransportCommitmentV3 | None = None,
     committed_output: OutputCommitmentV5 | None = None,
+    presentation_version: PresentationVersion = 2,
 ) -> PreparedRequestV5:
     """Prepare before sealing, or verify immutable reconstruction without fallback."""
     from judgmentllm.anthropic_prompts import render_anthropic_request
@@ -909,6 +926,11 @@ def prepare_production_request(
             context,
             inherited_commitment=parent,
             frozen_selection=None if frozen is None else frozen.selection,
+            presentation_version=frozen.presentation_version
+            if frozen
+            else parent.presentation_version
+            if parent
+            else presentation_version,
         )
         if (
             committed_output is not None

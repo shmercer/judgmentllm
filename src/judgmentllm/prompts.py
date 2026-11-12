@@ -31,11 +31,22 @@ from judgmentllm.models import (
     VersionedModel,
     validate_exemplars,
 )
-from judgmentllm.output_commitments import OutputCommitmentV2, ordered_json_bytes
+from judgmentllm.output_commitments import (
+    OutputCommitmentV2,
+    detached_output_commitment,
+    ordered_json_bytes,
+)
 from judgmentllm.output_contracts import (
     PairwiseOutputContract,
     RubricOutputContract,
     generate_output_schema,
+)
+from judgmentllm.presentation import PresentationVersion
+from judgmentllm.presentation_blocks import (
+    criterion_blocks,
+    essay_blocks,
+    pairwise_instructions,
+    rubric_blocks,
 )
 
 
@@ -66,6 +77,9 @@ class RenderedPrompt(VersionedModel):
     text: str
     exemplar_ids: list[str]
     output_schema: dict[str, JsonValue]
+    output_commitment: OutputCommitmentV2 | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 class RenderedPromptV2(StrictModel):
@@ -126,7 +140,12 @@ def list_templates() -> list[TemplateInfo]:
     ]
 
 
-def get_template(preset: str, *, renderer_version: Literal[1, 2] = 1) -> str:
+def get_template(
+    preset: str,
+    *,
+    renderer_version: Literal[1, 2] = 1,
+    presentation_version: PresentationVersion = 2,
+) -> str:
     """Read an installed text preset without requiring a source checkout."""
     if preset not in _PRESETS:
         raise PromptError(
@@ -135,7 +154,15 @@ def get_template(preset: str, *, renderer_version: Literal[1, 2] = 1) -> str:
     return (
         files("judgmentllm")
         .joinpath(
-            "templates", *(["v2"] if renderer_version == 2 else []), f"{preset}.txt"
+            "templates",
+            *(
+                ["presentation_v2"]
+                if presentation_version == 2
+                else ["v2"]
+                if renderer_version == 2
+                else []
+            ),
+            f"{preset}.txt",
         )
         .read_text(encoding="utf-8")
     )
@@ -289,6 +316,7 @@ def _verify_and_unwrap(
     namespace: str,
     *,
     renderer_version: Literal[1, 2] = 1,
+    presentation_version: PresentationVersion = 1,
 ) -> str:
     pattern = re.compile(rf"<<JUDGMENTLLM_{namespace}_(BEGIN|END)_(\d+)>>")
     matches = list(pattern.finditer(text))
@@ -323,6 +351,19 @@ def _verify_and_unwrap(
     ]
     if actual_exemplars != expected_exemplars:
         raise PromptError("Prompt must preserve the complete selected exemplar order.")
+    if presentation_version == 2:
+        actual_essays = [
+            index for index in seen if blocks[index].kind in {"first", "second"}
+        ]
+        expected_essays = [
+            index
+            for index, block in enumerate(blocks)
+            if block.kind in {"first", "second"}
+        ]
+        if actual_essays != expected_essays:
+            raise PromptError(
+                "Prompt must preserve the committed essay presentation order."
+            )
     # Internal markers are validation machinery, not text for providers.
     if renderer_version == 2:
         for block in blocks:
@@ -434,6 +475,7 @@ def _prompt_source(
     limits: RenderLimits,
     renderer_version: Literal[1, 2] = 1,
     exemplar_count: int = 0,
+    presentation_version: PresentationVersion = 1,
 ) -> str:
     if preset is not None and template is not None:
         raise PromptError("Choose a prompt preset or custom template, not both.")
@@ -456,13 +498,30 @@ def _prompt_source(
             and (chosen == "rubric_scores_with_explanations") != explanations
         ):
             raise PromptError("Rubric preset must match the explanations setting.")
-        source = get_template(chosen, renderer_version=renderer_version)
-        if renderer_version == 2 and exemplar_count == 0:
+        source = get_template(
+            chosen,
+            renderer_version=renderer_version,
+            presentation_version=presentation_version,
+        )
+        if (renderer_version == 2 or presentation_version == 2) and exemplar_count == 0:
             source = source.replace("Reference exemplars:\n{{ exemplars }}\n\n", "")
     else:
         source = template
     if len(source.encode("utf-8")) > limits.max_source_bytes:
         raise PromptError("Template exceeds the source size rendering safeguard.")
+    if presentation_version == 2:
+        # Remove only adjacent template headings whose protected placeholder owns
+        # the same heading. Never scan or rewrite supplied assessment content.
+        for heading, names in (
+            ("Rubric", "rubric|trait"),
+            ("Comparison Criterion", "criterion|trait|rubric"),
+            ("Output Format", "output_instructions"),
+        ):
+            source = re.sub(
+                rf"(?m)^## {heading}[ \t]*\n(?:[ \t]*\n)*(?=\{{\{{\s*(?:{names})\s*\}}\}})",
+                "",
+                source,
+            )
     return source
 
 
@@ -534,6 +593,7 @@ def validate_prompt_template(
     allow_ties: bool,
     limits: RenderLimits,
     renderer_version: Literal[1, 2] = 1,
+    presentation_version: PresentationVersion = 1,
 ) -> None:
     """Internal preflight: compile static contracts without evaluating content."""
     source = _prompt_source(
@@ -545,6 +605,7 @@ def validate_prompt_template(
         limits=limits,
         renderer_version=renderer_version,
         exemplar_count=len(exemplar_ids),
+        presentation_version=presentation_version,
     )
     # Only context names and actual list sizes enter static AST validation.
     # Empty slots are never rendered, interpreted as records, or retained.
@@ -566,6 +627,11 @@ def validate_prompt_template(
 
 def _output_instructions_v2(commitment: OutputCommitmentV2) -> str:
     contract = commitment.contract
+    if (
+        isinstance(contract, PairwiseOutputContract)
+        and contract.presentation_version == 2
+    ):
+        return pairwise_instructions(contract) + "\n" + commitment.schema_text
     prefix = "Return only a JSON object matching this schema. "
     if isinstance(contract, RubricOutputContract):
         text = (
@@ -599,6 +665,8 @@ def _output_instructions_v2(commitment: OutputCommitmentV2) -> str:
                 if contract.explanations
                 else "Return only winner_id; do not include tie or explanation."
             )
+    if contract.presentation_version == 2:
+        text = "## Output Format\n\n" + text
     return text + "\n" + commitment.schema_text
 
 
@@ -620,6 +688,7 @@ def render_prompt(
     limits: RenderLimits | None = None,
     renderer_version: Literal[1, 2] = 1,
     output_commitment: OutputCommitmentV2 | None = None,
+    presentation_version: PresentationVersion | None = None,
 ) -> RenderedAssessmentPrompt:
     """Render one offline assessment request without credentials or provider calls.
 
@@ -629,9 +698,23 @@ def render_prompt(
     Advanced loops use ``entry['block']`` on ``traits``/``exemplar_items`` lists.
     """
     limits = limits or RenderLimits()
+    revision = (
+        (output_commitment.contract.presentation_version if output_commitment else 2)
+        if presentation_version is None
+        else presentation_version
+    )
+    if type(revision) is not int or revision not in (1, 2):
+        raise PromptError("Unsupported assessment presentation version.")
+    if (
+        output_commitment is not None
+        and output_commitment.contract.presentation_version != revision
+    ):
+        raise PromptError("Presentation differs from its output commitment.")
     if type(renderer_version) is not int or renderer_version not in (1, 2):
         raise PromptError("Unsupported renderer version.")
-    if (renderer_version == 2) != (output_commitment is not None):
+    if (renderer_version == 2 and output_commitment is None) or (
+        renderer_version == 1 and output_commitment is not None and revision == 1
+    ):
         raise PromptError("Version-2 rendering requires its exact output commitment.")
     if output_commitment is not None:
         from judgmentllm.io import _revalidate_record  # pyright: ignore[reportPrivateUsage]
@@ -672,6 +755,9 @@ def render_prompt(
                 ("first", "second"), pair.presented_order, strict=True
             )
         ]
+        if revision == 2:
+            criteria = criterion_blocks(criterion)
+            response_contents = essay_blocks(pair, left, right)
         selected: list[Trait] = []
     else:
         kind = "rubric"
@@ -706,6 +792,9 @@ def render_prompt(
                 f"Response {response.item_id} (assessment data):\n{response.text}",
             )
         ]
+        if revision == 2:
+            criteria = rubric_blocks(selected, rubric)
+            response_contents = [("response", "response", response.text)]
     try:
         validation_rubric = rubric or (
             Rubric(rubric_id="prompt", name="Prompt criteria", traits=selected)
@@ -728,6 +817,7 @@ def render_prompt(
         limits=limits,
         renderer_version=renderer_version,
         exemplar_count=len(exemplars),
+        presentation_version=revision,
     )
     output_instructions = (
         (
@@ -740,13 +830,32 @@ def render_prompt(
         + "\n"
         + json.dumps(schema, ensure_ascii=False, sort_keys=True)
     )
-    if output_commitment is not None:
-        expected = (
+    if output_commitment is None and revision == 2:
+        output_commitment = detached_output_commitment(
             PairwiseOutputContract(
-                pair=pair, explanations=explanations, allow_ties=allow_ties
+                pair=pair,
+                explanations=explanations,
+                allow_ties=allow_ties,
+                presentation_version=2,
             )
             if pair is not None
             else RubricOutputContract(
+                traits=tuple(selected),
+                explanations=explanations,
+                presentation_version=2,
+            )
+        )
+    if output_commitment is not None:
+        expected = (
+            PairwiseOutputContract(
+                presentation_version=revision,
+                pair=pair,
+                explanations=explanations,
+                allow_ties=allow_ties,
+            )
+            if pair is not None
+            else RubricOutputContract(
+                presentation_version=revision,
                 traits=tuple(selected),
                 explanations=explanations,
                 output_order=output_commitment.contract.output_order,
@@ -787,9 +896,13 @@ def render_prompt(
     except (TemplateError, RecursionError, TypeError, ValueError) as exc:
         raise PromptError(f"Cannot render prompt template: {exc}") from exc
     text = _verify_and_unwrap(
-        "".join(rendered), blocks, namespace, renderer_version=renderer_version
+        "".join(rendered),
+        blocks,
+        namespace,
+        renderer_version=2 if revision == 2 else renderer_version,
+        presentation_version=revision,
     )
-    if output_commitment is not None:
+    if output_commitment is not None and renderer_version == 2:
         return RenderedPromptV2(
             text=text,
             exemplar_ids=[exemplar.exemplar_id for exemplar in exemplars],
@@ -800,4 +913,5 @@ def render_prompt(
         text=text,
         exemplar_ids=[exemplar.exemplar_id for exemplar in exemplars],
         output_schema=schema,
+        output_commitment=output_commitment,
     )

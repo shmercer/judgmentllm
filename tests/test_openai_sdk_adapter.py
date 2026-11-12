@@ -133,7 +133,7 @@ async def test_actual_sdk_bytes_matrix(
             200,
             json=envelope(
                 endpoint,
-                '{"winner_id":"001"}'
+                '{"winner_id":"essay_02"}'
                 if scenario in {"pairwise", "ties"}
                 else '{"scores":[]}',
             ),

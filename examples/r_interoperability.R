@@ -355,5 +355,22 @@ if (has_jsonlite) {
   }, logical(1L))))
 }
 cat("Assessment contracts R smoke passed: 3 layouts, grouped partial outcomes, winner-only/historical/tie outputs\n")
+presentation <- read.csv(file.path(export_directory, "presentation", "presentation_pairwise_r.csv"),
+  colClasses = "character", stringsAsFactors = FALSE, check.names = FALSE, na.strings = "NA")
+stopifnot(nrow(presentation) == 3L, all(presentation$winner_id == "001"),
+  all(presentation$left_item_id == "001"), all(presentation$right_item_id == "002"),
+  identical(presentation$ID1, c("001", "001", "002")),
+  identical(presentation$ID2, c("002", "002", "001")),
+  identical(presentation$winner_pos, c("1", "1", "2")),
+  identical(presentation$is_reversal, c("FALSE", "FALSE", "TRUE")),
+  all(is.na(presentation$p_left)), all(is.na(presentation$p_right)),
+  all(presentation$pair_id == "0001"), length(unique(presentation$pair_uid)) == 3L,
+  all(presentation$attempt_id == "attempt-001"))
+if (has_jsonlite) {
+  original <- jsonlite::fromJSON(presentation$original_order[[3L]])
+  presented <- jsonlite::fromJSON(presentation$presented_order[[3L]])
+  stopifnot(identical(original, c("001", "002")), identical(presented, c("002", "001")))
+}
+cat("Presentation revision 2: positional aliases resolved to original IDs and reversal orientation\n")
 cat(if (strict) "Strict mode: required jsonlite checks completed\n" else "Local mode: jsonlite checks remain optional\n")
 cat("R interoperability smoke passed: 6 pair audit rows, 4 chosen outcomes, 3 binary wins, 1 retained tie, 3 rubric audit rows, 2 chosen rubric outcomes\n")

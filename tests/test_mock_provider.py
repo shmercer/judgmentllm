@@ -23,6 +23,7 @@ from judgmentllm.persistence.hashing import (
 )
 from judgmentllm.planning import CapabilityProfile, plan_record
 from judgmentllm.preparation.session import RequestDependency
+from judgmentllm.presentation import PresentationVersion
 from judgmentllm.prompts import render_prompt
 from judgmentllm.providers import (
     AcceptanceRecord,
@@ -55,6 +56,7 @@ def request(
     explanations: bool = False,
     generation: dict[str, int | float] | None = None,
     grouping: bool = False,
+    presentation_version: PresentationVersion = 1,
 ) -> tuple[RunSpec, RequestDependency, PreparedRequest]:
     data: dict[str, object] = {
         "task_kind": "pairwise" if pairwise else "rubric",
@@ -108,6 +110,7 @@ def request(
         )
         planned = next(plan_record(spec, pair, capabilities=adapter.capabilities(spec)))
         rendered = render_prompt(
+            presentation_version=presentation_version,
             pair=pair,
             left=response,
             right=ResponseItem(item_id="002", text="Other synthetic text."),
@@ -124,6 +127,7 @@ def request(
         )
         assert spec.rubric is not None
         rendered = render_prompt(
+            presentation_version=presentation_version,
             response=response,
             rubric=spec.rubric,
             traits=spec.rubric.traits,

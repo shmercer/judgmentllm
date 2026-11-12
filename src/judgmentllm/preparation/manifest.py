@@ -22,6 +22,7 @@ from judgmentllm.persistence.models import SHA256, ArtifactIdentity, ExecutionMo
 from judgmentllm.planning import CapabilityProfile
 from judgmentllm.preparation.freezing import FileSignature
 from judgmentllm.preparation.index import ParsingContext
+from judgmentllm.presentation import PresentationVersion
 
 SourceFormat = Literal["yaml", "yml", "json", "csv", "jsonl", "text", "txt"]
 
@@ -87,6 +88,9 @@ class TemplateCommitment(ExecutionModel):
     advanced: bool
     limits_sha256: SHA256
     renderer_version: Literal[1] = 1
+    presentation_version: PresentationVersion = Field(
+        default=1, exclude_if=lambda value: value == 1
+    )
 
 
 class ExecutableRunManifest(ExecutionModel):

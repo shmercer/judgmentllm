@@ -350,7 +350,7 @@ stopifnot(length(unique(gr$attempt_id)) == 4L)
 for (inspection in read_vertex("inspections.jsonl")) stopifnot(!"output_text" %in% names(inspection))
 cat("Vertex AI interoperability passed\n")
 
-# Phase 5D3: actual production auto/native selection for both independent modes.
+# Phase 5D3: historical native authority cannot qualify revision-2 presentation.
 vp_root <- file.path(root, "vertex-promotion")
 read_vp <- function(name) lapply(readLines(file.path(vp_root, name), encoding="UTF-8"), jsonlite::fromJSON, simplifyVector=FALSE)
 vp_rows <- read_vp("results.jsonl")
@@ -374,7 +374,7 @@ for (row in vp_rows) {
 for (transport in vp_transports) {
   mode <- transport$authentication_mode
   stopifnot(mode %in% c("adc","api_key"), transport$qualification_source_commit == vp_sources[[mode]], transport$independent_live_sha256 == vp_reports[[mode]])
-  stopifnot(transport$mechanism == "vertex.generate_content.response_json_schema", transport$selection$kind == "native", transport$selection$policy == "auto", transport$selection$native_support == "supported", transport$selection$authority_kind == "reviewed")
+  stopifnot(transport$presentation_version == 2L, transport$mechanism == "text", transport$selection$kind == "text", transport$selection$policy == "auto", transport$selection$native_support == "unknown", transport$selection$authority_kind == "reviewed", transport$selection$requested_mechanism == "vertex.generate_content.response_json_schema", "assessment_presentation_v2" %in% unlist(transport$selection$features), !"assessment_presentation_v2" %in% unlist(transport$qualified_features))
   stopifnot(transport$run_id %in% vapply(vp_rows, function(x) x$run_id, character(1)))
 }
 vp_routes <- split(vapply(vp_transports, function(x) x$route_sha256, character(1)), vapply(vp_transports, function(x) x$authentication_mode, character(1)))
@@ -389,4 +389,4 @@ vp_rubric <- read.csv(file.path(vp_root,"rubric.csv"),colClasses="character",na.
 vp_pairs <- read.csv(file.path(vp_root,"pairs.csv"),colClasses="character",na.strings="NA",check.names=FALSE)
 stopifnot(nrow(vp_rubric) == 4L, nrow(vp_pairs) == 4L, all(vp_rubric$item_id == "001"), all(vp_rubric$trait_id == "01"), all(vp_pairs$ID1 == "002"), all(vp_pairs$ID2 == "001"), all(vp_pairs$better_id == "002"))
 
-cat("Vertex production promotion interoperability passed: 8 native observations across ADC and API-key modes\n")
+cat("Vertex promotion compatibility passed: 8 revision-2 text observations across ADC and API-key modes\n")

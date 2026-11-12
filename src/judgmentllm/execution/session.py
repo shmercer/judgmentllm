@@ -969,6 +969,7 @@ class ExecutionSession:
             parsed = (
                 self.adapter.parse(response, strict_output=True)
                 if self.spec.schema_version in (2, 3)
+                or isinstance(work.prepared, PreparedRequestV2)
                 else self.adapter.parse(response)
             )
         except ValueError:
@@ -999,7 +1000,9 @@ class ExecutionSession:
             if current != work.prepared:
                 raise IntegrityError("native commitment changed before interpretation")
             contract = work.prepared.output_commitment.contract
-        if self.spec.schema_version == 2:
+        if self.spec.schema_version == 2 or isinstance(
+            work.prepared, PreparedRequestV2
+        ):
             if not isinstance(work.prepared, PreparedRequestV2):
                 raise IntegrityError(
                     "v2 execution requires a committed output contract"

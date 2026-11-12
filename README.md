@@ -202,3 +202,11 @@ authorized calls per plan. Their read-only verifier requires the exact clean
 source and an independently retained plan digest. No credentials or `gcloud`
 are needed offline; account/key eligibility and live execution remain pending.
 Ordinary auth status, planning and validation stay offline.
+
+New prompt previews and preparations use readable Markdown and positional CJ
+aliases. See the [renderer and compatibility guide](docs/renderer-revision-2.md)
+and [exact offline writing-task examples](examples/rendering-revision2/).
+Historical sealed requests retain their original bytes and source-ID wire
+interpretation. Existing native qualification does not transfer to the revised
+contract; new production requests use text until separately qualified (`native`
+and strict unknown `auto` fail before submission).

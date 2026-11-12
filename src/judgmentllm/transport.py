@@ -73,6 +73,7 @@ from judgmentllm.persistence.hashing import (
 from judgmentllm.persistence.models import SHA256
 from judgmentllm.planning import PlannedRequest, stable_id
 from judgmentllm.preparation.session import RequestDependency
+from judgmentllm.presentation import PresentationVersion
 from judgmentllm.providers.openai_schema import project_openai_schema
 from judgmentllm.providers.protocol import PreparedRequest
 
@@ -519,11 +520,17 @@ class OutputCommitmentV3(_TransportModel):
         return semantic_digest("output-commitment-v3", self)
 
 
-def _contract(spec: RunSpecV3, request: PlannedRequest) -> AssessmentOutputContract:
+def _contract(
+    spec: RunSpecV3,
+    request: PlannedRequest,
+    *,
+    presentation_version: PresentationVersion = 1,
+) -> AssessmentOutputContract:
     from judgmentllm.execution.processing import _request_contract
 
     if request.pair is not None:
         contract: AssessmentOutputContract = PairwiseOutputContract(
+            presentation_version=presentation_version,
             pair=request.pair,
             explanations=spec.execution.explanations,
             allow_ties=spec.allow_ties,
@@ -537,6 +544,7 @@ def _contract(spec: RunSpecV3, request: PlannedRequest) -> AssessmentOutputContr
             raise TransportIntegrityError()
         try:
             contract = RubricOutputContract(
+                presentation_version=presentation_version,
                 traits=tuple(traits[i] for i in request.trait_ids),
                 explanations=spec.execution.explanations,
                 output_order=spec.prompt.output_order,
@@ -661,7 +669,9 @@ def _verify_openai(
         or checked.schema_dialect != "openai.strict-json-schema.v1"
     ):
         support, diagnostic = "unsupported", "translator_scope_incompatible"
-    elif not set(checked.features) <= set(implementation.features):
+    elif not (set(checked.features) - {"assessment_presentation_v2"}) <= set(
+        implementation.features
+    ):
         support, diagnostic = "unsupported", "projection_features_incompatible"
     elif checked.diagnostic.reason == "projection_incompatible":
         if checked.policy == "text":
@@ -740,6 +750,7 @@ def build_output_commitment_v3(
     context: TransportContext,
     *,
     inherited_commitment: TransportCommitmentV1 | None = None,
+    presentation_version: PresentationVersion = 2,
 ) -> OutputCommitmentV3:
     """Select a fresh request, or inherit the parent's exact family and route."""
     try:
@@ -752,6 +763,7 @@ def build_output_commitment_v3(
         context,
         transport_context_digest(context),
         inherited_commitment=inherited_commitment,
+        presentation_version=presentation_version,
     )
 
 
@@ -763,11 +775,18 @@ def _build_output_commitment_v3(
     *,
     inherited_commitment: TransportCommitmentV1 | None = None,
     _reuse_projection: bool = False,
+    presentation_version: PresentationVersion = 2,
 ) -> OutputCommitmentV3:
     try:
         # Public callers validate in build_output_commitment_v3; preparation
         # has already validated its detached, exact-token-guarded inputs.
-        contract = _contract(spec, request)
+        contract = _contract(
+            spec,
+            request,
+            presentation_version=inherited_commitment.presentation_version
+            if inherited_commitment
+            else presentation_version,
+        )
         mechanism = spec.prompt.native_mechanism
         projection: Projection | None = None
         if inherited_commitment is not None:
@@ -912,6 +931,9 @@ class TransportCommitmentV1(_TransportModel):
 
     transport_commitment_version: Literal[1] = 1
     renderer_version: Literal[3] = 3
+    presentation_version: PresentationVersion = Field(
+        default=1, exclude_if=lambda value: value == 1
+    )
     identity: PhysicalRequestIdentityV1
     configuration_sha256: SHA256
     context_sha256: SHA256
@@ -1169,8 +1191,11 @@ def _receipt_values(
         "schema_version": 1,
         "transport_commitment_version": 1,
         "renderer_version": 3,
+        "presentation_version": output.contract.presentation_version,
         "local_validation_required": True,
     }
+    if output.contract.presentation_version == 1:
+        values.pop("presentation_version")
     values.pop("plan_version", None)
     return {
         **values,
@@ -1201,6 +1226,7 @@ def prepare_transport_request(
     frozen: TransportCommitmentV1 | None = None,
     parent: TransportCommitmentV1 | None = None,
     committed_output: OutputCommitmentV3 | None = None,
+    presentation_version: PresentationVersion = 2,
 ) -> PreparedRequestV3:
     """Build complete offline bytes or verify exact committed reconstruction.
 
@@ -1267,7 +1293,11 @@ def prepare_transport_request(
             if frozen.identity != identity or frozen.context_sha256 != context_sha256:
                 raise TransportIntegrityError()
             if committed_output is None:
-                contract = _contract(spec, dependency.request)
+                contract = _contract(
+                    spec,
+                    dependency.request,
+                    presentation_version=frozen.presentation_version,
+                )
                 projection = (
                     None
                     if frozen.mechanism == "text"
@@ -1304,7 +1334,12 @@ def prepare_transport_request(
                 )
             if (
                 output.context_sha256 != context_sha256
-                or output.contract != _contract(spec, dependency.request)
+                or output.contract
+                != _contract(
+                    spec,
+                    dependency.request,
+                    presentation_version=frozen.presentation_version,
+                )
                 or output.selection.requested_mechanism != spec.prompt.native_mechanism
                 or output.selection.policy != spec.prompt.structured_output
             ):
@@ -1331,7 +1366,11 @@ def prepare_transport_request(
         else:
             output = (
                 build_output_commitment_v3(
-                    spec, dependency.request, context, inherited_commitment=parent
+                    spec,
+                    dependency.request,
+                    context,
+                    inherited_commitment=parent,
+                    presentation_version=presentation_version,
                 )
                 if input_token is None
                 else _build_output_commitment_v3(
@@ -1341,6 +1380,7 @@ def prepare_transport_request(
                     context_sha256,
                     inherited_commitment=parent,
                     _reuse_projection=True,
+                    presentation_version=presentation_version,
                 )
             )
         # The constructor above fully validated these same values. Reuse only a

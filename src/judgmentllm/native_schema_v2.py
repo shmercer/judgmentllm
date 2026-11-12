@@ -29,6 +29,7 @@ from judgmentllm.output_contracts import (
     RubricOutputContract,
     decode_assessment_output,
     serialize_output_schema,
+    wire_winner_ids,
 )
 from judgmentllm.persistence.hashing import (
     bytes_digest,
@@ -276,7 +277,7 @@ def _pre_expansion_budget_v2(contract: object) -> None:
                         "schema_limit_exceeded", limit="string_characters"
                     )
     elif isinstance(contract, PairwiseOutputContract):
-        if sum(len(item) for item in contract.pair.presented_order) > 1_000_000:
+        if sum(len(item) for item in wire_winner_ids(contract)) > 1_000_000:
             raise NativeProjectionErrorV2(
                 "schema_limit_exceeded", limit="string_characters"
             )

@@ -432,7 +432,7 @@ def test_stop_details_override_json_and_never_enter_diagnostics(
     outcome: str,
 ) -> None:
     wire, *_ = wire_for(tmp_path, pairwise=True)
-    body = envelope("messages", '{"winner_id":"001"}')
+    body = envelope("messages", '{"winner_id":"essay_02"}')
     body.update(stop_reason=reason, stop_details=details)
     kind, text, observed = _messages_output(body)
     assert observed == outcome

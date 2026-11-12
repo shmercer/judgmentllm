@@ -120,7 +120,7 @@ def setup_case(
         payload_digest = receipt.payload_sha256
         if output is None:
             output = (
-                json.dumps({"winner_id": "002"})
+                json.dumps({"winner_id": "essay_01"})
                 if pairwise
                 else json.dumps(
                     {

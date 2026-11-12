@@ -155,8 +155,8 @@ def test_builtin_complete_content_and_prefix(
         exemplars=exemplars,
     )
     assert (
-        rendered.text.split("Response essay_1")[0]
-        == next_render.text.split("Response essay_2")[0]
+        rendered.text.split("## Student Essay")[0]
+        == next_render.text.split("## Student Essay")[0]
     )
 
 
@@ -186,7 +186,9 @@ def test_explanations_change_output_contract(
     assert '"explanation"' in with_explanation.text
     scores_only = render_prompt(rubric=rubric, response=response)
     assert '"explanation"' not in scores_only.text
-    assert "20.0" in scores_only.text
+    assert "**Category `3`**" in scores_only.text
+    assert "20.0" not in scores_only.text
+    assert rubric.traits[1].numeric_values == [0.0, 5.0, 20.0]
 
 
 def test_simple_template_and_standalone_traits(
@@ -424,9 +426,9 @@ def test_pairwise_presentation_and_explanations(
         ],
     )
     assert result.text.index("Original right") < result.text.index("Original left")
-    assert "First response right" in result.text
+    assert "essay_01:\nOriginal right" in result.text
     assert '"explanation"' in result.text
-    assert '"const": false' in result.text
+    assert result.output_schema["required"] == ["winner_id", "explanation"]
 
 
 def test_pairwise_position_names_preserve_legacy_alias_behavior(
@@ -453,8 +455,8 @@ def test_pairwise_position_names_preserve_legacy_alias_behavior(
     assert explicit.text == legacy.text
     assert pair.original_order == ["left", "right"]
     assert pair.presented_order == ["right", "left"]
-    assert explicit.text.index("First response right") < explicit.text.index(
-        "Second response left"
+    assert explicit.text.index("essay_01:\nOriginal right") < explicit.text.index(
+        "essay_02:\nOriginal left"
     )
 
 
@@ -478,7 +480,7 @@ def test_pairwise_custom_tie_contract(
         template="{{ criterion }}{{ first_response }}{{ second_response }}{{ output_instructions }}",
     )
     assert "oneOf" in result.output_schema
-    assert '"winner_id": {"const": null}' in result.text
+    assert '"winner_id":{"const":null}' in result.text
 
 
 def test_incompatible_arguments_and_presets(

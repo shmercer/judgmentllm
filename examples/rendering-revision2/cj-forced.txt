@@ -1,0 +1,39 @@
+## Writing Task
+
+The following writing task was provided to students. The time limit was 15 minutes.
+
+“The internet makes traveling unnecessary.”
+
+What do you think?
+
+Write an argumentative essay in English, in which you discuss the statement.
+
+## Comparison Criterion
+
+### Overall Writing Quality
+Criterion ID: `overall_writing_quality`
+
+Compare how clearly each essay states and supports its position on the writing task.
+
+## Essays
+
+essay_01:
+The internet can replace some journeys, but it cannot replace every experience. A video call lets relatives speak without a long flight.
+
+However, visiting a city also means hearing its streets and meeting people outside a screen. Online information helps us choose a journey; it does not make every journey unnecessary.
+
+essay_02:
+The internet shows many places. I can see a museum online and I do not have to buy a ticket.
+
+Travel takes time. Therefore the internet makes traveling unnecessary.
+
+## Output Format
+
+Return only a JSON object containing "winner_id".
+
+The value of "winner_id" must be exactly "essay_01" or "essay_02", identifying the essay that better fulfills the comparison criterion.
+
+Ties are not allowed.
+
+Do not include explanations or additional fields.
+{"type":"object","properties":{"winner_id":{"enum":["essay_01","essay_02"]}},"required":["winner_id"],"additionalProperties":false}

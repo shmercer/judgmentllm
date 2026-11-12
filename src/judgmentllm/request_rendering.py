@@ -9,6 +9,7 @@ from judgmentllm.config import RunSpecification, RunSpecV2
 from judgmentllm.models import PairTask, ResponseItem
 from judgmentllm.output_commitments import SchemaSelectionV2, build_output_commitment
 from judgmentllm.planning import PlannedRequest
+from judgmentllm.presentation import PresentationVersion
 from judgmentllm.prompts import RenderedAssessmentPrompt, render_prompt
 
 
@@ -19,11 +20,14 @@ def render_request(
     lookup: Callable[[Literal["response", "pair"], str], ResponseItem | PairTask],
     *,
     selection: SchemaSelectionV2 | None = None,
+    presentation_version: PresentationVersion = 2,
 ) -> RenderedAssessmentPrompt:
     """Render exact planned membership using supplied verified source lookup."""
     commitment = (
-        build_output_commitment(spec, request, selection)
-        if isinstance(spec, RunSpecV2)
+        build_output_commitment(
+            spec, request, selection, presentation_version=presentation_version
+        )
+        if isinstance(spec, RunSpecV2) or presentation_version == 2
         else None
     )
     options: dict[str, Any] = dict(
@@ -34,8 +38,9 @@ def render_request(
         template=template,
         advanced=spec.prompt.advanced,
         limits=spec.prompt.limits,
+        presentation_version=presentation_version,
     )
-    version: Literal[1, 2] = 2 if commitment is not None else 1
+    version: Literal[1, 2] = 2 if isinstance(spec, RunSpecV2) else 1
     if request.pair is not None:
         pair = lookup("pair", request.pair.pair_uid)
         assert isinstance(pair, PairTask)

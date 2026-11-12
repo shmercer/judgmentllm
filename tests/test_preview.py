@@ -17,18 +17,19 @@ def test_bundled_previews_and_streamed_default_inputs() -> None:
     spec = load_run_spec(EXAMPLES / "run.yaml")
     prompt = preview_prompt(spec, item_id="essay_001", trait_id="organization")
     assert prompt.exemplar_ids == ["anchor_001", "anchor_002", "anchor_003"]
-    assert "essay_001" in prompt.text
+    assert "essay_001" not in prompt.text
     assert len(list(iter_tasks(spec))) == 4
     assert len(list(iter_requests(spec))) == 4
     grouped = preview_prompt(EXAMPLES / "advanced.yaml", item_id="essay_002")
-    assert "Trait organization" in grouped.text and "Trait evidence" in grouped.text
+    assert (
+        "Trait ID: `organization`" in grouped.text
+        and "Trait ID: `evidence`" in grouped.text
+    )
     pair = load_run_spec(EXAMPLES / "pairwise.yaml")
     assert len(list(iter_tasks(pair))) == 2
     assert len(list(iter_requests(pair))) == 2
     text = preview_prompt(pair, pair_uid="comparison_001_reverse").text
-    assert text.index("First response essay_002") < text.index(
-        "Second response essay_001"
-    )
+    assert text.index("essay_01:") < text.index("essay_02:")
 
 
 @pytest.mark.parametrize(
@@ -97,7 +98,10 @@ def test_preview_known_capabilities_and_group_selection() -> None:
         trait_id="evidence",
         capabilities=CapabilityProfile(grouped=True, modes=("live",)),
     )
-    assert "Trait evidence" in rendered.text and "Trait organization" in rendered.text
+    assert (
+        "Trait ID: `evidence`" in rendered.text
+        and "Trait ID: `organization`" in rendered.text
+    )
 
 
 def test_python_offline_example_runs_without_credentials() -> None:

@@ -22,6 +22,7 @@ from pydantic import (
 
 from judgmentllm.assessment_errors import AssessmentOutputError, contract_error_code
 from judgmentllm.models import ID, PairTask, StrictModel, Trait
+from judgmentllm.presentation import ESSAY_ALIASES, PresentationVersion
 from judgmentllm.results import (
     CategoricalOutput,
     PairwiseOutput,
@@ -46,6 +47,9 @@ OutputOrder = Literal["together", "scores_first", "explanations_first"]
 class _Contract(StrictModel):
     model_config = ConfigDict(frozen=True)
     contract_version: Literal[2] = 2
+    presentation_version: PresentationVersion = Field(
+        default=1, exclude_if=lambda value: value == 1
+    )
     output_order: OutputOrder = "together"
     explanations: bool = False
 
@@ -241,7 +245,7 @@ def _rubric_schema(contract: RubricOutputContract) -> dict[str, JsonValue]:
 
 
 def _pairwise_schema(contract: PairwiseOutputContract) -> dict[str, JsonValue]:
-    winners: list[JsonValue] = list(contract.pair.presented_order)
+    winners: list[JsonValue] = list(wire_winner_ids(contract))
     fields: dict[str, JsonValue] = {"winner_id": {"enum": winners}}
     if contract.allow_ties:
         fields["winner_id"] = {"enum": [*winners, None]}
@@ -255,6 +259,13 @@ def _pairwise_schema(contract: PairwiseOutputContract) -> dict[str, JsonValue]:
             {"properties": {"winner_id": {"enum": winners}, "tie": {"const": False}}},
         ]
     return schema
+
+
+def wire_winner_ids(contract: PairwiseOutputContract) -> tuple[str, str]:
+    """The exact wire identifiers, never inferred from source-ID spelling."""
+    if contract.presentation_version == 2:
+        return ESSAY_ALIASES
+    return (contract.pair.presented_order[0], contract.pair.presented_order[1])
 
 
 def generate_output_schema(contract: AssessmentOutputContract) -> dict[str, JsonValue]:
@@ -359,6 +370,22 @@ def validate_pairwise_contract_output(
         raise ValueError("pairwise validation requires a pairwise output contract")
     data = _checked_output(data)
     try:
+        if checked.presentation_version == 2 and isinstance(data, dict):
+            fields = cast(dict[str, object], data)
+            if not checked.allow_ties and "tie" in fields:
+                raise ValueError("unexpected tie field")
+            winner = fields.get("winner_id")
+            if winner is not None:
+                if type(winner) is not str or winner not in ESSAY_ALIASES:
+                    raise ValueError("winner_id must be an exact presentation alias")
+                # Resolve exactly once, before original-ID validation/normalization.
+                # An original ID equal to an alias has no special wire meaning.
+                data = {
+                    **fields,
+                    "winner_id": checked.pair.presented_order[
+                        ESSAY_ALIASES.index(winner)
+                    ],
+                }
         if isinstance(data, dict) and not checked.allow_ties and "tie" not in data:
             data = {**cast(dict[str, object], data), "tie": False}
         return validate_pairwise_output(

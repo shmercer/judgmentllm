@@ -24,7 +24,12 @@ from judgmentllm.native_schema_v2 import (
     NativeConstraintCoverageV2,
     NativeProjectionErrorV2,
 )
-from judgmentllm.output_contracts import generate_output_schema, serialize_output_schema
+from judgmentllm.output_contracts import (
+    PairwiseOutputContract,
+    generate_output_schema,
+    serialize_output_schema,
+    wire_winner_ids,
+)
 
 
 def _unsupported() -> NativeProjectionErrorV2:
@@ -308,7 +313,9 @@ def assessment_parts(
             + (["explanation"] if source.explanations else [])
         )
         fields = _object(schema, names, relation=source.allow_ties)
-        winners: list[JsonValue] = list(source.presented_order)
+        contract = source_contract(source)
+        assert isinstance(contract, PairwiseOutputContract)
+        winners: list[JsonValue] = list(wire_winner_ids(contract))
         values = [*winners, None] if source.allow_ties else winners
         if fields["winner_id"] != {"enum": values}:
             raise _unsupported()

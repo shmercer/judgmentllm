@@ -26,6 +26,7 @@ from judgmentllm.persistence.repository import ReadOnlyRepository
 from judgmentllm.planning import plan_record
 from judgmentllm.preparation import open_prepared_run, prepare_run
 from judgmentllm.preparation.session import RequestDependency
+from judgmentllm.presentation import PresentationVersion
 from judgmentllm.providers.vertex import VertexAdapter
 from judgmentllm.transport import TransportIntegrityError, physical_identity
 from judgmentllm.vertex_transport import (
@@ -53,6 +54,7 @@ def prepare(
     *,
     model: str = MODEL,
     frozen: TransportCommitmentV5 | None = None,
+    presentation_version: PresentationVersion = 1,
     **settings: Any,
 ) -> tuple[PreparedRequestV7, RunSpecV3, RequestDependency, VertexProductionContext]:
     strict = settings.pop("strict", False)
@@ -91,6 +93,7 @@ def prepare(
         context,
         lookup=lookup,
         frozen=frozen,
+        presentation_version=presentation_version,
         template=(
             "Compare.\n{{ criterion }}\n{{ first_response }}\n{{ second_response }}\n{{ output_instructions }}"
             if spec.allow_ties
@@ -442,7 +445,7 @@ async def test_actual_sdk_bytes_native_failure_and_frozen_recovery(
         explanations=False,
     )
     spec.model = MODEL
-    spec.prompt.structured_output = "native"
+    spec.prompt.structured_output = "auto"
     spec.prompt.native_mechanism = MECHANISM
     store = tmp_path / "store"
     with prepare_run(
@@ -482,7 +485,8 @@ async def test_actual_sdk_bytes_native_failure_and_frozen_recovery(
                 row.status == "invalid" for row in repository.iter_results("001")
             )
         assert sent == [wire.payload] and adapter.actual_call_count == 1
-        assert b"responseJsonSchema" in sent[0]
+        assert b"responseJsonSchema" not in sent[0]
+        assert wire.transport_commitment.mechanism == "text"
         assert canonical_bytes(wire.transport_commitment)
     finally:
         await adapter.aclose()
@@ -655,14 +659,14 @@ async def test_public_production_workflow_native_and_no_call_recovery(
         prepared = _INVOKING.get()
         assert isinstance(prepared, PreparedRequestV7)
         assert request.content == prepared.payload
-        assert prepared.transport_commitment.mechanism == MECHANISM
+        assert prepared.transport_commitment.mechanism == "text"
         assert "projects/synthetic-accepted-project/locations/global/" in str(
             request.url
         )
         calls.append(request.content)
         assert spec.rubric is not None or pairwise
         output = (
-            {"winner_id": "002"}
+            {"winner_id": "essay_01"}
             if pairwise
             else {
                 "scores": [
@@ -689,6 +693,14 @@ async def test_public_production_workflow_native_and_no_call_recovery(
 
     monkeypatch.setattr(lifecycle, "_execution_adapter", injected)
     store = tmp_path / "store"
+    if policy == "native":
+        from judgmentllm import LifecycleError
+
+        with pytest.raises(LifecycleError):
+            await lifecycle.arun_live(spec, store=store)
+        assert calls == []
+        await adapter.aclose()
+        return
     result = await lifecycle.arun_live(spec, store=store)
     assert (
         result.run_status == "completed" and len(calls) == 1 and adapter._client is None
@@ -791,3 +803,61 @@ def test_forged_frozen_selection_cannot_reinterpret_reviewed_context(
         _verify_selection(
             cast(Any, forged), spec, wire.output_commitment.contract, context, None
         )
+
+
+@pytest.mark.parametrize("pairwise", [False, True])
+def test_new_presentation_cannot_borrow_historical_native_authority(
+    tmp_path: Path, pairwise: bool, qualified: str
+) -> None:
+    with pytest.raises(ValueError):
+        prepare(tmp_path, pairwise=pairwise, policy="native", presentation_version=2)
+    with pytest.raises(ValueError):
+        prepare(
+            tmp_path,
+            pairwise=pairwise,
+            policy="auto",
+            strict=True,
+            presentation_version=2,
+        )
+    wire, *_ = prepare(
+        tmp_path, pairwise=pairwise, policy="auto", presentation_version=2
+    )
+    assert wire.transport_commitment.presentation_version == 2
+    assert wire.output_commitment.selection.mechanism == "text"
+    assert wire.output_commitment.selection.native_support == "unknown"
+
+
+@pytest.mark.asyncio
+async def test_historical_native_wire_still_executes_with_original_authority(
+    tmp_path: Path, qualified: str
+) -> None:
+    wire, spec, _, context = prepare(tmp_path, policy="native", pairwise=True)
+    assert wire.output_commitment.contract.presentation_version == 1
+    sent: list[bytes] = []
+
+    def respond(request: httpx2.Request) -> httpx2.Response:
+        sent.append(request.content)
+        assert request.content == wire.payload
+        return httpx2.Response(
+            200, json=envelope('{"winner_id":"002"}', modelVersion=MODEL)
+        )
+
+    adapter = VertexAdapter(
+        spec.endpoint,
+        spec.model,
+        context=context,
+        http_transport=httpx2.MockTransport(respond),
+    )
+    identity = wire.transport_plan.identity
+    arguments = {
+        "submission_id": identity.submission_id,
+        "correlation_id": identity.correlation_id,
+    }
+    try:
+        await adapter.submit(wire, **arguments)
+        response = await adapter.retrieve(wire, **arguments)
+        assert adapter.parse(response).kind == "response"
+        assert adapter.actual_call_count == len(sent) == 1
+        assert b"responseJsonSchema" in sent[0]
+    finally:
+        await adapter.aclose()

@@ -29,6 +29,7 @@ from judgmentllm.output_contracts import (
 )
 from judgmentllm.persistence.hashing import canonical_bytes
 from judgmentllm.persistence.models import SHA256
+from judgmentllm.presentation import PresentationVersion
 
 NativeMechanism: TypeAlias = Literal[
     "openai.responses.text.format", "openai.chat.response_format"
@@ -155,6 +156,9 @@ class NativeRubricSourceV1(NativeModel):
     """Schema semantics only; no rubric descriptions, scoring codes or item text."""
 
     contract_version: Literal[2] = 2
+    presentation_version: PresentationVersion = Field(
+        default=1, exclude_if=lambda value: value == 1
+    )
     task_kind: Literal["rubric"] = "rubric"
     output_order: OutputOrder = "together"
     explanations: bool = False
@@ -170,6 +174,9 @@ class NativePairwiseSourceV1(NativeModel):
     """Preserve pair occurrence and both response orientations without metadata."""
 
     contract_version: Literal[2] = 2
+    presentation_version: PresentationVersion = Field(
+        default=1, exclude_if=lambda value: value == 1
+    )
     task_kind: Literal["pairwise"] = "pairwise"
     output_order: Literal["together"] = "together"
     explanations: bool = False
@@ -194,6 +201,7 @@ def source_contract(source: NativeAssessmentSourceV1) -> AssessmentOutputContrac
     if isinstance(source, NativeRubricSourceV1):
         return RubricOutputContract(
             contract_version=source.contract_version,
+            presentation_version=source.presentation_version,
             traits=tuple(
                 Trait(
                     trait_id=trait.trait_id,
@@ -211,6 +219,7 @@ def source_contract(source: NativeAssessmentSourceV1) -> AssessmentOutputContrac
         )
     return PairwiseOutputContract(
         contract_version=source.contract_version,
+        presentation_version=source.presentation_version,
         pair=PairTask(
             pair_id=source.pair_id,
             pair_uid=source.pair_uid,
@@ -233,6 +242,7 @@ def snapshot_source(contract: AssessmentOutputContract) -> NativeAssessmentSourc
         raw = serialize_output_schema(contract)
     if isinstance(contract, RubricOutputContract):
         source: NativeAssessmentSourceV1 = NativeRubricSourceV1(
+            presentation_version=contract.presentation_version,
             output_order=contract.output_order,
             explanations=contract.explanations,
             traits=tuple(
@@ -245,6 +255,7 @@ def snapshot_source(contract: AssessmentOutputContract) -> NativeAssessmentSourc
         )
     else:
         source = NativePairwiseSourceV1(
+            presentation_version=contract.presentation_version,
             explanations=contract.explanations,
             pair_id=contract.pair.pair_id,
             pair_uid=contract.pair.pair_uid,

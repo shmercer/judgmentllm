@@ -625,11 +625,18 @@ def _verify_assessment(
     try:
         if spec.rubric is not None:
             output = validate_rubric_contract_output(
-                raw, RubricOutputContract(traits=tuple(spec.rubric.traits))
+                raw,
+                RubricOutputContract(
+                    traits=tuple(spec.rubric.traits),
+                    presentation_version=case.transport.presentation_version,
+                ),
             )
         else:
             output = validate_pairwise_contract_output(
-                raw, PairwiseOutputContract(pair=pair)
+                raw,
+                PairwiseOutputContract(
+                    pair=pair, presentation_version=case.transport.presentation_version
+                ),
             )
     except ValueError:
         return False

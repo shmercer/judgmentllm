@@ -119,7 +119,7 @@ Calls, Python attributes/methods, arithmetic, assignments, macros, imports, incl
 
 ## Inclusion guarantees and safeguards
 
-The renderer wraps assessment content in internal identity markers, renders through Jinja, then parses those markers. It verifies each expected block exactly once, compares its content verbatim, and checks the complete exemplar ID sequence. This handles identical or empty exemplar text and does not rely on independent substring searches. Internal markers are removed before returning the prompt; readable item and exemplar IDs remain. Marker namespaces avoid collisions with source content and template text.
+The renderer wraps assessment content in internal identity markers, renders through Jinja, then parses those markers. It verifies each expected block exactly once, compares its content verbatim, and checks the complete exemplar ID sequence. This handles identical or empty exemplar text and does not rely on independent substring searches. Internal markers are removed before returning the prompt. New preparations hide item IDs in generated labels and retain exemplar IDs; historical revision 1 retains its original item labels. Marker namespaces avoid collisions with source content and template text.
 
 Advanced customization changes the surrounding layout and conditional wording. It does not rewrite, escape, summarize, reorder, select, or omit protected exemplar content. Exemplar annotations for other stored rubric traits remain present even when only one trait is being assessed.
 
@@ -207,3 +207,14 @@ normalization retains `tie: false`. Historical responses with explicit
 responses retain explicit `winner_id` and `tie`. Assessment explanations remain
 distinct from optional provider-exposed reasoning evidence. None of these
 changes enables unsupported explanation generation on native decision endpoints.
+
+## Current default presentation
+
+[Assessment revision 2](renderer-revision-2.md) applies to every new preparation
+and preview. `response` contains only exact student text; default templates add
+`## Student Essay`. Rubric/criterion/output blocks own their Markdown headings.
+CJ first/second and legacy left/right placeholders emit positional aliases and
+must appear in that order. Custom templates cannot reveal source IDs through
+these standard placeholders. CJ output uses `essay_01` or `essay_02`, mapped to
+original IDs internally. Historical sealed requests keep their original revision.
+Alternative-descriptor instructions belong explicitly in rubric data.
