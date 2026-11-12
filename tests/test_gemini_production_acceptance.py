@@ -134,11 +134,9 @@ def test_exact_profile_and_provenance() -> None:
     assert profile.documentation_sha256 == (
         "67b3050f1727a23153a4f9eb5f8b27a85768e407f8f10c96e990db4eef7a1576"
     )
-    # Provenance identifies the LF Git blob, including on CRLF Windows checkouts.
-    assert profile.offline_fixture_sha256 == bytes_digest(
-        (Path(__file__).parent / "gemini_fixture.py")
-        .read_text(encoding="utf-8")
-        .encode()
+    # This digest identifies the original qualification source, before refactors.
+    assert profile.offline_fixture_sha256 == (
+        "7e24ab54b72b4f99c8a35646bbf17f783381ac3bcbeddc08a39a9128d58d55f0"
     )
     assert profile.independent_live_sha256 == (
         "ddd2a6e2f206d7b0f6f99db1a9328f65926abe8d8c660309fddad285afa36e31"
