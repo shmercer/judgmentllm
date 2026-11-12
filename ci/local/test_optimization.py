@@ -136,7 +136,7 @@ def test_actual_r_checks_are_marked_without_moving_python_readers(
         "tests/test_grouped_lifecycle_r.py::test_grouped_lifecycle_passes_required_r_assertions",
         "tests/test_native_transport_r.py::test_native_outputs_pass_actual_r_jsonlite_assertions",
         "tests/test_persistence_r.py::test_persistence_outputs_pass_required_r_assertions",
-        "tests/test_r_exports.py::test_python_export_example_and_optional_r_smoke",
+        "tests/test_r_exports.py::test_python_export_example_passes_required_r_smoke",
         "tests/test_r_exports.py::test_strict_r_mode_cannot_skip_missing_jsonlite",
         "tests/test_r_exports.py::test_strict_r_mode_rejects_invalid_export[missing_column]",
         "tests/test_r_exports.py::test_strict_r_mode_rejects_invalid_export[probability_values]",
@@ -150,6 +150,11 @@ def test_actual_r_checks_are_marked_without_moving_python_readers(
         "tests/test_grouped_lifecycle_r.py::test_grouped_lifecycle_survives_independent_processes"
         not in marked
     )
+    python_example = (
+        "tests/test_r_exports.py::test_python_export_example_and_optional_r_smoke"
+    )
+    assert python_example not in marked
+    assert python_example in partition(collected)["ordinary"]
 
 
 def test_coverage_qualification_cannot_defer_r_cases(tmp_path: Path) -> None:

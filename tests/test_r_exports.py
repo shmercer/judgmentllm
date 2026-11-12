@@ -12,6 +12,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from fixture_artifacts import immutable_exports
 
 from judgmentllm import (
     PairTask,
@@ -357,38 +358,62 @@ def test_wrong_record_kinds_and_empty_streams(tmp_path: Path) -> None:
         export_rubric_r_csv(tmp_path / "wrong.csv", [pair_result()])  # pyright: ignore[reportArgumentType]
 
 
-@pytest.mark.r_interop
-def test_python_export_example_and_optional_r_smoke(tmp_path: Path) -> None:
+@pytest.fixture(scope="module")
+def python_export_example(tmp_path_factory: pytest.TempPathFactory) -> Iterator[Path]:
     root = Path(__file__).resolve().parents[1]
-    subprocess.run(
-        [
-            sys.executable,
-            str(root / "examples" / "export_r.py"),
-            "--output",
-            str(tmp_path),
-        ],
-        check=True,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    assert len(rows(tmp_path / "pairwise_r.csv")) == 6
-    assert len(rows(tmp_path / "rubric_r.csv")) == 3
-    executable = shutil.which("Rscript")
-    if executable is not None:
-        completed = subprocess.run(
+
+    def generate(output: Path) -> None:
+        subprocess.run(
             [
-                executable,
-                "--vanilla",
-                str(root / "examples" / "r_interoperability.R"),
-                str(tmp_path),
+                sys.executable,
+                str(root / "examples" / "export_r.py"),
+                "--output",
+                str(output),
             ],
             check=True,
             capture_output=True,
             text=True,
-            timeout=60,
+            timeout=30,
         )
-        assert "R interoperability smoke passed" in completed.stdout
+
+    with immutable_exports(
+        tmp_path_factory.mktemp("export-example"), generate
+    ) as output:
+        yield output
+
+
+def test_python_export_example_and_optional_r_smoke(
+    python_export_example: Path,
+) -> None:
+    """Retain the original test ID for the hosted Python export assertions."""
+    assert len(rows(python_export_example / "pairwise_r.csv")) == 6
+    assert len(rows(python_export_example / "rubric_r.csv")) == 3
+
+
+@pytest.mark.r_interop
+def test_python_export_example_passes_required_r_smoke(
+    python_export_example: Path,
+) -> None:
+    root = Path(__file__).resolve().parents[1]
+    executable = shutil.which("Rscript")
+    if executable is None:
+        if os.environ.get("JUDGMENTLLM_R_STRICT") == "1":
+            pytest.fail("Required Rscript is unavailable")
+        pytest.skip("Rscript is optional outside required local R validation")
+    completed = subprocess.run(
+        [
+            executable,
+            "--vanilla",
+            str(root / "examples" / "r_interoperability.R"),
+            str(python_export_example),
+        ],
+        env={**os.environ, "JUDGMENTLLM_R_STRICT": "1"},
+        check=True,
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
+    assert "R interoperability smoke passed" in completed.stdout
 
 
 def test_expected_scores_and_probabilities_are_not_rounded(tmp_path: Path) -> None:

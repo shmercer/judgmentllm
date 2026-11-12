@@ -5,6 +5,7 @@
     "tests/test_grouped_lifecycle_r.py::test_grouped_lifecycle_passes_required_r_assertions",
     "tests/test_native_transport_r.py::test_native_outputs_pass_actual_r_jsonlite_assertions",
     "tests/test_persistence_r.py::test_persistence_outputs_pass_required_r_assertions",
+    "tests/test_r_exports.py::test_python_export_example_passes_required_r_smoke",
     "tests/test_r_exports.py::test_strict_r_mode_cannot_skip_missing_jsonlite",
     "tests/test_r_exports.py::test_strict_r_mode_rejects_invalid_export",
     "tests/test_source_preparation_r.py::test_source_preparation_outputs_pass_required_r_assertions"
@@ -4439,6 +4440,7 @@
     "tests/test_r_exports.py::test_missing_marker_never_collides_silently",
     "tests/test_r_exports.py::test_wrong_record_kinds_and_empty_streams",
     "tests/test_r_exports.py::test_python_export_example_and_optional_r_smoke",
+    "tests/test_r_exports.py::test_python_export_example_passes_required_r_smoke",
     "tests/test_r_exports.py::test_expected_scores_and_probabilities_are_not_rounded",
     "tests/test_r_exports.py::test_strict_r_mode_cannot_skip_missing_jsonlite",
     "tests/test_r_exports.py::test_strict_r_mode_rejects_invalid_export[missing_column]",

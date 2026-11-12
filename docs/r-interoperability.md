@@ -26,6 +26,10 @@ assertions. Review local and hosted evidence at the same source before accepting
 a change; a hosted pass does not replace local R acceptance. See the authoritative
 [verification policy](ci-optimization.md).
 
+The Python export example and its CSV assertions remain an unmarked hosted test.
+A separate `r_interop` test consumes the generated files in R; both readers use
+the shared immutable export fixture.
+
 These exports are **all-attempts audit views**: every supplied record remains,
 including failures, observed ties, reversals, repeated judgments, and multiple
 attempts for the same task. They perform no implicit success filter, retry
