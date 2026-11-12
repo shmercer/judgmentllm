@@ -27,6 +27,7 @@ from preflight_provenance import (
 from resource_budget import ResourceLease
 from scheduling import get_schedule
 from suite import outcomes, partition, verify_contract, verify_skips
+from suite import run as run_suite
 from telemetry import ProcessSampler
 
 
@@ -60,6 +61,174 @@ def test_execution_r_fixture_is_collected_only_in_the_serial_partition(
         "tests/test_execution_r.py::test_execution_reopens_without_duplicate_acceptances",
         "tests/test_execution_r.py::test_execution_outputs_pass_required_r_assertions",
     }
+
+
+def test_cold_sdk_probe_remains_serial_correctness_without_measurements(
+    tmp_path: Path,
+) -> None:
+    source = Path(__file__).resolve().parents[2]
+    receipt = tmp_path / "collected.json"
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "--no-cov",
+            "--collect-only",
+            "-q",
+            "-p",
+            "ci.local.pytest_report",
+            f"--ci-report={receipt}",
+            "tests/test_native_other_sdk.py",
+        ],
+        cwd=source,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    selected = partition(json.loads(receipt.read_text())["collected"])
+    assert selected["serial"] == [
+        "tests/test_native_other_sdk.py::test_pinned_sdk_preserves_sixteen_fragments_under_offline_guards[anthropic]"
+    ]
+    assert not selected["resource"]
+    assert len(selected["ordinary"]) == 2
+
+
+def test_actual_r_checks_are_marked_without_moving_python_readers(
+    tmp_path: Path,
+) -> None:
+    source = Path(__file__).resolve().parents[2]
+    receipt = tmp_path / "collected.json"
+    modules = [
+        "test_execution_r.py",
+        "test_generation_r.py",
+        "test_grouped_lifecycle_r.py",
+        "test_native_transport_r.py",
+        "test_persistence_r.py",
+        "test_r_exports.py",
+        "test_source_preparation_r.py",
+    ]
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "--no-cov",
+            "--collect-only",
+            "-q",
+            "-p",
+            "ci.local.pytest_report",
+            f"--ci-report={receipt}",
+            *("tests/" + module for module in modules),
+        ],
+        cwd=source,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    collected = json.loads(receipt.read_text())["collected"]
+    marked = {item["nodeid"] for item in collected if "r_interop" in item["markers"]}
+    assert marked == {
+        "tests/test_execution_r.py::test_execution_outputs_pass_required_r_assertions",
+        "tests/test_generation_r.py::test_generation_outputs_pass_required_r_assertions",
+        "tests/test_grouped_lifecycle_r.py::test_grouped_lifecycle_passes_required_r_assertions",
+        "tests/test_native_transport_r.py::test_native_outputs_pass_actual_r_jsonlite_assertions",
+        "tests/test_persistence_r.py::test_persistence_outputs_pass_required_r_assertions",
+        "tests/test_r_exports.py::test_python_export_example_passes_required_r_smoke",
+        "tests/test_r_exports.py::test_strict_r_mode_cannot_skip_missing_jsonlite",
+        "tests/test_r_exports.py::test_strict_r_mode_rejects_invalid_export[missing_column]",
+        "tests/test_r_exports.py::test_strict_r_mode_rejects_invalid_export[probability_values]",
+        "tests/test_source_preparation_r.py::test_source_preparation_outputs_pass_required_r_assertions",
+    }
+    assert (
+        "tests/test_execution_r.py::test_execution_reopens_without_duplicate_acceptances"
+        not in marked
+    )
+    assert (
+        "tests/test_grouped_lifecycle_r.py::test_grouped_lifecycle_survives_independent_processes"
+        not in marked
+    )
+    python_example = (
+        "tests/test_r_exports.py::test_python_export_example_and_optional_r_smoke"
+    )
+    assert python_example not in marked
+    assert python_example in partition(collected)["ordinary"]
+
+
+def test_coverage_qualification_cannot_defer_r_cases(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="must include R cases"):
+        run_suite(
+            source=tmp_path,
+            output=tmp_path / "output",
+            targets=["tests"],
+            workers=0,
+            coverage=True,
+            include_r=False,
+        )
+    assert not (tmp_path / "output").exists()
+
+
+@pytest.mark.parametrize("defer", [False, True])
+def test_r_deferral_retains_serial_correctness_and_required_case_collection(
+    tmp_path: Path,
+    defer: bool,
+) -> None:
+    source = tmp_path / "source"
+    tests = source / "tests"
+    tests.mkdir(parents=True)
+    (source / "pyproject.toml").write_text(
+        '[tool.pytest.ini_options]\nmarkers=["r_interop", "serial"]\n'
+        'asyncio_default_fixture_loop_scope="function"\n'
+    )
+    (tests / "test_behavior.py").write_text(
+        "import pytest\n"
+        "def test_ordinary(): assert True\n"
+        "@pytest.mark.serial\ndef test_serial(): assert True\n"
+        "@pytest.mark.r_interop\ndef test_r(): assert True\n"
+        "@pytest.mark.r_interop\n@pytest.mark.serial\n"
+        "def test_serial_r(): assert True\n"
+    )
+    r_cases = [
+        "tests/test_behavior.py::test_r",
+        "tests/test_behavior.py::test_serial_r",
+    ]
+    contract = tmp_path / "contract.json"
+    contract.write_text(
+        json.dumps({"schema_version": 1, "required_nodes": r_cases, "replacements": {}})
+    )
+    output = tmp_path / "evidence"
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(Path(__file__).with_name("suite.py")),
+            "--source",
+            str(source),
+            "--output",
+            str(output),
+            "--workers",
+            "0",
+            "--no-coverage",
+            "--contract",
+            str(contract),
+            *(["--skip-r"] if defer else []),
+            "tests",
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert completed.returncode == 0, completed.stdout + completed.stderr
+    receipt = json.loads((output / "summary.json").read_text())
+    assert receipt["selection_complete"]
+    assert receipt["manifest_complete"] == (not defer)
+    assert receipt["deferred_r_cases"] == (r_cases if defer else [])
+    assert receipt["counts"]["passed"] == (2 if defer else 4)
+    selected_serial = json.loads((output / "serial-selection.json").read_text())
+    assert "tests/test_behavior.py::test_serial" in selected_serial
+    assert ("tests/test_behavior.py::test_serial_r" in selected_serial) == (not defer)
 
 
 class FakeControl:

@@ -54,13 +54,14 @@ def test_generation_sections_reopened_in_a_separate_process(
     assert len({row["configuration_source_sha256"] for row in rows[2:]}) == 4
 
 
+@pytest.mark.r_interop
 def test_generation_outputs_pass_required_r_assertions(generated_exports: Path) -> None:
     executable = shutil.which("Rscript")
     if executable is None:
         if os.environ.get("JUDGMENTLLM_R_STRICT") == "1":
             pytest.fail("Required Rscript is unavailable")
         pytest.skip(
-            "Rscript unavailable locally; required Ubuntu CI step does not skip"
+            "Rscript unavailable locally; required local validation does not skip"
         )
     available = subprocess.run(
         [
@@ -77,7 +78,7 @@ def test_generation_outputs_pass_required_r_assertions(generated_exports: Path) 
         if os.environ.get("JUDGMENTLLM_R_STRICT") == "1":
             pytest.fail("Required jsonlite is unavailable")
         pytest.skip(
-            "jsonlite unavailable locally; required Ubuntu CI step does not skip"
+            "jsonlite unavailable locally; required local validation does not skip"
         )
     completed = subprocess.run(
         [executable, "--vanilla", str(R_SCRIPT), str(generated_exports)],

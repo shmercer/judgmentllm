@@ -36,7 +36,7 @@ jobs:
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
       risk: ${{ steps.plan.outputs.risk }}
-      r_required: ${{ steps.plan.outputs.r_required }}
+      packaging: ${{ steps.plan.outputs.packaging }}
     steps:
       - name: Check out trusted policy
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -73,7 +73,7 @@ jobs:
         run: |
           launcher=(python)
           if [ "$RISK" != 0 ]; then launcher=(uv run --project candidate --offline --no-sync python); fi
-          "${launcher[@]}" policy/ci/acceptance.py lane --source candidate --plan "$RUNNER_TEMP/p/plan.json" --run-id "$RUN_ID" --quality-only --output "$RUNNER_TEMP/p/quality"
+          "${launcher[@]}" policy/ci/acceptance.py lane --source candidate --plan "$RUNNER_TEMP/p/plan.json" --run-id "$RUN_ID" --execution-scope hosted --quality-only --output "$RUNNER_TEMP/p/quality"
       - name: Preserve plan and quality evidence
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
@@ -116,26 +116,15 @@ jobs:
         with:
           name: verification-plan
           path: ${{ runner.temp }}/p
-      - name: Set up required R
-        timeout-minutes: 5
-        if: needs.plan.outputs.r_required == 'true' && (matrix.id == 'linux-3.11' || needs.plan.outputs.risk == '4')
-        uses: r-lib/actions/setup-r@f9a764fea8d5c63df6ef9a5c7795bf7deb5d7e05
-        with:
-          r-version: '4.6.2'
-          use-public-rspm: false
-      - name: Install pinned jsonlite
-        if: needs.plan.outputs.r_required == 'true' && (matrix.id == 'linux-3.11' || needs.plan.outputs.risk == '4')
-        shell: Rscript --vanilla {0}
-        run: |
-          utils::install.packages(
-            "https://github.com/cran/jsonlite/archive/2559608891cc42b9f857a5a0aff231738a670576.tar.gz",
-            repos = NULL, type = "source", dependencies = FALSE
-          )
-          stopifnot(requireNamespace("jsonlite", quietly = TRUE))
-          stopifnot(as.character(utils::packageVersion("jsonlite")) == "2.0.0")
       - name: Prepare locked environment
         if: needs.plan.outputs.risk != '0'
         run: uv sync --project candidate --locked --all-extras --group dev
+      - name: Prepare offline core installation cache
+        if: needs.plan.outputs.packaging == 'true' && (matrix.id == 'linux-3.11' || needs.plan.outputs.risk == '4')
+        shell: bash
+        run: |
+          uv export --project candidate --locked --no-default-groups --no-emit-project --output-file "$RUNNER_TEMP/core-requirements.txt"
+          uv pip install --python candidate/.venv --target "$RUNNER_TEMP/core-dependencies" --require-hashes --requirements "$RUNNER_TEMP/core-requirements.txt"
       - name: Execute planned checks
         shell: bash
         env:
@@ -145,6 +134,7 @@ jobs:
           if [ "$RISK" != 0 ]; then launcher=(uv run --project candidate --offline --no-sync python); fi
           "${launcher[@]}" policy/ci/acceptance.py lane \
             --source candidate --plan "$RUNNER_TEMP/p/plan.json" --lane "${{ matrix.id }}" \
+            --execution-scope hosted \
             --quality-receipt "$RUNNER_TEMP/p/quality/quality.json" --run-id "$RUN_ID" --output "$RUNNER_TEMP/v"
       - name: Preserve diagnostics even on failure
         if: always()
@@ -220,4 +210,4 @@ jobs:
           gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$SOURCE_SHA" \
             -f state="$STATE" -f context="CI acceptance" \
             -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
-            -f description="Risk-based verification; required lanes and evidence checked"
+            -f description="Hosted functional verification; local acceptance required separately"

@@ -158,12 +158,15 @@ def run(
     contract: Path | None = None,
     distribution: str = "worksteal",
     include_resources: bool = True,
+    include_r: bool = True,
     coverage_ref: str | None = None,
 ) -> int:
     if isinstance(workers, bool) or not 0 <= workers <= 32:
         raise ValueError("pytest workers must be an integer from 0 through 32")
     if stage not in {"full", "ordinary", "resource"} or (coverage and stage != "full"):
         raise ValueError("Coverage qualification requires the complete suite")
+    if coverage and not include_r:
+        raise ValueError("Local coverage qualification must include R cases")
     source = source.resolve(strict=True)
     output = output.resolve()
     if output.is_relative_to(source):
@@ -291,6 +294,18 @@ def run(
         if code != 0 or not collected.get("collected"):
             raise ValueError("Full-suite collection failed or produced no cases")
         parts = partition(collected["collected"])
+        deferred_r = (
+            [
+                item["nodeid"]
+                for item in collected["collected"]
+                if "r_interop" in item["markers"]
+            ]
+            if not include_r
+            else []
+        )
+        for label in parts:
+            parts[label] = [node for node in parts[label] if node not in deferred_r]
+        summary["deferred_r_cases"] = deferred_r
         # SDK byte-identity probes are correctness gates even though their cold
         # imports need resource isolation. Only measurement workloads are deferred.
         deferred = []
@@ -418,7 +433,10 @@ def run(
         )
         summary["selection_complete"] = sum(totals.values()) == expected_selection
         summary["manifest_complete"] = (
-            stage == "full" and summary["selection_complete"] and not deferred
+            stage == "full"
+            and summary["selection_complete"]
+            and not deferred
+            and not deferred_r
         )
         if not summary["selection_complete"]:
             raise ValueError(
@@ -498,6 +516,7 @@ def main() -> int:
         "--coverage-ref", help="Reviewed committed source for change-aware coverage"
     )
     parser.add_argument("--skip-resources", action="store_true")
+    parser.add_argument("--skip-r", action="store_true")
     parser.add_argument("--contract", type=Path)
     parser.add_argument("--preflight-report", type=Path, action="append", default=[])
     parser.add_argument(
@@ -599,6 +618,7 @@ def main() -> int:
         contract=options.contract,
         distribution=options.distribution,
         include_resources=not options.skip_resources,
+        include_r=not options.skip_r,
         coverage_ref=options.coverage_ref,
     )
 

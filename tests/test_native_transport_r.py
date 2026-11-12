@@ -21,6 +21,7 @@ from judgmentllm.r_exports import export_pairwise_r_csv, export_rubric_r_csv
 from judgmentllm.results import PairwiseResult, RubricResult
 
 
+@pytest.mark.r_interop
 @pytest.mark.asyncio
 async def test_native_outputs_pass_actual_r_jsonlite_assertions(tmp_path: Path) -> None:
     executable = shutil.which("Rscript")

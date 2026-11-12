@@ -65,6 +65,7 @@ def test_grouped_lifecycle_survives_independent_processes(
         ]
 
 
+@pytest.mark.r_interop
 def test_grouped_lifecycle_passes_required_r_assertions(
     generated_exports: Path,
 ) -> None:
@@ -72,7 +73,9 @@ def test_grouped_lifecycle_passes_required_r_assertions(
     if executable is None:
         if os.environ.get("JUDGMENTLLM_R_STRICT") == "1":
             pytest.fail("Required Rscript is unavailable")
-        pytest.skip("Rscript unavailable locally; required Ubuntu CI does not skip")
+        pytest.skip(
+            "Rscript unavailable locally; required local validation does not skip"
+        )
     available = subprocess.run(
         [
             executable,
@@ -87,7 +90,9 @@ def test_grouped_lifecycle_passes_required_r_assertions(
     if available.returncode:
         if os.environ.get("JUDGMENTLLM_R_STRICT") == "1":
             pytest.fail("Required jsonlite is unavailable")
-        pytest.skip("jsonlite unavailable locally; required Ubuntu CI does not skip")
+        pytest.skip(
+            "jsonlite unavailable locally; required local validation does not skip"
+        )
     completed = subprocess.run(
         [executable, "--vanilla", str(R_SCRIPT), str(generated_exports)],
         capture_output=True,
