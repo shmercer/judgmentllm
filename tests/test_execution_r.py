@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
-import shutil
 import subprocess
 import sys
 from collections.abc import Iterator
@@ -12,6 +10,7 @@ from pathlib import Path
 
 import pytest
 from fixture_artifacts import immutable_exports
+from r_dependencies import require_rscript
 
 from judgmentllm.io import read_results, read_results_csv
 
@@ -71,30 +70,7 @@ def test_execution_reopens_without_duplicate_acceptances(
 
 @pytest.mark.r_interop
 def test_execution_outputs_pass_required_r_assertions(generated_exports: Path) -> None:
-    executable = shutil.which("Rscript")
-    if executable is None:
-        if os.environ.get("JUDGMENTLLM_R_STRICT") == "1":
-            pytest.fail("Required Rscript is unavailable")
-        pytest.skip(
-            "Rscript unavailable locally; required local validation does not skip"
-        )
-    available = subprocess.run(
-        [
-            executable,
-            "--vanilla",
-            "-e",
-            "quit(status=if(requireNamespace('jsonlite',quietly=TRUE)) 0L else 1L)",
-        ],
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
-    if available.returncode:
-        if os.environ.get("JUDGMENTLLM_R_STRICT") == "1":
-            pytest.fail("Required jsonlite is unavailable")
-        pytest.skip(
-            "jsonlite unavailable locally; required local validation does not skip"
-        )
+    executable = require_rscript()
     completed = subprocess.run(
         [executable, "--vanilla", str(R_SCRIPT), str(generated_exports)],
         capture_output=True,
