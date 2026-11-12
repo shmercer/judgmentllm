@@ -6,13 +6,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Literal, cast
 
-from judgmentllm.config import (
-    ExecutionSpec,
-    GenerationSpec,
-    InputSpec,
-    PromptSpecV3,
-    RunSpecV3,
-)
+from assessment_fixture import assessment_case
+
+from judgmentllm.config import GenerationSpec, RunSpecV3
 from judgmentllm.gemini_transport import (
     GeminiProductionContext,
     PreparedRequestV6,
@@ -20,15 +16,7 @@ from judgmentllm.gemini_transport import (
     prepare_production_request,
     production_context,
 )
-from judgmentllm.models import (
-    Level,
-    PairTask,
-    PairwiseCriterion,
-    ResponseItem,
-    Rubric,
-    Trait,
-)
-from judgmentllm.planning import plan_record
+from judgmentllm.models import PairTask, ResponseItem
 from judgmentllm.preparation.session import RequestDependency
 from judgmentllm.transport import physical_identity
 
@@ -47,76 +35,19 @@ def case(
     strict: bool = False,
     mechanism: str = "gemini.generate_content.response_json_schema",
 ) -> tuple[RunSpecV3, RequestDependency, dict[str, ResponseItem]]:
-    traits = [
-        Trait(
-            trait_id="01",
-            name="Clarity",
-            description="Synthetic clarity.",
-            levels=[Level(label="low 雪"), Level(label="high é")],
-        ),
-        Trait(
-            trait_id="02",
-            name="Detail",
-            description="Synthetic detail.",
-            levels=[Level(label="limited"), Level(label="complete")],
-        ),
-    ]
-    if not grouped:
-        traits = traits[:1]
-    responses = {
-        ident: ResponseItem(
-            item_id=ident, text=f"Synthetic response {ident}: a seed grows. 雪"
-        )
-        for ident in ("001", "002")
-    }
-    spec = RunSpecV3(
-        task_kind="pairwise" if pairwise else "rubric",
-        input=InputSpec(path=tmp_path / "responses.jsonl"),
-        rubric=None
-        if pairwise
-        else Rubric(rubric_id="rubric-001", name="Synthetic", traits=traits),
-        criteria=[
-            PairwiseCriterion(
-                trait_id="01", name="Clarity", description="Compare clarity."
-            )
-        ]
-        if pairwise
-        else [],
-        pairs=InputSpec(path=tmp_path / "pairs.jsonl") if pairwise else None,
+    return assessment_case(
+        tmp_path,
         provider="gemini",
         endpoint=endpoint,
-        model="offline-qualified-model",
+        mechanism=mechanism,
+        policy=policy,
+        layout=layout,
+        explanations=explanations,
+        grouped=grouped,
+        pairwise=pairwise,
+        ties=ties,
         generation=generation,
-        execution=ExecutionSpec(
-            grouping="grouped" if grouped and not pairwise else "independent",
-            explanations=explanations,
-        ),
-        prompt=PromptSpecV3(
-            structured_output=policy,
-            native_mechanism=cast(Any, mechanism),
-            output_order=layout,
-            file=tmp_path / "tie.j2" if ties else None,
-        ),
-        allow_ties=ties,
-        strict_capabilities=strict,
-    )
-    record = (
-        PairTask(
-            pair_id="pair-001",
-            pair_uid="pair-001-occurrence",
-            left_item_id="001",
-            right_item_id="002",
-            trait_id="01",
-            presented_order=["002", "001"],
-        )
-        if pairwise
-        else responses["001"]
-    )
-    request = next(plan_record(spec, record))
-    return (
-        spec,
-        RequestDependency(request=request, dependency_sha256="0" * 64),
-        responses,
+        strict=strict,
     )
 
 

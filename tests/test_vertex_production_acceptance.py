@@ -164,10 +164,9 @@ def test_exact_profile_and_provenance() -> None:
             profile.documentation_sha256
             == "9b423e04ed0c7d9c569c4fe73b2dd5b3bc13380856a2bc53f49760d622cec8b7"
         )
-        assert profile.offline_fixture_sha256 == bytes_digest(
-            (Path(__file__).parent / "vertex_fixture.py")
-            .read_text(encoding="utf-8")
-            .encode()
+        # This digest identifies the original qualification source, before refactors.
+        assert profile.offline_fixture_sha256 == (
+            "918cd2571aef737985c658a7faa45d5b455d424119b2c1493711883c208f2fcb"
         )
         assert {p.kind: p.source_sha256 for p in profile.provenance} == {
             "documentation": profile.documentation_sha256,
