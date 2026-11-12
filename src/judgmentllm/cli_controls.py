@@ -247,6 +247,42 @@ def _unexpected_message() -> str:
     return "The operation failed unexpectedly; durable run evidence was retained."
 
 
+def _present_provider_diagnostic(  # pyright: ignore[reportUnusedFunction]
+    provider: str, command: str, status: str, data: dict[str, JsonValue]
+) -> None:
+    """Present a typed provider report's non-generative verification outcome."""
+    success = status in {"authentication_accepted", "not_required"}
+    partial = status == "inconclusive"
+    unsupported = status == "unsupported"
+    error = (
+        None
+        if success
+        else ControlError(
+            category="partial_completion"
+            if partial
+            else "unsupported_capability"
+            if unsupported
+            else "execution",
+            message=f"{provider} non-generative verification was inconclusive"
+            if partial
+            else f"{provider} non-generative verification failed; inspect the safe diagnostic code",
+            retryable=False,
+        )
+    )
+    if error is not None:
+        diagnostic(error.category, error.message)
+    _emit(
+        ControlEnvelope(
+            command=command,
+            status="ok" if success else "partial" if partial else "error",
+            artifacts={},
+            data=data,
+            error=error,
+        ),
+        0 if success else 3 if partial else 2 if unsupported else 1,
+    )
+
+
 def present_auth_status(report: _AuthStatusReport) -> None:
     """Render one offline report through the established control envelope."""
     error = None
