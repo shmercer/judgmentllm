@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import json
+import os
 import socket
 from datetime import UTC, datetime
 from typing import Any
@@ -146,5 +147,5 @@ def test_provider_diagnostic_output(
         else ""
     )
     assert result.exit_code == code, result.output
-    assert result.stdout_bytes == stdout.encode("utf-8")
-    assert result.stderr_bytes == stderr.encode("utf-8")
+    assert result.stdout_bytes == stdout.replace("\n", os.linesep).encode("utf-8")
+    assert result.stderr_bytes == stderr.replace("\n", os.linesep).encode("utf-8")
