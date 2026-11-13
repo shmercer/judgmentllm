@@ -32,6 +32,8 @@ lockfile's cached artifact URLs. Installing the local artifact then avoids a new
 registry resolution; `uv pip check` still verifies its declared dependencies.
 This works with the cache populated by locked CI setup on all three platforms.
 The actual R/jsonlite campaigns remain separate required local gates.
+README metadata compares the complete UTF-8 text with LF/CRLF normalization;
+runtime assets and original study evidence retain their byte checks.
 
 `report.json` records the exact source/archive identities, complete member lists,
 file counts, uncompressed totals, compressed bytes and artifact SHA-256 digests.

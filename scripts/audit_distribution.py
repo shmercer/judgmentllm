@@ -13,11 +13,19 @@ import sys
 import tarfile
 import tomllib
 import zipfile
+from email.message import Message
 from email.parser import BytesParser
 from pathlib import Path
 from typing import Any, cast
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def readme_description(metadata: Message) -> str:
+    """Compare the complete UTF-8 description across platform line endings."""
+    raw = metadata.get_payload(decode=True)
+    assert isinstance(raw, bytes), "Package description must be a text payload"
+    return raw.decode("utf-8").replace("\r\n", "\n").strip()
 
 
 def members(path: Path) -> dict[str, bytes]:
@@ -183,9 +191,10 @@ def audit(source: Path, output: Path) -> dict[str, Any]:
         and metadata["Requires-Python"] == ">=3.11"
     )
     assert metadata["Description-Content-Type"] == "text/markdown"
-    assert (clean / "README.md").read_bytes().strip() in first[metadata_name].split(
-        b"\n\n", 1
-    )[1]
+    assert (
+        readme_description(metadata)
+        == (clean / "README.md").read_text(encoding="utf-8").strip()
+    )
     (entry,) = (n for n in first if n.endswith(".dist-info/entry_points.txt"))
     assert b"judgmentllm = judgmentllm.cli:app" in first[entry]
     (license_name,) = (n for n in first if n.endswith(".dist-info/licenses/LICENSE"))

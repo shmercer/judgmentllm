@@ -3,9 +3,29 @@
 import json
 import subprocess
 import sys
+from email.parser import BytesParser
 from pathlib import Path
 
 import pytest
+
+
+@pytest.mark.parametrize("source_newline", ["\n", "\r\n"])
+@pytest.mark.parametrize("metadata_newline", ["\n", "\r\n"])
+def test_readme_metadata_preserves_complete_text_across_platform_newlines(
+    tmp_path: Path, source_newline: str, metadata_newline: str
+) -> None:
+    from scripts.audit_distribution import readme_description
+
+    content = "# Synthetic café 雪\n\nKeep `001` and **all** Markdown content.\n"
+    path = tmp_path / "README.md"
+    path.write_bytes(content.replace("\n", source_newline).encode("utf-8"))
+    raw = (
+        "Metadata-Version: 2.4\nName: synthetic\nDescription-Content-Type: text/markdown\n\n"
+        + content
+    ).replace("\n", metadata_newline)
+    metadata = BytesParser().parsebytes(raw.encode("utf-8"))
+    assert readme_description(metadata) == path.read_text(encoding="utf-8").strip()
+    assert readme_description(metadata) == content.strip()
 
 
 @pytest.mark.serial
