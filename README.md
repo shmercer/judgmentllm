@@ -210,3 +210,12 @@ Historical sealed requests retain their original bytes and source-ID wire
 interpretation. Existing native qualification does not transfer to the revised
 contract; new production requests use text until separately qualified (`native`
 and strict unknown `auto` fail before submission).
+
+
+The [original writing-study package](examples/study-native/README.md) provides
+50 native Standard/Flex configurations, 30 Flex-first main selections, all 312
+verified original previews and a CLI-first guarded qualification workflow.
+The 42-call native and 24-call service-tier proposals authorize zero calls;
+account eligibility, billable-token bounds and prices remain independent gates.
+Ordinary production qualification and the existing service/reasoning rules stay
+unchanged. No student-writing study or live provider request is authorized here.

@@ -101,6 +101,7 @@ def project_gemini_schema(
 GeminiProductionContextKind = Literal[
     "gemini-production-v1",
     "gemini-qualification-candidate-v1",
+    "gemini-study-candidate-v1",
 ]
 
 
@@ -148,6 +149,7 @@ def _checked_context(context: GeminiProductionContext) -> GeminiProductionContex
         not in {
             "gemini-production-v1",
             "gemini-qualification-candidate-v1",
+            "gemini-study-candidate-v1",
         }
     ):
         raise TransportIntegrityError()
@@ -579,7 +581,8 @@ def _build_output_commitment_v6(
         service,
         () if profile is None else profile.service_scopes,
         strict=spec.strict_capabilities,
-        qualification="qualification" in context.kind,
+        qualification="qualification" in context.kind
+        or context.kind.endswith("-study-candidate-v1"),
     )
     contract = _contract(
         spec,
@@ -976,9 +979,13 @@ def _validate_scope(spec: RunSpecV3, context: GeminiProductionContext) -> None:
         raise TransportIntegrityError()
     model_path(checked.model)
     _request_policy(checked)
+    from judgmentllm.study.admission import study_generation
+
     report = validate_generation(
         checked,
-        capabilities=generation_capabilities(
+        capabilities=study_generation(checked, context.scope)
+        if context.kind == "gemini-study-candidate-v1"
+        else generation_capabilities(
             checked, context.scope, production_generation_capabilities(context.scope)
         ),
     )

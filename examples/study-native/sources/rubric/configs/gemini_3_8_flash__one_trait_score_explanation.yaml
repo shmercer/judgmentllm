@@ -1,0 +1,20 @@
+schema_version: 3
+task_kind: rubric
+input: ../responses_demo.csv
+rubric: ../rubric_12_traits.yaml
+provider: gemini
+endpoint: models.generate_content
+model: gemini-3.8-flash
+prompt:
+  file: ../prompts/one_trait_score_explanation.txt
+  structured_output: text
+  output_order: together
+execution:
+  mode: live
+  grouping: independent
+  explanations: true
+  cache_policy: 'off'
+  concurrency: 4
+capture: minimal
+strict_capabilities: false
+output_path: ../outputs/gemini_3_8_flash/one_trait_score_explanation

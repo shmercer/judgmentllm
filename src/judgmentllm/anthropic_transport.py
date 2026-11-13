@@ -99,6 +99,7 @@ def project_anthropic_schema(
 AnthropicProductionContextKind = Literal[
     "anthropic-production-v1",
     "anthropic-qualification-candidate-v1",
+    "anthropic-study-candidate-v1",
     "anthropic-qualification-v1",
 ]
 AnthropicMechanism = Literal["anthropic.messages.output_config.format"]
@@ -149,6 +150,7 @@ def _checked_context(context: AnthropicProductionContext) -> AnthropicProduction
         not in {
             "anthropic-production-v1",
             "anthropic-qualification-candidate-v1",
+            "anthropic-study-candidate-v1",
             "anthropic-qualification-v1",
         }
     ):
@@ -570,7 +572,8 @@ def _build_output_commitment_v5(
         service,
         () if profile is None else profile.service_scopes,
         strict=spec.strict_capabilities,
-        qualification="qualification" in context.kind,
+        qualification="qualification" in context.kind
+        or context.kind.endswith("-study-candidate-v1"),
     )
     contract = _contract(
         spec,
@@ -959,9 +962,13 @@ def _validate_scope(spec: RunSpecV3, context: AnthropicProductionContext) -> Non
         "anthropic.messages.output_config.format",
     ):
         raise TransportIntegrityError()
+    from judgmentllm.study.admission import study_generation
+
     report = validate_generation(
         checked,
-        capabilities=generation_capabilities(
+        capabilities=study_generation(checked, context.scope)
+        if context.kind == "anthropic-study-candidate-v1"
+        else generation_capabilities(
             checked, context.scope, production_generation_capabilities(context.scope)
         ),
     )

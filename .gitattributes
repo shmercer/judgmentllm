@@ -7,3 +7,6 @@
 /examples/rendering-revision2/*.json -text
 /examples/rendering-revision2/*.jsonl -text
 /examples/rendering-revision2/*.csv -text
+/examples/study-native/** -text
+# Original source checksums include CRLF line endings.
+/examples/study-native/sources/** whitespace=blank-at-eol,blank-at-eof,space-before-tab,cr-at-eol

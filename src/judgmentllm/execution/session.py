@@ -124,6 +124,11 @@ class ExecutionSession:
                 self.prepared.iter_request_dependencies(start_ordinal=self.ordinal)
             )
             self.existing = self.repository.iter_attempts(run_id)
+            context = getattr(adapter, "transport_context", None)
+            if context is not None and context.kind.endswith("-study-candidate-v1"):
+                from judgmentllm.study.execution import selected_attempts
+
+                self.existing = selected_attempts(adapter, self.existing)
             self.cancelled = run.state == "cancelled"
             self.task_ordinal = int(
                 self.repository.connection.execute(

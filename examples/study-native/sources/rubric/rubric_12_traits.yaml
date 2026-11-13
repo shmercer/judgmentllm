@@ -1,0 +1,177 @@
+schema_version: 1
+rubric_id: argumentative_essay_12_traits_v1
+name: Analytic Essay Rating Rubric
+description: ''
+traits:
+- trait_id: introductory_sentence
+  name: Introductory Sentence
+  description: ''
+  levels:
+  - label: '0'
+    description: Criterion not yet fulfilled.
+  - label: '1'
+    description: 'Any one of the following:
+
+      - There is an introductory sentence, but it does not align with the topic of the writing prompt.
+
+      - There is an introductory sentence, but it does not align with the rest of the essay.
+
+      - There is an introductory sentence, but it does not align with the topic or the rest of the essay.'
+  - label: '2'
+    description: There is an introductory sentence (or several), which leads to the essay’s topic.
+- trait_id: thesis_statement
+  name: Thesis Statement
+  description: ''
+  levels:
+  - label: '0'
+    description: Criterion not yet fulfilled.
+  - label: '1'
+    description: 'Any one of the following:
+
+      - There is a thesis statement, but it does not align with the topic of the writing prompt.
+
+      - There is a thesis statement, but it does not align with the rest of the essay.
+
+      - An opinion is expressed, but it remains implicit what exactly the opinion refers to, i.e., the topic of the writing prompt.
+
+      - There is a thesis statement, but this is not placed in the introduction.'
+  - label: '2'
+    description: There is a clear thesis statement, which expresses the student's opinion about the topic.
+- trait_id: transitional_sentence
+  name: Transitional Sentence
+  description: ''
+  levels:
+  - label: '0'
+    description: Criterion not yet fulfilled.
+  - label: '1'
+    description: 'Any one of the following:
+
+      - There is a transitional sentence, but it announces something different from what follows in the main body.
+
+      - There are fractions of a transitional sentence, but no specific mention of the argumentative moves following in the main body.'
+  - label: '2'
+    description: There is a transitional sentence, which says what will follow in the main body.
+- trait_id: counterargument
+  name: Counterargument
+  description: ''
+  levels:
+  - label: '0'
+    description: Criterion not yet fulfilled.
+  - label: '1'
+    description: There are fractions of one or more counterarguments, but they lack validity, force, or specificity to properly challenge the initial thesis statement.
+  - label: '2'
+    description: There is a counterargument that opposes the pro-arguments.
+- trait_id: rebuttal
+  name: Rebuttal
+  description: ''
+  levels:
+  - label: '0'
+    description: Criterion not yet fulfilled.
+  - label: '1'
+    description: 'Any one of the following:
+
+      - There is a fraction of a rebuttal, but it lacks validity, force, or specificity to properly refute the counterargument.
+
+      - There is not a suitable rebuttal for every counterargument.'
+  - label: '2'
+    description: For every counter-argument, there is a rebuttal, which challenges the counterargument.
+- trait_id: pro_arguments
+  name: Pro-Arguments
+  description: ''
+  levels:
+  - label: '0'
+    description: Criterion not yet fulfilled.
+  - label: '1'
+    description: 'Any one of the following:
+
+      - There is one pro-argument that supports the thesis statement, but a second one is missing.
+
+      - There are two (or more) pro-arguments supporting the thesis statement, but they are not placed in the main body of the essay.'
+  - label: '2'
+    description: There are at least two pro-arguments, which support the thesis statement.
+- trait_id: support
+  name: Support
+  description: ''
+  levels:
+  - label: '0'
+    description: Criterion not yet fulfilled.
+  - label: '1'
+    description: 'Any one of the following:
+
+      - At least one of the pro-arguments lacks support.
+
+      - At least one of the pro-arguments has insufficient/inappropriate support.'
+  - label: '2'
+    description: There is support for each pro-argument, such as an explanation, an example, an expert’s opinion, or facts.
+- trait_id: summary_sentence
+  name: Summary Sentence
+  description: ''
+  levels:
+  - label: '0'
+    description: Criterion not yet fulfilled.
+  - label: '1'
+    description: 'Any one of the following:
+
+      - There are fractions of a summary of the main arguments, but a majority of arguments are repeated verbatim.
+
+      - In addition to a summary of the main arguments, one or more new arguments are introduced.
+
+      - There is a fraction of a summary, which contains a verbatim repetition of the main arguments and, additionally, new arguments are introduced.
+
+      - There is a summary of the main arguments, but this is not placed at the beginning of the conclusion.'
+  - label: '2'
+    description: There is a summary of the main arguments, which briefly recaps the student's ideas.
+- trait_id: rephrasing_of_the_thesis_statement
+  name: Rephrasing of the Thesis Statement
+  description: ''
+  levels:
+  - label: '0'
+    description: Criterion not yet fulfilled.
+  - label: '1'
+    description: 'Any one of the following:
+
+      - There is no rephrasing of the initial thesis statement, instead a new thesis is presented in the conclusion.
+
+      - The initial thesis statement is repeated verbatim.
+
+      - There is a rephrasing of the thesis statement, but this is not placed in the conclusion.'
+  - label: '2'
+    description: There is a rephrasing of the thesis statement, which uses different words than in the introduction.
+- trait_id: closing_sentence
+  name: Closing Sentence
+  description: ''
+  levels:
+  - label: '0'
+    description: Criterion not yet fulfilled.
+  - label: '1'
+    description: 'Any one of the following:
+
+      - There is a fraction of a closing sentence (e.g., call to action, advice, prediction, compromise), but it does not align with the rest of the essay.
+
+      - The closing sentence (e.g., call to action, advice, prediction, compromise) is not placed at the end of the essay.'
+  - label: '2'
+    description: There is a closing sentence, such as a call to action, a piece of advice, a prediction, or a compromise.
+- trait_id: paragraph_breaks
+  name: Paragraph Breaks
+  description: ''
+  levels:
+  - label: '0'
+    description: Criterion not yet fulfilled.
+  - label: '1'
+    description: 'Any one of the following:
+
+      - Not all necessary paragraph breaks (after the introduction, after the main body) are inserted.
+
+      - Some or all necessary paragraph breaks (after the introduction, after the main body) are inserted, but incorrect paragraph breaks (within the introduction or the conclusion) are also inserted.'
+  - label: '2'
+    description: There are paragraph breaks, after the introduction, (when a new idea starts), and after the main body.
+- trait_id: linking_words
+  name: Linking Words
+  description: ''
+  levels:
+  - label: '0'
+    description: Criterion not yet fulfilled.
+  - label: '1'
+    description: There are linking words or phrases but they are used only partially or with partial correctness.
+  - label: '2'
+    description: There are linking words or phrases, which meaningfully connect the student's ideas.

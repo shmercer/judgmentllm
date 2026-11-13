@@ -570,3 +570,24 @@ same required independent digest. Both work without credentials or SDK clients.
 The [executor guide](vertex-qualification-executor.md) documents the immutable
 sidecar, uncertainty/recovery rules, report digests and post-merge reconstruction.
 No live calls are authorized by implementation or CI.
+
+
+## Issue #39 PR2-B repository study workflow
+
+From the clean source checkout, `python -m judgmentllm.study` exposes
+`verify-originals`, `configure`, `verify`, `eligibility`, `preview`, `schema`,
+`preflight`, `plan` and `proposal` offline. Preview/schema/preflight select an
+exact model, scenario and tier; `--trait` also selects holistic CJ and
+`--reverse` explicitly selects its separate presentation audit. Plans preserve
+exact SDK body, prompt, schema and projection commitments without submission.
+
+The separate `execute` and `recover` operations require independently supplied
+proposal digest, authorization record, private account/price proofs and shared
+external campaign state. A proposal is never consent. `status`/`report` recheck
+retained evidence without credentials; `export` uses existing immutable
+JSONL/CSV/R exports. `cancel` records an idle/interrupted campaign stop; active
+cancellation uses the existing engine's Ctrl-C cleanup. Installed lifecycle CLI
+names and envelope version 1 are unchanged. See the
+[beginner guide](../examples/study-native/README.md) for complete commands,
+immutable limits and current blockers. These commands qualify neither a model
+nor an account and do not implement the PR2-C experiments.

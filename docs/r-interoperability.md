@@ -689,3 +689,19 @@ limits, distinct requested-setting/request identities and fixture-versus-live
 evidence. The six historical generation records and normalized CSV columns are
 unchanged. All seven strict local R gates remain required; no provider call or
 private reasoning text enters these fixtures.
+
+## Issue #39 PR2-B original study
+
+The existing seven strict gates remain mandatory. The additional local, serial
+`tests/test_study_r.py` check executes guarded synthetic requests through the
+actual pinned OpenAI SDK and shared engine, then consumes Python-generated
+JSONL, canonical CSV and R-compatible CSV in
+`examples/study-native/check_exports.R`. Its 26 rows cover grouped explanations,
+terminal invalid grouped assessments, forward/reversed holistic CJ, exact
+category mappings, original attempt identities and missing probabilities.
+Four physical receipts remain four usage records despite grouped trait rows.
+The generation gate retains explicit-control and omission provenance; the study
+fixture verifies omission of optional controls. Existing gates still cover
+leading-zero IDs, complete probabilities and mappings. No normalized/result/R
+column or schema version changes. Missing Rscript/jsonlite fails local acceptance;
+hosted execution explicitly defers R.

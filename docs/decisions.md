@@ -548,3 +548,30 @@ The complete [service-tier contract and handoff](service-tiers.md) is normative.
 - Keep the four future live suites independent, immutable and unexecuted.
   PR2-B/C retain the approved original content and 30/50 main library. See
   [reasoning controls](reasoning-controls.md).
+
+
+## Issue #39 PR2-B original study and shared guarded campaign
+
+Preserve the two original package inventories and all 312 previews. Reuse the
+existing production renderers, pinned SDK adapters, preparation, durable run
+repositories, evidence/redaction and normalized exports. A dedicated private
+study context admits reviewed original output-cap facts for candidate compilation;
+only the exact private study guard can forward an independently authorized case.
+Ordinary production and all historical harness authorities keep their boundaries.
+
+One typed cross-provider case/proposal/authorization path shares a conservative
+budget journal. Reuse immutable publication, directory fsync and permanent OS
+locks; keep physical attempt state in the existing repository. Suite starts and
+forwarding intents persist before handoff, and uncertain reservations survive
+process death. A user-level campaign binding prevents fresh state from resetting
+the same source's allocation. A durable unknown-tier hold crosses both suites,
+while independently valid assessments remain exportable. Pricing covers each
+possible served outcome and reserves the worst case, without inferred rates.
+
+Original configurations omit optional effort/mode/temperature/top-p and retain
+50 configurations, 30 main selections and approved scenario caps. The 42/24-call
+proposals retain separate $5 ceilings and the combined $10/66-call/11-active-hour
+sub-cap. PR2-C contributes later definitions to this shared mechanism; it is not
+implemented here. No production qualification, credential access or live call is
+authorized by these changes. Exact-source acceptance and independent review are
+reported separately from implementation.

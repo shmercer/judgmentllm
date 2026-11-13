@@ -86,6 +86,7 @@ from judgmentllm.transport import (
 ProductionContextKind = Literal[
     "openai-production-v1",
     "openai-qualification-candidate-v1",
+    "openai-study-candidate-v1",
     "openai-qualification-v1",
 ]
 OpenAIMechanism = Literal["openai.responses.text.format", "openai.chat.response_format"]
@@ -136,6 +137,7 @@ def _checked_context(context: ProductionContext) -> ProductionContext:
         not in {
             "openai-production-v1",
             "openai-qualification-candidate-v1",
+            "openai-study-candidate-v1",
             "openai-qualification-v1",
         }
     ):
@@ -510,7 +512,8 @@ def _build_output_commitment_v4(
         service,
         () if profile is None else profile.service_scopes,
         strict=spec.strict_capabilities,
-        qualification="qualification" in context.kind,
+        qualification="qualification" in context.kind
+        or context.kind.endswith("-study-candidate-v1"),
     )
     contract = _contract(
         spec,
@@ -895,9 +898,13 @@ def _validate_scope(spec: RunSpecV3, context: ProductionContext) -> None:
         checked.model,
     ) != (context.scope.provider, context.scope.endpoint, context.scope.model):
         raise TransportIntegrityError()
+    from judgmentllm.study.admission import study_generation
+
     report = validate_generation(
         checked,
-        capabilities=generation_capabilities(
+        capabilities=study_generation(checked, context.scope)
+        if context.kind == "openai-study-candidate-v1"
+        else generation_capabilities(
             checked, context.scope, production_generation_capabilities(context.scope)
         ),
     )
