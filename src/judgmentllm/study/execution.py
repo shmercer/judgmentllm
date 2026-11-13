@@ -216,6 +216,8 @@ def adapter_for(
 
 def case_report(directory: Path, case: Case) -> dict[str, Any]:
     """Read verified physical evidence once; grouped trait rows never multiply usage."""
+    spec = validate_run_spec_json(case.specification_json)
+    assert spec.generation is not None
     row: dict[str, Any] = {
         "case_id": case.case_id,
         "configuration_id": case.configuration_id,
@@ -225,6 +227,8 @@ def case_report(directory: Path, case: Case) -> dict[str, Any]:
         "reported_model": None,
         "observation_id": None,
         "requested_tier": case.selection.tier,
+        "control_condition": case.selection.control_condition,
+        "requested_generation": spec.generation.model_dump(mode="json"),
         "account_scope": case.account_scope,
         "sdk_version": case.sdk_version,
         "api_version": case.api_version,

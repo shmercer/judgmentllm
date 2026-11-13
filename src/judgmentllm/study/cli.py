@@ -32,6 +32,8 @@ from judgmentllm.study.plans import (
     load_proposal,
     prepare,
     request_for,
+    selected_configuration,
+    suite_selections,
 )
 from judgmentllm.study.records import Authorization, Eligibility, Price
 from judgmentllm.study.sources import verify_originals
@@ -131,6 +133,43 @@ def eligibility_matrix(package: Path) -> dict[str, object]:
     return {"matrix_version": 1, "rows": rows, "documentation": "documentation.json"}
 
 
+def control_matrix(package: Path) -> dict[str, object]:
+    """Complete experimental matrix, with documentation distinct from qualification."""
+    from judgmentllm.providers.reasoning import documented_controls
+    from judgmentllm.study.admission import candidate_context
+
+    rows: list[dict[str, Any]] = []
+    for suite in ("reasoning_comparison", "temperature_acceptance"):
+        for selection in suite_selections(suite):
+            identity, spec = selected_configuration(package, selection)
+            facts = documented_controls(
+                spec, candidate_context(spec, _source_commit()).scope
+            )
+            assert facts is not None and spec.generation is not None
+            rows.append(
+                {
+                    "suite": suite,
+                    "selection": selection.model_dump(mode="json"),
+                    "configuration_id": identity,
+                    "generation": spec.generation.model_dump(mode="json"),
+                    "documented_default_effort": facts.documented_default_effort,
+                    "documented_default_mode": facts.documented_default_mode,
+                    "api_effort_field": facts.api_effort_field,
+                    "sdk_effort_field": facts.sdk_effort_field,
+                    "documentation_urls": facts.documentation_urls,
+                    "account_control_eligibility": "unknown",
+                    "strict_production_preflight": "denied",
+                    "live_observations": [],
+                    "live_qualified": False,
+                }
+            )
+    return {
+        "matrix_version": 1,
+        "rows": rows,
+        "documentation": "control-documentation.json",
+    }
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--package", type=Path, default=Path("examples/study-native"))
@@ -143,6 +182,9 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("configure", help="Generate the 50 concrete configurations")
     sub.add_parser("verify", help="Verify all 50 identities and 30 main selections")
     sub.add_parser("eligibility", help="Inspect six-model Standard/Flex/Premium gates")
+    sub.add_parser(
+        "controls", help="Inspect all 24 reasoning and 8 temperature candidates"
+    )
     for operation in ("preview", "schema", "preflight"):
         p = sub.add_parser(operation)
         p.add_argument("--model", required=True)
@@ -186,6 +228,8 @@ def main(argv: list[str] | None = None) -> int:
             result = verify_library(args.package)
         elif args.operation == "eligibility":
             result = eligibility_matrix(args.package)
+        elif args.operation == "controls":
+            result = control_matrix(args.package)
         elif args.operation in {"preview", "schema", "preflight"}:
             provider = next(p for p, m in MODELS if m == args.model)
             _, spec = configuration(

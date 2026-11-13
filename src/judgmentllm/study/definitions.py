@@ -61,10 +61,26 @@ SCENARIOS = {
 }
 TRAIT9 = "rephrasing_of_the_thesis_statement"
 HOLISTIC = "overall_writing_quality"
-SuiteName = Literal["native_pilot", "tier_feasibility"]
+SuiteName = Literal[
+    "native_pilot", "tier_feasibility", "reasoning_comparison", "temperature_acceptance"
+]
+ORIGINAL_SUITES = ("native_pilot", "tier_feasibility")
+CONTRASTS = {
+    "gpt-6-luna": "none",
+    "gpt-6.1-terra": "none",
+    "gemini-3.5-flash-lite": "high",
+    "gemini-3.8-flash": "low",
+    "claude-haiku-5-5": "low",
+    "claude-sonnet-5-5": "low",
+}
+EXTENSION_CAPS = {"grouped_scores": 8192, "cj": 4096}
+CAMPAIGN_LIMITS = (66, 10, 39600)
+EXTENDED_CAMPAIGN_LIMITS = (98, 16, 68400)
 SUITES: dict[str, tuple[int, int, int]] = {
     "native_pilot": (42, 5, 8 * 3600),
     "tier_feasibility": (24, 5, 3 * 3600),
+    "reasoning_comparison": (24, 5, 5 * 3600),
+    "temperature_acceptance": (8, 1, 3 * 3600),
 }
 
 

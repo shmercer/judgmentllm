@@ -121,7 +121,7 @@ It contains 650 previews from an earlier draft with different synthetic essays;
 it is retained provenance, separate from the verified originals and native plan.
 No existing work was reset or discarded.
 
-## Two independent proposals
+## Four independent proposals
 
 After committing the implementation, generate fresh external directories:
 
@@ -134,7 +134,10 @@ uv run --offline --no-sync python -m judgmentllm.study proposal --suite tier_fea
 |---|---:|---:|---:|
 | Native pilot | 42 | $5 | 8 hours |
 | Tier feasibility | 24 | $5 | 3 hours |
-| Combined | 66 | $10 | 11 cumulative active hours |
+| Original sub-cap | 66 | $10 | 11 cumulative active hours |
+| Reasoning comparison | 24 | $5 proposed | 5 hours proposed |
+| Temperature acceptance | 8 | $1 proposed | 3 hours proposed |
+| Extended aggregate | 98 | $16 proposed | 19 cumulative active hours |
 
 The pilot seals seven cases per model: grouped scores, grouped explanations,
 trait #9 scores, trait #9 explanation, trait #9 CJ, holistic CJ and reversed
@@ -177,8 +180,9 @@ another Gemini route cannot establish GenerateContent billing eligibility.
 ## Later approved execution, recovery and exports
 
 **These steps are not authorized by this PR.** An operator must first obtain
-independent approval of each sealed proposal digest and the shared $10/66-call
-campaign. Supply the exact typed `Authorization` record separately, with its
+independent approval of each sealed proposal digest and the original $10/66-call
+campaign (extensions additionally require the consent described below). Supply
+the exact typed `Authorization` record separately, with its
 explicit billable/capture consent. A blocked proposal cannot be authorized.
 Account and price proofs remain in a separate private directory, addressed by
 their sealed hashes. The existing credential resolver is used only after these
@@ -188,11 +192,11 @@ The later CLI operations are `execute` and `recover`, with explicit
 `--proposal`, `--proposal-sha256`, `--campaign`, `--authorization` and `--proofs`.
 `recover` reconciles only previously consumed original physical identities;
 it never grants a replacement call. The shared campaign directory must be reused
-for both suites and every restart. It retains independent immutable authorizations,
+for all authorized suites and every restart. It retains independent immutable authorizations,
 suite plans, forwarding intents, a chained budget journal and a permanent OS lock.
 One process owns the entire campaign; SDK and engine automatic retries are zero.
 The permanent user-level lock and campaign binding live in `~/.judgmentllm/`.
-They bind both suites at one source to the same external campaign state, so a
+They bind all suites at one source to the same external campaign state, so a
 fresh directory cannot replenish an authorized allocation. Tests isolate this
 state with synthetic fixtures. Suite start times are journaled before credentials
 are resolved; restart never renews the original deadline.
@@ -201,7 +205,7 @@ Independent append-only checkpoints in `~/.judgmentllm/study-campaign-checkpoint
 commit each budget file before its local publication and before HTTP forwarding.
 They contain hashes and budget metadata, never keys or prompts. A missing root,
 lost journal/header, interrupted initialization or older restored snapshot blocks
-both suites. Deleting local files cannot start a fresh allocation. There is no
+all suites. Deleting local files cannot start a fresh allocation. There is no
 automatic reconstruction or reset; damaged state requires separately reviewed
 reconciliation. Preserve this independent state alongside the campaign directory.
 
@@ -212,7 +216,7 @@ are reported separately. No command automatically executes the full study matrix
 
 Reservations are consumed at the final SDK HTTP-byte guard. Uncertain handoff,
 ambiguous 429/503, timeout, cancellation, unknown nonstandard served tier or an
-integrity mismatch stops later submissions across both suites and restarts.
+integrity mismatch stops later submissions across all suites and restarts.
 Terminal invalid assessments remain evidence and are never rescored. A documented
 Premium downgrade consumes its call and cannot qualify Premium. Missing tier
 evidence preserves independently valid scores. Monetary reservations are retained
@@ -235,6 +239,77 @@ After execution, status/report automatically follow the proposal's immutable
 campaign binding. A different, altered or unavailable campaign is rejected;
 missing campaign state cannot be reported as zero consumption.
 
-Reasoning/temperature experimental suites are PR2-C. Production qualification
-or promotion requires separately reviewed exact-source live evidence and another
-unmerged PR. This workflow never writes a production qualification registry.
+## Reasoning and temperature candidates (PR2-C)
+
+The original 50 configurations, 30 selections, source inventories and native
+previews are unchanged. The extensions have separate configuration identities,
+case orders, proposals, eligibility/pricing proofs and authorizations. Inspect the
+complete 32-row matrix, including documented defaults and exact SDK fields:
+
+```bash
+uv run --offline --no-sync python -m judgmentllm.study controls
+uv run --offline --no-sync python -m judgmentllm.study proposal --suite reasoning_comparison --output /tmp/my-reasoning-comparison
+uv run --offline --no-sync python -m judgmentllm.study proposal --suite temperature_acceptance --output /tmp/my-temperature-acceptance
+```
+
+Each row in this table expands to **two tasks × two conditions**: grouped
+12-trait scores-only rubric and holistic forced-choice CJ. Reasoning condition A
+omits effort and mode; B requests the specified effort and omits mode. Both omit
+temperature and top-p. The six rows produce twelve matched pairs / 24 requests.
+Defaults are metadata, never injected into condition A.
+
+| Exact model | Documented omitted default | Condition B | Requested tier |
+|---|---|---|---|
+| `gpt-6-luna` | Medium / Standard mode | `reasoning.effort: none` | Flex |
+| `gpt-6.1-terra` | Medium / Standard mode | `reasoning.effort: none` | Flex |
+| `gemini-3.5-flash-lite` | Minimal | `thinkingLevel: HIGH` | Flex |
+| `gemini-3.8-flash` | Medium | `thinkingLevel: LOW` | Flex |
+| `claude-haiku-5-5` | Medium / adaptive | `output_config.effort: low` | Standard |
+| `claude-sonnet-5-5` | High / adaptive | `output_config.effort: low` | Standard |
+
+Temperature acceptance includes **only the two exact OpenAI models**, each with
+the same two tasks and two conditions (four matched pairs / eight requests).
+T0 explicitly sets effort `none` and omits temperature; T1 explicitly sets effort
+`none` and temperature `0.2`. Both omit mode and top-p. Exact model/route/SDK
+conditional compatibility is required; medium/high or omitted effort cannot
+authorize custom temperature. Anthropic custom sampling is unsupported, even
+with disabled thinking; Sonnet between-tools is not full reasoning off. Gemini
+has no documented full off condition and 3.8 does not support MINIMAL. These
+excluded combinations make zero calls and are never substituted.
+
+All extension grouped caps are **8,192**, and holistic CJ caps are **4,096**.
+Within each pair the account, model, endpoint, mechanism, requested tier, prompt,
+canonical/projected schema, orientation, capture and cap match exactly. Only
+the designated control changes. Reservations remain 8,192 billable output
+tokens per call, including thinking under provider-specific usage semantics.
+Offline actual HTTP serialization checks use OpenAI **3.42.1**, Anthropic
+**2.3.0 / API 2026-10-21** and google-genai **2.34.0 / v1beta**. Gemini's pinned
+SDK emits nested `thinking_level`; the documented REST spelling is `thinkingLevel`.
+See [the shared control contract](../../docs/reasoning-controls.md) and
+`control-documentation.json` for the dated official documentation review.
+
+Every real candidate remains blocked for independent exact-control account/native/
+tier eligibility, token bounds, binding evidence and dated prices. Proposals grant
+zero requests. No live observation or production control qualification is added.
+These are API compatibility and validity probes, with no deterministic-scoring
+or psychometric claim. Evidence reuse is not enabled: all 32 candidates are new,
+with zero reused observations and zero exclusions inside their approved matrices.
+
+Original authorizations retain the 66/$10/39,600-second cumulative declaration.
+An extension requires separate consent declaring **98/$16/68,400 seconds**; the
+old consent cannot authorize it. An immutable `campaign-extension.json` records
+that additional allocation, alongside the unchanged original campaign header.
+The original suites retain their independent 66/$10/11-hour sub-cap after any
+extension approval. All four suite budgets are nontransferable; the same campaign
+lock, independent checkpoints, uncertain reservations, cancellation/review holds
+and original suite deadlines apply across all four. Reauthorizing or restarting
+does not replenish an allocation. No approval is supplied by these examples.
+
+`tests/test_study_controls.py` exercises all candidate SDK bytes, exact paired
+controls, denied combinations, cumulative/sub-cap consent and isolated durable
+execution/recovery. `check_control_exports.R` reads actual Python/SDK-generated
+exports, including omission/explicit effort/temperature, unsuccessful rows,
+attempt/receipt joins, complete category mappings, physical usage and CJ reversal.
+The original R checker and all seven strict local gates remain required.
+Production qualification or promotion needs separately reviewed exact-source live
+evidence and another unmerged PR. This workflow never writes a production registry.

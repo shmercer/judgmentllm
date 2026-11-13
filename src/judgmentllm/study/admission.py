@@ -13,14 +13,14 @@ from judgmentllm.native_schema import NativeProjectionScopeV1
 from judgmentllm.persistence.hashing import bytes_digest, canonical_bytes
 from judgmentllm.planning import CapabilityProfile
 from judgmentllm.providers.protocol import ProviderIntegrityError
-from judgmentllm.providers.reasoning import documented_controls
-from judgmentllm.study.definitions import MODELS, ROUTES
+from judgmentllm.providers.reasoning import documented_controls, generation_capabilities
+from judgmentllm.study.definitions import CONTRASTS, MODELS, ROUTES
 
 
 def study_generation(
     spec: RunSpecification, scope: NativeProjectionScopeV1
 ) -> GenerationCapabilities:
-    """Reviewed SDK/model facts for the original omitted-control native study only."""
+    """Original omitted controls or the exact effort-only/temperature contrasts."""
     checked = validate_run_spec(spec)
     facts = documented_controls(checked, scope)
     if (
@@ -37,14 +37,32 @@ def study_generation(
             or checked.execution.concurrency != 1
             or checked.allow_ties
             or checked.generation is None
-            or checked.generation.reasoning is not None
-            or checked.generation.temperature is not None
             or checked.generation.top_p is not None
             or checked.generation.max_output_tokens not in (2048, 4096, 8192)
         )
     ):
         raise ProviderIntegrityError("Study candidate scope or controls differ")
-    return GenerationCapabilities(
+    settings = checked.generation
+    assert settings is not None
+    if settings.reasoning is not None or settings.temperature is not None:
+        if (
+            settings.reasoning is None
+            or settings.reasoning.mode is not None
+            or settings.reasoning.effort != CONTRASTS[checked.model]
+            or settings.temperature not in (None, 0.2)
+            or (settings.temperature is not None and checked.provider != "openai")
+            or checked.execution.tier
+            != ("standard_only" if checked.provider == "anthropic" else "flex")
+            or checked.execution.explanations
+            or settings.max_output_tokens
+            != (8192 if checked.task_kind == "rubric" else 4096)
+            or (
+                checked.task_kind == "rubric"
+                and checked.execution.grouping != "grouped"
+            )
+        ):
+            raise ProviderIntegrityError("Study experimental controls differ")
+    profile = GenerationCapabilities(
         provider=checked.provider,
         endpoint=checked.endpoint,
         model=checked.model,
@@ -57,6 +75,7 @@ def study_generation(
         fixture_tested=True,
         live_qualified=False,
     )
+    return generation_capabilities(checked, scope, profile) or profile
 
 
 def candidate_context(spec: RunSpecV3, source: str) -> Any:

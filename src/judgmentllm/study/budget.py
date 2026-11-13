@@ -19,7 +19,12 @@ from judgmentllm.persistence.artifacts import _fsync_directory
 from judgmentllm.persistence.hashing import bytes_digest, canonical_bytes
 from judgmentllm.persistence.ownership import ExecutorOwnership, _lock, _unlock
 from judgmentllm.qualification import _immutable
-from judgmentllm.study.definitions import SUITES
+from judgmentllm.study.definitions import (
+    CAMPAIGN_LIMITS,
+    EXTENDED_CAMPAIGN_LIMITS,
+    ORIGINAL_SUITES,
+    SUITES,
+)
 from judgmentllm.study.records import Authorization, Case, Proposal
 
 
@@ -282,6 +287,22 @@ class BudgetLedger:
                 }
             ),
         )
+        if proposal.suite not in ORIGINAL_SUITES:
+            self._publish(
+                "campaign-extension.json",
+                canonical_bytes(
+                    {
+                        "campaign_extension_version": 1,
+                        "source_commit": proposal.source_commit,
+                        "max_calls": 98,
+                        "usd": "16",
+                        "active_seconds": 68400,
+                        "original_limits": list(CAMPAIGN_LIMITS),
+                        "concurrency": 1,
+                        "retries": 0,
+                    }
+                ),
+            )
         self._publish(
             "authorizations/" + proposal.suite + ".json",
             canonical_bytes(authorization),
@@ -475,6 +496,12 @@ class BudgetLedger:
         if any((e.suite, e.case_id) not in terminal for e in reserved):
             raise BudgetStop("Prior submission remains uncertain")
         suite = [e for e in reserved if e.suite == proposal.suite]
+        original = [e for e in reserved if e.suite in ORIGINAL_SUITES]
+        campaign_calls, campaign_usd, campaign_seconds = (
+            EXTENDED_CAMPAIGN_LIMITS
+            if (self.root / "campaign-extension.json").exists()
+            else CAMPAIGN_LIMITS
+        )
         if (
             len(suite) >= len(proposal.calls)
             or case != proposal.calls[len(suite)]
@@ -489,16 +516,16 @@ class BudgetLedger:
         ) > started + timedelta(seconds=proposal.elapsed_seconds):
             raise BudgetStop("Suite deadline cannot cover the next request")
         limits: tuple[tuple[int | Decimal, int | Decimal, str], ...] = (
-            (len(reserved) + 1, 66, "Campaign calls"),
+            (len(reserved) + 1, campaign_calls, "Campaign calls"),
             (len(suite) + 1, proposal.max_calls, "Suite calls"),
             (
                 sum(e.seconds for e in reserved) + case.operation_deadline_seconds,
-                39600,
+                campaign_seconds,
                 "Campaign active time",
             ),
             (
                 sum(e.reserved_usd for e in reserved) + case.reserved_usd,
-                Decimal(10),
+                Decimal(campaign_usd),
                 "Campaign USD",
             ),
             (
@@ -514,6 +541,20 @@ class BudgetLedger:
                 "Suite tokens",
             ),
         )
+        if proposal.suite in ORIGINAL_SUITES:
+            limits += (
+                (len(original) + 1, 66, "Original campaign calls"),
+                (
+                    sum(e.reserved_usd for e in original) + case.reserved_usd,
+                    Decimal(10),
+                    "Original campaign USD",
+                ),
+                (
+                    sum(e.seconds for e in original) + case.operation_deadline_seconds,
+                    39600,
+                    "Original campaign active time",
+                ),
+            )
         for consumed, ceiling, label in limits:
             if consumed > ceiling:
                 raise BudgetStop(label + " ceiling cannot cover the next request")
