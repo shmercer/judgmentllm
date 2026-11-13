@@ -165,17 +165,44 @@ def generation_capabilities(
     )
     data["reasoning"] = facts
     if settings.reasoning is not None:
-        data["max_output_tokens"] = GenerationParameterCapability(
-            supported=True,
-            minimum=1,
-            maximum=65536 if spec.provider == "gemini" else 128000,
-        )
-        data["temperature"] = GenerationParameterCapability(
-            supported=spec.provider != "anthropic", minimum=0, maximum=2
-        )
-        data["top_p"] = GenerationParameterCapability(
-            supported=spec.provider != "anthropic", minimum=0, maximum=1
-        )
+        documented = {
+            "max_output_tokens": GenerationParameterCapability(
+                supported=True,
+                minimum=1,
+                maximum=65536 if spec.provider == "gemini" else 128000,
+            ),
+            "temperature": GenerationParameterCapability(
+                supported=spec.provider != "anthropic", minimum=0, maximum=2
+            ),
+            "top_p": GenerationParameterCapability(
+                supported=spec.provider != "anthropic", minimum=0, maximum=1
+            ),
+        }
+        for name, parameter in documented.items():
+            previous = (
+                getattr(existing, name)
+                if existing is not None
+                else GenerationParameterCapability()
+            )
+            data[name] = GenerationParameterCapability(
+                supported=False if previous.supported is False else parameter.supported,
+                minimum=max(
+                    (
+                        value
+                        for value in (previous.minimum, parameter.minimum)
+                        if value is not None
+                    ),
+                    default=None,
+                ),
+                maximum=min(
+                    (
+                        value
+                        for value in (previous.maximum, parameter.maximum)
+                        if value is not None
+                    ),
+                    default=None,
+                ),
+            )
     return GenerationCapabilities.model_validate(data)
 
 
@@ -264,7 +291,11 @@ def qualified_reasoning(
     features: tuple[str, ...],
 ) -> bool:
     """Default native evidence never authorizes an untested explicit control."""
-    if settings is None or settings.reasoning is None:
+    if settings is None or (
+        settings.reasoning is None
+        and settings.temperature is None
+        and settings.top_p is None
+    ):
         return True
     return service is not None and any(
         scope.account_scope == service.account_scope

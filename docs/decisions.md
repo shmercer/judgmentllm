@@ -1,5 +1,15 @@
 # Recorded design decisions
 
+## PR #50 review: explicit sampling and reviewed bounds
+
+Native qualification gates every explicit temperature/top-p override even when
+reasoning is omitted. A reviewed sampling-only control scope records absent
+reasoning, exact sampling, account/tier and demonstrated features; an empty scope
+grants nothing. Default controls and output-cap-only history remain unchanged.
+Documented reasoning augmentation fills unknown numeric facts by intersecting
+reviewed bounds, preserving unsupported status and incompatible combinations.
+Reasoning syntax never upgrades an existing reviewed restriction.
+
 **Date:** 2026-11-02. **Status:** approved design direction; implementation and API qualifications pending.
 
 | Area | Decision |

@@ -121,22 +121,27 @@ class ReasoningQualificationScopeV1(StrictModel):
     """Reviewed controls and native features within an enclosing exact profile.
 
     No such scopes are installed by the reasoning-control implementation.
-    Sampling omission and explicit values are separate qualifications.
+    Sampling omission and explicit values are separate qualifications. Omit
+    reasoning for a sampling-only qualification; never invent an effort.
     """
 
     model_config = ConfigDict(frozen=True)
 
     account_scope: ID
     tier: Literal["standard", "flex", "priority", "auto"]
-    reasoning: ReasoningSpec
+    reasoning: ReasoningSpec | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     temperature: int | float | None = Field(default=None, ge=0)
     top_p: int | float | None = Field(default=None, ge=0, le=1)
     features: tuple[ID, ...]
 
     @model_validator(mode="after")
     def nonempty(self) -> ReasoningQualificationScopeV1:
-        if not self.reasoning.model_dump() or len(set(self.features)) != len(
-            self.features
+        if (
+            (self.reasoning is None and self.temperature is None and self.top_p is None)
+            or (self.reasoning is not None and not self.reasoning.model_dump())
+            or len(set(self.features)) != len(self.features)
         ):
             raise ValueError("invalid reasoning qualification scope")
         return self

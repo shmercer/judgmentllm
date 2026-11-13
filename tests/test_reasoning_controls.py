@@ -806,3 +806,331 @@ async def test_anthropic_mode_without_effort_uses_actual_sdk(
         body["thinking"] == {"type": "adaptive"}
         and "effort" not in body["output_config"]
     )
+
+
+@pytest.mark.parametrize(
+    "temperature,top_p",
+    [(0.0, None), (0.2, None), (None, 0.0), (None, 0.8), (0.2, 0.8)],
+)
+def test_sampling_without_reasoning_requires_its_own_native_scope(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    temperature: float | None,
+    top_p: float | None,
+) -> None:
+    from judgmentllm.preparation import PreparationError, prepare_run
+
+    spec, dep, module, context, _ = case(
+        tmp_path / "inputs",
+        "gemini",
+        "gemini-3.5-flash-lite",
+        temperature=temperature,
+        top_p=top_p,
+        tier="flex",
+    )
+    candidate = wire(spec, dep, module, context)
+    production = authorize(monkeypatch, spec, candidate, module, reasoning_scopes=False)
+    features = candidate.output_commitment.selection.features
+    service = candidate.output_commitment.service_policy
+    assert spec.generation is not None and spec.generation.reasoning is None
+    assert (
+        module._support(
+            production, features, spec.prompt.native_mechanism, service, spec.generation
+        )
+        == "unknown"
+    )
+    with pytest.raises(ValueError):
+        wire(spec, dep, module, production)
+    strict = spec.model_copy(update={"strict_capabilities": True})
+    adapter = adapter_for(strict, production, None)
+    with pytest.raises(PreparationError):
+        prepare_run(
+            strict,
+            run_id="001",
+            store=tmp_path / "blocked",
+            transport_context=production,
+            capabilities=adapter.capabilities(strict),
+        )
+    baseline, baseline_dep, module, _, _ = case(
+        tmp_path / "default", "gemini", "gemini-3.5-flash-lite", tier="flex"
+    )
+    assert (
+        wire(
+            baseline, baseline_dep, module, production
+        ).output_commitment.selection.native_support
+        == "supported"
+    )
+    baseline.strict_capabilities = True
+    with prepare_run(
+        baseline,
+        run_id="002",
+        store=tmp_path / "default-qualified",
+        transport_context=production,
+        capabilities=adapter.capabilities(baseline),
+    ):
+        pass
+
+
+@pytest.mark.parametrize("provider,endpoint,model,effort", MODELS)
+def test_reasoning_cannot_widen_reviewed_numeric_capabilities(
+    tmp_path: Path, provider: str, endpoint: str, model: str, effort: str
+) -> None:
+    from judgmentllm.generation import (
+        GenerationCapabilities,
+        GenerationParameterCapability,
+    )
+
+    spec, _, _, context, _ = case(tmp_path, provider, model, reasoning=effort)
+    spec.strict_capabilities = True
+    existing = GenerationCapabilities(
+        provider=provider,
+        endpoint=endpoint,
+        model=model,
+        max_output_tokens=GenerationParameterCapability(
+            supported=True, minimum=512, maximum=4096
+        ),
+        temperature=GenerationParameterCapability(
+            supported=False, minimum=0.25, maximum=0.75
+        ),
+        top_p=GenerationParameterCapability(supported=True, minimum=0.1, maximum=0.6),
+        incompatible_combinations=(("top_p", "max_output_tokens"),),
+        source="reviewed-synthetic-profile",
+        fixture_tested=True,
+        live_qualified=True,
+    )
+    before = canonical_bytes(existing)
+    caps = generation_capabilities(spec, context.scope, existing)
+    assert caps is not None
+    assert caps.max_output_tokens == existing.max_output_tokens
+    assert caps.temperature == existing.temperature
+    assert caps.top_p.minimum == 0.1 and caps.top_p.maximum == 0.6
+    assert caps.incompatible_combinations == existing.incompatible_combinations
+    assert canonical_bytes(existing) == before
+    for settings in (
+        {"max_output_tokens": 256},
+        {"max_output_tokens": 8192},
+        {"max_output_tokens": 1024, "temperature": 0.5},
+        {"max_output_tokens": 1024, "top_p": 0.5},
+        {"max_output_tokens": 1024, "top_p": 0.8},
+    ):
+        requested = spec.model_copy(
+            update={
+                "generation": GenerationSpec.model_validate(
+                    {"reasoning": {"effort": effort}, **settings}
+                )
+            }
+        )
+        assert not validate_generation(requested, capabilities=caps).valid
+    refused_output = existing.model_copy(
+        update={
+            "max_output_tokens": GenerationParameterCapability(
+                supported=False, maximum=4096
+            )
+        }
+    )
+    refused = generation_capabilities(spec, context.scope, refused_output)
+    assert refused is not None and refused.max_output_tokens.supported is False
+
+
+@pytest.mark.parametrize("temperature,top_p", [(0.2, None), (None, 0.8), (0.2, 0.8)])
+@pytest.mark.asyncio
+async def test_reviewed_sampling_only_scope_has_no_fabricated_reasoning(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    temperature: float | None,
+    top_p: float | None,
+) -> None:
+    from judgmentllm import gemini_registry
+    from judgmentllm.preparation import prepare_run
+    from judgmentllm.reasoning import ReasoningQualificationScopeV1
+
+    spec, dep, module, context, _ = case(
+        tmp_path / "inputs",
+        "gemini",
+        "gemini-3.5-flash-lite",
+        temperature=temperature,
+        top_p=top_p,
+        tier="flex",
+    )
+    candidate = wire(spec, dep, module, context)
+    production = authorize(monkeypatch, spec, candidate, module, reasoning_scopes=False)
+    features = candidate.output_commitment.selection.features
+    service = candidate.output_commitment.service_policy
+    assert service is not None
+    scope = ReasoningQualificationScopeV1(
+        account_scope="synthetic-account",
+        tier=service.tier,
+        temperature=temperature,
+        top_p=top_p,
+        features=features,
+    )
+    assert scope.reasoning is None and "reasoning" not in scope.model_dump()
+    profile = gemini_registry._QUALIFIED_PROFILES[0]
+    monkeypatch.setattr(
+        gemini_registry,
+        "_QUALIFIED_PROFILES",
+        (profile.model_copy(update={"reasoning_scopes": (scope,)}),),
+    )
+    prepared = wire(spec, dep, module, production)
+    assert prepared.output_commitment.selection.native_support == "supported"
+    assert prepared.output_commitment.reasoning_policy is None
+    seen: list[bytes] = []
+
+    def respond(request: httpx2.Request) -> httpx2.Response:
+        assert request.content == prepared.payload
+        seen.append(request.content)
+        body, headers = response_body(spec, '{"scores":[]}')
+        return httpx2.Response(200, json=body, headers=headers)
+
+    adapter = adapter_for(spec, production, respond)
+    try:
+        await adapter.submit(
+            prepared,
+            submission_id=prepared.transport_plan.identity.submission_id,
+            correlation_id=prepared.transport_plan.identity.correlation_id,
+        )
+    finally:
+        await adapter.aclose()
+    assert len(seen) == 1
+    body = json.loads(seen[0])["generationConfig"]
+    assert body.get("temperature") == temperature and body.get("topP") == top_p
+    assert "thinkingConfig" not in body
+    strict = spec.model_copy(update={"strict_capabilities": True})
+    with prepare_run(
+        strict,
+        run_id="001",
+        store=tmp_path / "qualified",
+        transport_context=production,
+        capabilities=adapter.capabilities(strict),
+    ):
+        pass
+    for change in (
+        {"account_scope": "other"},
+        {"tier": "priority"},
+        {"features": ()},
+        {"temperature": 0.7},
+        {"top_p": 0.4},
+        {"reasoning": ReasoningSpec(effort="minimal")},
+    ):
+        different = scope.model_copy(update=change)
+        monkeypatch.setattr(
+            gemini_registry,
+            "_QUALIFIED_PROFILES",
+            (profile.model_copy(update={"reasoning_scopes": (different,)}),),
+        )
+        assert (
+            module._support(
+                production,
+                features,
+                spec.prompt.native_mechanism,
+                service,
+                spec.generation,
+            )
+            == "unknown"
+        )
+        with pytest.raises(ValueError):
+            wire(spec, dep, module, production)
+
+
+def test_control_scope_requires_at_least_one_explicit_setting() -> None:
+    from judgmentllm.reasoning import ReasoningQualificationScopeV1
+
+    common = {
+        "account_scope": "synthetic-account",
+        "tier": "standard",
+        "features": ("rubric_scores",),
+    }
+    for data in (
+        {},
+        {"reasoning": None},
+        {"reasoning": ReasoningSpec()},
+        {"reasoning": ReasoningSpec(), "temperature": 0.2},
+    ):
+        with pytest.raises(ValueError):
+            ReasoningQualificationScopeV1.model_validate({**common, **data})
+    original = ReasoningQualificationScopeV1.model_validate(
+        {**common, "reasoning": ReasoningSpec(effort="none")}
+    )
+    assert original.model_dump() == {
+        **common,
+        "reasoning": {"effort": "none"},
+        "temperature": None,
+        "top_p": None,
+    }
+    assert (
+        ReasoningQualificationScopeV1.model_validate_json(original.model_dump_json())
+        == original
+    )
+
+
+def test_reviewed_openai_output_limit_is_enforced_before_transport(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from judgmentllm import production_registry
+    from judgmentllm.generation import (
+        GenerationCapabilities,
+        GenerationParameterCapability,
+    )
+
+    spec, dep, module, context, _ = case(
+        tmp_path, "openai", "gpt-6-luna", reasoning="none"
+    )
+    candidate = wire(spec, dep, module, context)
+    production = authorize(monkeypatch, spec, candidate, module)
+    profile = production_registry._QUALIFIED_PROFILES[0]
+    limits = GenerationCapabilities(
+        provider=spec.provider,
+        endpoint=spec.endpoint,
+        model=spec.model,
+        max_output_tokens=GenerationParameterCapability(supported=True, maximum=4096),
+        temperature=GenerationParameterCapability(supported=False),
+        source="reviewed-synthetic",
+        fixture_tested=True,
+        live_qualified=True,
+    )
+    monkeypatch.setattr(
+        production_registry,
+        "_QUALIFIED_PROFILES",
+        (profile.model_copy(update={"generation": limits}),),
+    )
+    assert spec.generation is not None
+    spec.generation = spec.generation.model_copy(update={"max_output_tokens": 8192})
+    with pytest.raises(ValueError):
+        wire(spec, dep, module, production)
+    spec.generation = spec.generation.model_copy(
+        update={"max_output_tokens": 256, "temperature": 0.2}
+    )
+    with pytest.raises(ValueError):
+        wire(spec, dep, module, production)
+
+
+def test_separate_control_scopes_cannot_form_an_unreviewed_combination() -> None:
+    from judgmentllm.reasoning import ReasoningQualificationScopeV1
+    from judgmentllm.service_tiers import ServicePolicyV2
+
+    service = ServicePolicyV2(
+        provider="openai",
+        requested_tier="flex",
+        wire_tier="flex",
+        account_scope="synthetic-account",
+        read_timeout_seconds=930,
+        operation_deadline_seconds=960,
+    )
+    features = ("rubric_scores",)
+    reason = ReasoningQualificationScopeV1(
+        account_scope="synthetic-account",
+        tier="flex",
+        reasoning=ReasoningSpec(effort="none"),
+        features=features,
+    )
+    sample = ReasoningQualificationScopeV1(
+        account_scope="synthetic-account",
+        tier="flex",
+        temperature=0.2,
+        features=features,
+    )
+    settings = GenerationSpec(reasoning=ReasoningSpec(effort="none"), temperature=0.2)
+    assert not qualified_reasoning((reason, sample), settings, service, features)
+    assert qualified_reasoning(
+        (reason.model_copy(update={"temperature": 0.2}),), settings, service, features
+    )

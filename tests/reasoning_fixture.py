@@ -36,6 +36,7 @@ def case(
     *,
     reasoning: object = None,
     temperature: float | None = None,
+    top_p: float | None = None,
     tier: str | None = None,
     pairwise: bool = False,
     native: bool = True,
@@ -68,6 +69,8 @@ def case(
         }
     if temperature is not None:
         settings["temperature"] = temperature
+    if top_p is not None:
+        settings["top_p"] = top_p
     spec.generation = GenerationSpec.model_validate(settings)
     spec.execution.tier = tier
     module = importlib.import_module(

@@ -83,11 +83,19 @@ and SDK mapping are frozen; a future interpretation needs a new policy version.
 Anthropic effort merges with its native schema format. Gemini receives a typed
 SDK thinking configuration. Final HTTP bytes must equal the sealed payload.
 
-Production native profiles need a separately reviewed reasoning scope binding
-effort/mode, sampling omission or exact values, account, tier and demonstrated
-assessment features. Historical native profiles authorize no new explicit effort
-or temperature combination. This implementation installs no reasoning scopes.
+Production native profiles need a separately reviewed control scope for every
+explicit reasoning or sampling override. The scope binds effort/mode or their
+omission, exact temperature/top-p values or omission, account, tier and demonstrated
+assessment features. A sampling-only scope leaves reasoning absent; it does not
+invent an explicit effort. Truly omitted controls and output-cap-only settings
+retain default qualification behavior. Historical native profiles authorize no
+new explicit effort or sampling combination. This implementation installs no scopes.
 Offline source-bound candidate preparation grants no execution authority.
+
+Documented reasoning syntax may fill unknown generation facts, but cannot widen
+reviewed numeric constraints. Capability augmentation intersects output/sampling
+bounds, preserves explicit unsupported settings and incompatible combinations,
+and leaves the original reviewed capability record unchanged.
 
 Private reasoning text, summaries and signatures are not retained. Reported
 reasoning/thought token counters remain usage metadata, with missing values
