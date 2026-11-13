@@ -320,6 +320,16 @@ def test_native_authority_is_exact_account_and_tier(
     )
     profile = profile_module._reviewed_profile(module.production_context(spec))
     monkeypatch.setattr(registry, "_QUALIFIED_PROFILES", (profile,))
+    adapter_module = importlib.import_module(f"judgmentllm.providers.{provider}")
+    adapter_type = getattr(
+        adapter_module,
+        {
+            "openai": "OpenAIAdapter",
+            "anthropic": "AnthropicAdapter",
+            "gemini": "GeminiAdapter",
+        }[provider],
+    )
+    adapter_type(spec.endpoint, spec.model).validate_new_run(spec)
     build = getattr(
         module,
         "build_output_commitment_v"
@@ -781,7 +791,7 @@ def test_qualification_and_observation_ingress_fail_closed(tmp_path: Path) -> No
                     "service_policy_version": version,
                 }
             )
-    with pytest.raises(ValueError, match="duplicate"):
+    with pytest.raises(ValueError, match="Invalid evidence record"):
         ServiceQualificationScope(
             account_scope="synthetic-account",
             tier="standard",
@@ -794,7 +804,7 @@ def test_qualification_and_observation_ingress_fail_closed(tmp_path: Path) -> No
         {"outcome": "downgraded"},
         {"source": "gemini.x-gemini-service-tier"},
     ):
-        with pytest.raises(ValueError, match="observation differs"):
+        with pytest.raises(ValueError, match="Invalid evidence record"):
             ServiceTierObservation.model_validate(dict(original) | changed)
 
 
