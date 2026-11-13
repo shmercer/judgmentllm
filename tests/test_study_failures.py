@@ -27,6 +27,7 @@ from test_study_native import tier as tier
 from judgmentllm.execution import execute_run, recover_run
 from judgmentllm.execution.retry import RetryPolicy
 from judgmentllm.study.budget import BudgetLedger
+from judgmentllm.study.cli import main
 from judgmentllm.study.execution import (
     _STUDY_TOKEN,
     _StudyGuard,
@@ -41,6 +42,7 @@ def test_full_original_manifests_and_drift_diagnostics(tmp_path: Path) -> None:
     source = tmp_path / "originals"
     original_files(source)
     assert verify_originals(source, PACKAGE)["prompt_schema_pairs_matched"] == 312
+    assert main(["verify-originals", "--source", str(source)]) == 0
     path = source / "judgmentllm_rubric_study_renderer_v3/manifest_sha256.json"
     path.write_text("{}")
     with pytest.raises(ValueError, match="manifest"):

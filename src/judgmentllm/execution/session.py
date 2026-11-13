@@ -125,7 +125,7 @@ class ExecutionSession:
             )
             self.existing = self.repository.iter_attempts(run_id)
             context = getattr(adapter, "transport_context", None)
-            if context is not None and context.kind.endswith("-study-candidate-v1"):
+            if getattr(context, "kind", "").endswith("-study-candidate-v1"):
                 from judgmentllm.study.execution import selected_attempts
 
                 self.existing = selected_attempts(adapter, self.existing)

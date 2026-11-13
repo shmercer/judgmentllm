@@ -369,7 +369,14 @@ def test_cli_routes_proposals_reports_and_explicit_execution(
 
 
 @pytest.mark.parametrize(
-    "failure", ["handoff_budget", "after_response", "ambiguous_503"]
+    "failure",
+    [
+        "handoff_budget",
+        "before_handoff",
+        "cancelled_before_handoff",
+        "after_response",
+        "ambiguous_503",
+    ],
 )
 @pytest.mark.asyncio
 async def test_orchestration_halts_and_keeps_reservations_on_failure(
@@ -413,6 +420,17 @@ async def test_orchestration_halts_and_keeps_reservations_on_failure(
     async def failed(*args: Any, **kwargs: Any) -> Any:
         if failure == "handoff_budget":
             raise BudgetStop("suite deadline changed before HTTP handoff")
+        if failure == "before_handoff":
+            raise ExceptionGroup(
+                "synthetic preparation failure", [ValueError("no HTTP request")]
+            )
+        if failure == "cancelled_before_handoff":
+            from judgmentllm.execution.cancellation import cancel_run
+
+            cancel_run(
+                proposal.calls[0].run_id,
+                store=directory / "preparation" / proposal.calls[0].case_id,
+            )
         result = await original_execute(*args, **kwargs)
         if failure == "after_response":
             raise ExceptionGroup(
@@ -430,7 +448,11 @@ async def test_orchestration_halts_and_keeps_reservations_on_failure(
         authorization(proposal),
         proofs,
     )
-    expected = 0 if failure == "handoff_budget" else 1
+    expected = (
+        0
+        if failure in {"handoff_budget", "before_handoff", "cancelled_before_handoff"}
+        else 1
+    )
     assert len(sent) == report["campaign_reserved_calls"] == expected
     assert report["campaign_review_holds"] and report["incomplete_coverage"]
     monkeypatch.setattr(execution, "execute_run", original_execute)

@@ -522,6 +522,14 @@ async def execute(
                     evidence=selected.get("evidence_sha256")
                     or bytes_digest(canonical_bytes(selected)),
                 )
+            else:
+                ledger.stop(
+                    proposal,
+                    case,
+                    "execution_failed_before_handoff"
+                    if execution_failed
+                    else selected["reason"],
+                )
             if execution_failed or not selected["continuation_allowed"]:
                 break
     return report(directory, digest, campaign)

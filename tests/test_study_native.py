@@ -264,6 +264,18 @@ async def test_complete_native_plans(
                     prepared.dependency_for_request(wire.request_uid)
                 ).text
                 assert "student_opaque_" not in prompt
+    if scenario == "cj":
+        spec.pairs = InputSpec(path=PACKAGE / "sources/cj/pairs_reversal_demo.jsonl")
+        with prepare(spec, SOURCE, tmp_path / "reversal-audit", "002") as reversed_plan:
+            reversed_wires = list(request_for(reversed_plan))
+            assert len(reversed_wires) == 13
+            assert [w.output_commitment.schema_text for w in reversed_wires] == [
+                w.output_commitment.schema_text for w in wires
+            ]
+            assert [w.prompt_sha256 for w in reversed_wires] != [
+                w.prompt_sha256 for w in wires
+            ]
+            await sdk_bytes(spec, reversed_wires)
 
 
 @pytest.fixture(scope="module")

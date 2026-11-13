@@ -209,6 +209,14 @@ async def sdk_bytes(spec: RunSpecV3, wires: list[Any]) -> None:
 
     def handler(request: Any) -> Any:
         expected = wires[len(seen)]
+        assert request.method == "POST"
+        if spec.provider == "anthropic":
+            assert request.headers["anthropic-version"] == "2026-10-21"
+            assert request.url.path == "/v1/messages"
+        elif spec.provider == "openai":
+            assert request.url.path == "/v1/responses"
+        else:
+            assert request.url.path == f"/v1beta/models/{spec.model}:generateContent"
         assert request.content == expected.payload
         seen.append(bytes(request.content))
         body, headers = response_body(
