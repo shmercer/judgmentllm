@@ -201,6 +201,57 @@ def test_strict_unknown_flex_requires_evidence(
         request(tmp_path, provider, endpoint, "flex", strict=True)
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider,endpoint", ROUTES)
+async def test_new_strict_tier_fails_before_credential_readiness(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, provider: str, endpoint: str
+) -> None:
+    from judgmentllm import lifecycle
+
+    tier = "auto" if provider == "anthropic" else "flex"
+    _, spec, _, _ = request(tmp_path, provider, endpoint, tier)
+    spec.execution.grouping = "independent"
+    spec.strict_capabilities = True
+    module = importlib.import_module(f"judgmentllm.providers.{provider}")
+
+    def forbidden(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("credential readiness must follow tier validation")
+
+    monkeypatch.setattr(module, "_resolve_credentials", forbidden)
+    with pytest.raises(lifecycle.LifecycleError, match="execution.tier"):
+        await lifecycle.arun_live(spec, store=tmp_path / "no-store")
+    assert not (tmp_path / "no-store").exists()
+
+
+def test_historical_strict_anthropic_auto_remains_reconstructable(
+    tmp_path: Path,
+) -> None:
+    from judgmentllm.providers.anthropic import AnthropicAdapter
+
+    old, spec, dependency, module = request(
+        tmp_path, "anthropic", "messages", "auto", revision=1
+    )
+    spec.execution.grouping = "independent"
+    spec.strict_capabilities = True
+    adapter = AnthropicAdapter(spec.endpoint, spec.model)
+    adapter.validate(spec)
+    old = module.prepare_production_request(
+        spec,
+        dependency,
+        old.transport_plan.identity,
+        module.production_context(spec),
+        service_policy_version=1,
+    )
+    rebuilt = module.prepare_production_request(
+        spec,
+        dependency,
+        old.transport_plan.identity,
+        module.production_context(spec),
+        frozen=old.transport_commitment,
+    )
+    assert canonical_bytes(rebuilt) == canonical_bytes(old)
+
+
 @pytest.mark.parametrize("provider,endpoint", ROUTES)
 def test_native_authority_is_exact_account_and_tier(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, provider: str, endpoint: str

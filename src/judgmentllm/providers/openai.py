@@ -53,6 +53,7 @@ from judgmentllm.service_tiers import (
     observe_service_tier,
     service_policy,
     terminal_rate_rejection,
+    validate_service_support,
 )
 
 if TYPE_CHECKING:
@@ -322,6 +323,23 @@ class OpenAIAdapter:
         if self._client is None and concurrency != self._concurrency:
             self._concurrency = concurrency
             self._invoked = deque(self._invoked, maxlen=2 * concurrency)
+
+    def validate_new_run(self, spec: RunSpecification) -> None:
+        """Check new tier entitlement without changing sealed historical validation."""
+        self.validate(spec)
+        assert spec.schema_version == 3
+        from judgmentllm.production_registry import _profile_for
+
+        reviewed = _profile_for(self.transport_context.scope)
+        try:
+            validate_service_support(
+                service_policy(spec),
+                () if reviewed is None else reviewed.service_scopes,
+                strict=spec.strict_capabilities,
+                qualification="qualification" in self.transport_context.kind,
+            )
+        except ValueError:
+            raise OpenAIConfigurationError(("execution.tier",)) from None
 
     def prepare(
         self,

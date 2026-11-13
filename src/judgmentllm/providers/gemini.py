@@ -57,7 +57,12 @@ from judgmentllm.providers.protocol import (
     SubmissionUncertain,
     TransportNotSubmitted,
 )
-from judgmentllm.service_tiers import observe_service_tier, terminal_rate_rejection
+from judgmentllm.service_tiers import (
+    observe_service_tier,
+    service_policy,
+    terminal_rate_rejection,
+    validate_service_support,
+)
 
 _SDK_LOGGING: ContextVar[bool] = ContextVar(
     "judgmentllm_gemini_sensitive_call", default=False
@@ -486,6 +491,25 @@ class GeminiAdapter:
         if self._client is None and concurrency != self._concurrency:
             self._concurrency = concurrency
             self._invoked = deque(self._invoked, maxlen=2 * concurrency)
+
+    def validate_new_run(self, spec: RunSpecification) -> None:
+        """Check new tier entitlement without changing sealed historical validation."""
+        self.validate(spec)
+        assert spec.schema_version == 3
+        from judgmentllm.gemini_registry import _profile_for
+
+        reviewed = _profile_for(
+            self.transport_context.scope, spec.prompt.native_mechanism
+        )
+        try:
+            validate_service_support(
+                service_policy(spec),
+                () if reviewed is None else reviewed.service_scopes,
+                strict=spec.strict_capabilities,
+                qualification="qualification" in self.transport_context.kind,
+            )
+        except ValueError:
+            raise GeminiConfigurationError(("execution.tier",)) from None
 
     def prepare(
         self,

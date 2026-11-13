@@ -743,7 +743,7 @@ async def arun_live(
             concurrency=spec.execution.concurrency,
         )
         try:
-            adapter.validate(spec)
+            getattr(adapter, "validate_new_run", adapter.validate)(spec)
             readiness = getattr(adapter, "validate_credentials", None)
             if readiness is not None:
                 readiness()
