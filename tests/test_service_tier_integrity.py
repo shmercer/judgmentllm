@@ -283,3 +283,69 @@ async def test_preparation_and_durable_evidence_reject_rebound_service_policy(
             assert source.calls == adapter.actual_call_count == 1
     finally:
         await adapter.aclose()
+
+
+@pytest.mark.parametrize("status", [429, 503])
+@pytest.mark.asyncio
+async def test_unaccepted_invocation_does_not_invent_served_tier_review(
+    tmp_path: Path, status: int
+) -> None:
+    from judgmentllm.execution import recover_run
+    from judgmentllm.execution.retry import RetryPolicy
+    from judgmentllm.production_transport import production_context
+    from judgmentllm.providers.openai import OpenAIAdapter
+    from scripts import openai_offline_fixture as fixture
+
+    spec = fixture.specification(tmp_path / "inputs", "responses", "rubric")
+    spec.execution.tier, spec.execution.concurrency = "flex", 1
+    calls: list[bytes] = []
+
+    def respond(http_request: httpx2.Request) -> httpx2.Response:
+        calls.append(http_request.content)
+        return httpx2.Response(status, json={"error": {"type": "rate_limit_error"}})
+
+    adapter = OpenAIAdapter(
+        spec.endpoint,
+        spec.model,
+        concurrency=1,
+        http_transport=httpx2.MockTransport(respond),
+    )
+    store = tmp_path / "runtime"
+    retry = RetryPolicy(max_attempts=1)
+    try:
+        with fixture.offline():
+            with prepare_run(
+                spec,
+                store=store,
+                run_id="001",
+                capabilities=adapter.capabilities(spec),
+                transport_context=production_context(spec),
+            ):
+                pass
+            report = await execute_run(
+                "001", store=store, adapter=adapter, spec=spec, retry_policy=retry
+            )
+            assert report.recovery_required == (status == 503)
+            session = ExecutionSession("001", store, adapter, spec, False, None)
+            try:
+                assert session.tier_review_required is False
+                receipt = next(session.repository.iter_evidence("001"))
+                assert (
+                    receipt.service_tier is None
+                    and receipt.identity.observation_id is None
+                )
+            finally:
+                session.close()
+            await adapter.aclose()
+            adapter = OpenAIAdapter(
+                spec.endpoint,
+                spec.model,
+                concurrency=1,
+                http_transport=httpx2.MockTransport(respond),
+            )
+            await recover_run(
+                "001", store=store, adapter=adapter, spec=spec, retry_policy=retry
+            )
+            assert len(calls) == 1 and adapter.actual_call_count == 0
+    finally:
+        await adapter.aclose()
