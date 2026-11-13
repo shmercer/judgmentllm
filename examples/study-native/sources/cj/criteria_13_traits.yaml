@@ -1,0 +1,44 @@
+schema_version: 1
+criteria:
+- trait_id: introductory_sentence
+  name: Introductory Sentence
+  description: There is an introductory sentence (or several), which leads to the essay’s topic.
+- trait_id: thesis_statement
+  name: Thesis Statement
+  description: There is a clear thesis statement, which expresses the student's opinion about the topic.
+- trait_id: transitional_sentence
+  name: Transitional Sentence
+  description: There is a transitional sentence, which says what will follow in the main body.
+- trait_id: counterargument
+  name: Counterargument
+  description: There is a counterargument that opposes the pro-arguments.
+- trait_id: rebuttal
+  name: Rebuttal
+  description: For every counter-argument, there is a rebuttal, which challenges the counterargument.
+- trait_id: pro_arguments
+  name: Pro-Arguments
+  description: There are at least two pro-arguments, which support the thesis statement.
+- trait_id: support
+  name: Support
+  description: There is support for each pro-argument, such as an explanation, an example, an expert’s opinion, or facts.
+- trait_id: summary_sentence
+  name: Summary Sentence
+  description: There is a summary of the main arguments, which briefly recaps the student's ideas.
+- trait_id: rephrasing_of_the_thesis_statement
+  name: Rephrasing of the Thesis Statement
+  description: There is a rephrasing of the thesis statement, which uses different words than in the introduction.
+- trait_id: closing_sentence
+  name: Closing Sentence
+  description: There is a closing sentence, such as a call to action, a piece of advice, a prediction, or a compromise.
+- trait_id: paragraph_breaks
+  name: Paragraph Breaks
+  description: There are paragraph breaks, after the introduction, (when a new idea starts), and after the main body.
+- trait_id: linking_words
+  name: Linking Words
+  description: There are linking words or phrases, which meaningfully connect the student's ideas.
+- trait_id: overall_writing_quality
+  name: Overall Writing Quality
+  description: 'Focus primarily on the text''s deep structure: how clearly it introduces the topic and presents a position, develops and supports arguments, addresses counterarguments and rebuttals, and organizes and connects ideas across the introduction, main body, and conclusion. Ignore spelling, grammar, punctuation, and other surface features as much as possible, except when they substantially interfere with understanding.
+
+
+    Take a holistic approach: Which text makes a better overall impression? Use the guidance as considerations, not a checklist. Judge how effectively the elements work together rather than scoring or counting individual features.'

@@ -1,0 +1,25 @@
+{
+  "documentation_version": 1,
+  "checked_on": "2026-11-13",
+  "qualification": false,
+  "account_prices": "unknown",
+  "account_entitlement": "unknown",
+  "sources": [
+    {"url": "https://developers.openai.com/api/docs/models/gpt-6-luna.md", "scope": "gpt-6-luna exact model and native output candidate"},
+    {"url": "https://developers.openai.com/api/docs/models/gpt-6.1-terra", "scope": "gpt-6.1-terra Responses, native output and service options"},
+    {"url": "https://developers.openai.com/api/docs/guides/structured-outputs", "scope": "Responses text.format and supported schema subset; local validators remain mandatory"},
+    {"url": "https://developers.openai.com/api/docs/guides/flex-processing", "scope": "explicit Flex; no implicit Standard retry"},
+    {"url": "https://platform.claude.com/docs/en/models/overview", "scope": "exact claude-haiku-5-5 and claude-sonnet-5-5 IDs"},
+    {"url": "https://platform.claude.com/docs/en/build-with-claude/structured-outputs", "scope": "Messages output_config.format; array counts beyond minItems 0/1 remain local"},
+    {"url": "https://platform.claude.com/docs/en/api/service-tiers", "scope": "Standard; both study models excluded from contractual Priority; no Flex study route"},
+    {"url": "https://ai.google.dev/gemini-api/docs/models/gemini-3.5-flash-lite", "scope": "exact model, native structured output, Flex and Priority candidates"},
+    {"url": "https://ai.google.dev/gemini-api/docs/models/gemini-3.8-flash", "scope": "exact model, native structured output, Flex and Priority candidates"},
+    {"url": "https://ai.google.dev/gemini-api/docs/structured-output", "scope": "Developer GenerateContent response_json_schema projection; complete local assessment validation"},
+    {"url": "https://ai.google.dev/gemini-api/docs/generate-content/priority-inference", "scope": "GenerateContent, Tier 2/3 entitlement, x-gemini-service-tier and documented Standard downgrade"}
+  ],
+  "sdk_facts": [
+    {"provider": "openai", "sdk": "openai", "version": "3.42.1", "api": "openai-v1"},
+    {"provider": "anthropic", "sdk": "anthropic", "version": "2.3.0", "api": "2026-10-21"},
+    {"provider": "gemini", "sdk": "google-genai", "version": "2.34.0", "api": "v1beta"}
+  ]
+}

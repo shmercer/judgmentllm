@@ -2,16 +2,16 @@
 
 **Milestone 3, Phase 5C — Gemini Developer alongside Anthropic Messages, OpenAI Responses and Chat Completions production adapters. Development version 0.1.0a3; exact-head offline and separately authorized live qualification are recorded separately.**
 
-Milestone 2 adds an [internal preparation foundation](docs/persistence-contracts.md)
+Milestone 2 adds an [internal preparation foundation](https://github.com/shmercer/judgmentllm/blob/main/docs/persistence-contracts.md)
 for SQLite state, immutable source snapshots, indexed input access, complete run
 manifests, generation commitments, and local executor ownership.
 Public Python services and the versioned CLI provide complete validation, planning,
 mock live execution, durable status, conservative recovery, explicit subset retries,
 and immutable all-attempt exports. Production runs require explicit RunSpecV3;
-see the [OpenAI user guide](docs/openai.md) and [Anthropic user guide](docs/anthropic.md), and [Gemini Developer guide](docs/gemini.md). Native serving qualification remains pending.
-The [approved Milestone 2 plan](docs/milestone-2-execution-plan.md) records the boundaries.
+see the [OpenAI user guide](https://github.com/shmercer/judgmentllm/blob/main/docs/openai.md) and [Anthropic user guide](https://github.com/shmercer/judgmentllm/blob/main/docs/anthropic.md), and [Gemini Developer guide](https://github.com/shmercer/judgmentllm/blob/main/docs/gemini.md). Native serving qualification remains pending.
+The [approved Milestone 2 plan](https://github.com/shmercer/judgmentllm/blob/main/docs/milestone-2-execution-plan.md) records the boundaries.
 Subphase 6 adds reproducible complete-run benchmarks, focused resource checks and
-practical examples. The [qualification protocol](docs/milestone-2-subphase-6-verification.md)
+practical examples. The [qualification protocol](https://github.com/shmercer/judgmentllm/blob/main/docs/milestone-2-subphase-6-verification.md)
 identifies the external exact-source ledger that records acceptance, measured
 workloads, exclusions and remaining conditions. Tooling availability alone does
 not establish milestone acceptance.
@@ -20,9 +20,18 @@ JudgmentLLM provides typed, provider-independent contracts for ordinal rubric sc
 
 Python 3.11+, Linux, Windows, and macOS are supported. The core uses Pydantic 2, PyYAML, Jinja2, and Typer; pandas and PyArrow are not required.
 
-The R architecture is CLI-first: call the standalone installed executable, normally with `processx`, and exchange canonical JSONL or R-compatible CSV files. `pairwiseLLM` consumes these files for statistical analysis in R. A functional thin `rubricLLM` wrapper for the run lifecycle belongs to Milestone 6; `reticulate` is optional and secondary. Ordinary R use requires no HTTP server. See [R interoperability](docs/r-interoperability.md) for the approved architecture and current offline examples.
+The R architecture is CLI-first: call the standalone installed executable, normally with `processx`, and exchange canonical JSONL or R-compatible CSV files. `pairwiseLLM` consumes these files for statistical analysis in R. A functional thin `rubricLLM` wrapper for the run lifecycle belongs to Milestone 6; `reticulate` is optional and secondary. Ordinary R use requires no HTTP server. See [R interoperability](https://github.com/shmercer/judgmentllm/blob/main/docs/r-interoperability.md) for the approved architecture and current offline examples.
 
 ## Install and preview
+
+Public wheel and source packages contain the Python library, CLI and runtime templates.
+Study tooling, examples, tests and developer documentation remain in the repository.
+The checkout commands below require cloning it first:
+
+```bash
+git clone https://github.com/shmercer/judgmentllm.git
+cd judgmentllm
+```
 
 ```bash
 uv sync --locked --all-extras --group dev
@@ -44,7 +53,7 @@ authorization and scoped provenance. Phase 4B attaches safe evidence to physical
 submissions and observations through immutable companion receipts and registry
 schema 2. Full and minimal capture retain safe metadata; reasoning text requires
 an explicit immutable synthetic-fixture grant. Existing result and R exports
-remain unchanged. See the [Python API](docs/python-api.md#internal-durable-evidence-inspection-phase-4b)
+remain unchanged. See the [Python API](https://github.com/shmercer/judgmentllm/blob/main/docs/python-api.md#internal-durable-evidence-inspection-phase-4b)
 for internal inspection and compatibility. OpenAI production transport is additive;
 companion exports remain deferred and live qualification requires separate consent.
 
@@ -63,8 +72,8 @@ run/store. Configured means present, without authentication or model-access
 verification. Vertex ADC remains unknown; ordinary local Ollama needs no
 credential and is not probed. Required providers must be configured or not
 required: unmet requirements exit 2 while retaining all status rows. See the
-[Python API](docs/python-api.md#credential-diagnostics-phase-3-implemented) and
-[CLI specification](docs/cli-spec.md#offline-authentication-status-phase-3-implemented).
+[Python API](https://github.com/shmercer/judgmentllm/blob/main/docs/python-api.md#credential-diagnostics-phase-3-implemented) and
+[CLI specification](https://github.com/shmercer/judgmentllm/blob/main/docs/cli-spec.md#offline-authentication-status-phase-3-implemented).
 OpenAI `auth verify` and `providers models` are explicit non-generative online
 operations; neither command qualifies a serving model or runs automatically.
 
@@ -98,12 +107,12 @@ recorded attempt; select successful attempts explicitly for analysis.
 Minimal capture omits source snapshots, prompts, payloads and raw responses;
 authorized normalized explanations remain sensitive retained results. Recovery
 requires unchanged original sources and authoritative observation evidence.
-Uncertain submissions are never silently reissued. See [CLI controls](docs/cli-spec.md)
-and [public lifecycle APIs](docs/python-api.md) for retry authorization and errors.
+Uncertain submissions are never silently reissued. See [CLI controls](https://github.com/shmercer/judgmentllm/blob/main/docs/cli-spec.md)
+and [public lifecycle APIs](https://github.com/shmercer/judgmentllm/blob/main/docs/python-api.md) for retry authorization and errors.
 The installed-CLI recovery example inspects partial grouped outcomes, explicitly
 retries failed members in later processes, and proves that older exports and
 unsuccessful rows remain available. Use a fresh output directory for each example.
-The [scale qualification guide](docs/scale-qualification.md) describes the complete
+The [scale qualification guide](https://github.com/shmercer/judgmentllm/blob/main/docs/scale-qualification.md) describes the complete
 100,000-judgment mock workload, memory regressions, separate stress commands and
 the distinction between required CI and offline qualification.
 
@@ -140,7 +149,7 @@ Pair and repetition order stay fixed. A seed selects presentation orientation in
 
 `category_label` records only provider selection. `modal_category_label` records the distribution-derived mode. `expected_value` uses the complete distribution and numeric mapping; `primary_score_kind` distinguishes `expected` from `category_code`. Original probabilities and provider-reported expected indices are retained. `NormalizationOptions.probability_sum_tolerance` controls the documented absolute sum tolerance, default `1e-8`, without renormalization.
 
-See [the finalized data contracts](docs/data-contracts.md) and [public API examples](docs/python-api.md) for normalization and streaming JSONL/CSV operations. Nested result data survives CSV export as JSON cells. Library writers revalidate each current nested result before export. Derived R-compatible audit exports preserve presented orientation, all attempts, ties/failures, and score kinds; see [R interoperability](docs/r-interoperability.md) for character-safe import and explicit analysis selection.
+See [the finalized data contracts](https://github.com/shmercer/judgmentllm/blob/main/docs/data-contracts.md) and [public API examples](https://github.com/shmercer/judgmentllm/blob/main/docs/python-api.md) for normalization and streaming JSONL/CSV operations. Nested result data survives CSV export as JSON cells. Library writers revalidate each current nested result before export. Derived R-compatible audit exports preserve presented orientation, all attempts, ties/failures, and score kinds; see [R interoperability](https://github.com/shmercer/judgmentllm/blob/main/docs/r-interoperability.md) for character-safe import and explicit analysis selection.
 
 ## Templates and validation
 
@@ -148,14 +157,14 @@ Built-in presets cover rubric scores, scores with explanations, and pairwise for
 
 Output-schema validation is separate from rendering. Unknown configuration fields, incompatible presets, invalid categories, duplicate IDs, and known unsupported explanations fail locally. Unknown capabilities remain explicit; arbitrary model identifiers are not blocked by a catalog.
 
-See [prompt guidance](docs/prompt-guidance.md) and [CLI documentation](docs/cli-spec.md).
+See [prompt guidance](https://github.com/shmercer/judgmentllm/blob/main/docs/prompt-guidance.md) and [CLI documentation](https://github.com/shmercer/judgmentllm/blob/main/docs/cli-spec.md).
 The provider-free internal preparation service freezes assessment sources and
 seals a complete manifest before submission can begin. Full capture retains
 verified exact snapshots; minimal capture retains hashes, structural indexes,
 and source references while requiring unchanged originals. Use a local runtime
 store outside cloud-synchronized or network-mounted directories. See the
-[Python preparation interface](docs/python-api.md#immutable-source-preparation-internal)
-and [verification record](docs/milestone-2-subphase-2-verification.md).
+[Python preparation interface](https://github.com/shmercer/judgmentllm/blob/main/docs/python-api.md#immutable-source-preparation-internal)
+and [verification record](https://github.com/shmercer/judgmentllm/blob/main/docs/milestone-2-subphase-2-verification.md).
 
 ## Development and verification
 
@@ -176,26 +185,26 @@ uv run --offline --no-sync python scripts/smoke_install.py dist/*.tar.gz
 
 Use a writable `UV_CACHE_DIR` when the default cache is read-only. Tests are synthetic and offline. The coverage gate remains 90%; statement and branch coverage are reported. The installation helper creates clean environments and may download locked core dependencies; installed import, template, and preview checks run offline. Provider SDKs must be absent from these core installations.
 
-The [risk-based verification policy](docs/ci-optimization.md) selects checks by affected
+The [risk-based verification policy](https://github.com/shmercer/judgmentllm/blob/main/docs/ci-optimization.md) selects checks by affected
 behavior. Linux/Python 3.11 is the primary suite/coverage lane; comprehensive
 cross-platform and strict R qualification remains available for releases,
-weekly runs and explicit requests. The [local grid](docs/local-ci.md) is an
+weekly runs and explicit requests. The [local grid](https://github.com/shmercer/judgmentllm/blob/main/docs/local-ci.md) is an
 optional complete campaign, not a prerequisite for routine PRs.
 
 ## Optional dependencies and later milestones
 
-Extras remain `openai`, `anthropic`, `google`, `together`, `ollama`, `typesafe`, `parquet`, `api`, and `all`. Installing them adds dependencies, not implemented provider operations. Milestone 2 provides mock execution and persistence; live adapters, batching, catalogs, the functional CLI-first `rubricLLM` wrapper in Milestone 6, and the committed optional local FastAPI interface in Milestone 7 follow the [implementation plan](docs/implementation-plan.md). R calls will operate on runs/files or sized task groups, not spawn one Python process per judgment. The wrapper, batch operations and real-provider services remain future work.
+Extras remain `openai`, `anthropic`, `google`, `together`, `ollama`, `typesafe`, `parquet`, `api`, and `all`. Installing them adds dependencies, not implemented provider operations. Milestone 2 provides mock execution and persistence; live adapters, batching, catalogs, the functional CLI-first `rubricLLM` wrapper in Milestone 6, and the committed optional local FastAPI interface in Milestone 7 follow the [implementation plan](https://github.com/shmercer/judgmentllm/blob/main/docs/implementation-plan.md). R calls will operate on runs/files or sized task groups, not spawn one Python process per judgment. The wrapper, batch operations and real-provider services remain future work.
 
-The repository is [shmercer/judgmentllm](https://github.com/shmercer/judgmentllm), licensed under [MIT](LICENSE), and not yet published to PyPI. The core does not implement Bradley–Terry fitting, adaptive pairing, or rubric calibration; these remain in `pairwiseLLM`.
+The repository is [shmercer/judgmentllm](https://github.com/shmercer/judgmentllm), licensed under [MIT](https://github.com/shmercer/judgmentllm/blob/main/LICENSE), and not yet published to PyPI. The core does not implement Bradley–Terry fitting, adaptive pairing, or rubric calibration; these remain in `pairwiseLLM`.
 
-Design references: [design specification](docs/design-spec.md), [decisions](docs/decisions.md), [contributor instructions](AGENTS.md), and [Milestone 1 verification](docs/milestone-1-verification.md).
+Design references: [design specification](https://github.com/shmercer/judgmentllm/blob/main/docs/design-spec.md), [decisions](https://github.com/shmercer/judgmentllm/blob/main/docs/decisions.md), [contributor instructions](https://github.com/shmercer/judgmentllm/blob/main/AGENTS.md), and [Milestone 1 verification](https://github.com/shmercer/judgmentllm/blob/main/docs/milestone-1-verification.md).
 
 
 Vertex AI Gemini single-run implementation and offline SDK fixtures are available
-through explicit V3 configurations; see the [Vertex guide](docs/vertex.md).
+through explicit V3 configurations; see the [Vertex guide](https://github.com/shmercer/judgmentllm/blob/main/docs/vertex.md).
 ADC and a separate explicitly selected Vertex authorization-key source stay
 isolated from Gemini Developer. Vertex has no live-qualified models/native routes;
-the original [deferred proposal](docs/vertex-live-qualification-proposal.md) is
+the original [deferred proposal](https://github.com/shmercer/judgmentllm/blob/main/docs/vertex-live-qualification-proposal.md) is
 preserved. Separate complete offline candidate plans now support both API-key
 and ADC modes for `gemini-3.1-flash-lite` at `global`, with four cases and zero
 authorized calls per plan. Their read-only verifier requires the exact clean
@@ -204,9 +213,18 @@ are needed offline; account/key eligibility and live execution remain pending.
 Ordinary auth status, planning and validation stay offline.
 
 New prompt previews and preparations use readable Markdown and positional CJ
-aliases. See the [renderer and compatibility guide](docs/renderer-revision-2.md)
-and [exact offline writing-task examples](examples/rendering-revision2/).
+aliases. See the [renderer and compatibility guide](https://github.com/shmercer/judgmentllm/blob/main/docs/renderer-revision-2.md)
+and [exact offline writing-task examples](https://github.com/shmercer/judgmentllm/blob/main/examples/rendering-revision2/).
 Historical sealed requests retain their original bytes and source-ID wire
 interpretation. Existing native qualification does not transfer to the revised
 contract; new production requests use text until separately qualified (`native`
 and strict unknown `auto` fail before submission).
+
+
+The [original writing-study package](https://github.com/shmercer/judgmentllm/blob/main/examples/study-native/README.md) provides
+50 native Standard/Flex configurations, 30 Flex-first main selections, all 312
+verified original previews and a CLI-first guarded qualification workflow.
+The 42-call native and 24-call service-tier proposals authorize zero calls;
+account eligibility, billable-token bounds and prices remain independent gates.
+Ordinary production qualification and the existing service/reasoning rules stay
+unchanged. No student-writing study or live provider request is authorized here.

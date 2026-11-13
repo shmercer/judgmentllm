@@ -1,0 +1,407 @@
+{
+  "study_version": "original-writing-v3-native-1",
+  "configurations": [
+    {
+      "configuration_id": "study-config-2796066604aad9e61c0e21c5ac3585c3508f284b32ef7a6e1fca3ae9b3224fb2",
+      "scenario": "grouped_scores",
+      "model": "gpt-6-luna",
+      "tier": "default",
+      "main_selection": false,
+      "file": "configs/study-config-2796066604aad9e61c0e21c5ac3585c3508f284b32ef7a6e1fca3ae9b3224fb2.json"
+    },
+    {
+      "configuration_id": "study-config-befe948389d3a620122628b18a66424e3dd248a080e6b871f9533b22abacc90b",
+      "scenario": "grouped_explanations",
+      "model": "gpt-6-luna",
+      "tier": "default",
+      "main_selection": false,
+      "file": "configs/study-config-befe948389d3a620122628b18a66424e3dd248a080e6b871f9533b22abacc90b.json"
+    },
+    {
+      "configuration_id": "study-config-eb074cf48df5254f8e78f61b9463e2c09b54999d8fa973ad9ff6f0b700906f98",
+      "scenario": "independent_scores",
+      "model": "gpt-6-luna",
+      "tier": "default",
+      "main_selection": false,
+      "file": "configs/study-config-eb074cf48df5254f8e78f61b9463e2c09b54999d8fa973ad9ff6f0b700906f98.json"
+    },
+    {
+      "configuration_id": "study-config-2953f9bea5abf4b93a55b66e4741a517cf44f3713f6a78ea862f2df9cb9db630",
+      "scenario": "independent_explanations",
+      "model": "gpt-6-luna",
+      "tier": "default",
+      "main_selection": false,
+      "file": "configs/study-config-2953f9bea5abf4b93a55b66e4741a517cf44f3713f6a78ea862f2df9cb9db630.json"
+    },
+    {
+      "configuration_id": "study-config-703387fc02fec27ed9ebc05574850815890eb60f0f0def34425df095a38cbc1b",
+      "scenario": "cj",
+      "model": "gpt-6-luna",
+      "tier": "default",
+      "main_selection": false,
+      "file": "configs/study-config-703387fc02fec27ed9ebc05574850815890eb60f0f0def34425df095a38cbc1b.json"
+    },
+    {
+      "configuration_id": "study-config-432c2d558b0f07a7a07b07a4cddc1400f851816452834312bca77b52f01ce349",
+      "scenario": "grouped_scores",
+      "model": "gpt-6-luna",
+      "tier": "flex",
+      "main_selection": true,
+      "file": "configs/study-config-432c2d558b0f07a7a07b07a4cddc1400f851816452834312bca77b52f01ce349.json"
+    },
+    {
+      "configuration_id": "study-config-28c840e6708ba8ef9bb55fde8a807446df04cf8706a687cc3986a98b4de155c4",
+      "scenario": "grouped_explanations",
+      "model": "gpt-6-luna",
+      "tier": "flex",
+      "main_selection": true,
+      "file": "configs/study-config-28c840e6708ba8ef9bb55fde8a807446df04cf8706a687cc3986a98b4de155c4.json"
+    },
+    {
+      "configuration_id": "study-config-1d47de7520387966ac2812e1dbf4cbf454ce82f50ac1983e3a007d1410efc2c8",
+      "scenario": "independent_scores",
+      "model": "gpt-6-luna",
+      "tier": "flex",
+      "main_selection": true,
+      "file": "configs/study-config-1d47de7520387966ac2812e1dbf4cbf454ce82f50ac1983e3a007d1410efc2c8.json"
+    },
+    {
+      "configuration_id": "study-config-106646d0e27d1bf62e6c5188089f2be26f331db90f6747c09f18355f417fb5a1",
+      "scenario": "independent_explanations",
+      "model": "gpt-6-luna",
+      "tier": "flex",
+      "main_selection": true,
+      "file": "configs/study-config-106646d0e27d1bf62e6c5188089f2be26f331db90f6747c09f18355f417fb5a1.json"
+    },
+    {
+      "configuration_id": "study-config-2bb2e08e78c202225b08a80956a946993bea4891359273da81e78fe119f4e283",
+      "scenario": "cj",
+      "model": "gpt-6-luna",
+      "tier": "flex",
+      "main_selection": true,
+      "file": "configs/study-config-2bb2e08e78c202225b08a80956a946993bea4891359273da81e78fe119f4e283.json"
+    },
+    {
+      "configuration_id": "study-config-9501f649a44848195815cb4eee3273b9a5c9ccd3c4f9704cd179671d0597c45c",
+      "scenario": "grouped_scores",
+      "model": "gpt-6.1-terra",
+      "tier": "default",
+      "main_selection": false,
+      "file": "configs/study-config-9501f649a44848195815cb4eee3273b9a5c9ccd3c4f9704cd179671d0597c45c.json"
+    },
+    {
+      "configuration_id": "study-config-1263c8cf8837b64376e6e4a9233840b3d86b613a137986e32f783e237ef75e7a",
+      "scenario": "grouped_explanations",
+      "model": "gpt-6.1-terra",
+      "tier": "default",
+      "main_selection": false,
+      "file": "configs/study-config-1263c8cf8837b64376e6e4a9233840b3d86b613a137986e32f783e237ef75e7a.json"
+    },
+    {
+      "configuration_id": "study-config-47ca8650f3620f181a4ca3aa8ca539bf50e3899516e8f3b29de7b01f0d8e3207",
+      "scenario": "independent_scores",
+      "model": "gpt-6.1-terra",
+      "tier": "default",
+      "main_selection": false,
+      "file": "configs/study-config-47ca8650f3620f181a4ca3aa8ca539bf50e3899516e8f3b29de7b01f0d8e3207.json"
+    },
+    {
+      "configuration_id": "study-config-f8d017e7c2f916244e163e71ff6a269fda850f85794a21731445aa0d7bee6b46",
+      "scenario": "independent_explanations",
+      "model": "gpt-6.1-terra",
+      "tier": "default",
+      "main_selection": false,
+      "file": "configs/study-config-f8d017e7c2f916244e163e71ff6a269fda850f85794a21731445aa0d7bee6b46.json"
+    },
+    {
+      "configuration_id": "study-config-e1f5cbb01a8c2e9388e600795caafc5d6955707c52495ca48e4af6ac3fcbdaff",
+      "scenario": "cj",
+      "model": "gpt-6.1-terra",
+      "tier": "default",
+      "main_selection": false,
+      "file": "configs/study-config-e1f5cbb01a8c2e9388e600795caafc5d6955707c52495ca48e4af6ac3fcbdaff.json"
+    },
+    {
+      "configuration_id": "study-config-137ef39af1344ce25416f9a59fa3324f2f65f5e02c3a5c8c29662f674d7203e1",
+      "scenario": "grouped_scores",
+      "model": "gpt-6.1-terra",
+      "tier": "flex",
+      "main_selection": true,
+      "file": "configs/study-config-137ef39af1344ce25416f9a59fa3324f2f65f5e02c3a5c8c29662f674d7203e1.json"
+    },
+    {
+      "configuration_id": "study-config-01d5a7730d7e51ea6ccfb8edb1a8810e3cb4e1da7f71c749d1b5a2ba5242766a",
+      "scenario": "grouped_explanations",
+      "model": "gpt-6.1-terra",
+      "tier": "flex",
+      "main_selection": true,
+      "file": "configs/study-config-01d5a7730d7e51ea6ccfb8edb1a8810e3cb4e1da7f71c749d1b5a2ba5242766a.json"
+    },
+    {
+      "configuration_id": "study-config-d0408eaf23250b69c2e0d20ab4f9ce963b125378f265e171686e18252c971428",
+      "scenario": "independent_scores",
+      "model": "gpt-6.1-terra",
+      "tier": "flex",
+      "main_selection": true,
+      "file": "configs/study-config-d0408eaf23250b69c2e0d20ab4f9ce963b125378f265e171686e18252c971428.json"
+    },
+    {
+      "configuration_id": "study-config-f521fc493b7037406fb603abcd54a9c2777f23ae7a0a09b529db6977b775dbaa",
+      "scenario": "independent_explanations",
+      "model": "gpt-6.1-terra",
+      "tier": "flex",
+      "main_selection": true,
+      "file": "configs/study-config-f521fc493b7037406fb603abcd54a9c2777f23ae7a0a09b529db6977b775dbaa.json"
+    },
+    {
+      "configuration_id": "study-config-b3d9599c6863363238e54fe7830da2917017cb55972e03576f0bba091b90af24",
+      "scenario": "cj",
+      "model": "gpt-6.1-terra",
+      "tier": "flex",
+      "main_selection": true,
+      "file": "configs/study-config-b3d9599c6863363238e54fe7830da2917017cb55972e03576f0bba091b90af24.json"
+    },
+    {
+      "configuration_id": "study-config-230a510bb47fbeb8e7f4fef6c4fc2e5557a095139c7e7a0a5d1cb0d2c0809540",
+      "scenario": "grouped_scores",
+      "model": "gemini-3.5-flash-lite",
+      "tier": "standard",
+      "main_selection": false,
+      "file": "configs/study-config-230a510bb47fbeb8e7f4fef6c4fc2e5557a095139c7e7a0a5d1cb0d2c0809540.json"
+    },
+    {
+      "configuration_id": "study-config-a03263b19f0c7ce5323eecf2e68f54cf8d3d910e99ac62bc1a539bddcf8c81b0",
+      "scenario": "grouped_explanations",
+      "model": "gemini-3.5-flash-lite",
+      "tier": "standard",
+      "main_selection": false,
+      "file": "configs/study-config-a03263b19f0c7ce5323eecf2e68f54cf8d3d910e99ac62bc1a539bddcf8c81b0.json"
+    },
+    {
+      "configuration_id": "study-config-0458e1557502fb6cc55d1194b21c6a940bc18dcfd32804a865412353d7e9c7c2",
+      "scenario": "independent_scores",
+      "model": "gemini-3.5-flash-lite",
+      "tier": "standard",
+      "main_selection": false,
+      "file": "configs/study-config-0458e1557502fb6cc55d1194b21c6a940bc18dcfd32804a865412353d7e9c7c2.json"
+    },
+    {
+      "configuration_id": "study-config-2aa3ede0051d3ebd8bc7738ee8c132a15fbcbb87a50bf276ede41d232f7c233f",
+      "scenario": "independent_explanations",
+      "model": "gemini-3.5-flash-lite",
+      "tier": "standard",
+      "main_selection": false,
+      "file": "configs/study-config-2aa3ede0051d3ebd8bc7738ee8c132a15fbcbb87a50bf276ede41d232f7c233f.json"
+    },
+    {
+      "configuration_id": "study-config-f672a043edb17ff5045a5824b6c1b42f0b4df28e88ef16c06410650f8c73157b",
+      "scenario": "cj",
+      "model": "gemini-3.5-flash-lite",
+      "tier": "standard",
+      "main_selection": false,
+      "file": "configs/study-config-f672a043edb17ff5045a5824b6c1b42f0b4df28e88ef16c06410650f8c73157b.json"
+    },
+    {
+      "configuration_id": "study-config-e47a848f73dedd6181afed173662d988e3876d9079085ce62bacd250dbc85e1c",
+      "scenario": "grouped_scores",
+      "model": "gemini-3.5-flash-lite",
+      "tier": "flex",
+      "main_selection": true,
+      "file": "configs/study-config-e47a848f73dedd6181afed173662d988e3876d9079085ce62bacd250dbc85e1c.json"
+    },
+    {
+      "configuration_id": "study-config-bb1be8cbc38dbc6edcbc0679a31386dcc33ed989ef63d1b84532afa8162f30b6",
+      "scenario": "grouped_explanations",
+      "model": "gemini-3.5-flash-lite",
+      "tier": "flex",
+      "main_selection": true,
+      "file": "configs/study-config-bb1be8cbc38dbc6edcbc0679a31386dcc33ed989ef63d1b84532afa8162f30b6.json"
+    },
+    {
+      "configuration_id": "study-config-8f7cff22c6d1a662ad4541548080842736511d55f55129e751bbdee3650ab1e3",
+      "scenario": "independent_scores",
+      "model": "gemini-3.5-flash-lite",
+      "tier": "flex",
+      "main_selection": true,
+      "file": "configs/study-config-8f7cff22c6d1a662ad4541548080842736511d55f55129e751bbdee3650ab1e3.json"
+    },
+    {
+      "configuration_id": "study-config-323d64de5c537cb45364d3d6e69b4dfa5661ae31bc81ebac15654fb7dededde3",
+      "scenario": "independent_explanations",
+      "model": "gemini-3.5-flash-lite",
+      "tier": "flex",
+      "main_selection": true,
+      "file": "configs/study-config-323d64de5c537cb45364d3d6e69b4dfa5661ae31bc81ebac15654fb7dededde3.json"
+    },
+    {
+      "configuration_id": "study-config-8942531ed135017fcbb2903cd13bbf566b6c154d54431d5258fbff36ffd54cd7",
+      "scenario": "cj",
+      "model": "gemini-3.5-flash-lite",
+      "tier": "flex",
+      "main_selection": true,
+      "file": "configs/study-config-8942531ed135017fcbb2903cd13bbf566b6c154d54431d5258fbff36ffd54cd7.json"
+    },
+    {
+      "configuration_id": "study-config-aca15dabad088b715515cd31fd1e062584a52a3320d885a21cd239c2650f21cc",
+      "scenario": "grouped_scores",
+      "model": "gemini-3.8-flash",
+      "tier": "standard",
+      "main_selection": false,
+      "file": "configs/study-config-aca15dabad088b715515cd31fd1e062584a52a3320d885a21cd239c2650f21cc.json"
+    },
+    {
+      "configuration_id": "study-config-6889f5f2f9e902281d65e070ca4973761599e23d17bd385e54071b525d5f8289",
+      "scenario": "grouped_explanations",
+      "model": "gemini-3.8-flash",
+      "tier": "standard",
+      "main_selection": false,
+      "file": "configs/study-config-6889f5f2f9e902281d65e070ca4973761599e23d17bd385e54071b525d5f8289.json"
+    },
+    {
+      "configuration_id": "study-config-00cc0fbae5a1b043d79f77f9495bb19440fa5d47337fbdd3933572d4295c6c90",
+      "scenario": "independent_scores",
+      "model": "gemini-3.8-flash",
+      "tier": "standard",
+      "main_selection": false,
+      "file": "configs/study-config-00cc0fbae5a1b043d79f77f9495bb19440fa5d47337fbdd3933572d4295c6c90.json"
+    },
+    {
+      "configuration_id": "study-config-b69ca6c94ff3bf02dca53eb763dc1faeeb67df16cb0bcc74801849525f7889b3",
+      "scenario": "independent_explanations",
+      "model": "gemini-3.8-flash",
+      "tier": "standard",
+      "main_selection": false,
+      "file": "configs/study-config-b69ca6c94ff3bf02dca53eb763dc1faeeb67df16cb0bcc74801849525f7889b3.json"
+    },
+    {
+      "configuration_id": "study-config-0880c3fcf1d69497efbb36b5659dd17739a618efc480a79c191d071431120601",
+      "scenario": "cj",
+      "model": "gemini-3.8-flash",
+      "tier": "standard",
+      "main_selection": false,
+      "file": "configs/study-config-0880c3fcf1d69497efbb36b5659dd17739a618efc480a79c191d071431120601.json"
+    },
+    {
+      "configuration_id": "study-config-df8d3478cfcae3c286466ec1671b4b460fc8d1adf8b527a710059730506dad22",
+      "scenario": "grouped_scores",
+      "model": "gemini-3.8-flash",
+      "tier": "flex",
+      "main_selection": true,
+      "file": "configs/study-config-df8d3478cfcae3c286466ec1671b4b460fc8d1adf8b527a710059730506dad22.json"
+    },
+    {
+      "configuration_id": "study-config-267dc1aec88c280f911c50d0c62c6db6a7da05dd1b7689551a7ec25b5f833ece",
+      "scenario": "grouped_explanations",
+      "model": "gemini-3.8-flash",
+      "tier": "flex",
+      "main_selection": true,
+      "file": "configs/study-config-267dc1aec88c280f911c50d0c62c6db6a7da05dd1b7689551a7ec25b5f833ece.json"
+    },
+    {
+      "configuration_id": "study-config-92cd6af9c46b68f7505f9cac8d47cac1dc30ce662d3d829209ff5f8f3e9fc03b",
+      "scenario": "independent_scores",
+      "model": "gemini-3.8-flash",
+      "tier": "flex",
+      "main_selection": true,
+      "file": "configs/study-config-92cd6af9c46b68f7505f9cac8d47cac1dc30ce662d3d829209ff5f8f3e9fc03b.json"
+    },
+    {
+      "configuration_id": "study-config-788bf6d65cc04188d917eda564129ca74677f0fd74bed375f0f5e5f4bd867791",
+      "scenario": "independent_explanations",
+      "model": "gemini-3.8-flash",
+      "tier": "flex",
+      "main_selection": true,
+      "file": "configs/study-config-788bf6d65cc04188d917eda564129ca74677f0fd74bed375f0f5e5f4bd867791.json"
+    },
+    {
+      "configuration_id": "study-config-caf64c058953355a14e1544ca328624238f552f86af3547a2116625f539af9e7",
+      "scenario": "cj",
+      "model": "gemini-3.8-flash",
+      "tier": "flex",
+      "main_selection": true,
+      "file": "configs/study-config-caf64c058953355a14e1544ca328624238f552f86af3547a2116625f539af9e7.json"
+    },
+    {
+      "configuration_id": "study-config-35d9ea5d5fe18d0b626814d2f0478ce81b27c644b743bf6f522e9be70405bb98",
+      "scenario": "grouped_scores",
+      "model": "claude-haiku-5-5",
+      "tier": "standard_only",
+      "main_selection": true,
+      "file": "configs/study-config-35d9ea5d5fe18d0b626814d2f0478ce81b27c644b743bf6f522e9be70405bb98.json"
+    },
+    {
+      "configuration_id": "study-config-df0daae3572d2ed8fafba10ab36a4253664ad7189d07f812f24ae2e9fd76f5c5",
+      "scenario": "grouped_explanations",
+      "model": "claude-haiku-5-5",
+      "tier": "standard_only",
+      "main_selection": true,
+      "file": "configs/study-config-df0daae3572d2ed8fafba10ab36a4253664ad7189d07f812f24ae2e9fd76f5c5.json"
+    },
+    {
+      "configuration_id": "study-config-92c3cb00ebf9e384373c291e3907a8f229a3e27ed0db1a6a4d38984b2faa3f33",
+      "scenario": "independent_scores",
+      "model": "claude-haiku-5-5",
+      "tier": "standard_only",
+      "main_selection": true,
+      "file": "configs/study-config-92c3cb00ebf9e384373c291e3907a8f229a3e27ed0db1a6a4d38984b2faa3f33.json"
+    },
+    {
+      "configuration_id": "study-config-f174f0cde418b4d8c3519aa58a11cc65b023c4b1d35e77fbf584fbccb3e7cbe2",
+      "scenario": "independent_explanations",
+      "model": "claude-haiku-5-5",
+      "tier": "standard_only",
+      "main_selection": true,
+      "file": "configs/study-config-f174f0cde418b4d8c3519aa58a11cc65b023c4b1d35e77fbf584fbccb3e7cbe2.json"
+    },
+    {
+      "configuration_id": "study-config-f974200afbe5e1126d5c55e8f9219893fcd114ffbecb70387ce69e3c5d9e01db",
+      "scenario": "cj",
+      "model": "claude-haiku-5-5",
+      "tier": "standard_only",
+      "main_selection": true,
+      "file": "configs/study-config-f974200afbe5e1126d5c55e8f9219893fcd114ffbecb70387ce69e3c5d9e01db.json"
+    },
+    {
+      "configuration_id": "study-config-1a96ab23eec2d9e5e3c0351c7bb202ff3684d9a1743ce4bf511a109e36f0bc03",
+      "scenario": "grouped_scores",
+      "model": "claude-sonnet-5-5",
+      "tier": "standard_only",
+      "main_selection": true,
+      "file": "configs/study-config-1a96ab23eec2d9e5e3c0351c7bb202ff3684d9a1743ce4bf511a109e36f0bc03.json"
+    },
+    {
+      "configuration_id": "study-config-51730ce072e5ceea098ddae93c1997dd28b0e762b54186432e787c6962ca20e1",
+      "scenario": "grouped_explanations",
+      "model": "claude-sonnet-5-5",
+      "tier": "standard_only",
+      "main_selection": true,
+      "file": "configs/study-config-51730ce072e5ceea098ddae93c1997dd28b0e762b54186432e787c6962ca20e1.json"
+    },
+    {
+      "configuration_id": "study-config-e2abe938ae2fc9ec3eef7f78d785fba4f3b15e4f88ad6fdd49ae373a0970f51b",
+      "scenario": "independent_scores",
+      "model": "claude-sonnet-5-5",
+      "tier": "standard_only",
+      "main_selection": true,
+      "file": "configs/study-config-e2abe938ae2fc9ec3eef7f78d785fba4f3b15e4f88ad6fdd49ae373a0970f51b.json"
+    },
+    {
+      "configuration_id": "study-config-a1d91b70f8e27008aff4d90da7d042b69ed78a621444154c4506b6a59b1b5913",
+      "scenario": "independent_explanations",
+      "model": "claude-sonnet-5-5",
+      "tier": "standard_only",
+      "main_selection": true,
+      "file": "configs/study-config-a1d91b70f8e27008aff4d90da7d042b69ed78a621444154c4506b6a59b1b5913.json"
+    },
+    {
+      "configuration_id": "study-config-bacc4683209239ba7005c50b2160e5515f43f4525adc964f494a8f1e743532fb",
+      "scenario": "cj",
+      "model": "claude-sonnet-5-5",
+      "tier": "standard_only",
+      "main_selection": true,
+      "file": "configs/study-config-bacc4683209239ba7005c50b2160e5515f43f4525adc964f494a8f1e743532fb.json"
+    }
+  ],
+  "library_count": 50,
+  "main_count": 30
+}

@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "source_commit": "cebbf1504010f7c9f1d154e2705315523d717f97",
+  "manifest_checks": 2,
+  "prompt_schema_pairs_matched": 312,
+  "rubric_pairs": 156,
+  "cj_pairs": 156,
+  "drift": [],
+  "method": "Original verify_package.py plus exact_engine_check.py --compare in independently copied packages; unchanged source manifests."
+}

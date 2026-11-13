@@ -825,3 +825,23 @@ authority. No such production scope is installed by this change.
 
 See [reasoning controls](reasoning-controls.md) for values, sampling restrictions,
 the pinned Gemini SDK's original-proto field spelling, privacy and R acceptance.
+
+## Issue #39 PR2-B repository study records
+
+The repository-only `judgmentllm.study` workflow adds strict, independently
+versioned suite/case/proposal, eligibility, per-served-outcome pricing,
+authorization and budget-event records. These contain no credential values and
+grant no production qualification. Original configurations remain RunSpec V3;
+normalized results and all JSONL/CSV/R schemas remain unchanged.
+
+Study configuration IDs commit original source digests, exact route/model,
+scenario, tier, account declaration, service policy, capture and output cap,
+independently of paths or clocks. Proposals additionally bind the clean source,
+exact physical identities, SDK/API, native features and request/schema bytes.
+Unknown account/pricing/billable-token gates remain blocked. Independently dated
+authorization covers one exact proposal and the shared cumulative budget.
+Suite starts, forwarding reservations, terminal evidence and campaign-wide holds
+are durable; restart cannot renew their allocations or deadlines. Explicit
+reasoning/sampling remains outside original study admission and retains PR2-A's
+control-specific qualification requirements. See the
+[study guide](../examples/study-native/README.md).

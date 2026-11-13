@@ -323,6 +323,13 @@ class AnthropicAdapter:
         )
 
     def capabilities(self, spec: RunSpecification) -> CapabilityProfile:
+        if self.transport_context.kind == "anthropic-study-candidate-v1":
+            from judgmentllm.study.admission import guarded_capabilities
+
+            return guarded_capabilities(
+                self._submission_guard, self.transport_context, spec
+            )
+
         from judgmentllm.providers.reasoning import generation_capabilities
 
         profile = self.capabilities_for(spec.provider, spec.endpoint, spec.model)
@@ -381,7 +388,8 @@ class AnthropicAdapter:
                 service_policy(spec),
                 () if reviewed is None else reviewed.service_scopes,
                 strict=spec.strict_capabilities,
-                qualification="qualification" in self.transport_context.kind,
+                qualification="qualification" in self.transport_context.kind
+                or self.transport_context.kind == "anthropic-study-candidate-v1",
             )
         except ValueError:
             raise AnthropicConfigurationError(("execution.tier",)) from None
@@ -398,6 +406,8 @@ class AnthropicAdapter:
 
     def validate_credentials(self) -> None:
         """Explicit execution preflight; never used by offline validation/preview."""
+        if self.transport_context.kind == "anthropic-study-candidate-v1":
+            self._check_authority()
         try:
             _resolve_credentials("anthropic")
         except ValueError:
@@ -410,6 +420,12 @@ class AnthropicAdapter:
             raise AnthropicReadinessError("sdk_scope_mismatch")
 
     def _check_authority(self) -> None:
+        if self.transport_context.kind == "anthropic-study-candidate-v1":
+            from judgmentllm.study.admission import guarded_authority
+
+            guarded_authority(self._submission_guard, self.transport_context)
+            return
+
         context = self.transport_context
         if context.kind == "anthropic-qualification-candidate-v1":
             raise ProviderIntegrityError(

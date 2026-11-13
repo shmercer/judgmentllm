@@ -1,0 +1,22 @@
+schema_version: 3
+task_kind: pairwise
+input: ../responses_demo.csv
+criteria: ../criteria_13_traits.yaml
+pairs: ../pairs_demo.jsonl
+provider: openai
+endpoint: responses
+model: gpt-6.1-terra
+prompt:
+  file: ../prompts/cj_13_independent_score_only.txt
+  structured_output: text
+  output_order: together
+execution:
+  mode: live
+  grouping: independent
+  explanations: false
+  cache_policy: 'off'
+  concurrency: 4
+capture: minimal
+allow_ties: false
+strict_capabilities: false
+output_path: ../outputs/gpt_6_1_terra/cj_13_independent_score_only

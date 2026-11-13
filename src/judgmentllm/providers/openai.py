@@ -283,6 +283,13 @@ class OpenAIAdapter:
         )
 
     def capabilities(self, spec: RunSpecification) -> CapabilityProfile:
+        if self.transport_context.kind == "openai-study-candidate-v1":
+            from judgmentllm.study.admission import guarded_capabilities
+
+            return guarded_capabilities(
+                self._submission_guard, self.transport_context, spec
+            )
+
         from judgmentllm.providers.reasoning import generation_capabilities
 
         profile = self.capabilities_for(spec.provider, spec.endpoint, spec.model)
@@ -349,7 +356,8 @@ class OpenAIAdapter:
                 service_policy(spec),
                 () if reviewed is None else reviewed.service_scopes,
                 strict=spec.strict_capabilities,
-                qualification="qualification" in self.transport_context.kind,
+                qualification="qualification" in self.transport_context.kind
+                or self.transport_context.kind == "openai-study-candidate-v1",
             )
         except ValueError:
             raise OpenAIConfigurationError(("execution.tier",)) from None
@@ -366,6 +374,8 @@ class OpenAIAdapter:
 
     def validate_credentials(self) -> None:
         """Explicit execution preflight; never used by offline validation/preview."""
+        if self.transport_context.kind == "openai-study-candidate-v1":
+            self._check_authority()
         try:
             _resolve_credentials("openai")
         except ValueError:
@@ -378,6 +388,12 @@ class OpenAIAdapter:
             raise OpenAIReadinessError("sdk_scope_mismatch")
 
     def _check_authority(self) -> None:
+        if self.transport_context.kind == "openai-study-candidate-v1":
+            from judgmentllm.study.admission import guarded_authority
+
+            guarded_authority(self._submission_guard, self.transport_context)
+            return
+
         context = self.transport_context
         if context.kind == "openai-qualification-candidate-v1":
             raise ProviderIntegrityError(

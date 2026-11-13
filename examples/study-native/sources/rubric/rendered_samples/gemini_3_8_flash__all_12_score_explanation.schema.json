@@ -1,0 +1,330 @@
+{
+  "type": "object",
+  "properties": {
+    "scores": {
+      "type": "array",
+      "minItems": 12,
+      "maxItems": 12,
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "trait_id": {
+                "const": "introductory_sentence"
+              },
+              "category_label": {
+                "type": "string",
+                "enum": [
+                  "0",
+                  "1",
+                  "2"
+                ]
+              },
+              "explanation": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "trait_id",
+              "category_label",
+              "explanation"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "trait_id": {
+                "const": "thesis_statement"
+              },
+              "category_label": {
+                "type": "string",
+                "enum": [
+                  "0",
+                  "1",
+                  "2"
+                ]
+              },
+              "explanation": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "trait_id",
+              "category_label",
+              "explanation"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "trait_id": {
+                "const": "transitional_sentence"
+              },
+              "category_label": {
+                "type": "string",
+                "enum": [
+                  "0",
+                  "1",
+                  "2"
+                ]
+              },
+              "explanation": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "trait_id",
+              "category_label",
+              "explanation"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "trait_id": {
+                "const": "counterargument"
+              },
+              "category_label": {
+                "type": "string",
+                "enum": [
+                  "0",
+                  "1",
+                  "2"
+                ]
+              },
+              "explanation": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "trait_id",
+              "category_label",
+              "explanation"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "trait_id": {
+                "const": "rebuttal"
+              },
+              "category_label": {
+                "type": "string",
+                "enum": [
+                  "0",
+                  "1",
+                  "2"
+                ]
+              },
+              "explanation": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "trait_id",
+              "category_label",
+              "explanation"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "trait_id": {
+                "const": "pro_arguments"
+              },
+              "category_label": {
+                "type": "string",
+                "enum": [
+                  "0",
+                  "1",
+                  "2"
+                ]
+              },
+              "explanation": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "trait_id",
+              "category_label",
+              "explanation"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "trait_id": {
+                "const": "support"
+              },
+              "category_label": {
+                "type": "string",
+                "enum": [
+                  "0",
+                  "1",
+                  "2"
+                ]
+              },
+              "explanation": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "trait_id",
+              "category_label",
+              "explanation"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "trait_id": {
+                "const": "summary_sentence"
+              },
+              "category_label": {
+                "type": "string",
+                "enum": [
+                  "0",
+                  "1",
+                  "2"
+                ]
+              },
+              "explanation": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "trait_id",
+              "category_label",
+              "explanation"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "trait_id": {
+                "const": "rephrasing_of_the_thesis_statement"
+              },
+              "category_label": {
+                "type": "string",
+                "enum": [
+                  "0",
+                  "1",
+                  "2"
+                ]
+              },
+              "explanation": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "trait_id",
+              "category_label",
+              "explanation"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "trait_id": {
+                "const": "closing_sentence"
+              },
+              "category_label": {
+                "type": "string",
+                "enum": [
+                  "0",
+                  "1",
+                  "2"
+                ]
+              },
+              "explanation": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "trait_id",
+              "category_label",
+              "explanation"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "trait_id": {
+                "const": "paragraph_breaks"
+              },
+              "category_label": {
+                "type": "string",
+                "enum": [
+                  "0",
+                  "1",
+                  "2"
+                ]
+              },
+              "explanation": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "trait_id",
+              "category_label",
+              "explanation"
+            ],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "trait_id": {
+                "const": "linking_words"
+              },
+              "category_label": {
+                "type": "string",
+                "enum": [
+                  "0",
+                  "1",
+                  "2"
+                ]
+              },
+              "explanation": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "trait_id",
+              "category_label",
+              "explanation"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    }
+  },
+  "required": [
+    "scores"
+  ],
+  "additionalProperties": false
+}

@@ -1,0 +1,81 @@
+ANALYTIC ESSAY RATING RUBRIC
+
+Score (max. 24): 2, 1, 0
+The score-0 description applying to all criteria:
+Criterion not yet fulfilled.
+
+1. Introductory Sentence
+2: There is an introductory sentence (or several), which leads to the essay’s topic.
+1:
+There is an introductory sentence, but it does not align with the topic of the writing prompt.
+There is an introductory sentence, but it does not align with the rest of the essay.
+There is an introductory sentence, but it does not align with the topic or the rest of the essay.
+
+2. Thesis Statement
+2: There is a clear thesis statement, which expresses the student's opinion about the topic.
+1:
+There is a thesis statement, but it does not align with the topic of the writing prompt.
+There is a thesis statement, but it does not align with the rest of the essay.
+An opinion is expressed, but it remains implicit what exactly the opinion refers to, i.e., the topic of the writing prompt.
+There is a thesis statement, but this is not placed in the introduction.
+
+3. Transitional Sentence
+2: There is a transitional sentence, which says what will follow in the main body.
+1:
+There is a transitional sentence, but it announces something different from what follows in the main body.
+There are fractions of a transitional sentence, but no specific mention of the argumentative moves following in the main body.
+
+4. Counterargument
+2: There is a counterargument that opposes the pro-arguments.
+1:
+There are fractions of one or more counterarguments, but they lack validity, force, or specificity to properly challenge the initial thesis statement.
+
+5. Rebuttal
+2: For every counter-argument, there is a rebuttal, which challenges the counterargument.
+1:
+There is a fraction of a rebuttal, but it lacks validity, force, or specificity to properly refute the counterargument.
+There is not a suitable rebuttal for every counterargument.
+
+6. Pro-Arguments
+2: There are at least two pro-arguments, which support the thesis statement.
+1:
+There is one pro-argument that supports the thesis statement, but a second one is missing.
+There are two (or more) pro-arguments supporting the thesis statement, but they are not placed in the main body of the essay.
+
+7. Support
+2: There is support for each pro-argument, such as an explanation, an example, an expert’s opinion, or facts.
+1:
+At least one of the pro-arguments lacks support.
+At least one of the pro-arguments has insufficient/inappropriate support.
+
+8. Summary Sentence
+2: There is a summary of the main arguments, which briefly recaps the student's ideas.
+1:
+There are fractions of a summary of the main arguments, but a majority of arguments are repeated verbatim.
+In addition to a summary of the main arguments, one or more new arguments are introduced.
+There is a fraction of a summary, which contains a verbatim repetition of the main arguments and, additionally, new arguments are introduced.
+There is a summary of the main arguments, but this is not placed at the beginning of the conclusion.
+
+9. Rephrasing of the Thesis Statement
+2: There is a rephrasing of the thesis statement, which uses different words than in the introduction.
+1:
+There is no rephrasing of the initial thesis statement, instead a new thesis is presented in the conclusion.
+The initial thesis statement is repeated verbatim.
+There is a rephrasing of the thesis statement, but this is not placed in the conclusion.
+
+10. Closing Sentence
+2: There is a closing sentence, such as a call to action, a piece of advice, a prediction, or a compromise.
+1:
+There is a fraction of a closing sentence (e.g., call to action, advice, prediction, compromise), but it does not align with the rest of the essay.
+The closing sentence (e.g., call to action, advice, prediction, compromise) is not placed at the end of the essay.
+
+11. Paragraph Breaks
+2: There are paragraph breaks, after the introduction, (when a new idea starts), and after the main body.
+1:
+Not all necessary paragraph breaks (after the introduction, after the main body) are inserted.
+Some or all necessary paragraph breaks (after the introduction, after the main body) are inserted, but incorrect paragraph breaks (within the introduction or the conclusion) are also inserted.
+
+12. Linking Words
+2: There are linking words or phrases, which meaningfully connect the student's ideas.
+1:
+There are linking words or phrases but they are used only partially or with partial correctness.

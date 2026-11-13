@@ -823,3 +823,26 @@ PR2-C supplies separate 24-call reasoning and 8-call temperature proposals.
 The main library continues omitting reasoning, temperature and top-p overrides.
 All three changes require high-risk acceptance at their own exact source and
 independent review; no implementation or passing fixture authorizes live calls.
+
+
+### Issue #39 PR2-B offline implementation boundary
+
+The [original study package](../examples/study-native/README.md) supplies the
+50 distinct native configurations, 30 main selections, source verification,
+complete 26-per-essay/13-per-pair plans and separate reversal audits. The shared
+CLI-first harness owns source-bound candidate admission, exact request sealing,
+independent consent, conservative per-served-outcome prices, durable suite/campaign
+reservations, zero-retry execution/recovery, safe reporting and existing exports.
+
+Both original proposals remain unexecuted. Missing account/native/tier/billable-token
+or price evidence blocks sealing; passing offline SDK fixtures establishes no
+production qualification. Optional controls stay omitted and their PR2-A
+qualification boundary remains intact. PR2-C suite definitions are deferred.
+
+Acceptance is high risk at the final committed source: automatic protected-base
+selection, local Linux/Python 3.11 correctness and historical branch-aware coverage,
+serial/durability/resources and applicable package checks, seven strict R gates
+plus actual study-to-R fixtures, and hosted Linux/Windows/macOS functional checks.
+Retain exact-source evidence outside the checkout and report passed, failed,
+deferred and unexecuted checks in the draft PR. Leave it open and unmerged for
+independent review; implementation and acceptance authorize no provider operation.
