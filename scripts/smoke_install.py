@@ -250,17 +250,26 @@ print(distribution.version)
 """
 
 
-def run(command: list[str], *, cwd: Path, offline: bool = True) -> str:
+def run(
+    command: list[str],
+    *,
+    cwd: Path,
+    offline: bool = True,
+    project_environment: Path | None = None,
+) -> str:
     """Run offline by default, retaining diagnostics if verification fails."""
+    environment = {
+        **offline_environment(),
+        "UV_OFFLINE": "1" if offline else "0",
+        "NO_COLOR": "1",
+        "TERM": "dumb",
+    }
+    if project_environment is not None:
+        environment["UV_PROJECT_ENVIRONMENT"] = str(project_environment)
     result = subprocess.run(
         command,
         cwd=cwd,
-        env={
-            **offline_environment(),
-            "UV_OFFLINE": "1" if offline else "0",
-            "NO_COLOR": "1",
-            "TERM": "dumb",
-        },
+        env=environment,
         capture_output=True,
         text=True,
         timeout=180,
@@ -359,6 +368,7 @@ def smoke_install(
     directory: Path,
     *,
     offline: bool = False,
+    locked_project: Path | None = None,
 ) -> None:
     """Verify one non-editable artifact installation outside the checkout."""
     environment = directory / "venv"
@@ -366,6 +376,22 @@ def smoke_install(
     binaries = environment / ("Scripts" if os.name == "nt" else "bin")
     python = binaries / ("python.exe" if os.name == "nt" else "python")
     console = binaries / ("judgmentllm.exe" if os.name == "nt" else "judgmentllm")
+    if locked_project is not None:
+        # Locked sync consumes cached artifact URLs without registry-list metadata.
+        run(
+            [
+                uv,
+                "sync",
+                "--project",
+                str(locked_project),
+                "--locked",
+                "--no-default-groups",
+                "--no-install-project",
+            ],
+            cwd=directory,
+            offline=offline,
+            project_environment=environment,
+        )
     run(
         [
             uv,
@@ -375,11 +401,14 @@ def smoke_install(
             str(python),
             "--constraint",
             str(constraints),
+            *(["--no-deps"] if locked_project is not None else []),
             str(artifact),
         ],
         cwd=directory,
         offline=offline,
     )
+    if locked_project is not None:
+        run([uv, "pip", "check", "--python", str(python)], cwd=directory)
     version = run([str(python), "-I", "-c", VERIFY_INSTALLED], cwd=directory).strip()
     help_text = unstyle(run([str(console), "--help"], cwd=directory))
     if "--help" not in help_text or "--version" not in help_text:

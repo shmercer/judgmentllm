@@ -27,6 +27,10 @@ Twine checks. Existing installation smokes then exercise both artifacts in
 independent non-editable environments outside the checkout, with authentication
 removed and offline dependencies. They cover core rubric/CJ preview, lifecycle,
 durable exports and R-compatible views. Source code cannot mask missing assets.
+Each audit environment first synchronizes core dependencies from the committed
+lockfile's cached artifact URLs. Installing the local artifact then avoids a new
+registry resolution; `uv pip check` still verifies its declared dependencies.
+This works with the cache populated by locked CI setup on all three platforms.
 The actual R/jsonlite campaigns remain separate required local gates.
 
 `report.json` records the exact source/archive identities, complete member lists,

@@ -230,7 +230,9 @@ def audit(source: Path, output: Path) -> dict[str, Any]:
     for name, artifact in (("wheel", wheel), ("sdist", sdist)):
         installation = output / ("installed-" + name)
         installation.mkdir()
-        smoke_install(uv, artifact, constraints, installation, offline=True)
+        smoke_install(
+            uv, artifact, constraints, installation, offline=True, locked_project=clean
+        )
     report = {
         "source_commit": commit,
         "source_archive_sha256": manifest["archive_sha256"],
