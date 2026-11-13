@@ -92,6 +92,15 @@ every preview from the imported source definitions. `source-verification.json`
 records the initial selected source and zero drift. The command above repeats
 the full check without writing into the original packages.
 
+The imported inventory now includes all 682 original files and the two manifest
+files, including material unused by rendering. Four historical Python programs
+are preserved as `.py.txt` byte fixtures; their logical original names and exact
+hashes remain in the manifests. No original program is rewritten or run during
+ordinary verification. Missing, additional, linked or non-regular entries fail
+verification, configuration generation and proposal preparation.
+Configuration identities commit this complete inventory. Updating those identities
+left all 390 native request bodies, prompts, schemas and projections unchanged.
+
 Rubric descriptors, score-1 OR alternatives, string categories `"0"/`"1"/`"2"`,
 role, 15-minute Internet/travel writing task, one-sentence explanation instruction,
 short CJ criteria and deep-structure-first holistic guidance remain verbatim.
@@ -148,6 +157,17 @@ independently verified `CredentialBinding` binds the approved credential-source
 name to the account. Only evidence hashes and allowlisted source names enter
 the proposal; keys and private account evidence never enter public artifacts.
 
+`served_outcomes_verified: true` and `billable_served_tiers` require independent
+review of every possible billed outcome for the exact account/model/route. Flex
+quotes must cover Standard as well as Flex, and Premium quotes must cover its
+Standard downgrade. Prices must cover every additional reviewed outcome; the
+reservation uses their maximum complete cost. This conservative billing rule
+does not change which served tiers pass integrity checks. OpenAI explicitly
+allows a returned tier to differ from the request in its
+[Responses reference](https://developers.openai.com/api/reference/resources/responses/methods/create).
+Exact-account billing outcomes remain unknown until reviewed; documentation for
+another Gemini route cannot establish GenerateContent billing eligibility.
+
 ## Later approved execution, recovery and exports
 
 **These steps are not authorized by this PR.** An operator must first obtain
@@ -170,6 +190,14 @@ They bind both suites at one source to the same external campaign state, so a
 fresh directory cannot replenish an authorized allocation. Tests isolate this
 state with synthetic fixtures. Suite start times are journaled before credentials
 are resolved; restart never renews the original deadline.
+
+Independent append-only checkpoints in `~/.judgmentllm/study-campaign-checkpoints/`
+commit each budget file before its local publication and before HTTP forwarding.
+They contain hashes and budget metadata, never keys or prompts. A missing root,
+lost journal/header, interrupted initialization or older restored snapshot blocks
+both suites. Deleting local files cannot start a fresh allocation. There is no
+automatic reconstruction or reset; damaged state requires separately reviewed
+reconciliation. Preserve this independent state alongside the campaign directory.
 
 Each pilot case selects one committed request from its complete study plan.
 The other planned requests stay unsubmitted, so an underlying run can remain
@@ -196,6 +224,10 @@ metadata. They never read keys. `export` publishes the existing immutable
 normalized JSONL, lossless CSV and R-compatible CSV views for each case. Attempt,
 request, task, original/presented order, mapping and missing-value contracts stay
 unchanged. Grouped usage stays once per physical receipt, never once per trait.
+
+After execution, status/report automatically follow the proposal's immutable
+campaign binding. A different, altered or unavailable campaign is rejected;
+missing campaign state cannot be reported as zero consumption.
 
 Reasoning/temperature experimental suites are PR2-C. Production qualification
 or promotion requires separately reviewed exact-source live evidence and another

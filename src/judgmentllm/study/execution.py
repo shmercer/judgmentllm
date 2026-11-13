@@ -4,6 +4,7 @@ from __future__ import annotations
 
 # pyright: reportPrivateUsage=false
 import importlib
+import json
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -222,6 +223,7 @@ def case_report(directory: Path, case: Case) -> dict[str, Any]:
         "provider": case.selection.provider,
         "endpoint": ROUTES[case.selection.provider][0],
         "reported_model": None,
+        "observation_id": None,
         "requested_tier": case.selection.tier,
         "account_scope": case.account_scope,
         "sdk_version": case.sdk_version,
@@ -289,6 +291,7 @@ def case_report(directory: Path, case: Case) -> dict[str, Any]:
         tier = receipt.service_tier
         row.update(
             reported_model=usage.reported_model,
+            observation_id=receipt.identity.observation_id,
             usage=usage.model_dump(mode="json"),
             service_tier=None if tier is None else tier.model_dump(mode="json"),
             canonical_valid=None if diagnostic is None else diagnostic.canonical_valid,
@@ -374,7 +377,35 @@ def report(
     directory: Path, digest: str, campaign: Path | None = None
 ) -> dict[str, Any]:
     proposal = load_proposal(directory, digest)
+    binding_path = directory / "campaign-binding.json"
+    if binding_path.is_symlink():
+        raise ValueError("Campaign binding cannot be a symlink")
+    if binding_path.exists():
+        raw = binding_path.read_bytes()
+        binding = json.loads(raw)
+        campaign = (
+            campaign.resolve()
+            if campaign is not None
+            else Path(binding["campaign_root"]).resolve()
+        )
+        if (
+            raw
+            != canonical_bytes(
+                {
+                    "proposal_sha256": digest,
+                    "source_commit": proposal.source_commit,
+                    "campaign_root": str(campaign),
+                }
+            )
+            or not campaign.is_dir()
+        ):
+            raise ValueError("Bound campaign state differs or is unavailable")
+        Authorization.model_validate_json(
+            (campaign / "authorizations" / (proposal.suite + ".json")).read_bytes()
+        ).verify(proposal)
     rows = [case_report(directory, case) for case in proposal.calls]
+    if campaign is None and any(row["usage"] is not None for row in rows):
+        raise ValueError("Physical study evidence requires its bound campaign state")
     journal_unknown = False
     try:
         events = (
@@ -385,6 +416,8 @@ def report(
     except BudgetStop:
         events = []
         journal_unknown = True
+    if any(e.suite == proposal.suite and e.proposal_sha256 != digest for e in events):
+        raise ValueError("Campaign events belong to another proposal")
     reservations = [e for e in events if e.kind == "reserve"]
     for row in rows:
         selected = [
@@ -395,6 +428,8 @@ def report(
         row["allocation_consumed"] = (
             None if journal_unknown else any(e.kind == "reserve" for e in selected)
         )
+        if row["observation_id"] is not None and row["allocation_consumed"] is False:
+            raise ValueError("Physical observation has no campaign reservation")
         if row["reason"] == "unrun" and row["allocation_consumed"]:
             row["reason"] = "uncertain_handoff_reservation_retained"
         elif row["reason"] == "unrun":

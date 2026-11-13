@@ -1,0 +1,21 @@
+{
+  "repository": "shmercer/judgmentllm",
+  "source_commit": "528b82088831b3280c02a1154a1a704a11a70f5a",
+  "method": "exact offline judgmentllm.preview.preview_prompt engine rendering and byte-level verification",
+  "model_calls": 0,
+  "checks": {
+    "configs": 6,
+    "sample_prompts": 156,
+    "criteria": 13,
+    "sample_reversals": 78,
+    "cj_explanations": false,
+    "cj_variants": [
+      "forced_choice",
+      "no_explanations",
+      "no_ties",
+      "forward_and_reversed"
+    ],
+    "output_format_revision": "PR #48"
+  },
+  "original_v2_source_commit": "ed8fe3667dbb21d12123e5073f825ef68e66abd5"
+}

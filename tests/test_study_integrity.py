@@ -39,7 +39,7 @@ def test_original_verification_detects_migrated_and_rendered_drift(
     path = package / "sources/rubric/prompts/all_12_score_only.txt"
     original = path.read_bytes()
     path.write_text("Changed rubric")
-    with pytest.raises(ValueError, match="Migrated"):
+    with pytest.raises(ValueError, match="inventory"):
         sources.verify_originals(source, package)
     path.write_bytes(original)
 
@@ -496,12 +496,26 @@ def test_reports_retain_unknown_intents_and_unobserved_reservations(
 
     monkeypatch.setattr(execution, "load_proposal", loaded)
     campaign = tmp_path / "campaign"
+    assert execution.report(pilot[0], proposal.digest)["campaign_reserved_calls"] == 0
     with BudgetLedger(campaign).locked() as ledger:
         ledger.authorize(proposal, authorization(proposal))
         ledger.reserve(proposal, proposal.calls[0])
     report = execution.report(pilot[0], proposal.digest, campaign)
     assert report["calls"][0]["reason"] == "uncertain_handoff_reservation_retained"
     assert report["calls"][1]["reason"] == "not_yet_authorized_or_executed"
+    original_proposal = proposal
+    first = proposal.calls[0]
+    assert first.price is not None
+    other_review = first.price.model_copy(update={"reviewed_by": "another-reviewer"})
+    proposal = proposal.model_copy(
+        update={
+            "calls": (first.model_copy(update={"price": other_review}),)
+            + proposal.calls[1:]
+        }
+    )
+    with pytest.raises(ValueError, match="another proposal"):
+        execution.report(pilot[0], proposal.digest, campaign)
+    proposal = original_proposal
     intent = next((campaign / "forward-intents").glob("*.json"))
     intent.write_text("incomplete")
     report = execution.report(pilot[0], proposal.digest, campaign)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import stat
 from pathlib import Path
 from typing import Any, Literal
 
@@ -74,6 +75,36 @@ def source_manifest(package: Path) -> dict[str, Any]:
     return json.loads(raw)
 
 
+def source_inventory(package: Path, kind: str) -> dict[str, str]:
+    """Require the complete original package, including unused supporting files."""
+    record = source_manifest(package)[kind]
+    original = record["files"] | {"manifest_sha256.json": record["manifest_sha256"]}
+    # Historical programs are byte fixtures; keep their original bytes out of formatters.
+    expected = {
+        (name + ".txt" if name.endswith(".py") else name): digest
+        for name, digest in original.items()
+    }
+    directories = {
+        p.as_posix() for name in expected for p in Path(name).parents if p != Path(".")
+    }
+    root = package / "sources" / kind
+    if (package / "sources").is_symlink() or root.is_symlink():
+        raise ValueError("Study source symlinks are not permitted")
+    actual: dict[str, str] = {}
+    for path in sorted(root.rglob("*")):
+        name = path.relative_to(root).as_posix()
+        mode = path.lstat().st_mode
+        if stat.S_ISREG(mode):
+            actual[name] = bytes_digest(path.read_bytes())
+        elif not stat.S_ISDIR(mode) or name not in directories:
+            raise ValueError("Unexpected study source entry")
+    if actual != expected:
+        raise ValueError(
+            "Study source inventory or bytes differ from the verified original"
+        )
+    return original
+
+
 def configuration(
     package: Path,
     provider: str,
@@ -97,13 +128,7 @@ def configuration(
         raise ValueError("Unsupported study tier")
     template, cap, explanations, grouping = SCENARIOS[scenario]
     source = package.resolve() / "sources" / ("cj" if scenario == "cj" else "rubric")
-    originals = source_manifest(package)
-    expected_files = originals["cj" if scenario == "cj" else "rubric"]["files"]
-    for path in source.rglob("*"):
-        if path.is_file() and bytes_digest(path.read_bytes()) != expected_files.get(
-            path.relative_to(source).as_posix()
-        ):
-            raise ValueError("Study source differs from the verified original")
+    digests = source_inventory(package, "cj" if scenario == "cj" else "rubric")
     endpoint, mechanism, _, _, _ = ROUTES[provider]
     prompt = source / "prompts" / (template + ".txt")
     definition = source / (
@@ -143,11 +168,6 @@ def configuration(
         )
     else:
         data["rubric"] = document
-    digests = {
-        p.relative_to(source).as_posix(): bytes_digest(p.read_bytes())
-        for p in sorted(source.rglob("*"))
-        if p.is_file()
-    }
     identity = "study-config-" + bytes_digest(
         canonical_bytes(
             {

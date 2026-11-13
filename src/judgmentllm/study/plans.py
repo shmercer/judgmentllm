@@ -23,6 +23,7 @@ from judgmentllm.study.definitions import (
     TRAIT9,
     configuration,
     library,
+    source_inventory,
 )
 from judgmentllm.study.records import (
     Case,
@@ -142,6 +143,8 @@ def build_proposal(
 ) -> Proposal:
     """No credential access. Unknown account/pricing produces a blocked proposal."""
     source = _source_commit()
+    for kind in ("rubric", "cj"):
+        source_inventory(package, kind)
     if (eligibilities or prices) and proofs is None:
         raise ValueError("Independent account/price proofs are required before sealing")
     directory = directory.resolve()

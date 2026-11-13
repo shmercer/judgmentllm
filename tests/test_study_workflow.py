@@ -247,6 +247,45 @@ async def test_shared_executor_reports_budget_incomplete_and_recovery_has_zero_r
     )
     assert len(sent) == 1 and report["incomplete_coverage"]
     assert report["campaign_reserved_calls"] == 1
+    automatic = execution.report(directory, proposal.digest)
+    assert automatic["campaign_reserved_calls"] == 1
+    assert automatic["campaign_reserved_usd"] == report["campaign_reserved_usd"]
+    with pytest.raises(ValueError, match="Bound campaign"):
+        execution.report(directory, proposal.digest, tmp_path / "wrong-campaign")
+    binding = directory / "campaign-binding.json"
+    original_binding = binding.read_bytes()
+    data = json.loads(original_binding)
+    binding.write_bytes(canonical_bytes(data | {"source_commit": "b" * 40}))
+    with pytest.raises(ValueError, match="Bound campaign"):
+        execution.report(directory, proposal.digest)
+    empty_campaign = tmp_path / "empty-campaign"
+    empty_campaign.mkdir()
+    binding.write_bytes(canonical_bytes(data | {"campaign_root": str(empty_campaign)}))
+    with pytest.raises((OSError, ValueError)):
+        execution.report(directory, proposal.digest)
+    binding.write_bytes(
+        canonical_bytes(data | {"campaign_root": str(tmp_path / "missing-campaign")})
+    )
+    with pytest.raises(ValueError, match="Bound campaign"):
+        execution.report(directory, proposal.digest)
+    binding.unlink()
+    with pytest.raises(ValueError, match="bound campaign"):
+        execution.report(directory, proposal.digest)
+    target = directory / "saved-campaign-binding.json"
+    target.write_bytes(original_binding)
+    binding.symlink_to(target)
+    with pytest.raises(ValueError, match="symlink"):
+        execution.report(directory, proposal.digest)
+    binding.unlink()
+    binding.write_bytes(original_binding)
+    with monkeypatch.context() as lost_journal:
+
+        def no_events(*args: Any) -> list[Any]:
+            return []
+
+        lost_journal.setattr(BudgetLedger, "events", no_events)
+        with pytest.raises(ValueError, match="no campaign reservation"):
+            execution.report(directory, proposal.digest)
     assert all("USD" in row["reason"] for row in report["calls"][1:])
     recovered = await execution.execute(
         directory,

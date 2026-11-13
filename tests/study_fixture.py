@@ -38,6 +38,10 @@ def original_files(source: Path) -> None:
         shutil.copytree(
             PACKAGE / "sources" / kind, source / f"judgmentllm_{kind}_study_renderer_v3"
         )
+        for script in (source / f"judgmentllm_{kind}_study_renderer_v3/scripts").glob(
+            "*.py.txt"
+        ):
+            script.rename(script.with_suffix(""))
     for entry in archive(PACKAGE / "original-support-files.jsonl.gz.base64"):
         path = source / f"judgmentllm_{entry['kind']}_study_renderer_v3" / entry["name"]
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -105,6 +109,10 @@ def seal(proposal: Proposal, proofs: Path) -> Proposal:
             binding_sha256=proof(binding),
             input_bound_verified=True,
             billable_output_bound=8192,
+            served_outcomes_verified=True,
+            billable_served_tiers=("standard", "priority")
+            if case.selection.provider == "anthropic"
+            else ("standard", "flex", "priority"),
         )
         price = Price(
             selection=case.selection,

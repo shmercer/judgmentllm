@@ -1,0 +1,44 @@
+{
+  "type": "object",
+  "properties": {
+    "scores": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "properties": {
+              "trait_id": {
+                "const": "transitional_sentence"
+              },
+              "category_label": {
+                "type": "string",
+                "enum": [
+                  "0",
+                  "1",
+                  "2"
+                ]
+              },
+              "explanation": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "trait_id",
+              "category_label",
+              "explanation"
+            ],
+            "additionalProperties": false
+          }
+        ]
+      }
+    }
+  },
+  "required": [
+    "scores"
+  ],
+  "additionalProperties": false
+}

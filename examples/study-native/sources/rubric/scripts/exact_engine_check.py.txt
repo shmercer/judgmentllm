@@ -1,0 +1,95 @@
+"""Compare source-matched previews against the *actual installed* JudgmentLLM.
+
+Requires an environment where the intended JudgmentLLM revision is importable.
+All operations are offline preview_prompt calls. No model requests or credentials.
+"""
+from __future__ import annotations
+
+import argparse
+import difflib
+import json
+import sys
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+
+def write_and_compare(root: Path, expected_name: str, rendered: Any, compare: bool) -> bool:
+    out_dir = root / "actual_engine_previews"
+    out_dir.mkdir(exist_ok=True)
+    actual = rendered.text
+    path = out_dir / (expected_name + ".txt")
+    path.write_text(actual, encoding="utf-8", newline="")
+    schema_path = out_dir / (expected_name + ".schema.json")
+    schema_path.write_text(json.dumps(rendered.output_schema, indent=2, ensure_ascii=False)+"\n", encoding="utf-8", newline="")
+    if not compare:
+        return True
+    expected = root / "rendered_samples" / (expected_name + ".txt")
+    expected_schema = root / "rendered_samples" / (expected_name + ".schema.json")
+    if not expected.is_file() or not expected_schema.is_file():
+        print("MISSING source snapshot:", expected, file=sys.stderr)
+        return False
+    if expected.read_bytes() == path.read_bytes() and json.loads(expected_schema.read_text()) == rendered.output_schema:
+        return True
+    print("DRIFT:", expected_name, file=sys.stderr)
+    a, b = expected.read_text().splitlines(keepends=True), actual.splitlines(keepends=True)
+    for i, line in enumerate(difflib.unified_diff(a, b, fromfile="source_snapshot", tofile="installed_engine")):
+        if i >= 50:
+            break
+        print(line, end="", file=sys.stderr)
+    if json.loads(expected_schema.read_text()) != rendered.output_schema:
+        print("JSON schema differs", file=sys.stderr)
+    return False
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--kind", choices=("rubric", "cj"), required=True)
+    parser.add_argument("--compare", action="store_true", help="Fail on any static-to-engine byte drift")
+    args = parser.parse_args()
+    try:
+        from judgmentllm.config import InputSpec, load_run_spec
+        from judgmentllm.preview import preview_prompt
+    except ImportError:
+        print("ERROR: installed JudgmentLLM is unavailable in this Python environment.", file=sys.stderr)
+        print("Run in the JudgmentLLM project environment (for example: uv run --offline --no-sync python scripts/exact_engine_check.py ...)", file=sys.stderr)
+        return 2
+
+    root = Path(__file__).resolve().parents[1]
+    configs = sorted((root / "configs").glob("*.yaml"))
+    cases = passed = 0
+    if args.kind == "rubric":
+        rubric = yaml.safe_load((root / "rubric_12_traits.yaml").read_text(encoding="utf-8"))
+        for cfg in configs:
+            spec = load_run_spec(cfg)
+            independent = spec.execution.grouping == "independent"
+            selected = [t["trait_id"] for t in rubric["traits"]] if independent else [rubric["traits"][0]["trait_id"]]
+            for trait_id in selected:
+                name = cfg.stem + ("__" + trait_id if independent else "")
+                rendered = preview_prompt(spec, item_id="essay_demo_001", trait_id=trait_id)
+                cases += 1
+                passed += write_and_compare(root, name, rendered, args.compare)
+    else:
+        criteria = yaml.safe_load((root / "criteria_13_traits.yaml").read_text(encoding="utf-8"))
+        criterion_ids = [entry["trait_id"] for entry in criteria["criteria"]]
+        for cfg in configs:
+            original = load_run_spec(cfg)
+            # The full reversed input file belongs only to this offline preview.
+            # This creates no persistent run and does not write a new config.
+            reverse = original.model_copy(update={
+                "pairs": InputSpec(path=(root / "pairs_reversal_demo.jsonl").resolve())
+            })
+            for label, spec, suffix in (("original", original, "original"), ("reversed", reverse, "reversed")):
+                for trait_id in criterion_ids:
+                    name = cfg.stem + "__" + trait_id + "__" + suffix
+                    rendered = preview_prompt(spec, pair_uid=f"demo_{trait_id}_{suffix}")
+                    cases += 1
+                    passed += write_and_compare(root, name, rendered, args.compare)
+    print(f"JudgmentLLM offline previews: {passed}/{cases} matched" if args.compare else f"JudgmentLLM offline previews: {cases} written")
+    print("Output directory:", root / "actual_engine_previews")
+    return 0 if passed == cases else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

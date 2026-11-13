@@ -45,6 +45,7 @@ class StudyRecord(NativeModel):
                 "accept_billable_calls",
                 "accept_synthetic_capture",
                 "input_bound_verified",
+                "served_outcomes_verified",
                 "synthetic_only",
             ):
                 if key in values and type(values[key]) is not bool:
@@ -85,6 +86,8 @@ class Eligibility(StudyRecord):
     binding_sha256: SHA256
     input_bound_verified: Literal[True]
     billable_output_bound: int = Field(gt=0, le=8192)
+    served_outcomes_verified: Literal[True]
+    billable_served_tiers: tuple[ID, ...] = Field(min_length=1)
 
 
 class OutcomePrice(StudyRecord):
@@ -184,9 +187,22 @@ class Case(StudyRecord):
             "standard_only": "standard",
             "fast": "priority",
         }.get(self.selection.tier, self.selection.tier)
-        if self.price is not None and not (
-            {served} | ({"standard"} if served == "priority" else set())
-        ) <= set(self.price.served_outcomes):
+        required: set[str] = {served}
+        if served in {"flex", "priority"}:
+            required.add("standard")
+        if self.eligibility is not None:
+            reviewed = set(self.eligibility.billable_served_tiers)
+            allowed: set[str] = {"standard", "priority"}
+            if self.selection.provider != "anthropic":
+                allowed.add("flex")
+            if self.selection.provider == "openai":
+                allowed.update(("scale", "ultrafast"))
+            if not required <= reviewed <= allowed or len(reviewed) != len(
+                self.eligibility.billable_served_tiers
+            ):
+                raise ValueError("Reviewed billable served outcomes differ")
+            required |= reviewed
+        if self.price is not None and not required <= set(self.price.served_outcomes):
             raise ValueError("Pricing does not cover documented served outcomes")
         if self.eligibility is not None and (
             self.eligibility.selection != self.selection

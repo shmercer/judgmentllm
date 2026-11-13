@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 # pyright: reportPrivateUsage=false
 from collections.abc import Generator
 from contextlib import contextmanager
@@ -59,6 +61,13 @@ class Event(NativeModel):
     evidence_sha256: str | None = None
 
 
+class Checkpoint(NativeModel):
+    sequence: int = Field(ge=0)
+    previous_sha256: str
+    relative_path: str
+    artifact_sha256: str
+
+
 def immutable(path: Path, raw: bytes) -> None:
     """Idempotent exact bytes; no replacement, including after interruption."""
     if path.is_symlink():
@@ -86,6 +95,94 @@ class BudgetLedger:
         if self.root.is_relative_to(Path(__file__).resolve().parents[3]):
             raise ValueError("Campaign state must be outside the source checkout")
         self._held = False
+        key = bytes_digest(canonical_bytes(str(self.root)))
+        self._root_marker = (
+            _global_lock_path().parent
+            / "study-campaign-bindings"
+            / ("root-" + key + ".json")
+        )
+        self._checkpoints = (
+            _global_lock_path().parent / "study-campaign-checkpoints" / key
+        )
+
+    def _checkpoint(self) -> list[Checkpoint]:
+        if self._checkpoints.is_symlink():
+            raise BudgetStop("Independent campaign checkpoint directory is a symlink")
+        records: list[Checkpoint] = []
+        committed: dict[str, str] = {}
+        previous = "0" * 64
+        for index, path in enumerate(sorted(self._checkpoints.glob("*.json"))):
+            if path.is_symlink() or not path.is_file():
+                raise BudgetStop(
+                    "Independent campaign checkpoint is not a regular file"
+                )
+            raw = path.read_bytes()
+            record = Checkpoint.model_validate_json(raw)
+            relative = Path(record.relative_path)
+            if (
+                path.is_symlink()
+                or path.name != f"{index:06d}.json"
+                or canonical_bytes(record) != raw
+                or record.sequence != index
+                or record.previous_sha256 != previous
+                or relative.is_absolute()
+                or ".." in relative.parts
+                or record.relative_path in committed
+            ):
+                raise BudgetStop(
+                    "Independent campaign checkpoint inventory or commitment differs"
+                )
+            committed[record.relative_path] = record.artifact_sha256
+            previous = bytes_digest(raw)
+            records.append(record)
+        if self._root_marker.is_symlink() or (
+            self._root_marker.exists() and not records
+        ):
+            raise BudgetStop(
+                "Independent campaign checkpoint is missing; reconciliation required"
+            )
+        if self._root_marker.exists() and not self._root_marker.is_file():
+            raise BudgetStop("Independent campaign root marker is not a regular file")
+        if records and (
+            not self._root_marker.exists()
+            or json.loads(self._root_marker.read_bytes())["campaign_root"]
+            != str(self.root)
+        ):
+            raise BudgetStop("Independent campaign root identity differs")
+        actual: dict[str, str] = {}
+        for path in self.root.rglob("*"):
+            if path.is_symlink():
+                raise BudgetStop("Campaign journal inventory contains a symlink")
+            if path.is_file() and path.name != "campaign.lock":
+                actual[path.relative_to(self.root).as_posix()] = bytes_digest(
+                    path.read_bytes()
+                )
+        if actual != committed:
+            raise BudgetStop(
+                "Campaign checkpoint/journal inventory is missing, damaged or rolled back"
+            )
+        return records
+
+    def _publish(self, relative: str, raw: bytes, *, initial: bool = False) -> None:
+        records = [] if initial else self._checkpoint()
+        digest = bytes_digest(raw)
+        prior = next((r for r in records if r.relative_path == relative), None)
+        if prior is not None:
+            if prior.artifact_sha256 != digest:
+                raise ValueError("Immutable campaign artifact differs")
+            return
+        record = Checkpoint(
+            sequence=len(records),
+            previous_sha256=bytes_digest(canonical_bytes(records[-1]))
+            if records
+            else "0" * 64,
+            relative_path=relative,
+            artifact_sha256=digest,
+        )
+        immutable(
+            self._checkpoints / f"{record.sequence:06d}.json", canonical_bytes(record)
+        )
+        immutable(self.root / relative, raw)
 
     @contextmanager
     def locked(self) -> Generator[BudgetLedger]:
@@ -112,7 +209,8 @@ class BudgetLedger:
             canonical_bytes(authorization)
         )
         authorization.verify(proposal)
-        immutable(
+        started_at = now or datetime.now(UTC)
+        source_marker = (
             _global_lock_path().parent
             / "study-campaign-bindings"
             / (
@@ -126,17 +224,52 @@ class BudgetLedger:
                     )
                 )
                 + ".json"
-            ),
-            canonical_bytes(
-                {
-                    "study_version": proposal.study_version,
-                    "campaign_root": str(self.root),
-                    "source_commit": proposal.source_commit,
-                }
-            ),
+            )
         )
-        immutable(
-            self.root / "campaign.json",
+        identity = canonical_bytes(
+            {
+                "study_version": proposal.study_version,
+                "campaign_root": str(self.root),
+                "source_commit": proposal.source_commit,
+            }
+        )
+        fresh = not self._root_marker.exists() and not source_marker.exists()
+        if source_marker.is_symlink() or (
+            source_marker.exists() and not source_marker.is_file()
+        ):
+            raise BudgetStop("Independent source binding is not a regular file")
+        if source_marker.exists() and source_marker.read_bytes() != identity:
+            raise ValueError("Immutable campaign artifact differs")
+        if not fresh and (
+            not source_marker.exists()
+            or not self._root_marker.exists()
+            or not any(self._checkpoints.glob("*.json"))
+        ):
+            raise BudgetStop(
+                "Previously authorized campaign state is missing; reconciliation required"
+            )
+        prior = self.events()
+        immutable(source_marker, identity)
+        immutable(self._root_marker, identity)
+        starting = not any(
+            e.kind == "start" and e.suite == proposal.suite for e in prior
+        )
+        if starting:
+            self._publish(
+                "suite-intents/" + proposal.suite + ".json",
+                canonical_bytes(
+                    {
+                        "proposal_sha256": proposal.digest,
+                        "authorization_sha256": bytes_digest(
+                            canonical_bytes(authorization)
+                        ),
+                        "started_at": started_at.isoformat(),
+                    }
+                ),
+                initial=fresh,
+            )
+        self._publish(
+            "campaign.json",
             canonical_bytes(
                 {
                     "campaign_version": 1,
@@ -149,22 +282,19 @@ class BudgetLedger:
                 }
             ),
         )
-        immutable(
-            self.root / "authorizations" / (proposal.suite + ".json"),
+        self._publish(
+            "authorizations/" + proposal.suite + ".json",
             canonical_bytes(authorization),
         )
-        immutable(
-            self.root / "plans" / (proposal.suite + ".json"), canonical_bytes(proposal)
-        )
-        if not any(
-            e.kind == "start" and e.suite == proposal.suite for e in self.events()
-        ):
+        self._publish("plans/" + proposal.suite + ".json", canonical_bytes(proposal))
+        if starting:
             self._append(
                 proposal=proposal,
                 case=proposal.calls[0],
                 kind="start",
                 reason="suite_started",
-                now=now or datetime.now(UTC),
+                now=started_at,
+                prior=prior,
             )
 
     def events(self) -> list[Event]:
@@ -172,7 +302,11 @@ class BudgetLedger:
         records: list[Event] = []
         previous = "0" * 64
         for index, path in enumerate(sorted(directory.glob("*.json"))):
-            if path.is_symlink() or path.name != f"{index:06d}.json":
+            if (
+                path.is_symlink()
+                or not path.is_file()
+                or path.name != f"{index:06d}.json"
+            ):
                 raise ValueError("Budget journal inventory differs")
             raw = path.read_bytes()
             event = Event.model_validate_json(raw)
@@ -199,6 +333,18 @@ class BudgetLedger:
             digest = authorization.proposal_sha256
             starts = [e for e in records if e.suite == suite and e.kind == "start"]
             if len(starts) != 1:
+                raise ValueError("Suite start/deadline evidence differs")
+            if (
+                self.root / "suite-intents" / (suite + ".json")
+            ).read_bytes() != canonical_bytes(
+                {
+                    "proposal_sha256": digest,
+                    "authorization_sha256": bytes_digest(
+                        canonical_bytes(authorization)
+                    ),
+                    "started_at": starts[0].at.isoformat(),
+                }
+            ):
                 raise ValueError("Suite start/deadline evidence differs")
             by_id = {c.case_id: c for c in proposal.calls}
             for event in (e for e in records if e.suite == suite):
@@ -250,6 +396,13 @@ class BudgetLedger:
         }
         if expected != intents:
             raise BudgetStop("Unreconciled forwarding intent; reservations remain held")
+        if {p.stem for p in (self.root / "suite-intents").glob("*.json")} != {
+            e.suite for e in records
+        }:
+            raise BudgetStop(
+                "Authorized suite start is incomplete; reconciliation required"
+            )
+        self._checkpoint()
         return records
 
     def _append(
@@ -261,9 +414,10 @@ class BudgetLedger:
         reason: str,
         now: datetime,
         evidence: str | None = None,
+        prior: list[Event] | None = None,
     ) -> Event:
         self._require_lock()
-        prior = self.events()
+        prior = self.events() if prior is None else prior
         event = Event(
             sequence=len(prior),
             previous_sha256=bytes_digest(canonical_bytes(prior[-1]))
@@ -283,15 +437,11 @@ class BudgetLedger:
         )
         if kind == "reserve":
             # A crash between intent and journal consumes authority and blocks replay.
-            immutable(
-                self.root
-                / "forward-intents"
-                / self._intent_name(proposal.suite, case.case_id),
+            self._publish(
+                "forward-intents/" + self._intent_name(proposal.suite, case.case_id),
                 canonical_bytes(event),
             )
-        immutable(
-            self.root / "events" / f"{event.sequence:06d}.json", canonical_bytes(event)
-        )
+        self._publish(f"events/{event.sequence:06d}.json", canonical_bytes(event))
         return event
 
     @staticmethod

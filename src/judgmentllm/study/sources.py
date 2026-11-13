@@ -11,7 +11,7 @@ from typing import Any
 from judgmentllm.config import InputSpec, load_run_spec
 from judgmentllm.persistence.hashing import bytes_digest
 from judgmentllm.preview import preview_prompt
-from judgmentllm.study.definitions import source_manifest
+from judgmentllm.study.definitions import source_inventory, source_manifest
 
 
 def archive(path: Path) -> list[dict[str, Any]]:
@@ -47,15 +47,7 @@ def verify_originals(source: Path, package: Path) -> dict[str, object]:
             or actual != record["files"]
         ):
             raise ValueError("Original study manifest drift")
-        for original in (package / "sources" / kind).rglob("*"):
-            if (
-                original.is_file()
-                and original.read_bytes()
-                != (
-                    root / original.relative_to(package / "sources" / kind)
-                ).read_bytes()
-            ):
-                raise ValueError("Migrated study source drift")
+        source_inventory(package, kind)
         for cfg in sorted((root / "configs").glob("*.yaml")):
             spec = load_run_spec(cfg)
             if kind == "rubric":

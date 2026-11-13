@@ -101,7 +101,14 @@ def test_original_content_and_all_312_previews() -> None:
             if path.is_file():
                 assert (
                     bytes_digest(path.read_bytes())
-                    == manifests[kind]["files"][path.relative_to(root).as_posix()]
+                    == (
+                        manifests[kind]["files"]
+                        | {"manifest_sha256.json": manifests[kind]["manifest_sha256"]}
+                    )[
+                        path.relative_to(root).as_posix().removesuffix(".txt")
+                        if path.name.endswith(".py.txt")
+                        else path.relative_to(root).as_posix()
+                    ]
                 )
         for cfg in sorted((root / "configs").glob("*.yaml")):
             spec = load_run_spec(cfg)
