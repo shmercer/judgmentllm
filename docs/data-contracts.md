@@ -800,3 +800,10 @@ account/tier scope. New optional companion-receipt `service_tier` records the
 policy, whitelisted reported tier, source, latency and provider-specific outcome
 once per physical observation, including under minimal capture. It does not
 create a normalized result column or grant support. See [service tiers](service-tiers.md).
+
+An `unknown` nonstandard tier is incomplete service evidence, independent of
+assessment validity. Commit valid normalized assessment rows before surfacing
+the review-required stop. On restart, verified immutable tier receipts restore
+the stop before any later submission; accepted observations can still be
+recovered without replacement calls. `unexpected` mismatches remain integrity
+failures. No schema field or automatic review-gate override is introduced.

@@ -166,8 +166,20 @@ async def execute_run(
             for _ in range(count):
                 await pending.put(None)
 
-        async def worker() -> None:
+        async def deliver_response(work: _Work, response: ProviderResponse) -> None:
             nonlocal result_high
+            tier = response.evidence.service_tier if response.evidence else None
+            # Persist and interpret this observation before admitting more work.
+            if session.tier_review_required or (
+                tier is not None
+                and (tier.requires_tier_review or tier.outcome == "unexpected")
+            ):
+                await call(session.process, work, response)
+            else:
+                await responses.put((work, response))
+                result_high = max(result_high, responses.qsize())
+
+        async def worker() -> None:
             while (work := await pending.get()) is not None:
                 retained = (
                     _CancellationWork(work)
@@ -204,8 +216,7 @@ async def execute_run(
                             if retained is not None:
                                 retained.acknowledgment = saved_ack
                                 retained.response = saved
-                            await responses.put((work, saved))
-                            result_high = max(result_high, responses.qsize())
+                            await deliver_response(work, saved)
                             continue
                         if await call(session.has_results, work):
                             cancellation_work.pop(work.submission_id, None)
@@ -250,8 +261,7 @@ async def execute_run(
                         raise IntegrityError(
                             "retrieved observation differs from accepted identity"
                         )
-                    await responses.put((work, response))
-                    result_high = max(result_high, responses.qsize())
+                    await deliver_response(work, response)
                 except ProviderInvocationCancelled as exc:
                     if retained is not None:
                         retained.invoked = exc.invoked

@@ -435,8 +435,6 @@ def _request_policy(
     service = resolve_service_policy(spec, service_policy_version)
     cache = "off" if spec.execution.cache_policy == "off" else "auto_implicit_only"
     if service is None:
-        if spec.execution.tier is not None:
-            raise ValueError("Legacy Gemini Developer tiers are unavailable")
         return GeminiRequestPolicyV1(cache=cache)
     return GeminiRequestPolicyV2(
         cache=cache,

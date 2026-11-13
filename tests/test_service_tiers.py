@@ -15,6 +15,7 @@ import pytest
 
 from judgmentllm.config import RunSpecV3
 from judgmentllm.persistence.hashing import canonical_bytes
+from judgmentllm.persistence.models import IntegrityError
 from judgmentllm.planning import plan_record
 from judgmentllm.preparation.session import RequestDependency
 from judgmentllm.providers.protocol import (
@@ -777,6 +778,8 @@ def test_strict_policy_versions_and_qualification_omission(tmp_path: Path) -> No
 
 
 def test_qualification_and_observation_ingress_fail_closed(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="RunSpecV3"):
+        service_policy({})
     _, spec, _, _ = request(tmp_path, "openai", "responses", None)
     with pytest.raises(ValueError, match="account scope"):
         service_policy(spec, 1)
@@ -833,6 +836,9 @@ def test_documented_terminal_nonacceptance(
         ("gemini", "priority", "standard", "downgraded"),
         ("gemini", "flex", "standard", "unexpected"),
         ("openai", "flex", None, "unknown"),
+        ("gemini", "flex", None, "unknown"),
+        ("openai", "flex", "UNRECOGNIZED_TIER", "unknown"),
+        ("gemini", "flex", "UNRECOGNIZED_TIER", "unknown"),
     ],
 )
 @pytest.mark.asyncio
@@ -843,6 +849,8 @@ async def test_observation_survives_recovery_without_tier_switch(
     reported: str | None,
     outcome: str,
     capture: str,
+    *,
+    crash_stage: str | None = None,
 ) -> None:
     from judgmentllm.execution import execute_run, recover_run
     from judgmentllm.persistence.repository import ReadOnlyRepository
@@ -855,7 +863,11 @@ async def test_observation_survives_recovery_without_tier_switch(
     )
     endpoint = "responses" if provider == "openai" else "models.generate_content"
     spec = fixture.specification(
-        tmp_path / "inputs", endpoint, "rubric", capture=capture
+        tmp_path / "inputs",
+        endpoint,
+        "rubric",
+        capture=capture,
+        count=3 if outcome in {"unknown", "unexpected"} else 1,
     )
     spec.execution.tier = tier
     spec.execution.concurrency = 1
@@ -884,6 +896,14 @@ async def test_observation_survives_recovery_without_tier_switch(
         http_transport=httpx2.MockTransport(response),
     )
     store = tmp_path / "runtime"
+    interrupted = False
+
+    def interrupt(stage: str, _: str) -> None:
+        nonlocal interrupted
+        if stage == crash_stage:
+            interrupted = True
+            raise RuntimeError("synthetic interruption")
+
     with fixture.offline():
         with prepare_run(
             spec,
@@ -901,22 +921,64 @@ async def test_observation_survives_recovery_without_tier_switch(
                 assert report.summary.successful_results == 2
             else:
                 with pytest.raises(ExceptionGroup):
-                    await execute_run("001", store=store, adapter=adapter, spec=spec)
+                    await execute_run(
+                        "001",
+                        store=store,
+                        adapter=adapter,
+                        spec=spec,
+                        fault=interrupt if crash_stage else None,
+                    )
+            assert interrupted == (crash_stage is not None)
             with ReadOnlyRepository(store) as repository:
                 receipts = tuple(repository.iter_evidence("001"))
                 assert len(receipts) == 1
                 assert receipts[0].service_tier is not None
                 assert receipts[0].service_tier.outcome == outcome
                 before = canonical_bytes(receipts[0])
+                if outcome == "unknown":
+                    results = tuple(repository.iter_results("001"))
+                    assert len(results) == (
+                        0 if crash_stage == "after_evidence_commit" else 2
+                    )
+                    assert all(result.status == "complete" for result in results)
+            original_calls = adapter.actual_call_count
+            if outcome == "unknown":
+                await adapter.aclose()
+                adapter = adapter_type(
+                    endpoint,
+                    spec.model,
+                    concurrency=1,
+                    http_transport=httpx2.MockTransport(response),
+                )
             try:
                 await recover_run("001", store=store, adapter=adapter, spec=spec)
-            except ExceptionGroup:
+            except (ExceptionGroup, IntegrityError):
                 assert outcome != "downgraded"
+            else:
+                assert outcome != "unknown"
             with ReadOnlyRepository(store) as repository:
                 assert canonical_bytes(next(repository.iter_evidence("001"))) == before
                 results = tuple(repository.iter_results("001"))
-                assert len(results) == (2 if outcome == "downgraded" else 0)
+                assert len(results) == (0 if outcome == "unexpected" else 2)
                 assert all(result.tier == tier for result in results)
-            assert source.calls == adapter.actual_call_count == 1
+            assert source.calls == original_calls == 1
+            assert adapter.actual_call_count == (0 if outcome == "unknown" else 1)
         finally:
             await adapter.aclose()
+
+
+@pytest.mark.parametrize("provider", ["openai", "gemini"])
+@pytest.mark.parametrize("capture", ["full", "minimal"])
+@pytest.mark.asyncio
+async def test_tier_review_gate_and_assessment_survive_interrupted_processing(
+    tmp_path: Path, provider: str, capture: str
+) -> None:
+    await test_observation_survives_recovery_without_tier_switch(
+        tmp_path,
+        provider,
+        "flex",
+        None,
+        "unknown",
+        capture,
+        crash_stage="after_evidence_commit" if capture == "full" else "after_result",
+    )

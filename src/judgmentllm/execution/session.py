@@ -58,6 +58,7 @@ from judgmentllm.providers import (
     PreparedRequestV2,
     ProviderAcknowledgment,
     ProviderAdapter,
+    ProviderError,
     ProviderResponse,
 )
 
@@ -107,6 +108,17 @@ class ExecutionSession:
             self.repository = self.prepared.repository
             self.spec = self.prepared.spec
             self.evidence = DurableEvidence(self)
+            policy = getattr(self.prepared.manifest, "service_policy", None)
+            self.tier_review_required = False
+            if policy is not None:
+                for receipt in self.repository.iter_evidence(run_id):
+                    tier = receipt.service_tier
+                    if tier is not None:
+                        if tier.outcome == "unexpected":
+                            raise IntegrityError(
+                                "served tier conflicts with the sealed service policy"
+                            )
+                        self.tier_review_required |= tier.requires_tier_review
             adapter.validate(self.spec)
             self.ordinal = self.repository.get_execution_checkpoint(run_id)
             self.dependencies: Iterator[RequestDependency] = (
@@ -556,6 +568,10 @@ class ExecutionSession:
         attempt = self.repository.get_attempt(self.run_id, work.attempt_id)
         if self.cancelled or attempt.state not in {"prepared", "claimed"}:
             return False
+        if self.tier_review_required:
+            raise ProviderError(
+                "served tier is unknown; further submission requires review"
+            )
         with self.transaction():
             if attempt.state == "claimed":
                 self.repository.transition(
@@ -963,18 +979,15 @@ class ExecutionSession:
                     "attempt", self.run_id, work.attempt_id, "response_saved"
                 )
         self.checkpoint("after_evidence_commit", work.prepared.request_uid)
+        needs_tier_review = False
         if evidence is not None and evidence.service_tier is not None:
             tier = evidence.service_tier
             if tier.outcome == "unexpected":
                 raise IntegrityError(
                     "served tier conflicts with the sealed service policy"
                 )
-            if tier.outcome == "unknown" and tier.policy.tier != "standard":
-                from judgmentllm.providers.protocol import ProviderError
-
-                raise ProviderError(
-                    "served tier is unknown; further submission requires review"
-                )
+            needs_tier_review = tier.requires_tier_review
+            self.tier_review_required |= needs_tier_review
         self.checkpoint("after_observation", work.prepared.request_uid)
         self.checkpoint("before_parsing", work.prepared.request_uid)
         try:
@@ -1063,6 +1076,10 @@ class ExecutionSession:
                 ),
             )
         self.checkpoint("after_result", work.prepared.request_uid)
+        if needs_tier_review:
+            raise ProviderError(
+                "served tier is unknown; further submission requires review"
+            )
 
     def provenance(
         self, result: Result, work: ExecutionWork, raw_path: str | None

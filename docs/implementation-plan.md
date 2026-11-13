@@ -795,7 +795,9 @@ PR1 implements explicit Standard defaults, provider tier mappings, additive
 service-policy versioning, account/tier native qualification boundaries, served
 tier observations and bounded SDK/HTTP/overall deadlines. Preserve historical
 commitments and all seven strict local R gates. No production qualifications or
-study calls are added.
+study calls are added. Missing tier evidence preserves independently valid
+assessment results while a durable review gate stops later submissions across
+restarts; unexpected tier mismatches remain integrity failures.
 
 PR2 is deferred: 30 main-study configurations from 50 distinct Standard/Flex
 configurations, exact original study content, native previews, and separately

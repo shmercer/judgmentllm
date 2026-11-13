@@ -6,16 +6,13 @@ receipts and subset retries reconstruct their original version instead.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal, cast
+from typing import Literal, cast
 
 from pydantic import Field, field_validator, model_validator
 
 from judgmentllm.models import ID
 from judgmentllm.native_schema import NativeModel
 from judgmentllm.native_selection import NativeFeature
-
-if TYPE_CHECKING:
-    from judgmentllm.config import RunSpecV3
 
 ServicePolicyVersion = Literal[1, 2]
 ServiceClass = Literal["standard", "flex", "priority", "auto"]
@@ -127,9 +124,13 @@ class ServicePolicyV2(NativeModel):
 
 
 def service_policy(
-    spec: RunSpecV3, version: ServicePolicyVersion = 2
+    spec: object, version: ServicePolicyVersion = 2
 ) -> ServicePolicyV2 | None:
     """Resolve explicit standard defaults only for new provider preparations."""
+    from judgmentllm.config import RunSpecV3
+
+    if not isinstance(spec, RunSpecV3):
+        raise ValueError("service policy requires RunSpecV3")
     if type(version) is not int or version not in (1, 2):
         raise ValueError("unsupported service policy")
     if version == 1:
@@ -208,6 +209,10 @@ class ServiceTierObservation(NativeModel):
     ]
     outcome: Literal["matched", "allocated", "downgraded", "unknown", "unexpected"]
     latency_seconds: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+
+    @property
+    def requires_tier_review(self) -> bool:
+        return self.outcome == "unknown" and self.policy.tier != "standard"
 
     @model_validator(mode="after")
     def consistent(self) -> ServiceTierObservation:

@@ -510,7 +510,9 @@ scope. This user-requested split supersedes earlier hosted R/coverage requiremen
 - Native authority includes account/project scope and service class. Old Standard
   profiles grant no Flex or new-account authority; no service scopes are promoted.
 - Normalize provider-specific equivalences and expected downgrades independently
-  of assessment validity. Unknown evidence is not an integrity assertion.
+  of assessment validity. Unknown evidence is not an integrity assertion: preserve
+  current valid scores, then enforce a receipt-backed stop on later nonstandard
+  submissions, including after restart. Unexpected mismatches remain strict failures.
 - Gemini's server timeout is an advisory hint. Enforce pinned SDK milliseconds,
   actual HTTP timeouts and a longer local overall deadline independently.
 - PR2 owns 30 main selections / 50 distinct Standard/Flex configurations and a

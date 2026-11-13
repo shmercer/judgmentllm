@@ -87,7 +87,14 @@ latency, and outcome. Normalized assessment JSONL/CSV/R columns are unchanged.
   `downgraded`, not integrity failures. Preserve the assessment; the response
   does not qualify the requested premium tier and creates no replacement call.
 - Missing/unrecognized tier values are `unknown`; unrecognized text is withheld.
-  New nonstandard execution stops after saving evidence for review.
+  Assessment validity remains independent: validate and commit the current
+  observation's assessment results, then stop nonstandard execution for review.
+  Preserve invalid/refused outcomes as such; missing tier does not invalidate
+  otherwise valid scores. The stop is derived from immutable tier receipts on
+  every restart and blocks later submissions before credential readiness. Already
+  accepted observations can still be recovered and interpreted; no replacement
+  call or automatic gate override is authorized. With concurrency one, no later
+  request is invoked. Requests already admitted concurrently may still finish.
 - Undocumented changes, including Flex served as standard, are `unexpected`.
   Save evidence and the assessment diagnostic, then stop with an integrity
   failure. Recovery cannot convert the same observation into success.
