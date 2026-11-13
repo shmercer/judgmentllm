@@ -26,7 +26,7 @@ from judgmentllm.study.records import Case, OutcomePrice, Price, Proposal
 
 
 def test_worst_documented_served_price_and_independent_scope(
-    tmp_path: Path, pilot: tuple[Path, Proposal]
+    tmp_path: Path, pilot: tuple[Path, Proposal], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     proposal = seal(pilot[1], tmp_path / "proofs")
     case = proposal.calls[0]
@@ -60,7 +60,15 @@ def test_worst_documented_served_price_and_independent_scope(
                 case.model_copy(update={"price": price, "reserved_usd": Decimal(0)})
             )
         )
-    assert default_lock_path().name == "study-campaign-v1.lock"
+
+    def synthetic_home() -> Path:
+        return tmp_path / "synthetic-home"
+
+    monkeypatch.setattr(Path, "home", synthetic_home)
+    assert (
+        default_lock_path()
+        == tmp_path / "synthetic-home/.judgmentllm/study-campaign-v1.lock"
+    )
 
 
 def test_global_ownership_and_plan_cannot_move_to_fresh_budget(
