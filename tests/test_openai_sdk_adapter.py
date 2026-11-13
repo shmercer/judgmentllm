@@ -27,6 +27,7 @@ from judgmentllm.providers.protocol import (
     RetrievalUnavailable,
     SubmissionUncertain,
 )
+from judgmentllm.reasoning import ReasoningQualificationScopeV1
 from judgmentllm.service_tiers import ServiceQualificationScope
 
 
@@ -49,9 +50,29 @@ def invocation(wire: Any) -> dict[str, str]:
 
 
 def authorize_fixture(
-    monkeypatch: pytest.MonkeyPatch, context: Any, features: Any
+    monkeypatch: pytest.MonkeyPatch,
+    context: Any,
+    features: Any,
+    *,
+    generation: GenerationSpec | None = None,
 ) -> None:
     """Patch only the private repository registry, never caller-supplied evidence."""
+    controls = ()
+    if generation is not None and (
+        generation.reasoning is not None
+        or generation.temperature is not None
+        or generation.top_p is not None
+    ):
+        controls = (
+            ReasoningQualificationScopeV1(
+                account_scope="synthetic-account",
+                tier="standard",
+                reasoning=generation.reasoning,
+                temperature=generation.temperature,
+                top_p=generation.top_p,
+                features=tuple(features),
+            ),
+        )
     monkeypatch.setattr(
         production_registry,
         "_QUALIFIED_PROFILES",
@@ -76,6 +97,7 @@ def authorize_fixture(
                     )
                 ),
                 scope=context.scope,
+                reasoning_scopes=controls,
                 service_scopes=(
                     ServiceQualificationScope(
                         account_scope="synthetic-account",
@@ -114,6 +136,7 @@ async def test_actual_sdk_bytes_matrix(
     policy: Literal["text", "native", "auto"],
     scenario: str,
 ) -> None:
+    generation = GenerationSpec(temperature=0, top_p=1.0, max_output_tokens=64)
     options: dict[str, Any] = dict(
         endpoint=endpoint,
         policy=policy,
@@ -124,11 +147,14 @@ async def test_actual_sdk_bytes_matrix(
         layout=scenario
         if scenario in {"scores_first", "explanations_first"}
         else "together",
-        generation=GenerationSpec(temperature=0, top_p=1.0, max_output_tokens=64),
+        generation=generation,
     )
     candidate, _, _, context = wire_for(tmp_path, probe=True, **options)
     authorize_fixture(
-        monkeypatch, context, candidate.output_commitment.selection.features
+        monkeypatch,
+        context,
+        candidate.output_commitment.selection.features,
+        generation=generation,
     )
     wire, spec, _, context = wire_for(tmp_path, **options)
     seen: list[bytes] = []

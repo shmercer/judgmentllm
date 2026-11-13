@@ -312,14 +312,18 @@ def test_no_foreign_scope_authority(tmp_path: Path, changes: dict[str, str]) -> 
 
 
 def test_generation_qualification_does_not_expand(tmp_path: Path) -> None:
-    for generation in (
-        GenerationSpec(max_output_tokens=512),
-        GenerationSpec(temperature=0, top_p=1, max_output_tokens=512),
-    ):
-        wire, _, _, context = prepare(tmp_path, policy="native", generation=generation)
-        facts = registry.production_generation_capabilities(context.scope)
-        assert facts is not None and facts.fixture_tested and not facts.live_qualified
-        assert wire.generation == generation
+    generation = GenerationSpec(max_output_tokens=512)
+    wire, _, _, context = prepare(tmp_path, policy="native", generation=generation)
+    facts = registry.production_generation_capabilities(context.scope)
+    assert facts is not None and facts.fixture_tested and not facts.live_qualified
+    assert wire.generation == generation
+    # Documented sampler syntax is not reviewed native sampling qualification.
+    with pytest.raises(TransportIntegrityError):
+        prepare(
+            tmp_path,
+            policy="native",
+            generation=GenerationSpec(temperature=0, top_p=1, max_output_tokens=512),
+        )
     capabilities = GeminiAdapter.capabilities_for(
         "gemini", "models.generate_content", MODEL, mechanism=MECHANISM
     )
