@@ -54,6 +54,7 @@ def audit(source: Path, output: Path) -> dict[str, Any]:
         "Distribution evidence must be outside the checkout"
     )
     sys.path.insert(0, str(source))
+    sys.path.insert(0, str(source / "ci/local"))
     from ci.local.gates import verify_source
     from ci.local.source import stage
     from scripts.smoke_install import smoke_install
