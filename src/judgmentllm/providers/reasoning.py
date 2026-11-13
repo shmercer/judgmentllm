@@ -6,9 +6,11 @@ or production native qualification. Unknown models remain unknown.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+from judgmentllm.config import GenerationSpec, RunSpecification, RunSpecV3
 from judgmentllm.generation import GenerationCapabilities, GenerationParameterCapability
+from judgmentllm.native_schema import NativeProjectionScopeV1
 from judgmentllm.reasoning import (
     ReasoningCapabilities,
     ReasoningEffort,
@@ -17,11 +19,7 @@ from judgmentllm.reasoning import (
     ReasoningQualificationScopeV1,
     control_errors,
 )
-
-if TYPE_CHECKING:
-    from judgmentllm.config import GenerationSpec, RunSpecification, RunSpecV3
-    from judgmentllm.native_schema import NativeProjectionScopeV1
-    from judgmentllm.service_tiers import ServicePolicyV2
+from judgmentllm.service_tiers import ServicePolicyV2
 
 _OPENAI = ("gpt-6-luna", "gpt-6.1-terra")
 _ANTHROPIC = ("claude-haiku-5-5", "claude-sonnet-5-5")

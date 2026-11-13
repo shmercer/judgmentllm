@@ -570,3 +570,239 @@ async def test_actual_engine_reopening_preserves_safe_reasoning_provenance(
                 b"PRIVATE_REASONING_CANARY" not in raw
                 and b"PRIVATE_SIGNATURE_CANARY" not in raw
             )
+
+
+def test_reopening_rejects_ambiguous_capability_sources(tmp_path: Path) -> None:
+    from judgmentllm.config import RunSpecification
+    from judgmentllm.planning import CapabilityProfile
+    from judgmentllm.preparation import PreparationError, open_prepared_run, prepare_run
+
+    spec, _, _, context, _ = case(
+        tmp_path / "inputs", "openai", "gpt-6-luna", reasoning="none"
+    )
+    profile = CapabilityProfile(
+        modes=("live",),
+        grouped=True,
+        explanations=True,
+        generation=generation_capabilities(spec, context.scope, None),
+    )
+    store = tmp_path / "store"
+    with prepare_run(
+        spec, run_id="001", store=store, transport_context=context, capabilities=profile
+    ):
+        pass
+
+    def resolver(current: RunSpecification) -> CapabilityProfile:
+        assert current.model == spec.model
+        return profile
+
+    with pytest.raises(PreparationError, match="capabilities or"):
+        open_prepared_run(
+            "001",
+            store=store,
+            spec=spec,
+            transport_context=context,
+            capabilities=profile,
+            capability_resolver=resolver,
+        )
+
+
+def test_reasoning_policy_cannot_be_routed_to_chat(tmp_path: Path) -> None:
+    spec, dep, module, context, _ = case(
+        tmp_path, "openai", "gpt-6-luna", reasoning="none"
+    )
+    prepared = wire(spec, dep, module, context)
+    from copy import deepcopy
+
+    output = deepcopy(prepared.output_commitment)
+    # Simulate corruption after validation; the body builder must still reject it.
+    object.__setattr__(
+        output,
+        "scope",
+        context.scope.model_copy(update={"endpoint": "chat.completions"}),
+    )
+    object.__setattr__(output, "sdk_config_fragment_text", None)
+    with pytest.raises(ValueError):
+        module.build_openai_request_body(
+            endpoint="chat.completions",
+            model=spec.model,
+            prompt=prepared.rendered_text,
+            output=output,
+            generation=spec.generation,
+        )
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"efforts": ("none", "none")},
+        {"modes": ("standard", "standard")},
+        {"sampling_efforts": ("none", "none")},
+        {"restricted_modes": ("standard", "standard")},
+        {"efforts": ("none",)},
+        {"sampling_efforts": ("minimal",)},
+        {"restricted_modes": ("disabled",)},
+        {"documented_default_mode": "disabled"},
+        {"documentation_urls": ()},
+    ],
+)
+def test_reasoning_capability_records_reject_inconsistent_facts(
+    tmp_path: Path, change: dict[str, Any]
+) -> None:
+    spec, _, _, context, _ = case(tmp_path, "openai", "gpt-6-luna", reasoning="none")
+    facts = documented_controls(spec, context.scope)
+    assert facts is not None
+    with pytest.raises(ValueError):
+        type(facts).model_validate({**dict(facts), **change})
+
+
+def test_reasoning_policy_versions_empty_scope_and_rehashed_facts(
+    tmp_path: Path,
+) -> None:
+    from judgmentllm.providers.reasoning import (
+        build_reasoning_policy,
+        verify_policy_scope,
+    )
+    from judgmentllm.reasoning import ReasoningPolicyV1, ReasoningQualificationScopeV1
+    from judgmentllm.service_tiers import service_policy
+
+    spec, _, _, context, _ = case(tmp_path, "openai", "gpt-6-luna", reasoning="none")
+    policy = build_reasoning_policy(spec, context.scope)
+    assert policy is not None
+    for version in (True, "1", 2):
+        with pytest.raises(ValueError):
+            ReasoningPolicyV1.model_validate(
+                {**dict(policy), "reasoning_policy_version": version}
+            )
+    for requested in (ReasoningSpec(), ReasoningSpec(effort="minimal")):
+        with pytest.raises(ValueError):
+            ReasoningPolicyV1.model_validate({**dict(policy), "requested": requested})
+    for reasoning, features in (
+        (ReasoningSpec(), ("rubric_scores",)),
+        (ReasoningSpec(effort="none"), ("rubric_scores", "rubric_scores")),
+    ):
+        with pytest.raises(ValueError):
+            ReasoningQualificationScopeV1(
+                account_scope="synthetic-account",
+                tier="flex",
+                reasoning=reasoning,
+                features=features,
+            )
+    with pytest.raises(ValueError):
+        verify_policy_scope(policy, context.scope, None, spec.prompt.native_mechanism)
+    service = service_policy(spec)
+    assert service is not None
+    with pytest.raises(ValueError):
+        verify_policy_scope(
+            policy,
+            context.scope.model_copy(update={"sdk_version": "changed"}),
+            service,
+            spec.prompt.native_mechanism,
+        )
+    with pytest.raises(ValueError):
+        verify_policy_scope(
+            policy.model_copy(
+                update={
+                    "capabilities": policy.capabilities.model_copy(
+                        update={"documented_on": "changed"}
+                    )
+                }
+            ),
+            context.scope,
+            service,
+            spec.prompt.native_mechanism,
+        )
+
+
+def test_control_mapping_requires_exact_scope_and_matching_policy(
+    tmp_path: Path,
+) -> None:
+    from judgmentllm.providers.reasoning import build_reasoning_policy, wire_controls
+
+    spec, _, _, context, _ = case(tmp_path, "openai", "gpt-6-luna", reasoning="none")
+    policy = build_reasoning_policy(spec, context.scope)
+    assert policy is not None and spec.generation is not None
+    with pytest.raises(ValueError):
+        documented_controls(
+            spec, context.scope.model_copy(update={"model": "different"})
+        )
+    spec.prompt.native_mechanism = "gemini.generate_content.response_json_schema"
+    assert documented_controls(spec, context.scope) is None
+    with pytest.raises(ValueError):
+        build_reasoning_policy(spec, context.scope)
+    assert wire_controls(None, None) == {}
+    with pytest.raises(ValueError):
+        wire_controls(None, policy)
+    with pytest.raises(ValueError):
+        wire_controls(spec.generation, None)
+    with pytest.raises(ValueError):
+        wire_controls(GenerationSpec(reasoning=ReasoningSpec(effort="high")), policy)
+    with pytest.raises(ValueError):
+        wire_controls(
+            spec.generation,
+            policy.model_copy(
+                update={
+                    "capabilities": policy.capabilities.model_copy(
+                        update={"efforts": ("low",)}
+                    )
+                }
+            ),
+        )
+    with pytest.raises(ValueError):
+        wire_controls(
+            spec.generation, policy.model_copy(update={"provider": "unknown"})
+        )
+    for settings, requested in (
+        (
+            GenerationSpec(reasoning=ReasoningSpec(mode="standard")),
+            ReasoningSpec(mode="standard"),
+        ),
+        (
+            GenerationSpec().model_copy(update={"reasoning": ReasoningSpec()}),
+            ReasoningSpec(),
+        ),
+    ):
+        corrupted = policy.model_copy(
+            update={"provider": "gemini", "requested": requested}
+        )
+        with pytest.raises(ValueError):
+            wire_controls(settings, corrupted)
+    spec.model = "unknown-model"
+    scope = context.scope.model_copy(update={"model": spec.model})
+    assert documented_controls(spec, scope) is None
+    assert generation_capabilities(spec, scope, None) is None
+
+
+@pytest.mark.asyncio
+async def test_anthropic_mode_without_effort_uses_actual_sdk(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spec, dep, module, context, _ = case(
+        tmp_path, "anthropic", "claude-haiku-5-5", mode="adaptive", tier="standard_only"
+    )
+    candidate = wire(spec, dep, module, context)
+    production = authorize(monkeypatch, spec, candidate, module)
+    prepared = wire(spec, dep, module, production)
+    seen: list[bytes] = []
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        assert request.content == prepared.payload
+        seen.append(request.content)
+        body, headers = response_body(spec, '{"scores":[]}')
+        return httpx2.Response(200, json=body, headers=headers)
+
+    adapter = adapter_for(spec, production, handler)
+    try:
+        await adapter.submit(
+            prepared,
+            submission_id=prepared.transport_plan.identity.submission_id,
+            correlation_id=prepared.transport_plan.identity.correlation_id,
+        )
+    finally:
+        await adapter.aclose()
+    assert len(seen) == 1
+    body = json.loads(seen[0])
+    assert (
+        body["thinking"] == {"type": "adaptive"}
+        and "effort" not in body["output_config"]
+    )
