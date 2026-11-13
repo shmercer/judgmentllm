@@ -14,7 +14,6 @@ import pytest
 from reasoning_fixture import response_body
 from study_fixture import PACKAGE, assessment, authorization, seal, spec_for
 from test_study_native import offline as offline
-from test_study_native import pilot as pilot
 
 from judgmentllm.config import RunSpecV3
 from judgmentllm.persistence.hashing import canonical_bytes

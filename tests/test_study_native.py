@@ -53,7 +53,6 @@ from judgmentllm.study.execution import (
     case_report,
 )
 from judgmentllm.study.plans import (
-    build_proposal,
     prepare,
     request_for,
     suite_selections,
@@ -283,32 +282,6 @@ async def test_complete_native_plans(
                 w.prompt_sha256 for w in wires
             ]
             await sdk_bytes(spec, reversed_wires)
-
-
-@pytest.fixture(scope="module")
-def pilot(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, Proposal]:
-    root = tmp_path_factory.mktemp("study-pilot")
-    original = plans._source_commit
-    plans._source_commit = lambda: SOURCE
-    try:
-        proposal = build_proposal(PACKAGE, root / "proposal", "native_pilot")
-    finally:
-        plans._source_commit = original
-    return root / "proposal", proposal
-
-
-@pytest.fixture(scope="module")
-def tier(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, Proposal]:
-    root = tmp_path_factory.mktemp("study-tier")
-    original = plans._source_commit
-    plans._source_commit = lambda: SOURCE
-    try:
-        proposal = build_proposal(
-            PACKAGE, root / "proposal", "tier_feasibility", capture="minimal"
-        )
-    finally:
-        plans._source_commit = original
-    return root / "proposal", proposal
 
 
 def test_original_proposal_order_blockers_and_immutable_limits(

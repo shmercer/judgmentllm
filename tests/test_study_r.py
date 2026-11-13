@@ -14,7 +14,6 @@ import pytest
 from reasoning_fixture import response_body
 from study_fixture import PACKAGE, SOURCE, assessment, authorization, case_files
 from test_study_native import offline as offline
-from test_study_native import pilot as pilot
 
 from judgmentllm.execution import execute_run
 from judgmentllm.execution.retry import RetryPolicy

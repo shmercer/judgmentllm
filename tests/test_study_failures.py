@@ -21,8 +21,6 @@ from study_fixture import (
     original_files,
 )
 from test_study_native import offline as offline
-from test_study_native import pilot as pilot
-from test_study_native import tier as tier
 
 from judgmentllm.execution import execute_run, recover_run
 from judgmentllm.execution.retry import RetryPolicy

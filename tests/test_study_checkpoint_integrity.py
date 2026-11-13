@@ -10,7 +10,6 @@ from pathlib import Path
 import pytest
 from study_fixture import PACKAGE, authorization, seal
 from test_study_native import offline as offline
-from test_study_native import pilot as pilot
 
 from judgmentllm.persistence.hashing import canonical_bytes
 from judgmentllm.study.budget import BudgetLedger

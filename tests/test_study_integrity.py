@@ -17,7 +17,6 @@ from typing import Any, cast
 import pytest
 from study_fixture import PACKAGE, SOURCE, authorization, original_files, seal, spec_for
 from test_study_native import offline as offline
-from test_study_native import pilot as pilot
 
 from judgmentllm.persistence.hashing import bytes_digest, canonical_bytes
 from judgmentllm.providers.protocol import ProviderIntegrityError
@@ -291,9 +290,9 @@ def test_proposal_reopening_refuses_scope_bytes_paths_and_sdk_tampering(
     monkeypatch.setattr(plans.importlib.metadata, "version", original_version)
     with pytest.raises(ValueError, match="outside"):
         plans.build_proposal(PACKAGE, PACKAGE / "forbidden", "native_pilot")
-    with plans.prepare(
-        spec, SOURCE, pilot[0] / "preparation" / case.case_id, case.run_id
-    ) as prepared:
+    store = tmp_path / "wire-preparation"
+    shutil.copytree(pilot[0] / "preparation" / case.case_id, store)
+    with plans.prepare(spec, SOURCE, store, case.run_id) as prepared:
         wire = next(plans.request_for(prepared, case.selection))
         for field in ("account_scope", "schema_sha256", "prompt_sha256"):
             with pytest.raises(ValueError, match="scope|commitment|sealed"):

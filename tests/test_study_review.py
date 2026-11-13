@@ -5,6 +5,7 @@ from __future__ import annotations
 # pyright: reportPrivateUsage=false
 import os
 import shutil
+import stat
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -12,8 +13,6 @@ from typing import Any
 import pytest
 from study_fixture import PACKAGE, authorization, original_files, seal
 from test_study_native import offline as offline
-from test_study_native import pilot as pilot
-from test_study_native import tier as tier
 
 from judgmentllm.study import budget, cli, plans
 from judgmentllm.study.budget import BudgetLedger
@@ -150,18 +149,33 @@ def test_complete_import_inventory_is_required_by_every_entrypoint(
     assert not proposal.exists()
 
 
-@pytest.mark.skipif(
-    os.name == "nt",
-    reason="POSIX FIFO type; symlink and directory guards run everywhere",
-)
 def test_nonregular_imported_entry_is_rejected_without_reading_it(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from judgmentllm.study.definitions import source_inventory
 
     package = tmp_path / "package"
     shutil.copytree(PACKAGE, package)
-    os.mkfifo(package / "sources/cj/unexpected-pipe")
+    entry = package / "sources/cj/unexpected-pipe"
+    if os.name == "nt":
+        entry.touch()
+        original_stat = Path.lstat
+
+        def special_stat(path: Path) -> os.stat_result:
+            if path == entry:
+                return os.stat_result((stat.S_IFIFO, 0, 0, 0, 0, 0, 0, 0, 0, 0))
+            return original_stat(path)
+
+        monkeypatch.setattr(Path, "lstat", special_stat)
+    else:
+        os.mkfifo(entry)
+    original_read = Path.read_bytes
+
+    def checked_read(path: Path) -> bytes:
+        assert path != entry, "Verifier attempted to read a non-regular entry"
+        return original_read(path)
+
+    monkeypatch.setattr(Path, "read_bytes", checked_read)
     with pytest.raises(ValueError, match="entry"):
         source_inventory(package, "cj")
 
