@@ -109,13 +109,24 @@ sys.path.insert(0, "ci")
 from acceptance import clean_environment
 
 for name, workers in (("ab", "6,12"), ("ba", "12,6")):
-    subprocess.run([
-        sys.executable, "ci/local/suite.py", "--source", ".",
-        "--output", f"/tmp/pr2c-workers-{name}",
-        "--stage", "ordinary", "--no-coverage",
-        "--benchmark-workers", workers,
-        "tests/test_vertex_qualification_execution.py::test_assessment_identity_retention_and_usage",
-    ], env=clean_environment(), check=True)
+    subprocess.run(
+        [
+            sys.executable,
+            "ci/local/suite.py",
+            "--source",
+            ".",
+            "--output",
+            f"/tmp/pr2c-workers-{name}",
+            "--stage",
+            "ordinary",
+            "--no-coverage",
+            "--benchmark-workers",
+            workers,
+            "tests/test_vertex_qualification_execution.py::test_assessment_identity_retention_and_usage",
+        ],
+        env=clean_environment(),
+        check=True,
+    )
 ```
 
 The draft PR records all four raw times, worker counts, observed variability and
@@ -154,7 +165,7 @@ uv run --offline --no-sync python -m scripts.audit_test_efficiency \
   --source . \
   --baseline /tmp/pr2b-local-b27fc77-1/primary/suite \
   --before /tmp/pr2c-before-optimization/primary/suite \
-  --after /tmp/pr2c-final-head/primary/suite \
+  --after /tmp/pr2c-final-head-2/primary/suite \
   --output /tmp/pr2c-coverage-runtime-comparison.json
 ```
 
