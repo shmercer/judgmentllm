@@ -41,6 +41,7 @@ from judgmentllm.production_transport import (
     _qualification_context as openai_context,
 )
 from judgmentllm.production_transport import build_output_commitment_v4
+from judgmentllm.service_tiers import ServicePolicyVersion
 from judgmentllm.transport import build_output_commitment_v3
 from judgmentllm.vertex_prompts import render_vertex_request
 from judgmentllm.vertex_transport import _qualification_context as vertex_context
@@ -122,6 +123,7 @@ def rendered_case(
     *,
     reverse: bool = True,
     custom: bool = False,
+    service_policy_version: ServicePolicyVersion = 2,
 ) -> Any:
     """Use real output builders/renderers with only synthetic qualification scope."""
     factory, context_factory, build, render = PROVIDERS[route.split(".")[0]]
@@ -135,6 +137,11 @@ def rendered_case(
         ties=ties,
         **ROUTES[route],
     )
+    service_options: dict[str, Any] = {}
+    if spec.provider in {"openai", "anthropic", "gemini"}:
+        service_options["service_policy_version"] = service_policy_version
+        if service_policy_version == 1:
+            spec.account_scope = None
     if not pairwise:
         spec.rubric = rubric()
         spec.rubric.description = CANARY
@@ -162,7 +169,13 @@ def rendered_case(
         )
     request = next(plan_record(spec, record, template_text=template))
     context = context_factory(spec, source_commit="a" * 40)
-    output = build(spec, request, context, presentation_version=presentation_version)
+    output = build(
+        spec,
+        request,
+        context,
+        presentation_version=presentation_version,
+        **service_options,
+    )
 
     def lookup(kind: str, ident: str) -> Any:
         return record if kind == "pair" else records[ident]
@@ -193,7 +206,9 @@ def test_actual_production_prompts_and_contract_bytes(
     policy: Literal["text", "native"],
     presentation_version: PresentationVersion,
 ) -> None:
-    rendered = rendered_case(tmp_path, route, variant, policy, presentation_version)
+    rendered = rendered_case(
+        tmp_path, route, variant, policy, presentation_version, service_policy_version=1
+    )
     baseline = json.loads((FIXTURES / "baseline.json").read_text(encoding="utf-8"))
     previous = baseline["cases"][f"{route}/{variant}/{policy}/{presentation_version}"]
     # Includes canonical schema bytes, native projection/configuration, selection,

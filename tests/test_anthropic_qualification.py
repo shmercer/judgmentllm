@@ -249,7 +249,14 @@ def _install_transport(
         ):
             return httpx.Response(
                 rejection_status,
-                json={"error": {"message": "PRIVATE_REJECTION_BODY_CANARY"}},
+                json={
+                    "error": {
+                        "type": "rate_limit_error"
+                        if rejection_status == 429
+                        else "authentication_error",
+                        "message": "PRIVATE_REJECTION_BODY_CANARY",
+                    }
+                },
             )
         output = json.dumps(
             {"scores": [{"trait_id": "01", "category_label": "high"}]}

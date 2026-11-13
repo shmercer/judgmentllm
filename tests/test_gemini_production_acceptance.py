@@ -38,6 +38,7 @@ from judgmentllm.preparation import open_prepared_run, prepare_run
 from judgmentllm.preparation.session import RequestDependency
 from judgmentllm.presentation import PresentationVersion
 from judgmentllm.providers.gemini import GeminiAdapter
+from judgmentllm.service_tiers import ServicePolicyVersion
 from judgmentllm.transport import TransportIntegrityError, physical_identity
 
 MODEL = "gemini-3.1-flash-lite"
@@ -55,11 +56,14 @@ def prepare(
     model: str = MODEL,
     frozen: TransportCommitmentV4 | None = None,
     presentation_version: PresentationVersion = 1,
+    service_policy_version: ServicePolicyVersion = 1,
     **settings: Any,
 ) -> tuple[PreparedRequestV6, RunSpecV3, RequestDependency, GeminiProductionContext]:
     strict = settings.pop("strict", False)
     spec, dependency, records = case(tmp_path, grouped=False, **settings)
     spec.model = model
+    if service_policy_version == 1:
+        spec.account_scope = None
     spec.strict_capabilities = strict
     record = dependency.request.pair or dependency.request.response
     assert record is not None
@@ -94,6 +98,7 @@ def prepare(
         lookup=lookup,
         frozen=frozen,
         presentation_version=presentation_version,
+        service_policy_version=service_policy_version,
         template=(
             "Compare.\n{{ criterion }}\n{{ first_response }}\n{{ second_response }}\n{{ output_instructions }}"
             if spec.allow_ties
@@ -131,6 +136,7 @@ def test_exact_profile_and_provenance() -> None:
     assert profile.assessment_behavior == profile.native_schema_behavior == "verified"
     assert profile.supported_features == ("rubric_scores", "pairwise_forced_choice")
     assert profile.unsupported_features == () and profile.generation is None
+    assert profile.service_scopes == ()
     assert profile.documentation_sha256 == (
         "67b3050f1727a23153a4f9eb5f8b27a85768e407f8f10c96e990db4eef7a1576"
     )
@@ -151,6 +157,16 @@ def test_exact_profile_and_provenance() -> None:
         Path(__file__).parents[1] / "docs/gemini-live-qualification-acceptance.md"
     ).read_text()
     assert profile.authority_sha256 in record
+
+
+def test_historical_profile_cannot_authorize_new_service_policy(tmp_path: Path) -> None:
+    for policy, strict in (("native", False), ("auto", True)):
+        with pytest.raises(TransportIntegrityError):
+            prepare(tmp_path, policy=policy, strict=strict, service_policy_version=2)
+    fresh, _, _, _ = prepare(tmp_path, policy="auto", service_policy_version=2)
+    assert fresh.output_commitment.service_policy is not None
+    assert fresh.output_commitment.selection.mechanism == "text"
+    assert fresh.output_commitment.selection.native_support == "unknown"
 
 
 @pytest.mark.parametrize("pairwise", [False, True])

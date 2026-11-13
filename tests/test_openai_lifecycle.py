@@ -60,6 +60,7 @@ def production_spec(
         provider="openai",
         endpoint=endpoint,
         model="offline-unqualified-model",
+        account_scope="synthetic-account",
     )
     document["prompt"]["structured_output"] = "text"
     path.write_text(json.dumps(document))
@@ -409,6 +410,7 @@ async def test_public_run_closes_client_and_preserves_v3_requirement(
     assert len(bodies) == 1
     assert adapter._client is None
     older = dict(spec)
+    older.pop("account_scope", None)
     older["schema_version"] = 2
     older["prompt"] = {"structured_output": "text"}
     from judgmentllm.config import validate_run_spec

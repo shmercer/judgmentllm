@@ -40,6 +40,7 @@ from judgmentllm.persistence.receipts import (
     read_acknowledgment,
     read_receipt,
 )
+from judgmentllm.service_tiers import ServiceTierObservation
 
 if TYPE_CHECKING:
     from judgmentllm.persistence.repository import Repository
@@ -84,6 +85,9 @@ class EvidenceReceipt(EvidenceModel):
     authorization: ReasoningAuthorization
     authorization_sha256: SHA256
     usage: ProviderUsage
+    service_tier: ServiceTierObservation | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     order: ProviderObservationMetadata | None = None
     reasoning: Annotated[tuple[ReasoningEvidence, ...], Field(max_length=4096)] = ()
     original: ArtifactIdentity | None = None

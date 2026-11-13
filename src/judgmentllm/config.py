@@ -328,6 +328,9 @@ class RunSpecV3(_RunSpecFields[Literal[3], PromptSpecV3]):
 
     schema_version: Literal[3] = 3
     prompt: PromptSpecV3
+    account_scope: ID | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
     @field_validator("schema_version", mode="before")
     @classmethod

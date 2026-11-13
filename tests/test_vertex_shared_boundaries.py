@@ -127,7 +127,7 @@ def test_vertex_rendering_cannot_gain_historical_mock_authority(tmp_path: Path) 
 
     wire, spec, dependency, _ = wire_for(tmp_path)
     historical = RunSpec.model_validate(
-        dict(spec)
+        spec.model_dump(exclude={"account_scope"})
         | {
             "schema_version": 1,
             "provider": "mock",

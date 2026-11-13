@@ -57,6 +57,12 @@ from judgmentllm.providers.protocol import (
     SubmissionUncertain,
     TransportNotSubmitted,
 )
+from judgmentllm.service_tiers import (
+    observe_service_tier,
+    service_policy,
+    terminal_rate_rejection,
+    validate_service_support,
+)
 
 _SDK_LOGGING: ContextVar[bool] = ContextVar(
     "judgmentllm_gemini_sensitive_call", default=False
@@ -252,6 +258,15 @@ def _sdk_arguments(sdk: Any, prepared: Any) -> dict[str, Any]:
         ),
         "should_return_http_response": True,
     }
+    service = prepared.output_commitment.service_policy
+    if service is not None:
+        values["service_tier"] = service.wire_tier
+        values["http_options"] = sdk.types.HttpOptions(
+            timeout=service.read_timeout_seconds * 1000,
+            headers={"X-Server-Timeout": str(service.server_timeout_hint_seconds)}
+            if service.server_timeout_hint_seconds is not None
+            else None,
+        )
     if prepared.generation is not None:
         values.update(prepared.generation.model_dump(mode="json", exclude_none=True))
     fragment = prepared.output_commitment.sdk_config_fragment_text
@@ -477,6 +492,25 @@ class GeminiAdapter:
             self._concurrency = concurrency
             self._invoked = deque(self._invoked, maxlen=2 * concurrency)
 
+    def validate_new_run(self, spec: RunSpecification) -> None:
+        """Check new tier entitlement without changing sealed historical validation."""
+        self.validate(spec)
+        assert spec.schema_version == 3
+        from judgmentllm.gemini_registry import _profile_for
+
+        reviewed = _profile_for(
+            self.transport_context.scope, spec.prompt.native_mechanism
+        )
+        try:
+            validate_service_support(
+                service_policy(spec),
+                () if reviewed is None else reviewed.service_scopes,
+                strict=spec.strict_capabilities,
+                qualification="qualification" in self.transport_context.kind,
+            )
+        except ValueError:
+            raise GeminiConfigurationError(("execution.tier",)) from None
+
     def prepare(
         self,
         spec: RunSpecification,
@@ -548,6 +582,11 @@ class GeminiAdapter:
                 prepared = _INVOKING.get()
                 started = _SERIALIZATION_STARTED.get()
                 state = _INVOCATION_STATE.get()
+                service = (
+                    prepared.output_commitment.service_policy
+                    if isinstance(prepared, gemini_types.PreparedRequestV6)
+                    else None
+                )
                 checks = {
                     "credential": request.headers.get("x-goog-api-key") == key,
                     "prepared_request": prepared is not None,
@@ -574,6 +613,12 @@ class GeminiAdapter:
                         }
                     ),
                     "single_attempt": state is not None and not state.get("invoked"),
+                    "server_timeout_hint": service is None
+                    or request.headers.get("x-server-timeout")
+                    == str(
+                        service.server_timeout_hint_seconds
+                        or service.read_timeout_seconds
+                    ),
                     "body": prepared is not None
                     and request.content == prepared.payload,
                 }
@@ -582,7 +627,10 @@ class GeminiAdapter:
                         "Gemini SDK request violates sealed transport: "
                         + ", ".join(name for name, valid in checks.items() if not valid)
                     )
-                assert prepared is not None and state is not None
+                assert (
+                    isinstance(prepared, gemini_types.PreparedRequestV6)
+                    and state is not None
+                )
                 # The SDK supplies a scalar timeout per request, overriding the
                 # client's finer defaults. Enforce the sealed adapter policy at
                 # the final transport boundary; these are local I/O settings.
@@ -590,7 +638,9 @@ class GeminiAdapter:
                     "connect": 10.0,
                     "write": 10.0,
                     "pool": 10.0,
-                    "read": 60.0,
+                    "read": float(
+                        prepared.output_commitment.request_policy.read_timeout_seconds
+                    ),
                 }
                 adapter.serialization_seconds += time.perf_counter() - started
                 adapter._check_authority()
@@ -615,6 +665,7 @@ class GeminiAdapter:
                         "Gemini response cannot be retained safely", invoked=True
                     )
                 state["raw"] = bytes(body)
+                state["served_tier"] = response.headers.get("x-gemini-service-tier")
                 headers = {
                     key: value
                     for key, value in response.headers.items()
@@ -682,6 +733,7 @@ class GeminiAdapter:
             client = await self._execution_client()
         finally:
             _SDK_LOGGING.reset(logging_token)
+        operation_started = time.perf_counter()
         invocation_state: dict[str, Any] = {"invoked": False}
         invocation_token = _INVOCATION_STATE.set(invocation_state)
         token = _INVOKING.set(prepared)
@@ -690,7 +742,7 @@ class GeminiAdapter:
             sdk, _ = _sdk()
             await asyncio.wait_for(
                 client.aio.models.generate_content(**_sdk_arguments(sdk, prepared)),
-                timeout=90.0,
+                timeout=prepared.output_commitment.request_policy.operation_deadline_seconds,
             )
             raw = cast(bytes, invocation_state["raw"])
         except asyncio.CancelledError:
@@ -710,7 +762,11 @@ class GeminiAdapter:
             ):
                 raise cause from None
             status = getattr(error, "code", None)
-            if status in {400, 401, 403, 404, 422, 429}:
+            if status in {400, 401, 403, 404, 422, 429} and (
+                status != 429
+                or prepared.output_commitment.service_policy is None
+                or terminal_rate_rejection("gemini", invocation_state.get("raw"))
+            ):
                 code = {
                     401: "credentials_rejected",
                     403: "permission_denied",
@@ -734,7 +790,14 @@ class GeminiAdapter:
             remote_id = document.get("responseId")
             if not isinstance(remote_id, str) or not remote_id.strip():
                 raise ValueError
-            response = self._response(raw, document, remote_id, prepared=prepared)
+            response = self._response(
+                raw,
+                document,
+                remote_id,
+                prepared=prepared,
+                served_tier=invocation_state.get("served_tier"),
+                latency_seconds=time.perf_counter() - operation_started,
+            )
         except (ValueError, TypeError):
             raise SubmissionUncertain(
                 "Gemini response identity is unavailable", invoked=True
@@ -749,6 +812,8 @@ class GeminiAdapter:
         remote_id: str,
         *,
         prepared: PreparedRequest | None = None,
+        served_tier: object = None,
+        latency_seconds: float | None = None,
     ) -> ProviderResponse:
         try:
             kind, text, completion_status = _generate_content_output(body)
@@ -808,6 +873,9 @@ class GeminiAdapter:
             if isinstance(body.get("modelVersion"), str)
             else None
         )
+        policy = getattr(
+            getattr(prepared, "output_commitment", None), "service_policy", None
+        )
         return ProviderResponse.model_validate(
             {
                 "observation_key": remote_id,
@@ -815,6 +883,11 @@ class GeminiAdapter:
                 "raw": raw,
                 "evidence": ProviderEvidence(
                     provenance="provider_documented",
+                    service_tier=observe_service_tier(
+                        policy, served_tier, latency_seconds=latency_seconds
+                    )
+                    if policy is not None
+                    else None,
                     assessment_component=component,
                     usage=usage,
                     reasoning=tuple(

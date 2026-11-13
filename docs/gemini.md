@@ -57,6 +57,11 @@ explicit `prompt.native_mechanism`:
 - `gemini.generate_content.response_schema` uses the SDK's typed `Schema`.
 - `gemini.generate_content.response_json_schema` preserves the JSON Schema form.
 
+New service-policy-2 requests additionally require exact account/tier native
+authority. Historical qualification profiles do not grant that authority, even
+for Standard, and no new service scopes are promoted here. Existing sealed
+requests retain their original policy.
+
 Native production requests require reviewed authority for the exact model, route,
 SDK/API and requested assessment features. `auto` chooses native only with that
 authority; otherwise it records text selection when the existing strict policy
@@ -98,7 +103,8 @@ descriptor cannot express that partial qualification.
 
 Each request explicitly asks for one candidate. Tools, thinking controls, stop
 sequences, arbitrary provider JSON, headers, URLs and generation seeds are not
-exposed. `execution.tier` and explicit caching fail preflight. `off` and `auto`
+exposed. New requests support validated `execution.tier` values `standard`, `flex`, and
+`priority`; explicit caching fails preflight. `off` and `auto`
 omit explicit cache controls; Google may still apply implicit caching. No cache
 saving or deterministic-output guarantee is made.
 
@@ -154,7 +160,7 @@ Automatic continuation and function calling are explicitly disabled. SDK/HTTP
 retries are zero, including errors and rate limits. The HTTP guard also rejects a
 second forwarding within one invocation. There are no discovery or token-count
 requests during generation. Concurrency bounds connections and handoffs; connect,
-write and pool timeouts are ten seconds, read timeout sixty seconds and the SDK
+write and pool timeouts are ten seconds. Standard/premium read timeout is sixty seconds and the SDK
 operation deadline ninety seconds.
 
 The existing run/status/resume/cancel/retry/export lifecycle owns durable IDs and
@@ -275,3 +281,9 @@ additional live request and authorizes no package publication.
 
 The [executor verification record](gemini-qualification-executor-verification.md)
 describes offline controls and the exact-head acceptance boundary.
+
+Current service-tier configuration, historical compatibility, account-scoped
+qualification and served-tier evidence are documented in [service tiers](service-tiers.md).
+
+Flex uses a 930-second local read timeout and 960-second overall deadline;
+Gemini SDK configuration uses milliseconds. Its server timeout is an advisory hint.

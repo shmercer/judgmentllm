@@ -14,7 +14,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import Literal, cast
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from judgmentllm.config import NativeTransportMechanism, RunSpecV3, validate_run_spec
 from judgmentllm.gemini_registry import (
@@ -53,6 +53,15 @@ from judgmentllm.planning import PlannedRequest, validate_generation
 from judgmentllm.preparation.session import RequestDependency
 from judgmentllm.presentation import PresentationVersion
 from judgmentllm.providers.protocol import PreparedRequest
+from judgmentllm.service_tiers import (
+    ServicePolicyV2,
+    ServicePolicyVersion,
+    qualified_service,
+    validate_service_support,
+)
+from judgmentllm.service_tiers import (
+    service_policy as resolve_service_policy,
+)
 from judgmentllm.transport import (
     PhysicalRequestIdentityV1,
     TransportIntegrityError,
@@ -269,8 +278,13 @@ def _support(
     context: GeminiProductionContext,
     features: tuple[NativeFeature, ...],
     mechanism: str | None,
+    service: ServicePolicyV2 | None = None,
 ) -> Literal["supported", "unsupported", "unknown"]:
     profile = _profile_for(context.scope, mechanism)
+    if profile is not None and not qualified_service(
+        service, profile.service_scopes, features
+    ):
+        return "unknown"
     if profile is not None:
         if set(features) & set(profile.unsupported_features):
             return "unsupported"
@@ -285,6 +299,7 @@ def _verify_selection(
     contract: AssessmentOutputContract,
     context: GeminiProductionContext,
     parent: TransportCommitmentV4 | None,
+    service: ServicePolicyV2 | None = None,
 ) -> None:
     expected_route = spec.prompt.native_mechanism
     qualifier = context.kind != "gemini-production-v1"
@@ -314,7 +329,9 @@ def _verify_selection(
         )
     ):
         raise TransportIntegrityError()
-    support = _support(context, selection.features, spec.prompt.native_mechanism)
+    support = _support(
+        context, selection.features, spec.prompt.native_mechanism, service
+    )
     if selection.native_support != support:
         raise TransportIntegrityError()
     if selection.mechanism != "text":
@@ -338,10 +355,11 @@ def _selection(
     contract: AssessmentOutputContract,
     context: GeminiProductionContext,
     parent: TransportCommitmentV4 | None,
+    service: ServicePolicyV2 | None = None,
 ) -> GeminiSelectionV1:
     policy = spec.prompt.structured_output
     features = _features(contract)
-    support = _support(context, features, spec.prompt.native_mechanism)
+    support = _support(context, features, spec.prompt.native_mechanism, service)
     qualifier = context.kind != "gemini-production-v1"
     if parent is not None:
         mechanism = parent.mechanism
@@ -375,7 +393,7 @@ def _selection(
         authority_sha256=_authority_sha256(context),
         parent_commitment_sha256=None if parent is None else parent.commitment_sha256,
     )
-    _verify_selection(result, spec, contract, context, parent)
+    _verify_selection(result, spec, contract, context, parent, service)
     return result
 
 
@@ -394,11 +412,34 @@ class GeminiRequestPolicyV1(_TransportModel):
     cache: Literal["off", "auto_implicit_only"]
 
 
-def _request_policy(spec: RunSpecV3) -> GeminiRequestPolicyV1:
-    if spec.execution.tier is not None or spec.execution.cache_policy == "explicit":
-        raise ValueError("Gemini Developer tier and explicit caching are unavailable")
-    return GeminiRequestPolicyV1(
-        cache="off" if spec.execution.cache_policy == "off" else "auto_implicit_only"
+class GeminiRequestPolicyV2(GeminiRequestPolicyV1):
+    """New service policy controls deadlines; historical policy 1 stays exact."""
+
+    policy_version: Literal[2] = 2  # pyright: ignore[reportIncompatibleVariableOverride]
+    read_timeout_seconds: Literal[60, 930] = 60  # pyright: ignore[reportIncompatibleVariableOverride]
+    operation_deadline_seconds: Literal[90, 960] = 90  # pyright: ignore[reportIncompatibleVariableOverride]
+
+    @field_validator("policy_version", mode="before")
+    @classmethod
+    def strict_policy_version(cls, value: object) -> object:
+        if type(value) is not int or value != 2:
+            raise ValueError("unsupported request policy")
+        return value
+
+
+def _request_policy(
+    spec: RunSpecV3, service_policy_version: ServicePolicyVersion = 2
+) -> GeminiRequestPolicyV1 | GeminiRequestPolicyV2:
+    if spec.execution.cache_policy == "explicit":
+        raise ValueError("Gemini Developer explicit caching is unavailable")
+    service = resolve_service_policy(spec, service_policy_version)
+    cache = "off" if spec.execution.cache_policy == "off" else "auto_implicit_only"
+    if service is None:
+        return GeminiRequestPolicyV1(cache=cache)
+    return GeminiRequestPolicyV2(
+        cache=cache,
+        read_timeout_seconds=service.read_timeout_seconds,
+        operation_deadline_seconds=service.operation_deadline_seconds,
     )
 
 
@@ -407,10 +448,13 @@ class OutputCommitmentV6(_TransportModel):
 
     commitment_version: Literal[6] = 6
     renderer_version: Literal[3] = 3
+    service_policy: ServicePolicyV2 | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     scope: NativeProjectionScopeV1 = Field(repr=False)
     contract: AssessmentOutputContract = Field(repr=False)
     selection: GeminiSelectionV1
-    request_policy: GeminiRequestPolicyV1
+    request_policy: GeminiRequestPolicyV1 | GeminiRequestPolicyV2
     schema_text: str = Field(repr=False)
     schema_sha256: SHA256
     neutral_semantic_sha256: SHA256
@@ -423,6 +467,22 @@ class OutputCommitmentV6(_TransportModel):
     @model_validator(mode="after")
     def exact_representation(self) -> OutputCommitmentV6:
         raw = serialize_output_schema(self.contract)
+        if (
+            self.service_policy is not None
+            and self.service_policy.provider != self.scope.provider
+        ):
+            raise ValueError("service provider differs")
+        if self.service_policy is None:
+            if self.request_policy.policy_version != 1:
+                raise ValueError("legacy request policy differs")
+        elif (
+            self.request_policy.policy_version != 2
+            or self.request_policy.read_timeout_seconds
+            != self.service_policy.read_timeout_seconds
+            or self.request_policy.operation_deadline_seconds
+            != self.service_policy.operation_deadline_seconds
+        ):
+            raise ValueError("service request policy differs")
         native = self.selection.mechanism != "text"
         if (
             self.schema_text.encode("utf-8") != raw
@@ -473,10 +533,21 @@ def _build_output_commitment_v6(
     inherited_commitment: TransportCommitmentV4 | None = None,
     frozen_selection: GeminiSelectionV1 | None = None,
     presentation_version: PresentationVersion = 2,
+    service_policy_version: ServicePolicyVersion = 2,
 ) -> OutputCommitmentV6:
     """Select once, or verify an original frozen choice without resolving auto."""
     context = _checked_context(context)
     _validate_scope(spec, context)
+    if inherited_commitment is not None:
+        service_policy_version = 1 if inherited_commitment.service_policy is None else 2
+    service = resolve_service_policy(spec, service_policy_version)
+    profile = _profile_for(context.scope, spec.prompt.native_mechanism)
+    validate_service_support(
+        service,
+        () if profile is None else profile.service_scopes,
+        strict=spec.strict_capabilities,
+        qualification="qualification" in context.kind,
+    )
     contract = _contract(
         spec,
         request,
@@ -485,11 +556,11 @@ def _build_output_commitment_v6(
         else presentation_version,
     )
     selection = (
-        _selection(spec, contract, context, inherited_commitment)
+        _selection(spec, contract, context, inherited_commitment, service)
         if frozen_selection is None
         else GeminiSelectionV1.model_validate(dict(frozen_selection))
     )
-    _verify_selection(selection, spec, contract, context, inherited_commitment)
+    _verify_selection(selection, spec, contract, context, inherited_commitment, service)
     projection = (
         None
         if selection.mechanism == "text"
@@ -501,10 +572,11 @@ def _build_output_commitment_v6(
     )
     raw = serialize_output_schema(contract)
     return OutputCommitmentV6(
+        service_policy=service,
         scope=context.scope,
         contract=contract,
         selection=selection,
-        request_policy=_request_policy(spec),
+        request_policy=_request_policy(spec, service_policy_version),
         schema_text=raw.decode("utf-8"),
         schema_sha256=bytes_digest(raw),
         neutral_semantic_sha256=semantic_digest(
@@ -527,6 +599,7 @@ def build_output_commitment_v6(
     inherited_commitment: TransportCommitmentV4 | None = None,
     frozen_selection: GeminiSelectionV1 | None = None,
     presentation_version: PresentationVersion = 2,
+    service_policy_version: ServicePolicyVersion = 2,
 ) -> OutputCommitmentV6:
     """Sanitized boundary for new selection and pinned output reconstruction."""
     try:
@@ -537,6 +610,7 @@ def build_output_commitment_v6(
             inherited_commitment=inherited_commitment,
             frozen_selection=frozen_selection,
             presentation_version=presentation_version,
+            service_policy_version=service_policy_version,
         )
     except (ValueError, TypeError, AttributeError, KeyError, RecursionError):
         raise TransportIntegrityError() from None
@@ -600,10 +674,12 @@ def build_gemini_request_body(
                 decode_assessment_output(output.projection.format_fragment_text),
             )
         )
-    values = {
+    values: dict[str, object] = {
         "contents": [{"parts": [{"text": prompt}], "role": "user"}],
-        "generationConfig": config,
     }
+    if output.service_policy is not None:
+        values["serviceTier"] = output.service_policy.wire_tier
+    values["generationConfig"] = config
     return json.dumps(values, ensure_ascii=True, allow_nan=False).encode("utf-8")
 
 
@@ -620,8 +696,11 @@ class TransportCommitmentV4(_TransportModel):
         default=1, exclude_if=lambda value: value == 1
     )
     context_kind: GeminiProductionContextKind
+    service_policy: ServicePolicyV2 | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     scope: NativeProjectionScopeV1 = Field(repr=False)
-    request_policy: GeminiRequestPolicyV1
+    request_policy: GeminiRequestPolicyV1 | GeminiRequestPolicyV2
     identity: PhysicalRequestIdentityV1
     configuration_sha256: SHA256
     context_sha256: SHA256
@@ -749,6 +828,8 @@ def _receipt(
         payload_bytes=len(payload),
         local_validation_required=True,
     )
+    if output.service_policy is not None:
+        values["service_policy"] = output.service_policy.model_dump(mode="json")
     if output.contract.presentation_version == 1:
         values.pop("presentation_version")
     return TransportCommitmentV4.model_validate_json(
@@ -875,6 +956,7 @@ def prepare_production_request(
     parent: TransportCommitmentV4 | None = None,
     committed_output: OutputCommitmentV6 | None = None,
     presentation_version: PresentationVersion = 2,
+    service_policy_version: ServicePolicyVersion = 2,
 ) -> PreparedRequestV6:
     """Prepare before sealing, or verify immutable reconstruction without fallback."""
     from judgmentllm.gemini_prompts import render_gemini_request
@@ -912,6 +994,9 @@ def prepare_production_request(
             dependency.request,
             context,
             inherited_commitment=parent,
+            service_policy_version=(1 if frozen.service_policy is None else 2)
+            if frozen is not None
+            else service_policy_version,
             frozen_selection=None if frozen is None else frozen.selection,
             presentation_version=frozen.presentation_version
             if frozen

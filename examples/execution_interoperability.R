@@ -390,3 +390,34 @@ vp_pairs <- read.csv(file.path(vp_root,"pairs.csv"),colClasses="character",na.st
 stopifnot(nrow(vp_rubric) == 4L, nrow(vp_pairs) == 4L, all(vp_rubric$item_id == "001"), all(vp_rubric$trait_id == "01"), all(vp_pairs$ID1 == "002"), all(vp_pairs$ID2 == "001"), all(vp_pairs$better_id == "002"))
 
 cat("Vertex promotion compatibility passed: 8 revision-2 text observations across ADC and API-key modes\n")
+
+# Issue #39 PR1: actual SDK-generated policies/receipts, reopened by Python.
+# Request-level evidence joins once even when grouped assessment rows multiply.
+for (entry in c(openai_evidence, anthropic_evidence, gemini_evidence)) {
+  tier <- entry$service_tier
+  policy <- tier$policy
+  stopifnot(!is.null(tier), !is.null(policy))
+  provider <- entry$usage$provider
+  flex <- provider %in% c("openai", "gemini") && entry$capture == "minimal"
+  wire <- if (flex) "flex" else switch(provider,
+    openai="default", anthropic="standard_only", gemini="standard")
+  reported <- if (flex) "flex" else if (provider == "openai") "default" else "standard"
+  stopifnot(policy$service_policy_version == 2L, policy$provider == provider)
+  stopifnot(policy$account_scope == "synthetic-account", policy$wire_tier == wire)
+  if (flex) stopifnot(policy$requested_tier == "flex") else stopifnot(is.null(policy$requested_tier))
+  if (provider == "anthropic" && endsWith(entry$identity$run_id, "-minimal-pairwise")) {
+    stopifnot(is.null(tier$reported_tier), tier$outcome == "unknown")
+  } else stopifnot(tier$reported_tier == reported, tier$outcome == "matched")
+  stopifnot(is.numeric(tier$latency_seconds), tier$latency_seconds >= 0)
+  stopifnot(policy$read_timeout_seconds == if (flex) 930L else 60L)
+  stopifnot(policy$operation_deadline_seconds == if (flex) 960L else 90L)
+  if (flex && provider == "gemini") stopifnot(policy$server_timeout_hint_seconds == 900L)
+  else stopifnot(is.null(policy$server_timeout_hint_seconds))
+}
+for (row in c(openai_rows, gemini_rows)) {
+  matching <- Filter(function(entry) key(entry$identity) == key(row), c(openai_evidence, gemini_evidence))
+  stopifnot(length(matching) == 1L)
+  requested <- matching[[1L]]$service_tier$policy$requested_tier
+  if (is.null(requested)) stopifnot(is.null(row$tier))
+  else stopifnot(identical(row$tier, requested))
+}

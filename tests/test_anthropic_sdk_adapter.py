@@ -32,6 +32,7 @@ from judgmentllm.providers.protocol import (
     RetrievalUnavailable,
     SubmissionUncertain,
 )
+from judgmentllm.service_tiers import ServiceQualificationScope
 from judgmentllm.transport import TransportIntegrityError
 
 
@@ -93,6 +94,13 @@ def authorize_fixture(
                     )
                 ),
                 scope=context.scope,
+                service_scopes=(
+                    ServiceQualificationScope(
+                        account_scope="synthetic-account",
+                        tier="standard",
+                        features=tuple(features),
+                    ),
+                ),
                 supported_features=features,
                 documentation_sha256="a" * 64,
                 offline_fixture_sha256="b" * 64,
@@ -210,7 +218,14 @@ async def test_rejection_uncertainty_and_no_retry(
         calls.append(1)
         return httpx2.Response(
             status,
-            json={"error": {"message": "PRIVATE_ERROR_CANARY"}},
+            json={
+                "error": {
+                    "type": "rate_limit_error"
+                    if status == 429
+                    else "invalid_request_error",
+                    "message": "PRIVATE_ERROR_CANARY",
+                }
+            },
             headers={"location": "https://attacker.invalid"},
         )
 

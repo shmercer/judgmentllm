@@ -76,6 +76,9 @@ def assessment_case(
         else [],
         pairs=InputSpec(path=tmp_path / "pairs.jsonl") if pairwise else None,
         provider=provider,
+        account_scope="synthetic-account"
+        if provider in {"openai", "anthropic", "gemini"}
+        else None,
         endpoint=endpoint,
         model="offline-qualified-model",
         generation=generation,

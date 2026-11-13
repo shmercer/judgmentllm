@@ -294,6 +294,9 @@ async def test_http_failure_no_retry_or_redirect(
             json={
                 "error": {
                     "code": status,
+                    "status": "RESOURCE_EXHAUSTED"
+                    if status == 429
+                    else "INVALID_ARGUMENT",
                     "message": "ARBITRARY_PRIVATE_PROVIDER_DETAIL",
                 }
             },

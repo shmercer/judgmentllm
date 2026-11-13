@@ -37,6 +37,7 @@ from judgmentllm.evidence.usage import (
 )
 from judgmentllm.output_commitments import OutputCommitmentV2
 from judgmentllm.persistence.hashing import bytes_digest
+from judgmentllm.service_tiers import ServiceTierObservation
 
 if TYPE_CHECKING:
     from judgmentllm.anthropic_transport import (
@@ -92,6 +93,9 @@ class ProviderEvidence(EvidenceModel):
     """
 
     provenance: Literal["synthetic_fixture", "provider_documented"]
+    service_tier: ServiceTierObservation | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     usage: ReportedUsageInput | None = None
     observation_context: ProviderObservationContext | None = None
     assessment_component: (
@@ -131,6 +135,7 @@ class PreparedEvidence:
     retained_response: bytes | None = field(repr=False)
     original_sha256: str | None
     disposition: Literal["exact", "redacted", "withheld"]
+    service_tier: ServiceTierObservation | None = None
 
 
 def prepare_evidence(
@@ -193,6 +198,13 @@ def prepare_evidence(
         context = UsageContext.model_validate(
             {**context.model_dump(), **metadata.model_dump()}
         )
+    service_tier = evidence.service_tier if evidence is not None else None
+    if service_tier is not None and (
+        commitment is None
+        or service_tier.policy != getattr(commitment, "service_policy", None)
+        or service_tier.policy.provider != context.provider
+    ):
+        raise ValueError("service evidence conflicts with the sealed request")
     usage = extract_provider_usage(
         identity, context, evidence.usage if evidence is not None else None
     )
@@ -279,6 +291,7 @@ def prepare_evidence(
         disposition = "withheld"
     return PreparedEvidence(
         usage=usage,
+        service_tier=service_tier,
         order=order,
         reasoning=tuple(records),
         authorization=policy,

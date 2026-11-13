@@ -236,6 +236,14 @@ def _manifest(
             initial_transport_count=0,
             initial_transport_sha256="0" * 64,
         )
+    if isinstance(spec, RunSpecV3) and manifest_type in (
+        ExecutableRunManifestV4,
+        ExecutableRunManifestV5,
+        gemini_types.ExecutableRunManifestV6,
+    ):
+        from judgmentllm.service_tiers import service_policy
+
+        manifest_data["service_policy"] = service_policy(spec)
     return manifest_type.model_validate(manifest_data)
 
 

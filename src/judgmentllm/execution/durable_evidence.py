@@ -107,6 +107,16 @@ class DurableEvidence:
             or evidence.authorization_sha256 != self.authorization_sha256
         ):
             raise IntegrityError("evidence receipt identity or authorization conflicts")
+        if (
+            evidence.service_tier is not None
+            and evidence.service_tier.policy
+            != getattr(
+                getattr(work.prepared, "output_commitment", None),
+                "service_policy",
+                None,
+            )
+        ):
+            raise IntegrityError("service evidence differs from the sealed request")
         if evidence.response_receipt is not None:
             receipt = evidence.response_receipt
             session.verify_receipt(work, receipt)
@@ -381,6 +391,7 @@ class DurableEvidence:
                 authorization=self.authorization,
                 authorization_sha256=self.authorization_sha256,
                 usage=prepared.usage,
+                service_tier=prepared.service_tier,
                 assessment_diagnostic=diagnostic,
                 order=prepared.order,
                 reasoning=prepared.reasoning,

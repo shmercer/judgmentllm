@@ -380,7 +380,7 @@ async def test_public_run_closes_client_and_preserves_v3_requirement(
     assert result.run_status == "completed"
     assert len(bodies) == 1
     assert adapter._client is None
-    older = dict(spec)
+    older = spec.model_dump(exclude={"account_scope"})
     older["schema_version"] = 2
     older["prompt"] = {"structured_output": "text"}
     from judgmentllm.config import validate_run_spec

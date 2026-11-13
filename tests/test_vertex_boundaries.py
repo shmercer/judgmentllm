@@ -107,7 +107,8 @@ def test_context_is_descriptive_and_never_cloud_or_old_configuration(
     with pytest.raises(ValueError):
         production_context_digest(cast(Any, object()))
     older = RunSpecV2.model_validate(
-        dict(spec) | {"schema_version": 2, "prompt": {"structured_output": "text"}}
+        spec.model_dump(exclude={"account_scope"})
+        | {"schema_version": 2, "prompt": {"structured_output": "text"}}
     )
     with pytest.raises(ValueError):
         production_context(cast(Any, older))

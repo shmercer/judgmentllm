@@ -456,3 +456,13 @@ CJ wire aliases described in [assessment revision 2](renderer-revision-2.md).
 An independently sealed revision preserves every historical protocol and original
 normalized/R identity. Native qualification of earlier prompt contracts does not
 transfer to the new revision; no live qualification is part of this change.
+
+## Issue #39 PR1 service policy
+
+New OpenAI, Anthropic, and Gemini Developer preparations use independently
+versioned service policy 2 with explicit Standard defaults, committed requested
+and wire tiers, exact account/tier native boundaries, and bounded SDK/HTTP/overall
+deadlines. Historical omission remains policy 1 without changed bytes or
+semantics. Companion served-tier metadata never replaces requested intent or
+changes normalized assessment schemas. See [service tiers](service-tiers.md)
+for mappings, failure handling, and the deferred Flex-first study handoff.

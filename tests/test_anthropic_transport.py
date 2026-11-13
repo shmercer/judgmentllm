@@ -43,6 +43,7 @@ from judgmentllm.persistence.hashing import (
     canonical_bytes,
     semantic_digest,
 )
+from judgmentllm.service_tiers import ServiceQualificationScope
 from judgmentllm.transport import TransportIntegrityError, physical_identity
 
 
@@ -204,6 +205,17 @@ def test_controlled_registry_exact_features_and_scope(
             )
         ),
         scope=context.scope,
+        service_scopes=(
+            ServiceQualificationScope(
+                account_scope="synthetic-account",
+                tier="standard",
+                features=(
+                    "rubric_scores",
+                    "rubric_grouped",
+                    "assessment_presentation_v2",
+                ),
+            ),
+        ),
         supported_features=(
             "rubric_scores",
             "rubric_grouped",
@@ -328,6 +340,17 @@ def _reviewed_profile(
 ) -> _QualifiedProfile:
     fields: dict[str, Any] = {
         "scope": context.scope,
+        "service_scopes": (
+            ServiceQualificationScope(
+                account_scope="synthetic-account",
+                tier="standard",
+                features=(
+                    "rubric_scores",
+                    "rubric_grouped",
+                    "assessment_presentation_v2",
+                ),
+            ),
+        ),
         "qualification_date": date(2026, 11, 7),
         "source_commit": "a" * 40,
         "support_status": "supported",
