@@ -20,7 +20,7 @@ if TYPE_CHECKING:
 ServicePolicyVersion = Literal[1, 2]
 ServiceClass = Literal["standard", "flex", "priority", "auto"]
 
-_TIERS: dict[str, dict[str, ServiceClass]] = {
+_TIERS_V2: dict[str, dict[str, ServiceClass]] = {
     "openai": {
         "default": "standard",
         "auto": "auto",
@@ -31,7 +31,7 @@ _TIERS: dict[str, dict[str, ServiceClass]] = {
     "gemini": {"standard": "standard", "flex": "flex", "priority": "priority"},
     "anthropic": {"standard_only": "standard", "auto": "auto"},
 }
-_DEFAULTS = {"openai": "default", "gemini": "standard", "anthropic": "standard_only"}
+_DEFAULTS_V2 = {"openai": "default", "gemini": "standard", "anthropic": "standard_only"}
 
 
 class ServiceQualificationScope(NativeModel):
@@ -84,7 +84,7 @@ class ServicePolicyV2(NativeModel):
 
     @property
     def tier(self) -> ServiceClass:
-        return _TIERS[self.provider][self.wire_tier]
+        return _TIERS_V2[self.provider][self.wire_tier]
 
     @property
     def qualification_scope(self) -> ServiceQualificationScope | None:
@@ -109,11 +109,11 @@ class ServicePolicyV2(NativeModel):
     @model_validator(mode="after")
     def exact_policy(self) -> ServicePolicyV2:
         wire = (
-            _DEFAULTS[self.provider]
+            _DEFAULTS_V2[self.provider]
             if self.requested_tier is None
             else self.requested_tier
         )
-        if wire not in _TIERS[self.provider] or self.wire_tier != wire:
+        if wire not in _TIERS_V2[self.provider] or self.wire_tier != wire:
             raise ValueError("unsupported service tier")
         flex = self.tier == "flex"
         if (
@@ -133,13 +133,17 @@ def service_policy(
     if type(version) is not int or version not in (1, 2):
         raise ValueError("unsupported service policy")
     if version == 1:
+        if spec.provider in {"openai", "gemini"} and spec.execution.tier is not None:
+            raise ValueError("legacy provider requests do not support explicit tiers")
         if spec.account_scope is not None:
             raise ValueError("legacy requests cannot acquire an account scope")
         return None
-    if spec.provider not in _TIERS:
+    if spec.provider not in _TIERS_V2:
         raise ValueError("unsupported service provider")
     wire = (
-        _DEFAULTS[spec.provider] if spec.execution.tier is None else spec.execution.tier
+        _DEFAULTS_V2[spec.provider]
+        if spec.execution.tier is None
+        else spec.execution.tier
     )
     flex = wire == "flex"
     return ServicePolicyV2.model_validate(
@@ -211,14 +215,15 @@ class ServiceTierObservation(NativeModel):
             "openai": "openai.service_tier",
             "gemini": "gemini.x-gemini-service-tier",
             "anthropic": "anthropic.usage.service_tier",
-        }[self.policy.provider] or self.outcome != _tier_outcome(
+        }[self.policy.provider] or self.outcome != _tier_outcome_v2(
             self.policy, self.reported_tier
         ):
             raise ValueError("service observation differs")
         return self
 
 
-def _tier_outcome(policy: ServicePolicyV2, reported: str | None) -> str:
+def _tier_outcome_v2(policy: ServicePolicyV2, reported: str | None) -> str:
+    """Frozen V2 interpretation; new semantics require a separate policy version."""
     if reported is None:
         return "unknown"
     allowed = {
@@ -271,7 +276,7 @@ def observe_service_tier(
                 "gemini": "gemini.x-gemini-service-tier",
                 "anthropic": "anthropic.usage.service_tier",
             }[policy.provider],
-            "outcome": _tier_outcome(policy, value),
+            "outcome": _tier_outcome_v2(policy, value),
             "latency_seconds": latency_seconds,
         }
     )

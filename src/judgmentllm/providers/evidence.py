@@ -93,7 +93,9 @@ class ProviderEvidence(EvidenceModel):
     """
 
     provenance: Literal["synthetic_fixture", "provider_documented"]
-    service_tier: ServiceTierObservation | None = None
+    service_tier: ServiceTierObservation | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     usage: ReportedUsageInput | None = None
     observation_context: ProviderObservationContext | None = None
     assessment_component: (

@@ -18,6 +18,7 @@ from judgmentllm.persistence.hashing import canonical_bytes
 from judgmentllm.planning import plan_record
 from judgmentllm.preparation.session import RequestDependency
 from judgmentllm.providers.protocol import (
+    ProviderIntegrityError,
     ProviderInvocationCancelled,
     SubmissionUncertain,
 )
@@ -155,6 +156,49 @@ def test_default_and_legacy_frozen_reconstruction(
     )
     model_type = cast(Any, type(new))
     assert model_type.model_validate_json(new.model_dump_json()) == new
+
+
+@pytest.mark.parametrize(
+    "provider,endpoint,tier",
+    [
+        (provider, endpoint, tier)
+        for provider, endpoint in ROUTES
+        if provider != "anthropic"
+        for tier in (
+            ("default", "auto", "flex", "fast", "priority")
+            if provider == "openai"
+            else ("standard", "flex", "priority")
+        )
+    ],
+)
+def test_legacy_policy_rejects_previously_unsupported_explicit_tiers(
+    tmp_path: Path, provider: str, endpoint: str, tier: str
+) -> None:
+    _, spec, _, _ = request(tmp_path, provider, endpoint, tier)
+    spec.account_scope = None
+    with pytest.raises(ValueError, match="legacy"):
+        service_policy(spec, version=1)
+    with pytest.raises(ValueError):
+        request(tmp_path, provider, endpoint, tier, revision=1)
+
+
+@pytest.mark.parametrize("tier", ["auto", "standard_only"])
+def test_legacy_anthropic_explicit_tiers_retain_exact_frozen_bytes(
+    tmp_path: Path, tier: str
+) -> None:
+    old, spec, dependency, module = request(
+        tmp_path, "anthropic", "messages", tier, revision=1
+    )
+    assert service_policy(spec, version=1) is None
+    assert json.loads(old.payload)["service_tier"] == tier
+    rebuilt = module.prepare_production_request(
+        spec,
+        dependency,
+        old.transport_plan.identity,
+        module.production_context(spec),
+        frozen=old.transport_commitment,
+    )
+    assert canonical_bytes(rebuilt) == canonical_bytes(old)
 
 
 @pytest.mark.parametrize("provider,endpoint", ROUTES)
@@ -373,6 +417,64 @@ def test_provider_specific_equivalence(
 
 
 @pytest.mark.parametrize(
+    "provider,requested,outcomes",
+    [
+        ("openai", None, {"default": "matched"}),
+        ("openai", "default", {"default": "matched"}),
+        ("openai", "flex", {"flex": "matched"}),
+        (
+            "openai",
+            "fast",
+            {"default": "downgraded", "priority": "matched", "fast": "matched"},
+        ),
+        (
+            "openai",
+            "priority",
+            {"default": "downgraded", "priority": "matched", "fast": "matched"},
+        ),
+        (
+            "openai",
+            "auto",
+            dict.fromkeys(
+                ("default", "flex", "priority", "fast", "scale", "ultrafast"),
+                "allocated",
+            ),
+        ),
+        ("gemini", None, {"standard": "matched"}),
+        ("gemini", "standard", {"standard": "matched"}),
+        ("gemini", "flex", {"flex": "matched"}),
+        ("gemini", "priority", {"standard": "downgraded", "priority": "matched"}),
+        ("anthropic", None, {"standard": "matched"}),
+        ("anthropic", "standard_only", {"standard": "matched"}),
+        ("anthropic", "auto", {"standard": "allocated", "priority": "allocated"}),
+    ],
+)
+def test_v2_outcome_contract_is_frozen_for_all_retained_tiers(
+    tmp_path: Path, provider: str, requested: str | None, outcomes: dict[str, str]
+) -> None:
+    endpoint = next(route for name, route in ROUTES if name == provider)
+    _, spec, _, _ = request(tmp_path, provider, endpoint, requested)
+    policy = service_policy(spec)
+    assert policy is not None and policy.service_policy_version == 2
+    for reported in (
+        "default",
+        "standard",
+        "flex",
+        "priority",
+        "fast",
+        "scale",
+        "ultrafast",
+    ):
+        original = observe_service_tier(policy, reported)
+        assert original.outcome == outcomes.get(reported, "unexpected")
+        assert (
+            ServiceTierObservation.model_validate_json(original.model_dump_json())
+            == original
+        )
+    assert observe_service_tier(policy, None).outcome == "unknown"
+
+
+@pytest.mark.parametrize(
     "provider,endpoint,tier",
     [
         ("openai", "responses", "flex"),
@@ -508,6 +610,71 @@ async def test_pinned_sdk_exact_tier_and_timeout_boundaries(
         assert response.evidence.service_tier.outcome in {"matched", "allocated"}
         assert timeouts == [policy.operation_deadline_seconds]
         assert calls == [wire.payload] and adapter.actual_call_count == 1
+    finally:
+        await adapter.aclose()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "revision,tier", [(1, None), (2, None), (2, "flex"), (2, "priority")]
+)
+@pytest.mark.parametrize("mutation", ["missing", "changed", "duplicate"])
+async def test_gemini_http_guard_verifies_v2_server_hint_before_handoff(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    revision: int,
+    tier: str | None,
+    mutation: str,
+) -> None:
+    from gemini_offline import envelope
+
+    from judgmentllm.providers.gemini import GeminiAdapter
+
+    wire, spec, _, _ = request(
+        tmp_path, "gemini", "models.generate_content", tier, revision=revision
+    )
+    original_send = httpx2.AsyncClient.send
+
+    async def send(
+        client: httpx2.AsyncClient, http_request: httpx2.Request, **kwargs: Any
+    ) -> httpx2.Response:
+        del http_request.headers["x-server-timeout"]
+        if mutation == "changed":
+            http_request.headers["x-server-timeout"] = "901"
+        elif mutation == "duplicate":
+            http_request.headers = httpx2.Headers(
+                [
+                    *http_request.headers.multi_items(),
+                    ("x-server-timeout", "900"),
+                    ("x-server-timeout", "900"),
+                ]
+            )
+        return await original_send(client, http_request, **kwargs)
+
+    monkeypatch.setattr(httpx2.AsyncClient, "send", send)
+    calls: list[bytes] = []
+
+    def handler(http_request: httpx2.Request) -> httpx2.Response:
+        calls.append(http_request.content)
+        return httpx2.Response(
+            200, json=envelope('{"scores":[]}', modelVersion=spec.model)
+        )
+
+    adapter = GeminiAdapter(
+        spec.endpoint, spec.model, http_transport=httpx2.MockTransport(handler)
+    )
+    invocation = {
+        "submission_id": wire.transport_plan.identity.submission_id,
+        "correlation_id": wire.transport_plan.identity.correlation_id,
+    }
+    try:
+        if revision == 2:
+            with pytest.raises(ProviderIntegrityError, match="server_timeout_hint"):
+                await adapter.submit(wire, **invocation)
+            assert not calls and adapter.actual_call_count == 0
+        else:
+            await adapter.submit(wire, **invocation)
+            assert calls == [wire.payload] and adapter.actual_call_count == 1
     finally:
         await adapter.aclose()
 

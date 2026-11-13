@@ -582,6 +582,11 @@ class GeminiAdapter:
                 prepared = _INVOKING.get()
                 started = _SERIALIZATION_STARTED.get()
                 state = _INVOCATION_STATE.get()
+                service = (
+                    prepared.output_commitment.service_policy
+                    if isinstance(prepared, gemini_types.PreparedRequestV6)
+                    else None
+                )
                 checks = {
                     "credential": request.headers.get("x-goog-api-key") == key,
                     "prepared_request": prepared is not None,
@@ -608,6 +613,12 @@ class GeminiAdapter:
                         }
                     ),
                     "single_attempt": state is not None and not state.get("invoked"),
+                    "server_timeout_hint": service is None
+                    or request.headers.get("x-server-timeout")
+                    == str(
+                        service.server_timeout_hint_seconds
+                        or service.read_timeout_seconds
+                    ),
                     "body": prepared is not None
                     and request.content == prepared.payload,
                 }

@@ -44,6 +44,8 @@ legacy version 1. Historical serialization omits the new record; historical
 payloads, hashes, defaults, timeouts, and request identities remain unchanged.
 Reconstruction and subset retries inherit their original policy. Changing tier
 or account scope cannot reuse a sealed physical identity. Runs are never migrated.
+Legacy OpenAI and Gemini requests still reject explicit tiers; Anthropic retains
+its historically supported `auto` and `standard_only` values.
 
 RunSpec V3 adds optional `account_scope`, an opaque nonsecret identifier for the
 intended provider account/project binding. Omission preserves configuration
@@ -90,6 +92,11 @@ latency, and outcome. Normalized assessment JSONL/CSV/R columns are unchanged.
   Save evidence and the assessment diagnostic, then stop with an integrity
   failure. Recovery cannot convert the same observation into success.
 
+These mappings and allowed outcomes are the frozen V2 interpretation, including
+when revalidating historical V2 observations. Different equivalence or downgrade
+rules require a new policy version and separate interpretation; they must not
+change the V2 mappings or reclassify sealed evidence.
+
 | Boundary | Standard/premium | Flex |
 |---|---:|---:|
 | SDK and final HTTP read timeout | 60 s | 930 s |
@@ -104,6 +111,9 @@ conversion affects JSON field ordering; exact committed bytes must match actual
 SDK serialization. Per-request SDK options and the final transport enforce the
 sealed local limits. The server hint is best effort: neither its presence nor
 server compliance establishes a local deadline. SDK retries remain disabled.
+For policy 2, the final HTTP guard requires the exact pinned SDK hint (`900` for
+Flex, `60` for Standard/Priority); missing, changed, or duplicate values fail
+before handoff. Legacy header validation remains unchanged.
 
 For policy 2, an HTTP 429 alone is insufficient to establish nonacceptance:
 require the documented provider rate/resource-rejection fields. Ambiguous 429,
