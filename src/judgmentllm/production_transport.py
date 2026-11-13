@@ -898,16 +898,15 @@ def _validate_scope(spec: RunSpecV3, context: ProductionContext) -> None:
         checked.model,
     ) != (context.scope.provider, context.scope.endpoint, context.scope.model):
         raise TransportIntegrityError()
-    from judgmentllm.study.admission import study_generation
+    if context.kind == "openai-study-candidate-v1":
+        from judgmentllm.study.admission import study_generation
 
-    report = validate_generation(
-        checked,
-        capabilities=study_generation(checked, context.scope)
-        if context.kind == "openai-study-candidate-v1"
-        else generation_capabilities(
+        generation_profile = study_generation(checked, context.scope)
+    else:
+        generation_profile = generation_capabilities(
             checked, context.scope, production_generation_capabilities(context.scope)
-        ),
-    )
+        )
+    report = validate_generation(checked, capabilities=generation_profile)
     if not report.valid:
         raise ValueError("Generation settings fail exact-scope capability validation.")
 

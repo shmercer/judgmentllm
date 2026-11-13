@@ -6,6 +6,12 @@ The two proposals remain blocked until independently reviewed account binding,
 native feature/tier eligibility, token bounds and dated account prices exist.
 Passing offline tests never qualifies a production model.
 
+This workflow requires an actual Git checkout and its editable development
+environment. The study module, sources, archives, configurations and experiments
+are repository tooling, excluded from public wheels and source distributions.
+Installing a package artifact provides the ordinary JudgmentLLM library and CLI;
+it does not install `python -m judgmentllm.study` or these study assets.
+
 Start from a clean committed checkout with its locked development environment:
 
 ```bash

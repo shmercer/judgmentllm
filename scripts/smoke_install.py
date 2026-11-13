@@ -52,6 +52,8 @@ from pathlib import Path
 import sys
 
 import judgmentllm
+import importlib.util
+assert importlib.util.find_spec("judgmentllm.study") is None
 from judgmentllm.auth import credential_status
 assert [status.provider for status in credential_status()] == [
     "openai", "anthropic", "gemini", "vertex", "together", "ollama", "typesafe"]

@@ -79,25 +79,15 @@ path = "src/judgmentllm/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/judgmentllm"]
+exclude = ["/src/judgmentllm/study/**"]
 
 [tool.hatch.build.targets.sdist]
-exclude = [
-    "/tests/test_observation_lookup_benchmark.py",
-    "/tests/test_scale_benchmarks.py",
-    "/tests/test_scale_diagnostics.py",
-    "/tests/test_scale_storage.py",
-]
+exclude = ["/src/judgmentllm/study/**"]
 include = [
     "/src",
-    "/tests",
-    "/scripts",
-    "/docs",
-    "/examples",
-    "/AGENTS.md",
     "/README.md",
     "/LICENSE",
     "/pyproject.toml",
-    "/uv.lock",
 ]
 
 [tool.ruff]

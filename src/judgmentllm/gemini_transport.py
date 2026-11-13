@@ -979,16 +979,15 @@ def _validate_scope(spec: RunSpecV3, context: GeminiProductionContext) -> None:
         raise TransportIntegrityError()
     model_path(checked.model)
     _request_policy(checked)
-    from judgmentllm.study.admission import study_generation
+    if context.kind == "gemini-study-candidate-v1":
+        from judgmentllm.study.admission import study_generation
 
-    report = validate_generation(
-        checked,
-        capabilities=study_generation(checked, context.scope)
-        if context.kind == "gemini-study-candidate-v1"
-        else generation_capabilities(
+        generation_profile = study_generation(checked, context.scope)
+    else:
+        generation_profile = generation_capabilities(
             checked, context.scope, production_generation_capabilities(context.scope)
-        ),
-    )
+        )
+    report = validate_generation(checked, capabilities=generation_profile)
     if not report.valid:
         raise ValueError("Generation settings fail exact-scope capability validation.")
 
