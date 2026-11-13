@@ -254,7 +254,7 @@ def test_scope_and_current_generation_restrictions_fail_before_submission(
         {"schema_version": 2},
         {"generation": GenerationSpec(temperature=3)},
         {"execution": spec.execution.model_copy(update={"cache_policy": "explicit"})},
-        {"execution": spec.execution.model_copy(update={"tier": "priority"})},
+        {"execution": spec.execution.model_copy(update={"tier": "ultrafast"})},
     ):
         with pytest.raises(ProviderError):
             adapter.validate(spec.model_copy(update=changed))

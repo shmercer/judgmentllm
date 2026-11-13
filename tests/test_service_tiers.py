@@ -766,6 +766,38 @@ def test_strict_policy_versions_and_qualification_omission(tmp_path: Path) -> No
         service_policy(spec, 1)
 
 
+def test_qualification_and_observation_ingress_fail_closed(tmp_path: Path) -> None:
+    _, spec, _, _ = request(tmp_path, "openai", "responses", None)
+    with pytest.raises(ValueError, match="account scope"):
+        service_policy(spec, 1)
+    with pytest.raises(ValueError, match="provider"):
+        service_policy(spec.model_copy(update={"provider": "unsupported"}))
+    for version in (True, 2.0, "2", 3):
+        with pytest.raises(ValueError):
+            ServiceQualificationScope.model_validate(
+                {
+                    "account_scope": "synthetic-account",
+                    "tier": "standard",
+                    "service_policy_version": version,
+                }
+            )
+    with pytest.raises(ValueError, match="duplicate"):
+        ServiceQualificationScope(
+            account_scope="synthetic-account",
+            tier="standard",
+            features=("rubric_scores", "rubric_scores"),
+        )
+    policy = service_policy(spec.model_copy(update={"account_scope": None}))
+    assert policy is not None and policy.qualification_scope is None
+    original = observe_service_tier(policy, "default")
+    for changed in (
+        {"outcome": "downgraded"},
+        {"source": "gemini.x-gemini-service-tier"},
+    ):
+        with pytest.raises(ValueError, match="observation differs"):
+            ServiceTierObservation.model_validate(dict(original) | changed)
+
+
 @pytest.mark.parametrize(
     "provider,error",
     [
