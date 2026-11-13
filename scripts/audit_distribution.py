@@ -171,6 +171,7 @@ def audit(source: Path, output: Path) -> dict[str, Any]:
         "LICENSE",
         "pyproject.toml",
         "PKG-INFO",
+        ".gitignore",
     }
     assert first == second, "Wheel rebuilt from sdist differs from direct wheel"
     assert "judgmentllm/py.typed" in first
@@ -189,7 +190,7 @@ def audit(source: Path, output: Path) -> dict[str, Any]:
     assert b"judgmentllm = judgmentllm.cli:app" in first[entry]
     (license_name,) = (n for n in first if n.endswith(".dist-info/licenses/LICENSE"))
     assert first[license_name] == (clean / "LICENSE").read_bytes()
-    for name, raw in first.items():
+    for name, raw in (first | source_files).items():
         assert not name.endswith((".pyc", ".pth", ".pem", ".key"))
         assert "__pycache__" not in name and "/study/" not in name
         assert str(source).encode() not in raw and str(output).encode() not in raw

@@ -84,6 +84,7 @@ exclude = ["/src/judgmentllm/study/**"]
 [tool.hatch.build.targets.sdist]
 exclude = ["/src/judgmentllm/study/**"]
 include = [
+    "/.gitignore",
     "/src",
     "/README.md",
     "/LICENSE",

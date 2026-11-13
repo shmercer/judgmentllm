@@ -5,6 +5,8 @@ typing markers and stubs, MIT license and README metadata. The sdist allowlist i
 `src`, `README.md`, `LICENSE` and `pyproject.toml`, with the repository-only
 `src/judgmentllm/study` subtree excluded from both artifacts. No global text,
 JSON or YAML exclusion is used. Public dependencies and entry points are unchanged.
+Hatchling also requires the VCS exclusion file in its sdist build metadata;
+`.gitignore` is therefore explicitly retained and checked for reproducible rebuilds.
 
 Study packages, verification/qualification tooling, tests, examples, developer
 documentation, `AGENTS.md`, `uv.lock`, CI and benchmarks remain committed in Git.
