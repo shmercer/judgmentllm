@@ -479,12 +479,9 @@ def _profile(
             GeminiConfigurationError,
         )
 
-        profile = GeminiAdapter.capabilities_for(
-            spec.provider,
-            spec.endpoint,
-            spec.model,
-            mechanism=spec.prompt.native_mechanism,
-        )
+        profile = GeminiAdapter(
+            spec.endpoint, spec.model, concurrency=spec.execution.concurrency
+        ).capabilities(spec)
         if allow_invalid and not validate_run(spec, capabilities=profile).valid:
             return profile
         try:
@@ -500,9 +497,9 @@ def _profile(
             AnthropicConfigurationError,
         )
 
-        profile = AnthropicAdapter.capabilities_for(
-            spec.provider, spec.endpoint, spec.model
-        )
+        profile = AnthropicAdapter(
+            spec.endpoint, spec.model, concurrency=spec.execution.concurrency
+        ).capabilities(spec)
         if allow_invalid and not validate_run(spec, capabilities=profile).valid:
             return profile
         try:
@@ -515,9 +512,9 @@ def _profile(
         _production_context(spec)
         from judgmentllm.providers.openai import OpenAIAdapter
 
-        profile = OpenAIAdapter.capabilities_for(
-            spec.provider, spec.endpoint, spec.model
-        )
+        profile = OpenAIAdapter(
+            spec.endpoint, spec.model, concurrency=spec.execution.concurrency
+        ).capabilities(spec)
         if allow_invalid and not validate_run(spec, capabilities=profile).valid:
             return profile
         from judgmentllm.providers.openai import OpenAIConfigurationError

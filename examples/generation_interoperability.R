@@ -39,3 +39,20 @@ stopifnot(length(unique(vapply(omitted, function(x) x$generation$requested_sha25
 stopifnot(length(unique(vapply(omitted, function(x) x$configuration_source_sha256, character(1)))) == 4L)
 stopifnot(!identical(partial$requested_sha256, omitted[[1L]]$generation$requested_sha256))
 cat("Generation interoperability passed: 6 persisted generation manifest fixtures\n")
+
+reasoning <- lapply(readLines(file.path(args[[1L]], "reasoning_generation_manifests.jsonl"), encoding = "UTF-8"),
+  jsonlite::fromJSON, simplifyVector = FALSE)
+stopifnot(length(reasoning) == 3L)
+stopifnot(is.null(reasoning[[1L]]$generation$settings$reasoning))
+for (row in reasoning[2:3]) {
+  stopifnot(identical(row$generation$settings$reasoning$effort, "none"))
+  stopifnot(is.null(row$generation$settings$reasoning$mode))
+  stopifnot(identical(row$generation$capabilities$reasoning$control_version, 1L))
+  stopifnot(identical(row$generation$capabilities$reasoning$live_qualified, FALSE))
+}
+stopifnot(is.null(reasoning[[2L]]$generation$settings$temperature))
+stopifnot(reasoning[[3L]]$generation$settings$temperature == 0.2)
+stopifnot(all(vapply(reasoning, function(x) x$generation$settings$max_output_tokens == 256L, logical(1))))
+stopifnot(length(unique(vapply(reasoning, function(x) x$generation$requested_sha256, character(1)))) == 3L)
+stopifnot(length(unique(vapply(reasoning, function(x) x$request_uid, character(1)))) == 3L)
+cat("Reasoning interoperability passed: omitted effort, explicit none, and custom temperature\n")

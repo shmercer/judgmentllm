@@ -12,7 +12,7 @@ import json
 from pathlib import Path
 from typing import Literal
 
-from judgmentllm.config import RunSpec
+from judgmentllm.config import RunSpec, RunSpecV3
 from judgmentllm.generation import GenerationCapabilities, GenerationParameterCapability
 from judgmentllm.io import write_jsonl
 from judgmentllm.models import ID, ResponseItem
@@ -34,7 +34,9 @@ from judgmentllm.persistence.models import (
     RunRecord,
 )
 from judgmentllm.persistence.repository import Repository
-from judgmentllm.planning import iter_requests
+from judgmentllm.planning import CapabilityProfile, iter_requests
+from judgmentllm.production_transport import production_context
+from judgmentllm.providers.reasoning import generation_capabilities
 
 
 class GenerationManifestFixture(ExecutionModel):
@@ -131,6 +133,64 @@ def persist(output: Path) -> None:
                 canonical_bytes(fixture), "application/json"
             )
             repository.seal_run(run_id, ManifestReference(artifact=retained))
+        persist_reasoning(output, repository)
+
+
+def reasoning_configuration(
+    index: int,
+) -> tuple[bytes, RunSpecV3, GenerationCapabilities | None]:
+    """Actual V3 configuration; the baseline has no requested reasoning field."""
+    requested: dict[str, object] = {"max_output_tokens": 256}
+    if index > 1:
+        requested["reasoning"] = {"effort": "none"}
+    if index == 3:
+        requested["temperature"] = 0.2
+    data = json.loads(configuration(requested))
+    data.update(
+        schema_version=3,
+        provider="openai",
+        endpoint="responses",
+        model="gpt-6-luna",
+        prompt={"structured_output": "text"},
+    )
+    source = json.dumps(data, ensure_ascii=False).encode("utf-8")
+    spec = RunSpecV3.model_validate_json(source)
+    caps = generation_capabilities(spec, production_context(spec).scope, None)
+    return source, spec, caps
+
+
+def persist_reasoning(output: Path, repository: Repository) -> None:
+    for index in range(1, 4):
+        run_id = f"reasoning-{index:03d}"
+        source, spec, caps = reasoning_configuration(index)
+        (output / f"config_{run_id}.json").write_bytes(source)
+        request = next(
+            iter_requests(
+                spec,
+                [ResponseItem(item_id="001", text="Synthetic response")],
+                capabilities=CapabilityProfile(modes=("live",), generation=caps),
+            )
+        )
+        fixture = GenerationManifestFixture(
+            run_id=run_id,
+            configuration_source_sha256=bytes_digest(source),
+            normalized_configuration_sha256=semantic_digest("fixture-run-config", spec),
+            request_uid=request.request_uid,
+            generation=build_generation_commitment(spec, capabilities=caps),
+        )
+        repository.create_run(
+            RunRecord(
+                run_id=run_id,
+                task_kind="rubric",
+                provider=spec.provider,
+                endpoint=spec.endpoint,
+                model=spec.model,
+            )
+        )
+        retained = ArtifactStore(repository.run_directory(run_id)).put(
+            canonical_bytes(fixture), "application/json"
+        )
+        repository.seal_run(run_id, ManifestReference(artifact=retained))
 
 
 def export(output: Path) -> None:
@@ -151,6 +211,22 @@ def export(output: Path) -> None:
             assert validate_generation_compatibility(fixture.generation, spec).valid
             rows.append(fixture)
     write_jsonl(output / "generation_manifests.jsonl", rows)
+    reasoning_rows: list[GenerationManifestFixture] = []
+    with Repository(output / "store") as repository:
+        for index in range(1, 4):
+            run_id = f"reasoning-{index:03d}"
+            retained = repository.get_manifest(run_id).artifact
+            path = ArtifactStore(repository.run_directory(run_id)).verify(retained)
+            assert path is not None
+            fixture = GenerationManifestFixture.model_validate_json(path.read_bytes())
+            source, spec, caps = reasoning_configuration(index)
+            assert (output / f"config_{run_id}.json").read_bytes() == source
+            assert fixture.configuration_source_sha256 == bytes_digest(source)
+            assert validate_generation_compatibility(
+                fixture.generation, spec, capabilities=caps
+            ).valid
+            reasoning_rows.append(fixture)
+    write_jsonl(output / "reasoning_generation_manifests.jsonl", reasoning_rows)
 
 
 def main() -> None:

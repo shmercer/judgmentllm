@@ -95,12 +95,11 @@ class ExecutionSession:
             owner = self.ownership.acquire()
             self.token = owner.token
             run = self.bootstrap.get_run(run_id)
-            profile = adapter.capabilities_for(run.provider, run.endpoint, run.model)
             self.prepared = open_prepared_run(
                 run_id,
                 store=store,
                 spec=spec,
-                capabilities=profile,
+                capability_resolver=adapter.capabilities,
                 use_frozen_snapshot=use_frozen_snapshot,
                 owner_token=self.token,
                 transport_context=getattr(adapter, "transport_context", None),

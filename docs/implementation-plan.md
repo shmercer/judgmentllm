@@ -811,3 +811,15 @@ not scoring equivalence. Follow the [handoff contract](service-tiers.md).
 Each PR must pass high-risk source-bound offline/local/hosted acceptance, receive
 independent review, and remain unmerged. No credential access or live submission
 is authorized without a subsequent explicit exact-source/plan/account/budget grant.
+
+### Issue #39 revised PR2 sequence
+
+PR2-A implements the [typed reasoning prerequisite](reasoning-controls.md),
+including exact SDK/native/tier coexistence, conditional sampling validation,
+immutable controls, historical reconstruction, no private reasoning retention
+and strict Python-to-R provenance. PR2-B supplies the original 50 configurations,
+30 main selections, guarded shared harness and original 42/24-call proposals.
+PR2-C supplies separate 24-call reasoning and 8-call temperature proposals.
+The main library continues omitting reasoning, temperature and top-p overrides.
+All three changes require high-risk acceptance at their own exact source and
+independent review; no implementation or passing fixture authorizes live calls.

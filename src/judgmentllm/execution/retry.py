@@ -540,13 +540,11 @@ def authorize_subset_retry(
     with Repository(store) as bootstrap, ExecutorOwnership(bootstrap, run_id) as owner:
         assert owner.owner is not None
         owner_token = owner.owner.token
-        run = bootstrap.get_run(run_id)
-        capabilities = adapter.capabilities_for(run.provider, run.endpoint, run.model)
         with open_prepared_run(
             run_id,
             store=store,
             spec=spec,
-            capabilities=capabilities,
+            capability_resolver=adapter.capabilities,
             use_frozen_snapshot=use_frozen_snapshot,
             owner_token=owner_token,
             transport_context=getattr(adapter, "transport_context", None),

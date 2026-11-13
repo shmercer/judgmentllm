@@ -679,3 +679,13 @@ requested/wire/reported tier, unknowns and policy version. R consumes actual
 Python/SDK-generated evidence after independent reopening. No tier inference
 from model families, account labels, or Standard native qualification is allowed.
 See [service-policy compatibility](service-tiers.md).
+
+## Issue #39 PR2-A reasoning provenance
+
+The existing generation gate additionally reopens three separately persisted
+V3 Python-generated records: omitted effort, explicit effort `none`, and `none`
+with `temperature: 0.2`. R/jsonlite checks sparse controls, unchanged output
+limits, distinct requested-setting/request identities and fixture-versus-live
+evidence. The six historical generation records and normalized CSV columns are
+unchanged. All seven strict local R gates remain required; no provider call or
+private reasoning text enters these fixtures.

@@ -33,6 +33,7 @@ from judgmentllm.models import (
     validate_exemplars,
 )
 from judgmentllm.prompts import RenderLimits
+from judgmentllm.reasoning import ReasoningSpec
 from judgmentllm.results import NormalizationOptions
 
 
@@ -59,6 +60,17 @@ class GenerationSpec(StrictModel):
     max_output_tokens: int | None = Field(
         default=None, gt=0, exclude_if=lambda value: value is None
     )
+    reasoning: ReasoningSpec | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
+    @field_validator("reasoning")
+    @classmethod
+    def normalize_reasoning(cls, value: ReasoningSpec | None) -> ReasoningSpec | None:
+        if value is None:
+            return None
+        checked = ReasoningSpec.model_validate(dict(value))
+        return checked if checked.model_dump() else None
 
 
 class InputSpec(StrictModel):
@@ -235,6 +247,12 @@ class _RunSpecFields(StrictModel, Generic[_Version, _Prompt]):
 
     @model_validator(mode="after")
     def validate_assessment(self) -> _RunSpecFields[_Version, _Prompt]:
+        if (
+            self.schema_version != 3
+            and self.generation is not None
+            and self.generation.reasoning is not None
+        ):
+            raise ValueError("generation.reasoning requires schema_version: 3")
         if self.task_kind == "rubric":
             if self.rubric is None:
                 raise ValueError("task_kind: rubric requires rubric")

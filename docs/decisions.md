@@ -522,3 +522,19 @@ scope. This user-requested split supersedes earlier hosted R/coverage requiremen
   review; live operations require later explicit bounded authorization.
 
 The complete [service-tier contract and handoff](service-tiers.md) is normative.
+
+## Issue #39 PR2-A: typed reasoning prerequisite
+
+- Add frozen optional `generation.reasoning` for V3, with effort and mode kept
+  separate. Omission is never expanded into a guessed provider default.
+- Preserve existing numeric settings, historical serialization, original IDs
+  and normalized exports. Bind new intent through generation, output and exact
+  physical-payload commitments; changed controls cannot resume old attempts.
+- Version reasoning interpretation independently from PR1 service policy.
+  Exact documented/SDK facts do not promote native/account/tier/control support.
+- Preserve pinned google-genai 2.34.0's actual nested `thinking_level` spelling
+  and record its canonical `thinkingLevel` counterpart. Do not rewrite SDK HTTP
+  bodies, bypass the final guard or accept arbitrary provider JSON.
+- Keep the four future live suites independent, immutable and unexecuted.
+  PR2-B/C retain the approved original content and 30/50 main library. See
+  [reasoning controls](reasoning-controls.md).

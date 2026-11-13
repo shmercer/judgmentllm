@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import ExitStack
 from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO, cast
@@ -646,6 +646,7 @@ def open_prepared_run(
     store: str | Path,
     spec: RunSpecification | None = None,
     capabilities: CapabilityProfile | None = None,
+    capability_resolver: Callable[[RunSpecification], CapabilityProfile] | None = None,
     use_frozen_snapshot: bool = False,
     owner_token: str | None = None,
     transport_context: TransportContext
@@ -665,6 +666,10 @@ def open_prepared_run(
     prepared: PreparedRun | None = None
     try:
         run = repository.get_run(run_id)
+        if capabilities is not None and capability_resolver is not None:
+            raise PreparationError(
+                "pass capabilities or a current capability resolver, not both"
+            )
         unsealed = run.manifest_sha256 is None
         with ExitStack() as stack:
             if owner_token is not None:
@@ -687,6 +692,8 @@ def open_prepared_run(
                     "original sources changed or disappeared; continuation is blocked"
                 )
             current, template = _restore_context(repository, manifest, spec)
+            if capability_resolver is not None:
+                capabilities = capability_resolver(current)
             profile = _revalidate_record(capabilities) if capabilities else None
             prepared = PreparedRun(
                 repository,

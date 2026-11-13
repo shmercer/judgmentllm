@@ -13,6 +13,7 @@ from judgmentllm.config import RunSpecification, RunSpecV2, RunSpecV3, validate_
 from judgmentllm.generation import GenerationCapabilities
 from judgmentllm.io import _revalidate_record, read_pairs, read_responses  # pyright: ignore[reportPrivateUsage]
 from judgmentllm.models import PairTask, ResponseItem, StrictModel, VersionedModel
+from judgmentllm.reasoning import control_errors
 
 
 def stable_id(kind: str, *parts: object) -> str:
@@ -95,6 +96,45 @@ def validate_generation(
                 )
             )
     issues: list[ValidationIssue] = []
+    reasoning = spec.generation.reasoning
+    facts = capabilities.reasoning if capabilities else None
+    if reasoning is not None and facts is None:
+        issues.append(
+            ValidationIssue(
+                code="unknown_capability",
+                field="generation.reasoning",
+                message="generation.reasoning requires exact provider/endpoint/model/SDK control evidence",
+                severity="error",
+            )
+        )
+    if facts is not None:
+        if (
+            facts.native_mechanism != getattr(spec.prompt, "native_mechanism", None)
+            or facts.account_scope != getattr(spec, "account_scope", None)
+            or facts.requested_tier != spec.execution.tier
+        ):
+            issues.append(
+                ValidationIssue(
+                    code="capability_scope_mismatch",
+                    field="generation.reasoning",
+                    message="Reasoning evidence must match the exact mechanism, account and requested tier",
+                    severity="error",
+                )
+            )
+        for field in control_errors(
+            reasoning,
+            facts,
+            sampling=spec.generation.temperature is not None
+            or spec.generation.top_p is not None,
+        ):
+            issues.append(
+                ValidationIssue(
+                    code="incompatible_generation",
+                    field=field,
+                    message=f"{field} is incompatible with the exact model's reasoning/sampling controls",
+                    severity="error",
+                )
+            )
     requested = spec.generation.model_dump()
     for name in ("temperature", "top_p", "max_output_tokens"):
         value = getattr(spec.generation, name)

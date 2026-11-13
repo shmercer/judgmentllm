@@ -807,3 +807,21 @@ the review-required stop. On restart, verified immutable tier receipts restore
 the stop before any later submission; accepted observations can still be
 recovered without replacement calls. `unexpected` mismatches remain integrity
 failures. No schema field or automatic review-gate override is introduced.
+
+## Issue #39 PR2-A typed reasoning controls
+
+V3 adds optional `generation.reasoning: ReasoningSpec` with separately typed
+`effort` and `mode`. Absent/null/empty intent serializes as before; explicit
+string `none` remains requested effort. V1/V2 reject nonempty reasoning controls.
+Existing numeric generation fields and normalized result/CSV schemas are unchanged.
+
+`ReasoningCapabilities` records exact SDK/API/mechanism/account/tier control facts
+separately from serving qualification. An optional `ReasoningPolicyV1` binds
+explicit requested controls and their frozen interpretation into existing
+output/transport commitments. Omission preserves historical bytes and hashes.
+Private production profiles may contain separately reviewed `reasoning_scopes`;
+empty historical scopes serialize as before and grant no explicit-control native
+authority. No such production scope is installed by this change.
+
+See [reasoning controls](reasoning-controls.md) for values, sampling restrictions,
+the pinned Gemini SDK's original-proto field spelling, privacy and R acceptance.

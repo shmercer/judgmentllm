@@ -16,7 +16,12 @@ from typing import Literal, cast
 
 from pydantic import Field, field_validator, model_validator
 
-from judgmentllm.config import NativeTransportMechanism, RunSpecV3, validate_run_spec
+from judgmentllm.config import (
+    GenerationSpec,
+    NativeTransportMechanism,
+    RunSpecV3,
+    validate_run_spec,
+)
 from judgmentllm.gemini_registry import (
     GEMINI_API_SCOPE,
     GEMINI_API_VERSION,
@@ -53,6 +58,14 @@ from judgmentllm.planning import PlannedRequest, validate_generation
 from judgmentllm.preparation.session import RequestDependency
 from judgmentllm.presentation import PresentationVersion
 from judgmentllm.providers.protocol import PreparedRequest
+from judgmentllm.providers.reasoning import (
+    build_reasoning_policy,
+    generation_capabilities,
+    qualified_reasoning,
+    verify_policy_scope,
+    wire_controls,
+)
+from judgmentllm.reasoning import ReasoningPolicyV1
 from judgmentllm.service_tiers import (
     ServicePolicyV2,
     ServicePolicyVersion,
@@ -279,6 +292,7 @@ def _support(
     features: tuple[NativeFeature, ...],
     mechanism: str | None,
     service: ServicePolicyV2 | None = None,
+    generation: GenerationSpec | None = None,
 ) -> Literal["supported", "unsupported", "unknown"]:
     profile = _profile_for(context.scope, mechanism)
     if profile is not None and not qualified_service(
@@ -286,6 +300,10 @@ def _support(
     ):
         return "unknown"
     if profile is not None:
+        if not qualified_reasoning(
+            profile.reasoning_scopes, generation, service, features
+        ):
+            return "unknown"
         if set(features) & set(profile.unsupported_features):
             return "unsupported"
         if set(features) <= set(profile.supported_features):
@@ -330,7 +348,11 @@ def _verify_selection(
     ):
         raise TransportIntegrityError()
     support = _support(
-        context, selection.features, spec.prompt.native_mechanism, service
+        context,
+        selection.features,
+        spec.prompt.native_mechanism,
+        service,
+        spec.generation,
     )
     if selection.native_support != support:
         raise TransportIntegrityError()
@@ -359,7 +381,9 @@ def _selection(
 ) -> GeminiSelectionV1:
     policy = spec.prompt.structured_output
     features = _features(contract)
-    support = _support(context, features, spec.prompt.native_mechanism, service)
+    support = _support(
+        context, features, spec.prompt.native_mechanism, service, spec.generation
+    )
     qualifier = context.kind != "gemini-production-v1"
     if parent is not None:
         mechanism = parent.mechanism
@@ -448,6 +472,9 @@ class OutputCommitmentV6(_TransportModel):
 
     commitment_version: Literal[6] = 6
     renderer_version: Literal[3] = 3
+    reasoning_policy: ReasoningPolicyV1 | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     service_policy: ServicePolicyV2 | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
@@ -466,6 +493,12 @@ class OutputCommitmentV6(_TransportModel):
 
     @model_validator(mode="after")
     def exact_representation(self) -> OutputCommitmentV6:
+        verify_policy_scope(
+            self.reasoning_policy,
+            self.scope,
+            self.service_policy,
+            self.selection.requested_mechanism,
+        )
         raw = serialize_output_schema(self.contract)
         if (
             self.service_policy is not None
@@ -572,6 +605,7 @@ def _build_output_commitment_v6(
     )
     raw = serialize_output_schema(contract)
     return OutputCommitmentV6(
+        reasoning_policy=build_reasoning_policy(spec, context.scope),
         service_policy=service,
         scope=context.scope,
         contract=contract,
@@ -674,6 +708,12 @@ def build_gemini_request_body(
                 decode_assessment_output(output.projection.format_fragment_text),
             )
         )
+    controls = wire_controls(settings, output.reasoning_policy)
+    if controls:
+        config["thinkingConfig"] = {
+            # google-genai 2.34.0 retains this nested proto field spelling.
+            "thinking_level": controls["thinking_config"]["thinking_level"]
+        }
     values: dict[str, object] = {
         "contents": [{"parts": [{"text": prompt}], "role": "user"}],
     }
@@ -937,7 +977,10 @@ def _validate_scope(spec: RunSpecV3, context: GeminiProductionContext) -> None:
     model_path(checked.model)
     _request_policy(checked)
     report = validate_generation(
-        checked, capabilities=production_generation_capabilities(context.scope)
+        checked,
+        capabilities=generation_capabilities(
+            checked, context.scope, production_generation_capabilities(context.scope)
+        ),
     )
     if not report.valid:
         raise ValueError("Generation settings fail exact-scope capability validation.")

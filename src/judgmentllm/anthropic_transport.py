@@ -21,7 +21,12 @@ from judgmentllm.anthropic_registry import (
     _profile_for,
     production_generation_capabilities,
 )
-from judgmentllm.config import NativeTransportMechanism, RunSpecV3, validate_run_spec
+from judgmentllm.config import (
+    GenerationSpec,
+    NativeTransportMechanism,
+    RunSpecV3,
+    validate_run_spec,
+)
 from judgmentllm.models import PairTask, ResponseItem
 from judgmentllm.native_schema import NativeProjectionScopeV1
 from judgmentllm.native_schema_v2 import (
@@ -52,6 +57,14 @@ from judgmentllm.preparation.session import RequestDependency
 from judgmentllm.presentation import PresentationVersion
 from judgmentllm.providers.anthropic_schema import ANTHROPIC_API_VERSION
 from judgmentllm.providers.protocol import PreparedRequest
+from judgmentllm.providers.reasoning import (
+    build_reasoning_policy,
+    generation_capabilities,
+    qualified_reasoning,
+    verify_policy_scope,
+    wire_controls,
+)
+from judgmentllm.reasoning import ReasoningPolicyV1
 from judgmentllm.service_tiers import (
     ServicePolicyV2,
     ServicePolicyVersion,
@@ -287,6 +300,7 @@ def _support(
     context: AnthropicProductionContext,
     features: tuple[NativeFeature, ...],
     service: ServicePolicyV2 | None = None,
+    generation: GenerationSpec | None = None,
 ) -> Literal["supported", "unsupported", "unknown"]:
     profile = _profile_for(context.scope)
     if profile is not None and not qualified_service(
@@ -294,6 +308,10 @@ def _support(
     ):
         return "unknown"
     if profile is not None:
+        if not qualified_reasoning(
+            profile.reasoning_scopes, generation, service, features
+        ):
+            return "unknown"
         if set(features) & set(profile.unsupported_features):
             return "unsupported"
         if set(features) <= set(profile.supported_features):
@@ -337,7 +355,7 @@ def _verify_selection(
         )
     ):
         raise TransportIntegrityError()
-    support = _support(context, selection.features, service)
+    support = _support(context, selection.features, service, spec.generation)
     if selection.native_support != support:
         raise TransportIntegrityError()
     if selection.mechanism != "text":
@@ -369,7 +387,7 @@ def _selection(
 ) -> AnthropicSelectionV1:
     policy = spec.prompt.structured_output
     features = _features(contract)
-    support = _support(context, features, service)
+    support = _support(context, features, service, spec.generation)
     qualifier = context.kind != "anthropic-production-v1"
     if parent is not None:
         mechanism = parent.mechanism
@@ -456,6 +474,9 @@ class OutputCommitmentV5(_TransportModel):
 
     commitment_version: Literal[5] = 5
     renderer_version: Literal[3] = 3
+    reasoning_policy: ReasoningPolicyV1 | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     service_policy: ServicePolicyV2 | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
@@ -474,6 +495,12 @@ class OutputCommitmentV5(_TransportModel):
 
     @model_validator(mode="after")
     def exact_representation(self) -> OutputCommitmentV5:
+        verify_policy_scope(
+            self.reasoning_policy,
+            self.scope,
+            self.service_policy,
+            self.selection.requested_mechanism,
+        )
         raw = serialize_output_schema(self.contract)
         if (
             self.service_policy is not None
@@ -565,6 +592,7 @@ def _build_output_commitment_v5(
     )
     raw = serialize_output_schema(contract)
     return OutputCommitmentV5(
+        reasoning_policy=build_reasoning_policy(spec, context.scope),
         service_policy=service,
         scope=context.scope,
         contract=contract,
@@ -666,9 +694,17 @@ def build_anthropic_request_body(
             dict[str, object], decode_assessment_output(output.sdk_config_fragment_text)
         )
         values["output_config"] = fragment["output_config"]
+    controls = wire_controls(settings, output.reasoning_policy)
+    if "output_config" in controls:
+        values["output_config"] = {
+            **cast(dict[str, object], values.get("output_config", {})),
+            **controls["output_config"],
+        }
     if policy.service_tier is not None:
         values["service_tier"] = policy.service_tier
     values["stream"] = False
+    if "thinking" in controls:
+        values["thinking"] = controls["thinking"]
     return ordered_json_bytes(values)
 
 
@@ -924,7 +960,10 @@ def _validate_scope(spec: RunSpecV3, context: AnthropicProductionContext) -> Non
     ):
         raise TransportIntegrityError()
     report = validate_generation(
-        checked, capabilities=production_generation_capabilities(context.scope)
+        checked,
+        capabilities=generation_capabilities(
+            checked, context.scope, production_generation_capabilities(context.scope)
+        ),
     )
     if not report.valid:
         raise ValueError("Generation settings fail exact-scope capability validation.")
