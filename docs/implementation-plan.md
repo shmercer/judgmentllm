@@ -788,3 +788,24 @@ risk plan. Extend the existing export-to-R gate with actual alias-derived
 original-ID results. Exact offline prompts/schemas use synthetic essays and the
 supplied Internet/travel writing task. Final-source verification and the unmerged
 PR are reported separately from implementation and live qualification.
+
+## Milestone 3 corrective work: Issue #39 PR1 and PR2
+
+PR1 implements explicit Standard defaults, provider tier mappings, additive
+service-policy versioning, account/tier native qualification boundaries, served
+tier observations and bounded SDK/HTTP/overall deadlines. Preserve historical
+commitments and all seven strict local R gates. No production qualifications or
+study calls are added.
+
+PR2 is deferred: 30 main-study configurations from 50 distinct Standard/Flex
+configurations, exact original study content, native previews, and separately
+authorized bounded pilot/smoke execution. The main protocol is Flex-first for
+OpenAI/Gemini and Standard for Anthropic, with all six Standard selections kept
+separately selectable. Pilot coverage may remain incomplete at a cumulative
+budget/deadline boundary; seal deterministic order and explicit per-scenario
+output caps within token reservations. The 24-call comparison tests feasibility,
+not scoring equivalence. Follow the [handoff contract](service-tiers.md).
+
+Each PR must pass high-risk source-bound offline/local/hosted acceptance, receive
+independent review, and remain unmerged. No credential access or live submission
+is authorized without a subsequent explicit exact-source/plan/account/budget grant.

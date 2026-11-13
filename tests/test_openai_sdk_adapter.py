@@ -27,6 +27,7 @@ from judgmentllm.providers.protocol import (
     RetrievalUnavailable,
     SubmissionUncertain,
 )
+from judgmentllm.service_tiers import ServiceQualificationScope
 
 
 @pytest.fixture(autouse=True)
@@ -75,6 +76,13 @@ def authorize_fixture(
                     )
                 ),
                 scope=context.scope,
+                service_scopes=(
+                    ServiceQualificationScope(
+                        account_scope="synthetic-account",
+                        tier="standard",
+                        features=tuple(features),
+                    ),
+                ),
                 supported_features=features,
                 documentation_sha256="a" * 64,
                 offline_fixture_sha256="b" * 64,
@@ -197,7 +205,9 @@ async def test_http_rejections_and_unknown_acceptance(
             json={
                 "error": {
                     "message": "private-provider-error-canary",
-                    "type": "invalid_request_error",
+                    "type": "rate_limit_error"
+                    if status == 429
+                    else "invalid_request_error",
                 }
             },
         )

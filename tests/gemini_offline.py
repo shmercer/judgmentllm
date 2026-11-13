@@ -13,6 +13,7 @@ from judgmentllm import gemini_registry
 from judgmentllm.evidence.scope import EvidenceProvenance
 from judgmentllm.gemini_registry import _QualifiedProfile
 from judgmentllm.gemini_transport import GeminiProductionContext
+from judgmentllm.service_tiers import ServiceQualificationScope
 
 
 def isolate(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -72,6 +73,13 @@ def authorize_fixture(
     """Synthetic test-only authority, never persisted or written to production."""
     profile = _QualifiedProfile(
         scope=context.scope,
+        service_scopes=(
+            ServiceQualificationScope(
+                account_scope="synthetic-account",
+                tier="standard",
+                features=tuple(features),
+            ),
+        ),
         mechanism=cast(Any, mechanism),
         schema_dialect="gemini.cloud-schema.v1"
         if mechanism.endswith(".response_schema")

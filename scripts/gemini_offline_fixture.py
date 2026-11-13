@@ -86,6 +86,7 @@ def specification(
         "provider": "gemini",
         "endpoint": endpoint,
         "model": "offline-unqualified-model",
+        "account_scope": "synthetic-account",
         "capture": capture,
         "generation": {"max_output_tokens": 256},
         "prompt": {"structured_output": "text"},
@@ -207,7 +208,17 @@ class FixtureTransport:
         }
         if self.omit_usage:
             del body["usageMetadata"]
-        return httpx2.Response(200, json=body, request=request)
+        return httpx2.Response(
+            200,
+            json=body,
+            headers={
+                "x-gemini-service-tier": "flex"
+                if prepared.output_commitment.service_policy is not None
+                and prepared.output_commitment.service_policy.wire_tier == "flex"
+                else "standard"
+            },
+            request=request,
+        )
 
     def adapter(self, spec: RunSpecV3) -> GeminiAdapter:
         return GeminiAdapter(
@@ -230,6 +241,8 @@ async def persist_gemini(output: Path) -> None:
                     kind,
                     capture=capture,
                 )
+                if capture == "minimal":
+                    spec.execution.tier = "flex"
                 transport = FixtureTransport(
                     "models.generate_content", invalid_first_group=kind == "rubric"
                 )

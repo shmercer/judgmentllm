@@ -499,3 +499,24 @@ lanes retain serial correctness, Python export/recovery and SDK checks without
 coverage or R execution. Complete acceptance requires local evidence and hosted
 functional evidence at the same source; the GitHub status reports only its hosted
 scope. This user-requested split supersedes earlier hosted R/coverage requirements.
+
+## Issue #39 PR1: service policy and deferred study protocol
+
+- General processing defaults to explicit Standard for new requests. The approved
+  study protocol deliberately supersedes Issue #39's original Standard baseline
+  with Flex-first OpenAI/Gemini selections and separate Standard configurations.
+- Commit service policy 2 additively; absent records retain legacy policy 1.
+  Inherited requests retain original policy, payload, account scope and deadlines.
+- Native authority includes account/project scope and service class. Old Standard
+  profiles grant no Flex or new-account authority; no service scopes are promoted.
+- Normalize provider-specific equivalences and expected downgrades independently
+  of assessment validity. Unknown evidence is not an integrity assertion.
+- Gemini's server timeout is an advisory hint. Enforce pinned SDK milliseconds,
+  actual HTTP timeouts and a longer local overall deadline independently.
+- PR2 owns 30 main selections / 50 distinct Standard/Flex configurations and a
+  pilot that can stop with explicitly incomplete budget-limited coverage. Each
+  scenario has a committed output cap within its reservation. No study executor
+  or budget ledger is implemented in PR1. Both PRs remain unmerged for independent
+  review; live operations require later explicit bounded authorization.
+
+The complete [service-tier contract and handoff](service-tiers.md) is normative.

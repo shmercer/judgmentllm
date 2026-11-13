@@ -23,6 +23,7 @@ from judgmentllm.planning import CapabilityProfile
 from judgmentllm.preparation.freezing import FileSignature
 from judgmentllm.preparation.index import ParsingContext
 from judgmentllm.presentation import PresentationVersion
+from judgmentllm.service_tiers import ServicePolicyV2
 
 SourceFormat = Literal["yaml", "yml", "json", "csv", "jsonl", "text", "txt"]
 
@@ -342,6 +343,9 @@ class ExecutableRunManifestV4(ExecutableRunManifest):
     transport_commitment_version: Literal[2] = 2
     request_identity_version: Literal[3] = 3  # pyright: ignore[reportIncompatibleVariableOverride]
     template: TemplateCommitmentV3  # pyright: ignore[reportIncompatibleVariableOverride]
+    service_policy: ServicePolicyV2 | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     transport_context_sha256: SHA256
     initial_transport_count: int = Field(ge=0)
     initial_transport_sha256: SHA256
@@ -430,6 +434,9 @@ class ExecutableRunManifestV5(ExecutableRunManifest):
     transport_commitment_version: Literal[3] = 3
     request_identity_version: Literal[3] = 3  # pyright: ignore[reportIncompatibleVariableOverride]
     template: TemplateCommitmentV3  # pyright: ignore[reportIncompatibleVariableOverride]
+    service_policy: ServicePolicyV2 | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     transport_context_sha256: SHA256
     initial_transport_count: int = Field(ge=0)
     initial_transport_sha256: SHA256
@@ -518,6 +525,9 @@ class ExecutableRunManifestV6(ExecutableRunManifest):
     transport_commitment_version: Literal[4] = 4
     request_identity_version: Literal[3] = 3  # pyright: ignore[reportIncompatibleVariableOverride]
     template: TemplateCommitmentV3  # pyright: ignore[reportIncompatibleVariableOverride]
+    service_policy: ServicePolicyV2 | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     transport_context_sha256: SHA256
     initial_transport_count: int = Field(ge=0)
     initial_transport_sha256: SHA256

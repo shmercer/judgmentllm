@@ -41,6 +41,7 @@ from judgmentllm.production_transport import (
     production_context_digest,
     production_context_for_identity,
 )
+from judgmentllm.service_tiers import ServiceQualificationScope
 from judgmentllm.transport import TransportIntegrityError, physical_identity
 
 
@@ -167,6 +168,7 @@ def test_exact_complete_production_body(
     expected_keys = [
         "model",
         "stream",
+        "service_tier",
         "input" if endpoint == "responses" else "messages",
         "max_output_tokens" if endpoint == "responses" else "max_completion_tokens",
     ]
@@ -437,6 +439,17 @@ def test_controlled_registry_exact_features_and_scope(
             )
         ),
         scope=context.scope,
+        service_scopes=(
+            ServiceQualificationScope(
+                account_scope="synthetic-account",
+                tier="standard",
+                features=(
+                    "rubric_scores",
+                    "rubric_grouped",
+                    "assessment_presentation_v2",
+                ),
+            ),
+        ),
         supported_features=(
             "rubric_scores",
             "rubric_grouped",
@@ -559,6 +572,17 @@ def test_output_ingress_sanitizes_invalid_private_configuration(tmp_path: Path) 
 def _reviewed_profile(context: ProductionContext, **changes: Any) -> _QualifiedProfile:
     fields: dict[str, Any] = {
         "scope": context.scope,
+        "service_scopes": (
+            ServiceQualificationScope(
+                account_scope="synthetic-account",
+                tier="standard",
+                features=(
+                    "rubric_scores",
+                    "rubric_grouped",
+                    "assessment_presentation_v2",
+                ),
+            ),
+        ),
         "qualification_date": date(2026, 11, 7),
         "source_commit": "a" * 40,
         "support_status": "supported",

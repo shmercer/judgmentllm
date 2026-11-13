@@ -235,3 +235,6 @@ terminal valid or invalid assessments; `all_assessments_valid` requires eight va
 assessments. The separate `valid_assessment_count` and `invalid_assessment_count`
 make a completed matrix of invalid outputs explicit. These facts never establish
 reviewed live qualification automatically.
+
+Current service-tier configuration, historical compatibility, account-scoped
+qualification and served-tier evidence are documented in [service tiers](service-tiers.md).

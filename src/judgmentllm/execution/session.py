@@ -963,6 +963,18 @@ class ExecutionSession:
                     "attempt", self.run_id, work.attempt_id, "response_saved"
                 )
         self.checkpoint("after_evidence_commit", work.prepared.request_uid)
+        if evidence is not None and evidence.service_tier is not None:
+            tier = evidence.service_tier
+            if tier.outcome == "unexpected":
+                raise IntegrityError(
+                    "served tier conflicts with the sealed service policy"
+                )
+            if tier.outcome == "unknown" and tier.policy.tier != "standard":
+                from judgmentllm.providers.protocol import ProviderError
+
+                raise ProviderError(
+                    "served tier is unknown; further submission requires review"
+                )
         self.checkpoint("after_observation", work.prepared.request_uid)
         self.checkpoint("before_parsing", work.prepared.request_uid)
         try:

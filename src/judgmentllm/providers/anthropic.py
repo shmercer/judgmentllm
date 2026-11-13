@@ -53,6 +53,7 @@ from judgmentllm.providers.protocol import (
     SubmissionUncertain,
     TransportNotSubmitted,
 )
+from judgmentllm.service_tiers import observe_service_tier, terminal_rate_rejection
 
 if TYPE_CHECKING:
     from judgmentllm.anthropic_assessment import AnthropicAssessmentComponentV2
@@ -67,7 +68,7 @@ _INVOKING: ContextVar[PreparedRequest | None] = ContextVar(
 _SERIALIZATION_STARTED: ContextVar[float] = ContextVar(
     "judgmentllm_anthropic_serialization", default=0.0
 )
-_INVOCATION_STATE: ContextVar[dict[str, bool] | None] = ContextVar(
+_INVOCATION_STATE: ContextVar[dict[str, Any] | None] = ContextVar(
     "judgmentllm_anthropic_invocation", default=None
 )
 _PROTOCOL = "judgmentllm-anthropic-observation-v1"
@@ -482,6 +483,7 @@ class AnthropicAdapter:
                     raise SubmissionUncertain(
                         "Anthropic response cannot be retained safely", invoked=True
                     )
+                state["raw"] = bytes(body)
                 headers = {
                     key: value
                     for key, value in response.headers.items()
@@ -558,7 +560,8 @@ class AnthropicAdapter:
             client = await self._execution_client()
         finally:
             _SDK_LOGGING.reset(logging_token)
-        invocation_state = {"invoked": False}
+        operation_started = time.perf_counter()
+        invocation_state: dict[str, Any] = {"invoked": False}
         invocation_token = _INVOCATION_STATE.set(invocation_state)
         token = _INVOKING.set(prepared)
         serialization_token = _SERIALIZATION_STARTED.set(time.perf_counter())
@@ -583,7 +586,11 @@ class AnthropicAdapter:
             ):
                 raise cause from None
             status = getattr(error, "status_code", None)
-            if status in {400, 401, 403, 404, 422, 429}:
+            if status in {400, 401, 403, 404, 422, 429} and (
+                status != 429
+                or prepared.output_commitment.service_policy is None
+                or terminal_rate_rejection("anthropic", invocation_state.get("raw"))
+            ):
                 code = {
                     401: "credentials_rejected",
                     403: "permission_denied",
@@ -607,7 +614,13 @@ class AnthropicAdapter:
             remote_id = document.get("id")
             if not isinstance(remote_id, str) or not remote_id.strip():
                 raise ValueError
-            response = self._response(raw, document, remote_id, prepared=prepared)
+            response = self._response(
+                raw,
+                document,
+                remote_id,
+                prepared=prepared,
+                latency_seconds=time.perf_counter() - operation_started,
+            )
         except (ValueError, TypeError):
             raise SubmissionUncertain(
                 "Anthropic response identity is unavailable", invoked=True
@@ -622,6 +635,7 @@ class AnthropicAdapter:
         remote_id: str,
         *,
         prepared: PreparedRequest | None = None,
+        latency_seconds: float | None = None,
     ) -> ProviderResponse:
         try:
             kind, text, completion_status = _messages_output(body)
@@ -676,6 +690,15 @@ class AnthropicAdapter:
         )
         safe = raw if exact_safe else _encoded(envelope)
         reported = body.get("model") if isinstance(body.get("model"), str) else None
+        policy = getattr(
+            getattr(prepared, "output_commitment", None), "service_policy", None
+        )
+        counters = body.get("usage")
+        served_tier = (
+            cast(dict[str, Any], counters).get("service_tier")
+            if isinstance(counters, dict)
+            else None
+        )
         return ProviderResponse.model_validate(
             {
                 "observation_key": remote_id,
@@ -683,6 +706,11 @@ class AnthropicAdapter:
                 "raw": raw,
                 "evidence": ProviderEvidence(
                     provenance="provider_documented",
+                    service_tier=observe_service_tier(
+                        policy, served_tier, latency_seconds=latency_seconds
+                    )
+                    if policy is not None
+                    else None,
                     assessment_component=component,
                     usage=usage,
                     reasoning=tuple(

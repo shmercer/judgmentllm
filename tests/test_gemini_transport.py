@@ -37,6 +37,7 @@ from judgmentllm.persistence.hashing import (
     canonical_bytes,
     semantic_digest,
 )
+from judgmentllm.service_tiers import ServiceQualificationScope
 from judgmentllm.transport import TransportIntegrityError, physical_identity
 
 
@@ -223,6 +224,17 @@ def _reviewed_profile(
 ) -> _QualifiedProfile:
     fields: dict[str, Any] = {
         "scope": context.scope,
+        "service_scopes": (
+            ServiceQualificationScope(
+                account_scope="synthetic-account",
+                tier="standard",
+                features=(
+                    "rubric_scores",
+                    "rubric_grouped",
+                    "assessment_presentation_v2",
+                ),
+            ),
+        ),
         "mechanism": "gemini.generate_content.response_json_schema",
         "schema_dialect": "gemini.json-schema.v1",
         "qualification_date": date(2026, 11, 7),

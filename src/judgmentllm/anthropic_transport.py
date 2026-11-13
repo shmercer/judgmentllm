@@ -52,6 +52,15 @@ from judgmentllm.preparation.session import RequestDependency
 from judgmentllm.presentation import PresentationVersion
 from judgmentllm.providers.anthropic_schema import ANTHROPIC_API_VERSION
 from judgmentllm.providers.protocol import PreparedRequest
+from judgmentllm.service_tiers import (
+    ServicePolicyV2,
+    ServicePolicyVersion,
+    qualified_service,
+    validate_service_support,
+)
+from judgmentllm.service_tiers import (
+    service_policy as resolve_service_policy,
+)
 from judgmentllm.transport import (
     PhysicalRequestIdentityV1,
     TransportIntegrityError,
@@ -275,9 +284,15 @@ class AnthropicSelectionV1(_TransportModel):
 
 
 def _support(
-    context: AnthropicProductionContext, features: tuple[NativeFeature, ...]
+    context: AnthropicProductionContext,
+    features: tuple[NativeFeature, ...],
+    service: ServicePolicyV2 | None = None,
 ) -> Literal["supported", "unsupported", "unknown"]:
     profile = _profile_for(context.scope)
+    if profile is not None and not qualified_service(
+        service, profile.service_scopes, features
+    ):
+        return "unknown"
     if profile is not None:
         if set(features) & set(profile.unsupported_features):
             return "unsupported"
@@ -292,6 +307,7 @@ def _verify_selection(
     contract: AssessmentOutputContract,
     context: AnthropicProductionContext,
     parent: TransportCommitmentV3 | None,
+    service: ServicePolicyV2 | None = None,
 ) -> None:
     expected_route = "anthropic.messages.output_config.format"
     qualifier = context.kind != "anthropic-production-v1"
@@ -321,7 +337,7 @@ def _verify_selection(
         )
     ):
         raise TransportIntegrityError()
-    support = _support(context, selection.features)
+    support = _support(context, selection.features, service)
     if selection.native_support != support:
         raise TransportIntegrityError()
     if selection.mechanism != "text":
@@ -349,10 +365,11 @@ def _selection(
     contract: AssessmentOutputContract,
     context: AnthropicProductionContext,
     parent: TransportCommitmentV3 | None,
+    service: ServicePolicyV2 | None = None,
 ) -> AnthropicSelectionV1:
     policy = spec.prompt.structured_output
     features = _features(contract)
-    support = _support(context, features)
+    support = _support(context, features, service)
     qualifier = context.kind != "anthropic-production-v1"
     if parent is not None:
         mechanism = parent.mechanism
@@ -386,7 +403,7 @@ def _selection(
         authority_sha256=_authority_sha256(context),
         parent_commitment_sha256=None if parent is None else parent.commitment_sha256,
     )
-    _verify_selection(result, spec, contract, context, parent)
+    _verify_selection(result, spec, contract, context, parent, service)
     return result
 
 
@@ -409,9 +426,12 @@ class AnthropicRequestPolicyV1(_TransportModel):
         return self
 
 
-def _request_policy(spec: RunSpecV3) -> AnthropicRequestPolicyV1:
+def _request_policy(
+    spec: RunSpecV3, service_policy_version: ServicePolicyVersion = 2
+) -> AnthropicRequestPolicyV1:
     if spec.execution.tier not in (None, "auto", "standard_only"):
         raise ValueError("Unsupported Anthropic service tier")
+    service = resolve_service_policy(spec, service_policy_version)
     cache = spec.execution.cache_policy
     if cache == "explicit" and spec.model != "claude-sonnet-4-6":
         raise ValueError("Explicit caching requires documented exact-model support")
@@ -419,7 +439,10 @@ def _request_policy(spec: RunSpecV3) -> AnthropicRequestPolicyV1:
     return AnthropicRequestPolicyV1(
         max_tokens_source="requested" if limit is not None else "adapter_default_4096",
         effective_max_tokens=4096 if limit is None else limit,
-        service_tier=spec.execution.tier,
+        service_tier=cast(
+            Literal["auto", "standard_only"] | None,
+            spec.execution.tier if service is None else service.wire_tier,
+        ),
         cache="explicit_whole_text_5m"
         if cache == "explicit"
         else "off"
@@ -433,6 +456,9 @@ class OutputCommitmentV5(_TransportModel):
 
     commitment_version: Literal[5] = 5
     renderer_version: Literal[3] = 3
+    service_policy: ServicePolicyV2 | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     scope: NativeProjectionScopeV1 = Field(repr=False)
     contract: AssessmentOutputContract = Field(repr=False)
     selection: AnthropicSelectionV1
@@ -449,6 +475,16 @@ class OutputCommitmentV5(_TransportModel):
     @model_validator(mode="after")
     def exact_representation(self) -> OutputCommitmentV5:
         raw = serialize_output_schema(self.contract)
+        if (
+            self.service_policy is not None
+            and self.service_policy.provider != self.scope.provider
+        ):
+            raise ValueError("service provider differs")
+        if (
+            self.service_policy is not None
+            and self.request_policy.service_tier != self.service_policy.wire_tier
+        ):
+            raise ValueError("service request policy differs")
         native = self.selection.mechanism != "text"
         if (
             self.schema_text.encode("utf-8") != raw
@@ -494,10 +530,21 @@ def _build_output_commitment_v5(
     inherited_commitment: TransportCommitmentV3 | None = None,
     frozen_selection: AnthropicSelectionV1 | None = None,
     presentation_version: PresentationVersion = 2,
+    service_policy_version: ServicePolicyVersion = 2,
 ) -> OutputCommitmentV5:
     """Select once, or verify an original frozen choice without resolving auto."""
     context = _checked_context(context)
     _validate_scope(spec, context)
+    if inherited_commitment is not None:
+        service_policy_version = 1 if inherited_commitment.service_policy is None else 2
+    service = resolve_service_policy(spec, service_policy_version)
+    profile = _profile_for(context.scope)
+    validate_service_support(
+        service,
+        () if profile is None else profile.service_scopes,
+        strict=spec.strict_capabilities,
+        qualification="qualification" in context.kind,
+    )
     contract = _contract(
         spec,
         request,
@@ -506,11 +553,11 @@ def _build_output_commitment_v5(
         else presentation_version,
     )
     selection = (
-        _selection(spec, contract, context, inherited_commitment)
+        _selection(spec, contract, context, inherited_commitment, service)
         if frozen_selection is None
         else AnthropicSelectionV1.model_validate(dict(frozen_selection))
     )
-    _verify_selection(selection, spec, contract, context, inherited_commitment)
+    _verify_selection(selection, spec, contract, context, inherited_commitment, service)
     projection = (
         None
         if selection.mechanism == "text"
@@ -518,10 +565,11 @@ def _build_output_commitment_v5(
     )
     raw = serialize_output_schema(contract)
     return OutputCommitmentV5(
+        service_policy=service,
         scope=context.scope,
         contract=contract,
         selection=selection,
-        request_policy=_request_policy(spec),
+        request_policy=_request_policy(spec, service_policy_version),
         schema_text=raw.decode("utf-8"),
         schema_sha256=bytes_digest(raw),
         neutral_semantic_sha256=semantic_digest(
@@ -544,6 +592,7 @@ def build_output_commitment_v5(
     inherited_commitment: TransportCommitmentV3 | None = None,
     frozen_selection: AnthropicSelectionV1 | None = None,
     presentation_version: PresentationVersion = 2,
+    service_policy_version: ServicePolicyVersion = 2,
 ) -> OutputCommitmentV5:
     """Sanitized boundary for new selection and pinned output reconstruction."""
     try:
@@ -554,6 +603,7 @@ def build_output_commitment_v5(
             inherited_commitment=inherited_commitment,
             frozen_selection=frozen_selection,
             presentation_version=presentation_version,
+            service_policy_version=service_policy_version,
         )
     except (ValueError, TypeError, AttributeError, KeyError, RecursionError):
         raise TransportIntegrityError() from None
@@ -635,6 +685,9 @@ class TransportCommitmentV3(_TransportModel):
         default=1, exclude_if=lambda value: value == 1
     )
     context_kind: AnthropicProductionContextKind
+    service_policy: ServicePolicyV2 | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     scope: NativeProjectionScopeV1 = Field(repr=False)
     request_policy: AnthropicRequestPolicyV1
     identity: PhysicalRequestIdentityV1
@@ -759,6 +812,8 @@ def _receipt(
         payload_bytes=len(payload),
         local_validation_required=True,
     )
+    if output.service_policy is not None:
+        values["service_policy"] = output.service_policy.model_dump(mode="json")
     if output.contract.presentation_version == 1:
         values.pop("presentation_version")
     return TransportCommitmentV3.model_validate_json(
@@ -888,6 +943,7 @@ def prepare_production_request(
     parent: TransportCommitmentV3 | None = None,
     committed_output: OutputCommitmentV5 | None = None,
     presentation_version: PresentationVersion = 2,
+    service_policy_version: ServicePolicyVersion = 2,
 ) -> PreparedRequestV5:
     """Prepare before sealing, or verify immutable reconstruction without fallback."""
     from judgmentllm.anthropic_prompts import render_anthropic_request
@@ -925,6 +981,9 @@ def prepare_production_request(
             dependency.request,
             context,
             inherited_commitment=parent,
+            service_policy_version=(1 if frozen.service_policy is None else 2)
+            if frozen is not None
+            else service_policy_version,
             frozen_selection=None if frozen is None else frozen.selection,
             presentation_version=frozen.presentation_version
             if frozen

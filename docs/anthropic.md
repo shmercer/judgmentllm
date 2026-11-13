@@ -75,7 +75,8 @@ values, including defaults, fail locally. Arbitrary provider JSON, headers, base
 URLs, tools, stop sequences and thinking controls are unavailable. Omitted controls
 remain omitted; the provider's model-specific defaults still apply.
 
-`execution.tier` accepts omission, `auto`, or `standard_only`. Account eligibility
+`execution.tier` accepts omission, `auto`, or `standard_only`. New omission
+explicitly sends `standard_only`; historical sealed requests retain omission. Account eligibility
 remains unknown; unsupported tier names fail. `execution.cache_policy: off` omits
 cache controls. `auto` records a conservative uncached request and also omits them.
 Explicit caching is limited to the documented `claude-sonnet-4-6` scope and marks
@@ -216,3 +217,6 @@ follow-up can review a minimal case-selection change or authorize a fresh bounde
 four-case plan. Anthropic rubric text mode remains explicitly unqualified;
 Milestone 3 Phase 5C (Gemini Developer) can proceed independently after this
 correction is reviewed and merged.
+
+Current service-tier configuration, historical compatibility, account-scoped
+qualification and served-tier evidence are documented in [service tiers](service-tiers.md).

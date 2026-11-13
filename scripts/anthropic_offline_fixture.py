@@ -82,6 +82,7 @@ def specification(
         "provider": "anthropic",
         "endpoint": endpoint,
         "model": "offline-unqualified-model",
+        "account_scope": "synthetic-account",
         "capture": capture,
         "generation": {"max_output_tokens": 256},
         "prompt": {"structured_output": "text"},
@@ -186,6 +187,7 @@ class FixtureTransport:
             "stop_sequence": None,
             "content": [{"type": "text", "text": text}],
             "usage": {
+                "service_tier": "standard",
                 "input_tokens": 100,
                 "output_tokens": 10,
                 "cache_read_input_tokens": 5,

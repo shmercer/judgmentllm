@@ -719,6 +719,13 @@ class PreparedRun:
             frozen=frozen,
             parent=parent,
         )
+        if self.spec.provider in {"openai", "anthropic", "gemini"} and (
+            getattr(wire.output_commitment, "service_policy", None)
+            != getattr(self.manifest, "service_policy", None)
+        ):
+            raise PreparationError(
+                "transport service policy differs from its sealed manifest"
+            )
         if (
             wire.output_commitment.contract.presentation_version
             != self.manifest.template.presentation_version

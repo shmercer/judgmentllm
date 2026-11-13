@@ -1302,3 +1302,6 @@ returns additive `CredentialStatusV2` (`status_version:2`) for explicitly select
 Vertex key mode or unsupported mode. The record is reexported at package top level.
 Provider diagnostics explicitly return unsupported for Vertex, with no SDK or
 credential operations. No public assessment/result fields or exports change.
+
+Current service-tier configuration, historical compatibility, account-scoped
+qualification and served-tier evidence are documented in [service tiers](service-tiers.md).

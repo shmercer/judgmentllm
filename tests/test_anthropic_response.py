@@ -267,10 +267,7 @@ async def test_explicit_cache_tier_bytes_and_generation_omission(
     )
     body = json.loads(wire.payload)
     assert wire.generation is None and body["max_tokens"] == 4096
-    if tier is None:
-        assert "service_tier" not in body
-    else:
-        assert body["service_tier"] == tier
+    assert body["service_tier"] == ("standard_only" if tier is None else tier)
     content = body["messages"][0]["content"]
     if cache == "explicit":
         assert content == [

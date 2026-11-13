@@ -86,6 +86,7 @@ def specification(
         "provider": "openai",
         "endpoint": endpoint,
         "model": "offline-unqualified-model",
+        "account_scope": "synthetic-account",
         "capture": capture,
         "generation": {"max_output_tokens": 256},
         "prompt": {"structured_output": "text"},
@@ -186,6 +187,9 @@ class FixtureTransport:
                 "object": "response",
                 "created_at": 1,
                 "model": "offline-reported-model",
+                "service_tier": "default"
+                if prepared.output_commitment.service_policy is None
+                else prepared.output_commitment.service_policy.wire_tier,
                 "status": "completed",
                 "output": [
                     {
@@ -212,6 +216,9 @@ class FixtureTransport:
                 "object": "chat.completion",
                 "created": 1,
                 "model": "offline-reported-model",
+                "service_tier": "default"
+                if prepared.output_commitment.service_policy is None
+                else prepared.output_commitment.service_policy.wire_tier,
                 "choices": [
                     {
                         "index": 0,
@@ -248,6 +255,8 @@ async def persist_openai(output: Path) -> None:
                 spec = specification(
                     output / "inputs" / run_id, endpoint, kind, capture=capture
                 )
+                if capture == "minimal":
+                    spec.execution.tier = "flex"
                 transport = FixtureTransport(
                     endpoint, invalid_first_group=kind == "rubric"
                 )

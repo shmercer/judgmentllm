@@ -18,6 +18,7 @@ from judgmentllm.native_schema import NativeModel, NativeProjectionScopeV1
 from judgmentllm.native_selection import NativeFeature
 from judgmentllm.persistence.hashing import semantic_digest
 from judgmentllm.persistence.models import SHA256
+from judgmentllm.service_tiers import ServiceQualificationScope
 
 __all__ = ["_profile_for", "production_generation_capabilities"]
 
@@ -54,6 +55,9 @@ class _QualifiedProfile(NativeModel):
     offline_fixture_sha256: SHA256
     independent_live_sha256: SHA256
     generation: GenerationCapabilities | None = None
+    service_scopes: tuple[ServiceQualificationScope, ...] = Field(
+        default=(), exclude_if=lambda value: not value
+    )
 
     @field_validator("translator_version", mode="before")
     @classmethod
@@ -64,6 +68,10 @@ class _QualifiedProfile(NativeModel):
 
     @model_validator(mode="after")
     def exact_scope(self) -> _QualifiedProfile:
+        if len(
+            {(scope.account_scope, scope.tier) for scope in self.service_scopes}
+        ) != len(self.service_scopes):
+            raise ValueError("duplicate service qualification scope")
         if (
             self.scope.provider != "gemini"
             or self.scope.endpoint != "models.generate_content"

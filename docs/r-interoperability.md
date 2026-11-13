@@ -669,3 +669,13 @@ unknown native support across both synthetic authentication modes. R checks the
 committed revision, requested native mechanism, fallback selection and absence of
 revision-2 qualification. Historical native execution remains covered separately;
 no reviewed profile or source-bound qualification fixture is rewritten.
+
+## Issue #39 PR1 service-policy acceptance
+
+All seven strict local R gates remain mandatory. New provider fixture exports
+retain requested `tier` and unchanged result/CSV schemas; companion service-tier
+observations remain once per physical response and preserve declared account,
+requested/wire/reported tier, unknowns and policy version. R consumes actual
+Python/SDK-generated evidence after independent reopening. No tier inference
+from model families, account labels, or Standard native qualification is allowed.
+See [service-policy compatibility](service-tiers.md).

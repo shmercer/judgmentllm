@@ -49,6 +49,11 @@ from judgmentllm.providers.protocol import (
     SubmissionUncertain,
     TransportNotSubmitted,
 )
+from judgmentllm.service_tiers import (
+    observe_service_tier,
+    service_policy,
+    terminal_rate_rejection,
+)
 
 if TYPE_CHECKING:
     from judgmentllm.production_transport import ProductionContext
@@ -62,7 +67,7 @@ _INVOKING: ContextVar[PreparedRequest | None] = ContextVar(
 _SERIALIZATION_STARTED: ContextVar[float] = ContextVar(
     "judgmentllm_openai_serialization", default=0.0
 )
-_INVOCATION_STATE: ContextVar[dict[str, bool] | None] = ContextVar(
+_INVOCATION_STATE: ContextVar[dict[str, Any] | None] = ContextVar(
     "judgmentllm_openai_invocation", default=None
 )
 _PROTOCOL = "judgmentllm-openai-observation-v1"
@@ -284,10 +289,7 @@ class OpenAIAdapter:
             raise ProviderIntegrityError("OpenAI adapter configuration scope differs")
         if spec.schema_version != 3 or spec.execution.mode != "live":
             raise OpenAIConfigurationError(("schema_version", "execution.mode"))
-        if (
-            spec.execution.cache_policy not in (None, "auto", "off")
-            or spec.execution.tier is not None
-        ):
+        if spec.execution.cache_policy not in (None, "auto", "off"):
             raise OpenAIConfigurationError(
                 tuple(
                     field
@@ -301,6 +303,10 @@ class OpenAIAdapter:
                     if invalid
                 )
             )
+        try:
+            service_policy(spec)
+        except ValueError:
+            raise OpenAIConfigurationError(("execution.tier",)) from None
         report = validate_run(spec, capabilities=self.capabilities(spec))
         if not report.valid:
             raise OpenAIConfigurationError(
@@ -370,6 +376,8 @@ class OpenAIAdapter:
                 "Configure a valid OPENAI_API_KEY environment source"
             ) from None
         adapter = self
+        from judgmentllm.production_transport import PreparedRequestV4
+
         underlying: Any = self._http_transport or http.AsyncHTTPTransport(
             retries=0,
             limits=http.Limits(
@@ -389,7 +397,7 @@ class OpenAIAdapter:
                 started = _SERIALIZATION_STARTED.get()
                 if (
                     request.headers.get("authorization") != f"Bearer {key}"
-                    or prepared is None
+                    or not isinstance(prepared, PreparedRequestV4)
                     or request.method != "POST"
                     or request.url.scheme != "https"
                     or request.url.host != "api.openai.com"
@@ -400,6 +408,15 @@ class OpenAIAdapter:
                     raise ProviderIntegrityError(
                         "SDK request bytes or endpoint differ from the sealed commitment"
                     )
+                policy = prepared.output_commitment.service_policy
+                request.extensions["timeout"] = {
+                    "connect": 10.0,
+                    "write": 10.0,
+                    "pool": 10.0,
+                    "read": 60.0
+                    if policy is None
+                    else float(policy.read_timeout_seconds),
+                }
                 adapter.serialization_seconds += time.perf_counter() - started
                 adapter._check_authority()
                 if adapter._submission_guard is not None:
@@ -423,6 +440,7 @@ class OpenAIAdapter:
                         body.extend(chunk)
                 finally:
                     await response.aclose()
+                state["raw"] = bytes(body)
                 headers = {
                     key: value
                     for key, value in response.headers.items()
@@ -489,7 +507,8 @@ class OpenAIAdapter:
         self._invoked.append(submission_id)
         body = _mapping(decode_assessment_output(prepared.payload))
         client = await self._execution_client()
-        invocation_state = {"invoked": False}
+        operation_started = time.perf_counter()
+        invocation_state: dict[str, Any] = {"invoked": False}
         invocation_token = _INVOCATION_STATE.set(invocation_state)
         token = _INVOKING.set(prepared)
         serialization_token = _SERIALIZATION_STARTED.set(time.perf_counter())
@@ -499,7 +518,19 @@ class OpenAIAdapter:
                 if self.endpoint == "responses"
                 else client.chat.completions.with_raw_response.create
             )
-            raw_response = await asyncio.wait_for(operation(**body), timeout=90.0)
+            policy = prepared.output_commitment.service_policy
+            if policy is not None:
+                _, http = _sdk()
+                body["timeout"] = http.Timeout(
+                    float(policy.read_timeout_seconds),
+                    connect=10.0,
+                    write=10.0,
+                    pool=10.0,
+                )
+            raw_response = await asyncio.wait_for(
+                operation(**body),
+                timeout=90.0 if policy is None else policy.operation_deadline_seconds,
+            )
             raw = bytes(raw_response.content)
         except asyncio.CancelledError:
             raise ProviderInvocationCancelled(
@@ -518,7 +549,11 @@ class OpenAIAdapter:
             ):
                 raise cause from None
             status = getattr(error, "status_code", None)
-            if status in {400, 401, 403, 404, 422, 429}:
+            if status in {400, 401, 403, 404, 422, 429} and (
+                status != 429
+                or prepared.output_commitment.service_policy is None
+                or terminal_rate_rejection("openai", invocation_state.get("raw"))
+            ):
                 code = {
                     401: "credentials_rejected",
                     403: "permission_denied",
@@ -540,7 +575,13 @@ class OpenAIAdapter:
             remote_id = document.get("id")
             if not isinstance(remote_id, str) or not remote_id.strip():
                 raise ValueError
-            response = self._response(raw, document, remote_id, prepared=prepared)
+            response = self._response(
+                raw,
+                document,
+                remote_id,
+                prepared=prepared,
+                latency_seconds=time.perf_counter() - operation_started,
+            )
         except (ValueError, TypeError):
             raise SubmissionUncertain(
                 "OpenAI response identity is unavailable", invoked=True
@@ -555,6 +596,7 @@ class OpenAIAdapter:
         remote_id: str,
         *,
         prepared: PreparedRequest | None = None,
+        latency_seconds: float | None = None,
     ) -> ProviderResponse:
         try:
             kind, text, completion_status = (
@@ -600,6 +642,9 @@ class OpenAIAdapter:
         exact_safe = exact_safe and encoding_safe
         safe = raw if exact_safe else _encoded(envelope)
         reported = body.get("model") if isinstance(body.get("model"), str) else None
+        policy = getattr(
+            getattr(prepared, "output_commitment", None), "service_policy", None
+        )
         return ProviderResponse.model_validate(
             {
                 "observation_key": remote_id,
@@ -607,6 +652,13 @@ class OpenAIAdapter:
                 "raw": raw,
                 "evidence": ProviderEvidence(
                     provenance="provider_documented",
+                    service_tier=observe_service_tier(
+                        policy,
+                        body.get("service_tier"),
+                        latency_seconds=latency_seconds,
+                    )
+                    if policy is not None
+                    else None,
                     assessment_component=component,
                     usage=usage,
                     output_text=text_bytes,

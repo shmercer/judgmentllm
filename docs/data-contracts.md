@@ -779,3 +779,24 @@ resolved once through the committed occurrence's `presented_order` before
 original-ID normalization. Ties retain explicit `tie` and null-winner semantics;
 forced choice rejects extra fields. Rubric category labels/codes, all normalized
 schema-1 columns, probabilities, expected scores and R exports are unchanged.
+
+## Issue #39 PR1 service intent and observation
+
+RunSpec V3 adds optional nonsecret `account_scope` (opaque ID); omission is
+excluded from serialization and V1/V2 reject it. `execution.tier` retains exact
+provider values and remains requested intent in existing result/export `tier`.
+
+New OpenAI/Anthropic/Gemini manifests, output commitments and transport receipts
+carry optional `service_policy` with strict integer `service_policy_version: 2`,
+provider, requested/wire tier, account scope and bounded deadline fields. Missing
+records mean legacy policy 1 and remain omitted. No global schema, database or
+normalized-result version changes. Inherited preparation reconstructs original
+policy; changed tier/account cannot reuse a sealed physical identity.
+
+A reviewed profile's optional `service_scopes` binds policy 2, normalized service
+class and account scope within its exact provider/model/endpoint/mechanism/feature
+identity. Empty historical scopes serialize as before and authorize no new
+account/tier scope. New optional companion-receipt `service_tier` records the
+policy, whitelisted reported tier, source, latency and provider-specific outcome
+once per physical observation, including under minimal capture. It does not
+create a normalized result column or grant support. See [service tiers](service-tiers.md).

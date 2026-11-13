@@ -363,7 +363,7 @@ async def test_rejections_and_uncertain_calls_never_repeat(
                 "error": {
                     "code": failure,
                     "message": "PRIVATE_EXCEPTION_CANARY",
-                    "status": "UNAVAILABLE",
+                    "status": "RESOURCE_EXHAUSTED" if failure == 429 else "UNAVAILABLE",
                 }
             },
         )
