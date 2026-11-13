@@ -179,6 +179,12 @@ querying/exporting an incomplete run can succeed while reporting that state.
 
 ## Models and loading
 
+V3 also exposes `ReasoningSpec` and `ReasoningCapabilities`. For example,
+`GenerationSpec(max_output_tokens=8192, reasoning=ReasoningSpec(effort="none"))`
+requests explicit effort without setting mode or sampling. Exact route/model
+capability checks and independent native qualification still apply. See the
+[reasoning-control guide](reasoning-controls.md).
+
 `judgmentllm.models` exposes `ResponseItem`, `Level`, `ResolvedLevel`, `Trait`, `Rubric`, `Exemplar`, `PairwiseCriterion`, `PairTask`, and `validate_exemplars`. `Trait.numeric_values`, `resolved_levels`, and `coding_kind` expose resolved category coding.
 
 `judgmentllm.config` exposes `InputSpec`, `ExecutionSpec`, `GenerationSpec`, `PromptSpec`, `PromptSpecV2`, `RunSpec`, `RunSpecV2`, `RunSpecification`, `ConfigurationError`, `load_run_spec(path)`, `load_rubric(path)`, and `read_document(path)`. Loaders accept strings or `Path` objects. Every referenced path resolves against the configuration containing it. Direct Python construction uses loaded model instances; path shorthand is accepted through model validation for input references.

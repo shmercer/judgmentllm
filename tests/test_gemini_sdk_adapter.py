@@ -161,7 +161,11 @@ async def test_exact_physical_sdk_bytes(
     )
     candidate, _, _, context = wire_for(tmp_path, probe=True, **options)
     authorize_fixture(
-        monkeypatch, context, candidate.output_commitment.selection.features, route
+        monkeypatch,
+        context,
+        candidate.output_commitment.selection.features,
+        route,
+        generation=generation,
     )
     wire, spec, _, context = wire_for(tmp_path, **options)
     bodies: list[bytes] = []

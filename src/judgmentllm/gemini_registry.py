@@ -18,6 +18,7 @@ from judgmentllm.native_schema import NativeModel, NativeProjectionScopeV1
 from judgmentllm.native_selection import NativeFeature
 from judgmentllm.persistence.hashing import semantic_digest
 from judgmentllm.persistence.models import SHA256
+from judgmentllm.reasoning import ReasoningQualificationScopeV1
 from judgmentllm.service_tiers import ServiceQualificationScope
 
 __all__ = ["_profile_for", "production_generation_capabilities"]
@@ -56,6 +57,9 @@ class _QualifiedProfile(NativeModel):
     independent_live_sha256: SHA256
     generation: GenerationCapabilities | None = None
     service_scopes: tuple[ServiceQualificationScope, ...] = Field(
+        default=(), exclude_if=lambda value: not value
+    )
+    reasoning_scopes: tuple[ReasoningQualificationScopeV1, ...] = Field(
         default=(), exclude_if=lambda value: not value
     )
 

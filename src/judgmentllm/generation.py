@@ -8,9 +8,10 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import ConfigDict, model_validator
+from pydantic import ConfigDict, Field, model_validator
 
 from judgmentllm.models import ID, StrictModel
+from judgmentllm.reasoning import ReasoningCapabilities
 
 GenerationParameter = Literal["temperature", "top_p", "max_output_tokens"]
 
@@ -55,6 +56,9 @@ class GenerationCapabilities(StrictModel):
     source: ID | None = None
     fixture_tested: bool = False
     live_qualified: bool = False
+    reasoning: ReasoningCapabilities | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
     @model_validator(mode="after")
     def distinct_combinations(self) -> GenerationCapabilities:

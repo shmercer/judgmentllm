@@ -466,3 +466,12 @@ deadlines. Historical omission remains policy 1 without changed bytes or
 semantics. Companion served-tier metadata never replaces requested intent or
 changes normalized assessment schemas. See [service tiers](service-tiers.md)
 for mappings, failure handling, and the deferred Flex-first study handoff.
+
+## Issue #39 PR2-A reasoning intent
+
+The [reasoning-control contract](reasoning-controls.md) adds optional typed V3
+effort and separate mode, adapter-owned exact SDK mappings and frozen additive
+policy evidence. Omitted historical requests retain their bytes and identities;
+new control combinations require exact capability validation and independent
+native qualification. Reasoning retention stays disabled. This prerequisite
+does not alter the 30/50 default-control study grid or execute any live suite.

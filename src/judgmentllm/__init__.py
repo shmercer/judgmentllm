@@ -52,6 +52,7 @@ from judgmentllm.provider_diagnostics import (
     verify_authentication,
 )
 from judgmentllm.r_exports import export_pairwise_r_csv, export_rubric_r_csv
+from judgmentllm.reasoning import ReasoningCapabilities, ReasoningSpec
 from judgmentllm.results import (
     NormalizationOptions,
     PairwiseResult,
@@ -93,6 +94,8 @@ __all__ = [
     "GenerationSpec",
     "GenerationCapabilities",
     "GenerationParameterCapability",
+    "ReasoningSpec",
+    "ReasoningCapabilities",
     "RubricResult",
     "PairwiseResult",
     "NormalizationOptions",

@@ -96,6 +96,10 @@ class GeminiConfigurationError(ProviderError):
             "generation.temperature",
             "generation.top_p",
             "generation.max_output_tokens",
+            "generation.reasoning",
+            "generation.reasoning.effort",
+            "generation.reasoning.mode",
+            "generation.temperature/top_p",
             "prompt.structured_output",
             "prompt.output_order",
         }
@@ -268,7 +272,20 @@ def _sdk_arguments(sdk: Any, prepared: Any) -> dict[str, Any]:
             else None,
         )
     if prepared.generation is not None:
-        values.update(prepared.generation.model_dump(mode="json", exclude_none=True))
+        values.update(
+            prepared.generation.model_dump(
+                mode="json", exclude_none=True, exclude={"reasoning"}
+            )
+        )
+    from judgmentllm.providers.reasoning import wire_controls
+
+    controls = wire_controls(
+        prepared.generation, prepared.output_commitment.reasoning_policy
+    )
+    if controls:
+        values["thinking_config"] = sdk.types.ThinkingConfig(
+            **controls["thinking_config"]
+        )
     fragment = prepared.output_commitment.sdk_config_fragment_text
     if fragment is not None:
         config = _mapping(decode_assessment_output(fragment))
@@ -452,11 +469,20 @@ class GeminiAdapter:
         )
 
     def capabilities(self, spec: RunSpecification) -> CapabilityProfile:
-        return self.capabilities_for(
+        from judgmentllm.providers.reasoning import generation_capabilities
+
+        profile = self.capabilities_for(
             spec.provider,
             spec.endpoint,
             spec.model,
             mechanism=getattr(spec.prompt, "native_mechanism", None),
+        )
+        return profile.model_copy(
+            update={
+                "generation": generation_capabilities(
+                    spec, self.transport_context.scope, profile.generation
+                )
+            }
         )
 
     def validate(self, spec: RunSpecification) -> None:

@@ -10,9 +10,11 @@ from typing import Any, cast
 import pytest
 
 from judgmentllm import gemini_registry
+from judgmentllm.config import GenerationSpec
 from judgmentllm.evidence.scope import EvidenceProvenance
 from judgmentllm.gemini_registry import _QualifiedProfile
 from judgmentllm.gemini_transport import GeminiProductionContext
+from judgmentllm.reasoning import ReasoningQualificationScopeV1
 from judgmentllm.service_tiers import ServiceQualificationScope
 
 
@@ -69,10 +71,29 @@ def authorize_fixture(
     context: GeminiProductionContext,
     features: Any,
     mechanism: str,
+    *,
+    generation: GenerationSpec | None = None,
 ) -> None:
     """Synthetic test-only authority, never persisted or written to production."""
+    controls = ()
+    if generation is not None and (
+        generation.reasoning is not None
+        or generation.temperature is not None
+        or generation.top_p is not None
+    ):
+        controls = (
+            ReasoningQualificationScopeV1(
+                account_scope="synthetic-account",
+                tier="standard",
+                reasoning=generation.reasoning,
+                temperature=generation.temperature,
+                top_p=generation.top_p,
+                features=tuple(features),
+            ),
+        )
     profile = _QualifiedProfile(
         scope=context.scope,
+        reasoning_scopes=controls,
         service_scopes=(
             ServiceQualificationScope(
                 account_scope="synthetic-account",

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from typing import cast
 
-from pydantic import field_serializer, field_validator, model_validator
+from pydantic import JsonValue, field_serializer, field_validator, model_validator
 
 from judgmentllm.config import GenerationSpec, RunSpecification
 from judgmentllm.generation import GenerationCapabilities
@@ -25,12 +25,14 @@ from judgmentllm.planning import (
 )
 
 
-def _settings(value: GenerationSpec | None) -> dict[str, int | float]:
+def _settings(value: GenerationSpec | None) -> dict[str, JsonValue]:
     """Project only requested values after a complete deep validation boundary."""
     if value is None:
         return {}
     current = _revalidate_record(value)
-    return cast(dict[str, int | float], current.model_dump(exclude_none=True))
+    return cast(
+        dict[str, JsonValue], current.model_dump(mode="json", exclude_none=True)
+    )
 
 
 def _requested_digest(
@@ -68,7 +70,7 @@ class GenerationCommitment(ExecutionModel):
         return value if _settings(value) else None
 
     @field_serializer("settings")
-    def sparse_settings(self, value: GenerationSpec | None) -> dict[str, int | float]:
+    def sparse_settings(self, value: GenerationSpec | None) -> dict[str, JsonValue]:
         return _settings(value)
 
     @model_validator(mode="after")
@@ -94,7 +96,7 @@ def build_generation_commitment(
 
     This performs no source freezing, request construction or submission. The
     returned section may be retained under either capture policy: its settings
-    contain only numeric controls, never assessment text or credentials.
+    contain only numeric/typed reasoning controls, never text or credentials.
     """
     current = _revalidate_record(spec)
     profile = _revalidate_record(capabilities) if capabilities is not None else None

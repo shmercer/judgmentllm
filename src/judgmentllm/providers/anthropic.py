@@ -96,6 +96,10 @@ class AnthropicConfigurationError(ProviderError):
             "generation.temperature",
             "generation.top_p",
             "generation.max_output_tokens",
+            "generation.reasoning",
+            "generation.reasoning.effort",
+            "generation.reasoning.mode",
+            "generation.temperature/top_p",
             "prompt.structured_output",
             "prompt.output_order",
         }
@@ -319,7 +323,16 @@ class AnthropicAdapter:
         )
 
     def capabilities(self, spec: RunSpecification) -> CapabilityProfile:
-        return self.capabilities_for(spec.provider, spec.endpoint, spec.model)
+        from judgmentllm.providers.reasoning import generation_capabilities
+
+        profile = self.capabilities_for(spec.provider, spec.endpoint, spec.model)
+        return profile.model_copy(
+            update={
+                "generation": generation_capabilities(
+                    spec, self.transport_context.scope, profile.generation
+                )
+            }
+        )
 
     def validate(self, spec: RunSpecification) -> None:
         if (spec.provider, spec.endpoint, spec.model) != (
