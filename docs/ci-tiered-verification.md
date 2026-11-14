@@ -14,8 +14,9 @@ Full offline collection at the base contains **8,549 cases, 1,822 functions,
 189 modules**, with all parameter IDs preserved. The generated compact inventory
 adds no test executions or assertion replacements. Existing replacement/skip
 contracts, genuine historical fixture bytes and coverage floor are unchanged.
-The final identifier regression adds one case/function: **8,550 cases and
-1,823 functions**, with every original case retained.
+The identifier, scalar-subclass and runtime-snapshot regressions add three
+cases/functions: **8,552 cases and 1,825 functions**, with every original case
+retained.
 The module taxonomy records domain, cost/isolation and platform rationale;
 function selectors cover heterogeneous modules. Unclassified additions are
 mandatory on every lane and unknown dependencies strengthen platform depth.
@@ -49,9 +50,9 @@ failed Windows and aggregate acceptance; its failure remains failed evidence.
 | 3 | Complete suite/history, seven R gates, affected resources/packages | Complete functional suite | Extended OS-sensitive/high-consequence and affected cases |
 | 4 | Existing comprehensive requirements | Complete supported versions | Complete supported versions |
 
-The final registry selects **107** hosted smoke cases or **2,421** extended cases
+The final registry selects **108** hosted smoke cases or **2,422** extended cases
 before change-specific impact additions. Both explicitly defer **34** local-only
-R/resource cases. Full hosted selection retains **8,516** cases. All counts are
+R/resource cases. Full hosted selection retains **8,518** cases. All counts are
 derived from complete collection and exact selectors, not acceptance thresholds.
 The final plan may add whole changed modules and new cases. Each lane preserves
 ordinary/serial/resource partitioning and the genuine cold SDK correctness probe.
@@ -89,9 +90,9 @@ protected-base status. Full eight-lane Level 4 availability remains intact.
   mandatory extended-platform cases.
 
 No coverage baseline, supported version, resource ceiling, workload size,
-deadline, historical fixture or skip allowance is changed. The only production
-adjustment is the equivalent identifier scan described below; public validation
-and serialized outputs retain their existing behavior.
+deadline, historical fixture or skip allowance is changed. Production adjustments
+are limited to the equivalent identifier scan and scalar snapshot branch ordering
+described below; public validation and serialized outputs retain their behavior.
 
 The six invalid-limit cases took **49.02 seconds before / 1.30 seconds after**
 in bounded single-process runs (97.3% lower elapsed time). The original test and
@@ -114,6 +115,18 @@ it is mandatory platform smoke. For the same 500,000 synthetic valid IDs, the
 predicate took 0.9133 seconds before and 0.1651 after. This narrow production
 performance correction addresses the measured hosted-budget pressure without
 reducing validation; its microbenchmark is not an end-to-end speedup claim.
+
+The same profile records 39 million export snapshot calls, 33 million canonical
+snapshot calls and 23 million output-contract snapshot calls. Exact built-in
+scalars now take their existing return path before model/container type checks.
+Canonical floats still require finiteness; subclasses retain their previous
+path, and every model is still deeply revalidated. Comparison against committed
+source on 1,531 deterministic scalar/container/model/mutation/root/error inputs
+per boundary found identical values and failures. Five bounded measurements of
+the same nested workload show median times of 0.0938/0.0702 seconds for export
+snapshots, 0.0967/0.0753 for contract snapshots and 0.1656/0.1436 for canonical
+bytes (before/after). These are isolated observations, not full-suite estimates.
+A mandatory smoke regression rejects scalar subclasses at the canonical boundary.
 
 ## D — qualification and contributor scaffolding
 
@@ -169,6 +182,24 @@ observations justify serial child isolation and work stealing for heavy impact;
 they do not qualify that failed run. Its local campaign was interrupted after
 8,513 ordinary passes (1,588.29 seconds) and twelve serial passes to apply the
 correction. No complete coverage/resource/named-R result is credited to it.
+
+Source `59153f7` subsequently passed complete local qualification: 8,550 cases,
+95.2297% combined historical/change-aware coverage, all seven named strict R
+gates, twenty resource cases and isolated package checks. Its candidate Level 3
+[run](https://github.com/shmercer/judgmentllm/actions/runs/43569816010) passed all
+three profiles and strict aggregation. Its protected-base full Windows lane
+timed out twice at the unchanged fifty-minute job limit; other required lanes
+passed. The actual eight-lane Level 4
+[run](https://github.com/shmercer/judgmentllm/actions/runs/43573597532) passed
+Linux 3.11/3.12 and macOS 3.11, while five jobs reached that limit. Python 3.15
+also exposed four real Google equivalence failures: a built-in unhashable-set
+TypeError gained contextual wording, while all other response fields matched.
+The test now normalizes only those exact list/dict runtime messages and preserves
+the accepted historical fixture bytes. All 321 equivalence cases pass on both
+Python 3.11 and 3.15; 667 focused correction cases pass on Python 3.15. These
+corrections require fresh exact-head qualification; the earlier source's local
+pass and candidate pass cannot qualify the final source. Full Windows budget
+pressure remains unresolved until fresh actual receipts establish otherwise.
 
 Raw evidence is retained outside Git under `/tmp/judgmentllm-issue54/`, with
 source/run/plan identities. The final PR reports actual checks and runtime by
