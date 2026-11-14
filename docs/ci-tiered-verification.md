@@ -4,6 +4,9 @@ Issue: [complete CI optimization](https://github.com/shmercer/judgmentllm/issues
 Base: `07a6d73410395ebe21bc67bc5194e14ca5917c0c`.
 Branch: `feat/54-ci-tiered-verification`. The final PR and external receipts
 identify the literal qualified head; changing source invalidates prior receipts.
+The final source-bound outcomes, run links and runtime ledger are maintained in
+[PR #55](https://github.com/shmercer/judgmentllm/pull/55). This tracked record also
+preserves the earlier unsuccessful attempts; they do not qualify its current head.
 
 ## A — inventory and retained timing evidence
 
