@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import shutil
 import subprocess
@@ -11,6 +12,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from risk import COMPREHENSIVE, admit, lane_profile, make_plan
 from selection import (
     HERE,
@@ -378,6 +381,40 @@ def test_current_collection_matches_declared_inventory(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert inventory(read(receipt)["collected"]) == read(HERE / "test-inventory.json")
+
+
+@pytest.mark.parametrize("lane", ["linux-3.11", "windows-3.12"])
+@pytest.mark.parametrize("checkout", ["lf", "crlf", "changed-content"])
+def test_lock_identity_permits_only_committed_windows_newline_forms(
+    repository: Any, tmp_path: Path, lane: str, checkout: str
+) -> None:
+    source, base = repository
+    (source / "uv.lock").write_bytes(b"synthetic = true\n")
+    plan = make_plan(source, base, freeze(source), minimum=2)
+    assert plan["lockfile_sha256"] == hashlib.sha256(b"synthetic = true\n").hexdigest()
+    assert (
+        plan["windows_crlf_lockfile_sha256"]
+        == hashlib.sha256(b"synthetic = true\r\n").hexdigest()
+    )
+    output = tmp_path / "lane"
+    output.mkdir()
+    write_suite(plan, lane, output / "suite")
+    value = {
+        "lf": plan["lockfile_sha256"],
+        "crlf": plan["windows_crlf_lockfile_sha256"],
+        "changed-content": "0" * 64,
+    }[checkout]
+    for name in ("collection", "summary", "ordinary", "serial", "resource"):
+        path = output / "suite" / (name + ".json")
+        if path.exists():
+            raw = read(path)
+            raw["provenance"]["lockfile_sha256"] = value
+            path.write_text(json.dumps(raw))
+    if checkout == "lf" or checkout == "crlf" and lane == "windows-3.12":
+        assert validate_suite(plan, lane, output, "run:1")["status"] == "passed"
+    else:
+        with pytest.raises(ValueError, match="lock mismatch"):
+            validate_suite(plan, lane, output, "run:1")
 
 
 @pytest.mark.parametrize(

@@ -128,6 +128,12 @@ the negative fixture and keeping scratch trees external. That failed dispatch
 and the interrupted source-3928301 local campaign remain unqualified; final
 source-bound checks are rerun after the upload correction.
 
+Retained real Windows receipts also expose Git's CRLF checkout form of `uv.lock`.
+Plans derive that exact alternative byte hash from the committed lock, while
+receipts retain their actual bytes' hash. Only Windows admits LF or that committed
+CRLF form; changed content and foreign hashes still fail. This avoids treating a
+valid checkout normalization as a dependency substitution.
+
 Raw evidence is retained outside Git under `/tmp/judgmentllm-issue54/`, with
 source/run/plan identities. The final PR reports actual checks and runtime by
 scope, deliberate fault detection, hosted bootstrap and Level 4 evidence. A

@@ -60,6 +60,9 @@ source/lock/run/platform/interpreter identities, all phases, uniqueness, outcome
 skip policy, hashes and totals. Missing artifacts or a smoke receipt mislabeled
 as full fail. Candidate code is not imported by the status-publishing job.
 The test reporter is imported from the policy path before candidate paths.
+Lock receipts keep their actual byte hash. Plans derive canonical LF and Windows
+CRLF checkout hashes from the committed lock; only Windows admits either form,
+and unrelated content remains invalid.
 Manual feature-branch dispatch publishes `CI candidate policy`, keeping bootstrap
 evidence separate from the protected-base `CI acceptance` status.
 

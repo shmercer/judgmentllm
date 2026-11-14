@@ -62,13 +62,16 @@ def validate_suite(
         "windows-latest": "win32",
         "macos-latest": "darwin",
     }[expected["os"]]
+    expected_locks = {plan["lockfile_sha256"]}
+    if platform == "win32":
+        expected_locks.add(plan["windows_crlf_lockfile_sha256"])
     if (
         provenance["source"]["commit"] != plan["source_sha"]
         or provenance["source"]["dirty"] is not False
         or provenance["qualification_run_id"] != f"{run_id}:{lane}"
         or interpreter["platform"] != platform
         or not interpreter["version"].startswith(expected["python"] + ".")
-        or provenance["lockfile_sha256"] != plan["lockfile_sha256"]
+        or provenance["lockfile_sha256"] not in expected_locks
     ):
         raise ValueError("Case receipt source/run/platform/interpreter/lock mismatch")
     if collection.get("provenance") != provenance:

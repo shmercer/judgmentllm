@@ -546,6 +546,11 @@ def make_plan(
         "lockfile_sha256": hashlib.sha256(lock.encode()).hexdigest()
         if (lock := blob(source, head, "uv.lock")) is not None
         else None,
+        "windows_crlf_lockfile_sha256": hashlib.sha256(
+            lock.replace("\n", "\r\n").encode()
+        ).hexdigest()
+        if lock is not None
+        else None,
         "risk": level,
         "requested_minimum": minimum,
         "changes": changes,
