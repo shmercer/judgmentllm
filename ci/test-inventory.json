@@ -229,6 +229,7 @@
       "test_direct_compilation_cannot_enable_explicit_caching": {"": []},
       "test_explicit_remains_unsupported_and_gemini_warning_is_nonblocking": {"": []},
       "test_genuine_historical_requests_replay_without_new_control": {"[full-auto]": [], "[full-off]": [], "[minimal-auto]": [], "[minimal-off]": []},
+      "test_historical_fixture_checkout_preserves_bytes": {"[false]": [], "[true]": []},
       "test_minimal_legacy_in_place_resume_and_interrupted_retry": {"[auto]": [], "[off]": []},
       "test_new_defaults_and_legacy_only_auto": {"[False-1]": [], "[False-2]": [], "[False-3]": [], "[True-1]": [], "[True-2]": [], "[True-3]": []},
       "test_off_scope_is_exact": {"[change0]": [], "[change1]": [], "[change2]": []},

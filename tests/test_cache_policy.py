@@ -73,6 +73,38 @@ def new_case(tmp_path: Path, **options: Any) -> tuple[RunSpecV3, RequestDependen
     return cast(RunSpecV3, validate_run_spec(spec, _cache_policy_version=2)), dependency
 
 
+@pytest.mark.parametrize("autocrlf", ["false", "true"])
+def test_historical_fixture_checkout_preserves_bytes(autocrlf: str) -> None:
+    root = Path(__file__).resolve().parents[1]
+    fixture = root / "tests/fixtures/cache-history"
+    provenance = json.loads((fixture / "provenance.json").read_bytes())
+    for filename, field in (
+        ("producer.py.txt", "producer_script_sha256"),
+        ("store.tar.gz.base64", "archive_sha256"),
+    ):
+        path = (fixture / filename).relative_to(root).as_posix()
+        raw = subprocess.run(
+            [
+                "git",
+                "-c",
+                f"core.autocrlf={autocrlf}",
+                "cat-file",
+                "--filters",
+                f"HEAD:{path}",
+            ],
+            cwd=root,
+            capture_output=True,
+            check=True,
+            timeout=30,
+        ).stdout
+        content = (
+            base64.b64decode(raw, validate=True)
+            if filename.endswith(".base64")
+            else raw
+        )
+        assert hashlib.sha256(content).hexdigest() == provenance[field]
+
+
 @pytest.mark.parametrize("version", [1, 2, 3])
 @pytest.mark.parametrize("pairwise", [False, True])
 def test_new_defaults_and_legacy_only_auto(
