@@ -1480,14 +1480,14 @@
       "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
     },
     "tests/test_cache_policy.py": {
-      "cost": "io",
+      "cost": "process",
       "domain": "provider-sdk",
       "platforms": [
         "linux",
         "win32",
         "darwin"
       ],
-      "reason": "Exact offline SDK cache controls, immutable replay, real filesystem sources and CLI resume policy on all supported platforms"
+      "reason": "Exact offline SDK controls, immutable replay and actual pre-change Git-source producer subprocesses with real source identity and resume checks on all supported platforms"
     }
   },
   "providers": {

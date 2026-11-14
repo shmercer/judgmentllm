@@ -54,15 +54,20 @@ def test_public_validation_preserves_specific_issues(
     report = validate_inputs(spec)
     assert not report.valid
     assert {issue.field for issue in report.issues if issue.severity == "error"} == {
+        "execution.cache_policy",
         "generation.temperature",
         "generation.max_output_tokens",
     }
-    assert all(issue.code == "unknown_capability" for issue in report.issues)
+    assert {issue.code for issue in report.issues} == {
+        "unsupported_cache_policy",
+        "unknown_capability",
+    }
     result = CliRunner().invoke(app, ["validate", "--config", str(path), "--json"])
     assert result.exit_code == 2
     body = json.loads(result.stdout)
     assert body["error"]["category"] == "validation"
     assert {issue["field"] for issue in body["data"]["issues"]} == {
+        "execution.cache_policy",
         "generation.temperature",
         "generation.max_output_tokens",
     }

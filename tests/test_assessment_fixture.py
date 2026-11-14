@@ -28,6 +28,9 @@ def test_case_calls_do_not_share_mutable_inputs(
 ) -> None:
     expected = deepcopy(case(tmp_path, pairwise=pairwise))
     spec, dependency, responses = case(tmp_path, pairwise=pairwise)
+    assert spec.cache_policy_version == 2 and spec.execution.cache_policy == "off"
+    if spec.provider == "openai":
+        assert spec.model == "gpt-6-luna"
     spec.model = "changed"
     responses["001"].text = "changed"
     if spec.rubric is not None:

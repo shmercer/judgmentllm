@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Literal, cast
 
+from judgmentllm.cache_policy import CachePolicyVersion
 from judgmentllm.config import (
     ExecutionSpec,
     GenerationSpec,
@@ -39,6 +40,7 @@ def assessment_case(
     ties: bool,
     generation: GenerationSpec | None,
     strict: bool,
+    cache_policy_version: CachePolicyVersion = 2,
 ) -> tuple[RunSpecV3, RequestDependency, dict[str, ResponseItem]]:
     traits = [
         Trait(
@@ -81,7 +83,9 @@ def assessment_case(
         if provider in {"openai", "anthropic", "gemini"}
         else None,
         endpoint=endpoint,
-        model="offline-qualified-model",
+        model="gpt-6-luna"
+        if provider == "openai" and cache_policy_version == 2
+        else "offline-qualified-model",
         generation=generation,
         execution=ExecutionSpec(
             grouping="grouped" if grouped and not pairwise else "independent",
@@ -96,9 +100,9 @@ def assessment_case(
         allow_ties=ties,
         strict_capabilities=strict,
     )
-    if provider == "openai":
-        # Existing arbitrary-model fixtures exercise historical wire semantics.
-        spec = cast(RunSpecV3, validate_run_spec(spec, _cache_policy_version=1))
+    spec = cast(
+        RunSpecV3, validate_run_spec(spec, _cache_policy_version=cache_policy_version)
+    )
     record = (
         PairTask(
             pair_id="pair-001",

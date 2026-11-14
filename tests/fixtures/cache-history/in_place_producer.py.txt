@@ -1,0 +1,33 @@
+"""Create a minimal historical run with original source identities, offline."""
+
+import socket
+import sys
+from pathlib import Path
+
+import judgmentllm
+from judgmentllm.config import RunSpecV3
+from judgmentllm.preparation import prepare_run
+from judgmentllm.production_transport import production_context
+from judgmentllm.providers import openai
+
+
+def denied(*args, **kwargs):
+    raise AssertionError("The historical producer must not use credentials or networking")
+
+
+assert Path(judgmentllm.__file__).resolve().is_relative_to(Path(sys.argv[2]).resolve())
+socket.socket = socket.getaddrinfo = socket.create_connection = denied
+openai._sdk = openai._resolve_credentials = denied
+cache = sys.argv[1]
+assert cache in {"auto", "off"}
+run_id = f"{cache}-minimal"
+spec = RunSpecV3.model_validate_json(Path(f"{run_id}.json").read_bytes())
+assert spec.capture == "minimal" and spec.execution.cache_policy == cache
+with prepare_run(
+    spec,
+    store="in-place",
+    run_id=run_id,
+    capabilities=openai.OpenAIAdapter.capabilities_for("openai", "responses", spec.model),
+    transport_context=production_context(spec),
+) as prepared:
+    assert "cache_policy_version" not in prepared.manifest.model_dump()

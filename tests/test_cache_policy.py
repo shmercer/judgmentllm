@@ -7,9 +7,14 @@ import base64
 import hashlib
 import io
 import json
+import os
 import socket
+import subprocess
+import sys
 import tarfile
 from copy import deepcopy
+from dataclasses import replace
+from importlib.metadata import PackageNotFoundError
 from pathlib import Path
 from typing import Any, cast
 
@@ -30,10 +35,12 @@ from judgmentllm.config import (
 )
 from judgmentllm.evidence.usage import ReportedUsageInput, UsageBreakdown
 from judgmentllm.execution import execute_run
+from judgmentllm.execution.retry import authorize_subset_retry
 from judgmentllm.models import ResponseItem
 from judgmentllm.persistence.hashing import canonical_bytes
+from judgmentllm.persistence.repository import ReadOnlyRepository
 from judgmentllm.planning import CapabilityProfile, plan_record, validate_run
-from judgmentllm.preparation import PreparationError, open_prepared_run
+from judgmentllm.preparation import PreparationError, open_prepared_run, prepare_run
 from judgmentllm.preparation.session import RequestDependency
 from judgmentllm.production_transport import (
     TransportCommitmentV2,
@@ -232,6 +239,74 @@ def test_off_scope_is_exact(change: dict[str, Any]) -> None:
     scope = production_context_for_identity("openai", "responses", "gpt-6-luna").scope
     with pytest.raises(ValueError):
         validate_openai_off(scope.model_copy(update=change))
+
+
+@pytest.mark.parametrize(
+    "unsupported",
+    ["model", "endpoint", "sdk", "missing_sdk", "context_sdk", "synthetic_scope"],
+)
+def test_common_off_preflight_leaves_no_durable_identity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, unsupported: str
+) -> None:
+    from judgmentllm import planning
+    from judgmentllm.persistence.repository import Repository
+    from judgmentllm.providers import openai as provider
+
+    spec, _ = new_case(tmp_path)
+    context = production_context(spec)
+    spec.prompt.native_mechanism = None
+    if unsupported == "model":
+        spec.model = "unsupported-model"
+    elif unsupported == "endpoint":
+        spec.endpoint = "decisions"
+    elif unsupported == "context_sdk":
+        context = replace(
+            context, scope=context.scope.model_copy(update={"sdk_version": "3.42.2"})
+        )
+    elif unsupported == "synthetic_scope":
+        spec.model = "judgmentllm-synthetic-native-v1"
+
+    def sdk_version(package: str) -> str:
+        assert package == "openai"
+        if unsupported == "missing_sdk":
+            raise PackageNotFoundError(package)
+        return "3.42.2" if unsupported == "sdk" else "3.42.1"
+
+    def denied(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("preflight must precede credentials, SDK and run creation")
+
+    monkeypatch.setattr(planning, "version", sdk_version)
+    monkeypatch.setattr(provider, "_resolve_credentials", denied)
+    monkeypatch.setattr("judgmentllm._auth._resolve_credentials", denied)
+    monkeypatch.setattr(provider, "_sdk", denied)
+    monkeypatch.setattr(Repository, "create_run", denied)
+    profile = CapabilityProfile(modes=("live",), grouped=True)
+    report = validate_run(spec, capabilities=profile)
+    assert [issue.field for issue in report.issues if issue.severity == "error"] == (
+        []
+        if unsupported in {"context_sdk", "synthetic_scope"}
+        else ["execution.cache_policy"]
+    )
+    legacy = validate_run_spec(spec, _cache_policy_version=1)
+    assert validate_run(legacy, capabilities=profile).valid
+    store = tmp_path / "store"
+    with pytest.raises(PreparationError):
+        prepare_run(
+            spec,
+            store=store,
+            run_id="001",
+            capabilities=profile,
+            transport_context=context,
+        )
+    with ReadOnlyRepository(store) as repository:
+        for table in ("runs", "requests", "attempts", "artifacts"):
+            assert (
+                repository.connection.execute(
+                    f"SELECT COUNT(*) FROM {table}"
+                ).fetchone()[0]
+                == 0
+            )
+    assert not list(store.rglob("manifest.json"))
 
 
 @pytest.mark.asyncio
@@ -434,6 +509,7 @@ async def test_genuine_historical_requests_replay_without_new_control(
         dependency = next(prepared.iter_request_dependencies())
         attempt = next(prepared.repository.iter_attempts(run_id))
         receipt = prepared.transport_for_attempt(attempt.attempt_id)
+        assert isinstance(receipt, TransportCommitmentV2)
         assert (
             canonical_bytes(receipt)
             == (tmp_path / f"{run_id}-receipt.json").read_bytes()
@@ -474,6 +550,21 @@ async def test_genuine_historical_requests_replay_without_new_control(
     adapter = OpenAIAdapter(
         "responses", spec.model, http_transport=httpx2.MockTransport(respond)
     )
+
+    def interrupted(stage: str, _: str) -> None:
+        if stage == "after_evidence_commit":
+            raise RuntimeError("synthetic interruption after original evidence")
+
+    with pytest.raises(ExceptionGroup):
+        await execute_run(
+            run_id,
+            store=tmp_path / "store",
+            spec=spec,
+            adapter=adapter,
+            use_frozen_snapshot=True,
+            fault=interrupted,
+        )
+    assert seen == [original]
     for _ in range(2):
         report = await execute_run(
             run_id,
@@ -484,3 +575,189 @@ async def test_genuine_historical_requests_replay_without_new_control(
         )
         assert report.summary.successful_results == 1
     assert len(seen) == 1 and manifest_path.read_bytes() == manifest_bytes
+    with ReadOnlyRepository(tmp_path / "store") as repository:
+        tasks = tuple(result.task_id for result in repository.iter_results(run_id))
+    retry = authorize_subset_retry(
+        run_id,
+        store=tmp_path / "store",
+        spec=spec,
+        adapter=adapter,
+        use_frozen_snapshot=True,
+        task_ids=tasks,
+        operation_id="archived-legacy-retry",
+        allow_completed=True,
+    )
+    assert retry.attempt_number == 2
+    await execute_run(
+        run_id,
+        store=tmp_path / "store",
+        spec=spec,
+        adapter=adapter,
+        use_frozen_snapshot=True,
+    )
+    assert seen == [original, original]
+    with open_prepared_run(
+        run_id,
+        store=tmp_path / "store",
+        spec=spec,
+        transport_context=context,
+        use_frozen_snapshot=True,
+    ) as prepared:
+        child = prepared.transport_for_attempt(retry.attempt_id)
+        assert isinstance(child, TransportCommitmentV2)
+        assert child.cache_policy_version == 1
+        assert child.parent_commitment_sha256 == receipt.commitment_sha256
+        assert child.payload_sha256 == receipt.payload_sha256
+        assert canonical_bytes(
+            prepared.transport_for_attempt(attempt.attempt_id)
+        ) == canonical_bytes(receipt)
+    assert manifest_path.read_bytes() == manifest_bytes
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("cache", ["auto", "off"])
+async def test_minimal_legacy_in_place_resume_and_interrupted_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, cache: str
+) -> None:
+    fixture = Path(__file__).parent / "fixtures/cache-history"
+    raw = base64.b64decode(
+        (fixture / "store.tar.gz.base64").read_bytes(), validate=True
+    )
+    with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as archive:
+        archive.extractall(tmp_path, filter="data")
+    monkeypatch.chdir(tmp_path)
+    run_id = f"{cache}-minimal"
+    spec = validate_run_spec_json(
+        (tmp_path / f"{run_id}.json").read_text(), _cache_policy_version=1
+    )
+    assert isinstance(spec, RunSpecV3)
+    context = production_context(spec)
+    original_body = (tmp_path / f"{run_id}-payload.bin").read_bytes()
+    store = tmp_path / "in-place"
+    source = tmp_path / "pre-change"
+    source.mkdir()
+    base = "34dd83f57525dc3898fd735530710c4be03fa2a9"
+    archived_source = subprocess.run(
+        ["git", "archive", "--format=tar", base, "src"],
+        cwd=fixture.parents[2],
+        capture_output=True,
+        check=True,
+        timeout=30,
+    ).stdout
+    with tarfile.open(fileobj=io.BytesIO(archived_source)) as archive:
+        archive.extractall(source, filter="data")
+    # Run the actual old producer in place; no consumer identity/policy is patched.
+    subprocess.run(
+        [
+            sys.executable,
+            str(fixture / "in_place_producer.py.txt"),
+            cache,
+            str(source / "src"),
+        ],
+        cwd=tmp_path,
+        check=True,
+        capture_output=True,
+        timeout=60,
+        env={
+            **os.environ,
+            "PYTHONPATH": str(source / "src"),
+            "PYTHONDONTWRITEBYTECODE": "1",
+        },
+    )
+
+    with open_prepared_run(
+        run_id, store=store, spec=spec, transport_context=context
+    ) as prepared:
+        assert (
+            prepared.spec.cache_policy_version
+            == prepared.manifest.cache_policy_version
+            == 1
+        )
+        assert prepared.manifest.capture == "minimal"
+        assert all(source.snapshot is None for source in prepared.manifest.sources)
+        dependency = next(prepared.iter_request_dependencies())
+        original_attempt = next(prepared.repository.iter_attempts(run_id))
+        original_receipt = prepared.transport_for_attempt(original_attempt.attempt_id)
+        original_bytes = canonical_bytes(original_receipt)
+        manifest_path = prepared.store.root / "manifest.json"
+        manifest_bytes = manifest_path.read_bytes()
+        original_generation = prepared.manifest.generation
+        original_configuration = prepared.manifest.configuration_sha256
+        assert b'"cache_policy_version"' not in manifest_bytes
+        assert b'"cache_policy_version"' not in original_bytes
+        assert (
+            prepared.prepare_transport_attempt(
+                dependency, original_receipt.identity
+            ).payload
+            == original_body
+        )
+
+    seen: list[bytes] = []
+
+    def respond(request: httpx2.Request) -> httpx2.Response:
+        assert request.content == original_body
+        assert b'"prompt_cache_options"' not in request.content
+        seen.append(request.content)
+        return httpx2.Response(
+            200,
+            json=envelope(
+                "responses", '{"scores":[{"trait_id":"01","category_label":"high"}]}'
+            ),
+            request=request,
+        )
+
+    def interrupted(stage: str, _: str) -> None:
+        if stage == "after_claim":
+            raise RuntimeError("synthetic interruption after original claim")
+
+    adapter = OpenAIAdapter(
+        "responses", spec.model, http_transport=httpx2.MockTransport(respond)
+    )
+    try:
+        with pytest.raises(ExceptionGroup):
+            await execute_run(
+                run_id, store=store, spec=spec, adapter=adapter, fault=interrupted
+            )
+        assert not seen
+        report = await execute_run(run_id, store=store, spec=spec, adapter=adapter)
+        assert report.summary.successful_results == 1 and len(seen) == 1
+        with ReadOnlyRepository(store) as repository:
+            tasks = tuple(result.task_id for result in repository.iter_results(run_id))
+        retry = authorize_subset_retry(
+            run_id,
+            store=store,
+            spec=spec,
+            adapter=adapter,
+            task_ids=tasks,
+            operation_id="legacy-retry",
+            allow_completed=True,
+        )
+        assert retry.attempt_number == 2
+        await execute_run(run_id, store=store, spec=spec, adapter=adapter)
+        assert seen == [original_body, original_body]
+    finally:
+        await adapter.aclose()
+    with open_prepared_run(
+        run_id, store=store, spec=spec, transport_context=context
+    ) as prepared:
+        receipt = prepared.transport_for_attempt(retry.attempt_id)
+        assert isinstance(receipt, TransportCommitmentV2)
+        assert receipt.cache_policy_version == 1
+        assert receipt.parent_commitment_sha256 == original_receipt.commitment_sha256
+        assert receipt.payload_sha256 == original_receipt.payload_sha256
+        assert (
+            canonical_bytes(prepared.transport_for_attempt(original_attempt.attempt_id))
+            == original_bytes
+        )
+        assert prepared.manifest.configuration_sha256 == original_configuration
+        assert prepared.manifest.generation == original_generation
+        assert manifest_path.read_bytes() == manifest_bytes
+
+    # Even identical replacement bytes cannot authorize a changed minimal source.
+    source = tmp_path / "responses.jsonl"
+    replacement = tmp_path / "replacement.jsonl"
+    replacement.write_bytes(source.read_bytes())
+    replacement.replace(source)
+    with pytest.raises(PreparationError):
+        open_prepared_run(run_id, store=store, spec=spec, transport_context=context)
+    assert len(seen) == 2

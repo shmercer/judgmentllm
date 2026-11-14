@@ -12,7 +12,7 @@ execution:
 
 | Provider | Meaning of OFF for a new run |
 |---|---|
-| OpenAI Responses / Chat Completions | Commit and serialize `prompt_cache_options: {"mode":"explicit"}` with no `prompt_cache_breakpoint`. Only the exact `gpt-6-luna` and `gpt-6.1-terra` routes with OpenAI SDK 3.42.1 are currently covered. Unknown models and older routes fail before submission. |
+| OpenAI Responses / Chat Completions | Commit and serialize `prompt_cache_options: {"mode":"explicit"}` with no `prompt_cache_breakpoint`. Only the exact `gpt-6-luna` and `gpt-6.1-terra` routes with OpenAI SDK 3.42.1 are currently covered. Unsupported models/endpoints and missing or different installed SDKs fail shared, credential-free preflight before a run identity is created. |
 | Anthropic Messages | Omit `cache_control`; no application-requested cache writes. |
 | Gemini Developer | Omit explicit `cached_content`. Provider-managed implicit caching cannot be disabled; preflight reports this limitation as a warning, including in strict mode. |
 | Vertex | Omit application-managed cache controls; this change establishes no provider-level disable guarantee. |

@@ -328,7 +328,19 @@ def prepare_run(
         if transport_context is not None:
             from judgmentllm.transport_dispatch import context_protocol
 
-            context_protocol(transport_context)
+            if context_protocol(transport_context) == "production":
+                from judgmentllm.cache_policy import validate_openai_off
+                from judgmentllm.production_transport import ProductionContext
+
+                assert isinstance(transport_context, ProductionContext)
+                if spec.cache_policy_version == 2:
+                    validate_openai_off(transport_context.scope)
+                    if (spec.provider, spec.endpoint, spec.model) != (
+                        transport_context.scope.provider,
+                        transport_context.scope.endpoint,
+                        transport_context.scope.model,
+                    ):
+                        raise PreparationError("production transport scope differs")
         plan_run(spec, capabilities=profile)
         repository.create_run(
             RunRecord(

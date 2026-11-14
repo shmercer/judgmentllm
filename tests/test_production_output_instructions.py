@@ -136,6 +136,11 @@ def rendered_case(
         explanations=explanations,
         pairwise=pairwise,
         ties=ties,
+        **(
+            {"cache_policy_version": 1 if service_policy_version == 1 else 2}
+            if route.startswith("openai.")
+            else {}
+        ),
         **ROUTES[route],
     )
     if service_policy_version == 1:
