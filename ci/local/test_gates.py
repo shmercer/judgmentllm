@@ -377,6 +377,14 @@ def test_r_version_probe_uses_retained_script_file(
         r"C:\JudgmentLLM-ci\tmp\01234567890123456789",
         r"C:\JudgmentLLM-ci\tmp\bad:stream",
         r"C:\JudgmentLLM-ci\tmp\bad.",
+        r"D:\jllm",
+        r"C:jllm",
+        r"C:\jllm\..\other",
+        r"C:\jllm-other",
+        r"C:\jllm\xy",
+        r"C:\jllm\x:stream",
+        r"C:\jllm\x.",
+        r"C:\jllm\x ",
     ],
 )
 def test_windows_scratch_root_rejects_unsafe_or_long_overrides(root: str) -> None:
@@ -385,14 +393,8 @@ def test_windows_scratch_root_rejects_unsafe_or_long_overrides(root: str) -> Non
 
 
 def test_windows_scratch_root_accepts_its_short_project_namespace() -> None:
-    assert (
-        str(gates.windows_scratch_root("c:/JudgmentLLM-ci/tmp"))
-        == r"c:\JudgmentLLM-ci\tmp"
-    )
-    assert (
-        str(gates.windows_scratch_root(r"C:\JudgmentLLM-ci\tmp\ci"))
-        == r"C:\JudgmentLLM-ci\tmp\ci"
-    )
+    assert str(gates.windows_scratch_root("c:/jllm")) == r"c:\jllm"
+    assert str(gates.windows_scratch_root(r"C:\jllm\x")) == r"C:\jllm\x"
 
 
 def test_scratch_allocation_preserves_existing_evidence(

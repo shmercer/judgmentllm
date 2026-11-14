@@ -26,7 +26,7 @@ from judgmentllm.persistence.hashing import canonical_bytes
 from judgmentllm.study import cli, execution
 from judgmentllm.study.budget import BudgetLedger
 from judgmentllm.study.execution import adapter_for
-from judgmentllm.study.records import Case, Proposal
+from judgmentllm.study.records import Authorization, Case, Proposal
 
 
 @pytest.fixture
@@ -181,24 +181,46 @@ async def test_one_handoff_resume_and_completion_preserve_all_identities(
 @pytest.mark.parametrize("limit", [0, -1, 99, True, 1.0, "1"])
 @pytest.mark.asyncio
 async def test_invalid_limits_reject_before_admission(
-    prepared: tuple[Path, Path, Proposal, list[str]], tmp_path: Path, limit: Any
+    tmp_path: Path,
+    limit: Any,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    directory, proofs, proposal, sent = prepared
+    directory = tmp_path / "unprepared"
+    proofs = tmp_path / "unused-proofs"
+    consent = Authorization(
+        proposal_sha256="0" * 64,
+        source_commit="a" * 40,
+        suite="native_pilot",
+        maximum_calls=42,
+        ceiling_usd=Decimal(5),
+        elapsed_seconds=28800,
+        accept_billable_calls=True,
+        accept_synthetic_capture=True,
+        authorized_by="synthetic-reviewer",
+        authorized_at=datetime(2026, 11, 12, tzinfo=UTC),
+    )
+
+    def deny(*args: Any, **kwargs: Any) -> Any:
+        pytest.fail("Invalid execution controls reached admission or credentials")
+
+    # These controls must fail before any mutable store or proof construction.
+    monkeypatch.setattr(execution, "verify_admission", deny)
+    monkeypatch.setattr(keyring, "_lookup", deny)
     with pytest.raises(ValueError, match="integer from 1 through 98"):
         await execution.execute(
             directory,
-            proposal.digest,
+            consent.proposal_sha256,
             tmp_path / "campaign",
-            authorization(proposal),
+            consent,
             proofs,
             max_new_cases=limit,
         )
     with pytest.raises(ValueError):
         await execution.execute(
             directory,
-            proposal.digest,
+            consent.proposal_sha256,
             tmp_path / "campaign",
-            authorization(proposal),
+            consent,
             proofs,
             max_new_cases=1,
             recover_only=True,
@@ -206,13 +228,17 @@ async def test_invalid_limits_reject_before_admission(
     with pytest.raises(ValueError, match="exact study provider names"):
         await execution.execute(
             directory,
-            proposal.digest,
+            consent.proposal_sha256,
             tmp_path / "campaign",
-            authorization(proposal),
+            consent,
             proofs,
             keyring_providers=("vertex",),
         )
-    assert not sent and not (tmp_path / "campaign").exists()
+    assert (
+        not directory.exists()
+        and not proofs.exists()
+        and not (tmp_path / "campaign").exists()
+    )
 
 
 def test_cli_limit_validation_and_readonly_admission(
@@ -445,10 +471,12 @@ async def test_limit_retains_validation_failures_and_uncertainty(
     assert not resumed["invocation"]["case_limit_reached"]
 
 
+@pytest.mark.serial
 @pytest.mark.parametrize("mode", ["execute", "crash"])
 def test_separate_process_resume_and_recovery_never_replace_requests(
     prepared: tuple[Path, Path, Proposal, list[str]], tmp_path: Path, mode: str
 ) -> None:
+    # The 120-second child deadline must hold without parallel worker contention.
     assert prepared[0].parent == tmp_path
     helper = Path(__file__).with_name("study_limit_process.py")
     environment = {

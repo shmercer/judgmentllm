@@ -1,5 +1,12 @@
 # Local verification and optional complete grid
 
+For adding tests, taxonomy/parameter maintenance and troubleshooting, use the
+single [contributor testing guide](testing-guide.md). Level 2/3 hosted platforms
+now use exact smoke/extended selections; complete primary historical coverage
+and all applicable local R/resource gates remain required. Every hosted lane
+first validates full collection and emits executed/deferred/not-required case
+accounting. Level 4 below still runs complete supported suites.
+
 Use the authoritative [risk decision table and commands](ci-optimization.md)
 for development and PR acceptance. Targeted feedback uses the existing locked
 worktree environment; local Linux/Python 3.11 is the principal full-suite and coverage
@@ -58,6 +65,18 @@ entire operation, including result collection and graceful shutdown:
 /mnt/VM_Fast/pairwiseLLM-checks/windows-ci/.local-ci-windows.lock
 /mnt/VM_Fast/pairwiseLLM-checks/macos-ci/.ci.lock
 ```
+
+Windows generated test/R data uses the separate short namespace `C:\jllm`.
+`JUDGMENTLLM_CI_SCRATCH_ROOT`, when set, must stay within that namespace and be
+at most nine characters before the exclusively allocated nine-character run
+name. This keeps deep SDK preparation paths below legacy Win32 path limits
+without shortening IDs or filenames, enabling long paths globally, or changing
+the VM allocation. Existing `C:\JudgmentLLM-ci\tmp` evidence is left intact;
+an override using that former namespace must be updated.
+The qualification reporter also gives Windows tests fresh compact pytest
+directories. Full node IDs stay in raw receipts; item IDs, artifact filenames,
+mutable-store isolation and retention remain unchanged. This leaves room for
+longer acknowledgment references as well as initial preparation artifacts.
 
 Grid and direct guest adapters also reject incomplete allocation recovery journals
 under `/mnt/VM_Fast/judgmentllm-ci/overrides` before guest work. No supported

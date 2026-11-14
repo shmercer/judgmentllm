@@ -317,7 +317,10 @@ def test_stronger_request_and_complete_matrix_are_recorded(repository: Any) -> N
     assert low["risk"] == 0 and len(low["lanes"]) == 1
     assert not low["coverage"] and not low["resources"] and not low["r_gates"]
     strong = make_plan(source, base, head, minimum=4)
-    assert strong["lanes"] == COMPREHENSIVE
+    assert [
+        {key: lane[key] for key in ("id", "os", "python")} for lane in strong["lanes"]
+    ] == COMPREHENSIVE
+    assert all(lane["profile"] == "full" for lane in strong["lanes"])
     assert strong["coverage"] and strong["resources"] and strong["packaging"]
     assert strong["resource_execution"] == "local"
     assert all(
@@ -343,7 +346,12 @@ def test_moderate_adapter_gets_primary_coverage_and_affected_r(repository: Any) 
     path.parent.mkdir(parents=True)
     path.write_text("def parse(): return 1\n")
     plan = make_plan(source, base, freeze(source))
-    assert plan["risk"] == 2 and len(plan["lanes"]) == 1
+    assert plan["risk"] == 2 and len(plan["lanes"]) == 3
+    assert [lane["profile"] for lane in plan["lanes"]] == [
+        "impacted",
+        "platform-smoke",
+        "platform-smoke",
+    ]
     assert plan["r_gates"] == ["exports", "execution"]
     assert plan["coverage"] and not plan["resources"]
     assert plan["coverage_execution"] == plan["r_execution"] == "local"
@@ -407,6 +415,8 @@ def passing_receipts(plan: dict[str, Any]) -> list[dict[str, Any]]:
             "status": "passed",
             "phase": "complete",
             "execution_scope": "hosted",
+            "test_profile": lane["profile"],
+            "selection_sha256": "a" * 64,
             "steps": [
                 {"name": name, "exit_code": 0}
                 for name in required_steps(plan, lane["id"])
@@ -436,6 +446,7 @@ def passing_receipts(plan: dict[str, Any]) -> list[dict[str, Any]]:
         "duplicate-step",
         "local-scope",
         "missing-scope",
+        "boolean-step-code",
     ],
 )
 def test_admission_never_conceals_failed_or_omitted_requirements(
@@ -483,6 +494,8 @@ def test_admission_never_conceals_failed_or_omitted_requirements(
         receipts[0]["execution_scope"] = "local"
     elif fault == "missing-scope":
         receipts[0].pop("execution_scope")
+    elif fault == "boolean-step-code":
+        receipts[0]["steps"][0]["exit_code"] = False
     assert bool(admit(plan, receipts, "run:1")) == (fault != "none")
 
 
@@ -525,6 +538,7 @@ def test_malformed_receipt_is_a_failing_command(
     [
         "none",
         "plan-tamper",
+        "boolean-plan",
         pytest.param("hosted-r-step", id="missing-r"),
         "missing-receipt",
         "wrong-source",
@@ -542,6 +556,8 @@ def test_aggregate_reconstructs_trusted_plan_and_checks_artifacts(
     receipts = passing_receipts(plan)
     if fault == "plan-tamper":
         plan["risk"] = 0
+    elif fault == "boolean-plan":
+        plan["coverage"] = 1
     elif fault == "hosted-r-step":
         receipts[0]["steps"].append({"name": "r-execution", "exit_code": 0})
     elif fault == "missing-receipt":
@@ -555,6 +571,9 @@ def test_aggregate_reconstructs_trusted_plan_and_checks_artifacts(
     for index, receipt in enumerate(receipts):
         lane = evidence / str(index)
         lane.mkdir()
+        from selection_fixture import write_suite
+
+        receipt["selection_sha256"] = write_suite(plan, receipt["lane"], lane / "suite")
         (lane / "receipt.json").write_text(json.dumps(receipt))
     result = subprocess.run(
         [

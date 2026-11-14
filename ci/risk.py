@@ -15,6 +15,9 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from selection import HERE as SELECTION_ROOT
+from selection import digest, impact, read, validate_registry
+
 PRIMARY = {"id": "linux-3.11", "os": "ubuntu-24.04", "python": "3.11"}
 REPRESENTATIVE = [
     PRIMARY,
@@ -335,6 +338,8 @@ def classify(filename: str, before: str | None, after: str | None) -> tuple[int,
             "docs/ci-test-audit.md",
             "docs/local-ci.md",
             "docs/implementation-plan.md",
+            "docs/testing-guide.md",
+            "docs/ci-tiered-verification.md",
         }
     ):
         return 3, "verification, dependency, selection or acceptance controls"
@@ -478,15 +483,51 @@ def make_plan(
         or name in SHARED_PROVIDER_FILES
         for name in names
     )
-    lanes = (
-        COMPREHENSIVE
-        if level == 4
-        else (
-            REPRESENTATIVE
-            if level >= 3 or level == 2 and platform_sensitive
-            else [PRIMARY]
-        )
+    taxonomy = read(SELECTION_ROOT / "test-profiles.json")
+    case_inventory = read(SELECTION_ROOT / "test-inventory.json")
+    validate_registry(taxonomy, case_inventory)
+    impacted, impact_reasons = impact(names, taxonomy)
+    heavy_impact = any(
+        taxonomy["modules"][module]["cost"] == "heavy" for module in impacted
     )
+    unknown = [
+        name
+        for name in names
+        if name.startswith("tests/test_")
+        and name.endswith(".py")
+        and name not in taxonomy["modules"]
+        or name.startswith("src/")
+        and name not in taxonomy["shared_sources"]
+        and not any(
+            change["path"] == name and change["level"] == 2 for change in changes
+        )
+    ]
+    if unknown:
+        level = max(level, 3)
+        impact_reasons.append("Unknown test/source dependency: full platform fallback")
+    reach = COMPREHENSIVE if level == 4 else REPRESENTATIVE if level >= 2 else [PRIMARY]
+    lanes = [
+        {
+            **lane,
+            "profile": (
+                "full"
+                if level == 4 or unknown or level >= 3 and lane == PRIMARY
+                else "impacted"
+                if level == 2 and lane == PRIMARY
+                else "focused"
+                if level <= 1
+                else "platform-extended"
+                if level == 3 or platform_sensitive
+                else "platform-smoke"
+            ),
+            "workers": 2 if lane["id"].startswith("windows-") else 4,
+            "distribution": "worksteal" if heavy_impact else "loadfile",
+        }
+        for lane in reach
+    ]
+    for lane in lanes:
+        if lane["profile"] == "full":
+            lane.update(workers=4, distribution="worksteal")
     r_gates = (
         R_GATES
         if level >= 3
@@ -505,11 +546,40 @@ def make_plan(
         "schema_version": 1,
         "base_sha": base,
         "source_sha": head,
+        "lockfile_sha256": hashlib.sha256(lock.encode()).hexdigest()
+        if (lock := blob(source, head, "uv.lock")) is not None
+        else None,
+        "windows_crlf_lockfile_sha256": hashlib.sha256(
+            lock.replace("\n", "\r\n").encode()
+        ).hexdigest()
+        if lock is not None
+        else None,
         "risk": level,
         "requested_minimum": minimum,
         "changes": changes,
         "lanes": lanes,
         "targets": PROMPT_TESTS if level == 1 else ["tests"],
+        "impact": sorted(set(impacted + (PROMPT_TESTS if level == 1 else []))),
+        "selection_reasons": impact_reasons,
+        "unknown_dependencies": unknown,
+        "platform_sensitive": platform_sensitive,
+        "selection_policy_sha256": digest(
+            {"taxonomy": taxonomy, "inventory": case_inventory}
+        ),
+        "policy_code_sha256": digest(
+            {
+                name: hashlib.sha256((SELECTION_ROOT / name).read_bytes()).hexdigest()
+                for name in (
+                    "risk.py",
+                    "acceptance.py",
+                    "selection.py",
+                    "suite_evidence.py",
+                    "local/suite.py",
+                    "local/pytest_report.py",
+                    "local/preflight_provenance.py",
+                )
+            }
+        ),
         "r_gates": r_gates,
         "r_execution": "local",
         "resources": level == 4 or level >= 2 and resource_sensitive,
@@ -532,6 +602,13 @@ def make_plan(
         json.dumps(plan, sort_keys=True).encode()
     ).hexdigest()
     return plan
+
+
+def lane_profile(plan: dict[str, Any], lane: str, scope: str) -> str:
+    expected = next(item for item in plan["lanes"] if item["id"] == lane)
+    if scope == "local" and lane == "linux-3.11" and plan["coverage"]:
+        return "full"
+    return expected["profile"]
 
 
 def required_steps(
@@ -590,6 +667,12 @@ def admit(
             or receipt.get("execution_scope") != "hosted"
         ):
             errors.append(f"Failed or incorrect source/plan/run identity: {lane}")
+        if plan["risk"] >= 1 and (
+            receipt.get("test_profile") != lane_profile(plan, lane, "hosted")
+            or re.fullmatch(r"[0-9a-f]{64}", str(receipt.get("selection_sha256")))
+            is None
+        ):
+            errors.append(f"Missing or incorrect lane test profile/selection: {lane}")
         steps = receipt.get("steps", [])
         names = [step.get("name") for step in steps]
         if any(
@@ -603,6 +686,9 @@ def admit(
             names
         ):
             errors.append(f"Missing or duplicated required steps: {lane}")
-        if any(step.get("exit_code") != 0 for step in steps):
+        if any(
+            type(step.get("exit_code")) is not int or step["exit_code"] != 0
+            for step in steps
+        ):
             errors.append(f"Failed required step: {lane}")
     return errors

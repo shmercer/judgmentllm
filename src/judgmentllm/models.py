@@ -7,6 +7,7 @@ no endpoint-specific limits or provider objects belong in these models.
 from __future__ import annotations
 
 import math
+import re
 import warnings
 from collections.abc import Mapping, Sequence
 from typing import Annotated, Literal, cast
@@ -22,12 +23,14 @@ from pydantic import (
     model_validator,
 )
 
+_IDENTIFIER_CONTROL = re.compile(r"[\x00-\x1f\x7f]")
+
 
 def _identifier(value: str) -> str:
     if (
         not value.strip()
         or value != value.strip()
-        or any(ord(character) < 32 or ord(character) == 127 for character in value)
+        or _IDENTIFIER_CONTROL.search(value) is not None
     ):
         raise ValueError("identifier must be nonempty with no surrounding whitespace")
     return value

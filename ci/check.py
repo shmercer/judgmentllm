@@ -44,6 +44,11 @@ def fast(changed_since: str, output: Path, focused: list[str], workers: int) -> 
         "tests/test_auth_privacy.py",
     }
     expanded = False
+    from selection import impact, read
+
+    taxonomy = read(ROOT / "ci/test-profiles.json")
+    affected, _ = impact([*changed, *untracked], taxonomy)
+    selected.update(affected)
     for name in [*changed, *untracked]:
         path = Path(name)
         if name.startswith("tests/test_") and path.suffix == ".py":
@@ -59,7 +64,11 @@ def fast(changed_since: str, output: Path, focused: list[str], workers: int) -> 
         ):
             # Unknown dependencies must expand selection, rather than silently
             # claiming that a guessed component mapping establishes protection.
-            expanded = True
+            if not (
+                name.startswith("src/judgmentllm/providers/")
+                and path.stem.split("_", 1)[0] in taxonomy["providers"]
+            ):
+                expanded = True
     # An explicit implementation-cycle target is a caller choice. Essential
     # short regressions always remain; neither selection establishes PR acceptance.
     if focused:
@@ -245,6 +254,15 @@ def main() -> int:
         output.mkdir(parents=True, exist_ok=False)
         save(output / "plan.json", plan)
         print(f"Risk {plan['risk']}; plan: {output / 'plan.json'}", flush=True)
+        for lane in plan["lanes"]:
+            print(
+                f"  {lane['id']}: {lane['profile']} ({lane['workers']} workers, {lane['distribution']})",
+                flush=True,
+            )
+        print(
+            f"Local requirements: coverage={plan['coverage']}, R={plan['r_gates']}, resources={plan['resources']}; deferred={plan['deferred']}",
+            flush=True,
+        )
         if options.plan_only:
             return 0
         python = (

@@ -704,6 +704,24 @@ def test_pairwise_missing_explanation_is_invalid_and_input_is_not_mutated() -> N
     assert data == snapshot
 
 
+def test_copied_contract_rejects_unsupported_nested_objects_privately() -> None:
+    class PrivateObject:
+        def __repr__(self) -> str:
+            return "PRIVATE_CONTRACT_SENTINEL"
+
+    for configured in (
+        contract().model_copy(update={"traits": (PrivateObject(),)}),
+        PairwiseOutputContract(pair=pair()).model_copy(
+            update={"pair": PrivateObject()}
+        ),
+    ):
+        with pytest.raises(
+            ValueError, match="invalid assessment output contract"
+        ) as error:
+            serialize_output_schema(configured)
+        assert "PRIVATE_CONTRACT_SENTINEL" not in str(error.value)
+
+
 @pytest.mark.parametrize(
     "changes",
     [

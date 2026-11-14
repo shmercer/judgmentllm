@@ -14,6 +14,15 @@ from .preflight_provenance import RUN_ID_ENV, receipt_provenance, source_record
 _items: list[dict[str, object]] = []
 _reports: list[dict[str, object]] = []
 _provenance: pytest.StashKey[dict[str, Any]] = pytest.StashKey()
+_WINDOWS_COMPACT_TEMP = os.name == "nt"
+
+
+@pytest.fixture
+def tmp_path(tmp_path: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
+    # Full node IDs remain in receipts; compact private paths leave room for SDK receipts.
+    if _WINDOWS_COMPACT_TEMP:
+        return tmp_path_factory.mktemp("t")
+    return tmp_path
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
