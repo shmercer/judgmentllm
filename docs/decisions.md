@@ -587,3 +587,24 @@ cap. Original cumulative consent remains independently protected; new suites
 require explicit extended cumulative consent without replacing the old header.
 All proposals remain unexecuted, blocked on account/pricing evidence and without
 production promotion. See the [study guide](../examples/study-native/README.md).
+
+## Issue #39 operational launch
+
+Reuse GNOME Secret Service through a small Linux launcher without changing the
+shared credential resolver. Metadata-only item search rejects ambiguity and
+locked/missing entries before exact `secret-tool lookup`; selected environment
+variables remain memory-only. The study launcher defers resolution to each
+authorized case, inside the permanent campaign lock and after durable admission.
+Vertex API-key mode remains explicit and separate from ADC and Gemini.
+The launcher is checkout-only, with no public console entry point. Wheel and
+sdist exclude it alongside the study module; installed public CLI smokes must
+work without importing either helper.
+
+Bounded `execute --max-new-cases` uses the existing final HTTP reservation boundary.
+Return normally after durable evidence handling; add no pause journal schema or
+authorization. Derive incomplete/held/complete suite state from retained evidence
+and events, and return a transient invocation limit summary. Preserve all clocks,
+caps, request bytes and recovery semantics. `check-admission` validates private
+proofs and consent without keys or starting execution. Final live proposals must
+be regenerated at the independently accepted merged commit. No implementation
+test, lookup or readiness check authorizes generation.

@@ -861,3 +861,15 @@ version-1 campaign-extension record adds the aggregate while preserving the
 original immutable header and sub-caps. Existing durable ownership, checkpoint,
 reservation and review-hold contracts apply to all four suites. No authorization,
 credential access, billable call or production qualification is implied.
+
+The operational launcher adds no authentication source or credential store to
+these records. GNOME Keyring supplies only the existing selected environment
+variables; independent `CredentialBinding` verification still applies. Study
+`execute` accepts a transient bounded `max_new_cases` limit (1–98). It counts
+new guarded HTTP handoffs and grants no authorization. No proposal, authorization,
+budget event, request, normalized result or export schema changes. Read-only
+reports add derived `suite_execution_state`, safe diagnostic/physical identity
+metadata, and execution returns a transient `invocation` summary. Operator pauses
+are inferred from incomplete terminal coverage and never rewrite historical
+journals or start/deadline records. `check-admission` validates documents without
+keys or a submission. See the [operator guide](../examples/study-native/live-qualification.md).

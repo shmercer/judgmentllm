@@ -54,6 +54,8 @@ import sys
 import judgmentllm
 import importlib.util
 assert importlib.util.find_spec("judgmentllm.study") is None
+assert importlib.util.find_spec("judgmentllm.keyring") is None
+assert not metadata.entry_points(group="console_scripts", name="judgmentllm-keyring")
 from judgmentllm.auth import credential_status
 assert [status.provider for status in credential_status()] == [
     "openai", "anthropic", "gemini", "vertex", "together", "ollama", "typesafe"]
@@ -237,6 +239,7 @@ assert distribution.metadata["License-Expression"] == "MIT"
 assert any(path.name == "LICENSE" for path in distribution.files or [])
 entries = list(metadata.entry_points(group="console_scripts", name="judgmentllm"))
 assert len(entries) == 1 and callable(entries[0].load())
+assert "judgmentllm.keyring" not in sys.modules
 for name in (
     "openai", "anthropic", "google-genai", "together", "ollama",
     "typesafe-sdk", "pyarrow", "fastapi", "uvicorn",

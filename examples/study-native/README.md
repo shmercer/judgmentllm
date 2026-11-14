@@ -6,9 +6,13 @@ The two proposals remain blocked until independently reviewed account binding,
 native feature/tier eligibility, token bounds and dated account prices exist.
 Passing offline tests never qualifies a production model.
 
+For post-merge account evidence, GNOME Keyring, final-source admission and the
+first explicitly initiated request, follow the [live operator guide](live-qualification.md).
+No readiness command or credential lookup initiates generation.
+
 This workflow requires an actual Git checkout and its editable development
-environment. The study module, sources, archives, configurations and experiments
-are repository tooling, excluded from public wheels and source distributions.
+environment. The study module, keyring launcher, sources, archives, configurations
+and experiments are repository tooling, excluded from public wheels and source distributions.
 Installing a package artifact provides the ordinary JudgmentLLM library and CLI;
 it does not install `python -m judgmentllm.study` or these study assets.
 
@@ -224,6 +228,16 @@ conservatively; this executor does not reclaim estimates or move unused suite
 money to another suite. Deadlines persist across restart; cumulative active time
 reserves each call's complete bounded operation duration, including unresolved calls.
 Budget exhaustion reports incomplete coverage and every unrun case.
+
+`execute --max-new-cases N` accepts 1–98 and returns normally after at most N
+new physical HTTP handoffs. Omission retains sequential suite execution.
+Preparation, terminal cases and recovery consume no limit. The invocation reports
+`new_handoffs` and `case_limit_reached`; later status/report derives
+`suite_execution_state: awaiting_explicit_execution` from the unchanged journal.
+An operator pause adds no hold, cancellation, completion or budget event. Existing
+holds, uncertainty, integrity checks, budgets and original deadlines still apply.
+Repeat `execute` explicitly to continue unsubmitted cases at the same proposal and
+campaign. `recover` accepts no limit and never creates a replacement request.
 
 Use `Ctrl-C` to cancel an active executor through the existing engine's cleanup.
 `cancel --proposal DIR --proposal-sha256 DIGEST --campaign DIR` records a durable

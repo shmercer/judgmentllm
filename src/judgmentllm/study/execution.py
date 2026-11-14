@@ -6,6 +6,7 @@ from __future__ import annotations
 import importlib
 import json
 from collections.abc import Iterator
+from contextlib import nullcontext
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -14,6 +15,7 @@ from judgmentllm.config import RunSpecification, RunSpecV3, validate_run_spec_js
 from judgmentllm.execution import execute_run
 from judgmentllm.execution.exports import export_run
 from judgmentllm.execution.retry import RetryPolicy
+from judgmentllm.keyring import credentials as keyring_credentials
 from judgmentllm.native_schema import NativeModel
 from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.hashing import bytes_digest, canonical_bytes
@@ -131,7 +133,7 @@ class _StudyGuard:
             raise ProviderIntegrityError("Study source/configuration scope differs")
         study_generation(spec, context.scope)
 
-    def verify_execution(self, context: Any) -> None:
+    def verify_execution(self, context: Any, *, credentials: bool = True) -> None:
         proposal, case = self.proposal, self.case
         if (
             context != self.context
@@ -167,7 +169,7 @@ class _StudyGuard:
                 }
             ),
         )
-        _verify_proofs(case, self.proofs, credentials=True)
+        _verify_proofs(case, self.proofs, credentials=credentials)
 
     def __call__(self, prepared: PreparedRequest) -> None:
         self.verify_execution(self.context)
@@ -234,7 +236,10 @@ def case_report(directory: Path, case: Case) -> dict[str, Any]:
         "api_version": case.api_version,
         "mechanism": case.mechanism,
         "request_uid": case.request_uid,
+        "run_id": case.run_id,
         "attempt_id": case.attempt_id,
+        "submission_id": case.submission_id,
+        "correlation_id": case.correlation_id,
         "payload_sha256": case.payload_sha256,
         "prompt_sha256": case.prompt_sha256,
         "schema_sha256": case.schema_sha256,
@@ -243,6 +248,7 @@ def case_report(directory: Path, case: Case) -> dict[str, Any]:
         "reason": "unrun",
         "usage": None,
         "canonical_valid": None,
+        "assessment_diagnostic": None,
         "service_tier": None,
         "result_count": 0,
         "live_qualified": False,
@@ -299,6 +305,9 @@ def case_report(directory: Path, case: Case) -> dict[str, Any]:
             usage=usage.model_dump(mode="json"),
             service_tier=None if tier is None else tier.model_dump(mode="json"),
             canonical_valid=None if diagnostic is None else diagnostic.canonical_valid,
+            assessment_diagnostic=None
+            if diagnostic is None
+            else diagnostic.model_dump(mode="json"),
             result_count=len(results),
             reason="uncertain_submission",
         )
@@ -423,6 +432,7 @@ def report(
     if any(e.suite == proposal.suite and e.proposal_sha256 != digest for e in events):
         raise ValueError("Campaign events belong to another proposal")
     reservations = [e for e in events if e.kind == "reserve"]
+    holds = [e.reason for e in events if e.kind in {"hold", "cancel"}]
     for row in rows:
         selected = [
             e
@@ -447,14 +457,35 @@ def report(
             )
         if journal_unknown and not row["continuation_allowed"]:
             row["reason"] = "unreconciled_forwarding_intent_reservations_held"
+    terminal_cases = {
+        e.case_id for e in events if e.kind == "terminal" and e.suite == proposal.suite
+    }
+    terminal_identities = {(e.suite, e.case_id) for e in events if e.kind == "terminal"}
+    unresolved = any(
+        (e.suite, e.case_id) not in terminal_identities for e in reservations
+    )
+    incomplete = any(not row["continuation_allowed"] for row in rows)
+    if journal_unknown:
+        state = "journal_uncertain"
+    elif holds:
+        state = "held"
+    elif unresolved:
+        state = "recovery_required"
+    elif len(terminal_cases) == len(proposal.calls) and not incomplete:
+        state = "complete"
+    elif terminal_cases:
+        state = "awaiting_explicit_execution"
+    else:
+        state = "unstarted_or_unresolved"
     return {
         "suite": proposal.suite,
         "proposal_sha256": digest,
         "source_commit": proposal.source_commit,
         "proposal_status": proposal.status,
+        "suite_execution_state": state,
         "authorized_calls_in_proposal": 0,
         "calls": rows,
-        "incomplete_coverage": any(not r["continuation_allowed"] for r in rows),
+        "incomplete_coverage": incomplete,
         "campaign_reserved_calls": None if journal_unknown else len(reservations),
         "campaign_reserved_usd": None
         if journal_unknown
@@ -463,11 +494,20 @@ def report(
         if journal_unknown
         else sum(e.seconds for e in reservations),
         "campaign_journal_uncertain": journal_unknown,
-        "campaign_review_holds": [
-            e.reason for e in events if e.kind in {"hold", "cancel"}
-        ],
+        "campaign_review_holds": holds,
         "live_qualified": False,
     }
+
+
+def verify_admission(
+    directory: Path, digest: str, authorization: Authorization, proofs: Path
+) -> Proposal:
+    """Verify consent and private proof commitments without keys, clocks or submission."""
+    proposal = load_proposal(directory, digest)
+    authorization.verify(proposal)
+    for case in proposal.calls:
+        _verify_proofs(case, proofs, credentials=False)
+    return proposal
 
 
 async def execute(
@@ -478,13 +518,22 @@ async def execute(
     proofs: Path,
     *,
     recover_only: bool = False,
+    max_new_cases: int | None = None,
+    keyring_providers: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     """No replacement calls on recovery. A proposal alone always authorizes zero."""
-    proposal = load_proposal(directory, digest)
-    authorization.verify(proposal)
-    for case in proposal.calls:
-        _verify_proofs(case, proofs, credentials=False)
+    if max_new_cases is not None and (
+        type(max_new_cases) is not int or not 1 <= max_new_cases <= 98 or recover_only
+    ):
+        raise ValueError(
+            "max_new_cases requires an integer from 1 through 98 on execute"
+        )
+    if any(p not in {"openai", "anthropic", "gemini"} for p in keyring_providers):
+        raise ValueError("Study keyring selection requires exact study provider names")
+    proposal = verify_admission(directory, digest, authorization, proofs)
     ledger = BudgetLedger(campaign)
+    new_handoffs = 0
+    limit_reached = False
     with ledger.locked():
         ledger.authorize(proposal, authorization)
         for case in proposal.calls:
@@ -509,6 +558,9 @@ async def execute(
             ) or (recover_only and not consumed):
                 break
             if not consumed:
+                if max_new_cases is not None and new_handoffs >= max_new_cases:
+                    limit_reached = True
+                    break
                 try:
                     ledger.reserve(proposal, case, commit=False)
                 except BudgetStop as error:
@@ -526,24 +578,35 @@ async def execute(
                 ledger=ledger,
                 proofs=proofs,
             )
-            adapter = adapter_for(spec, guard)
+            if keyring_providers:
+                if spec.provider not in keyring_providers:
+                    raise ValueError(
+                        "Next case provider is outside the selected keyring providers"
+                    )
+                guard.verify_execution(guard.context, credentials=False)
             execution_failed = False
-            try:
-                guard.verify_execution(guard.context)
-                await execute_run(
-                    case.run_id,
-                    store=directory / "preparation" / case.case_id,
-                    spec=spec,
-                    adapter=adapter,
-                    retry_policy=RetryPolicy(max_attempts=1),
-                )
-            except BudgetStop as error:
-                ledger.stop(proposal, case, str(error))
-                break
-            except ExceptionGroup:
-                execution_failed = True
-            finally:
-                await adapter.aclose()
+            with (
+                keyring_credentials((spec.provider,))
+                if keyring_providers
+                else nullcontext()
+            ):
+                adapter = adapter_for(spec, guard)
+                try:
+                    guard.verify_execution(guard.context)
+                    await execute_run(
+                        case.run_id,
+                        store=directory / "preparation" / case.case_id,
+                        spec=spec,
+                        adapter=adapter,
+                        retry_policy=RetryPolicy(max_attempts=1),
+                    )
+                except BudgetStop as error:
+                    ledger.stop(proposal, case, str(error))
+                    break
+                except ExceptionGroup:
+                    execution_failed = True
+                finally:
+                    await adapter.aclose()
             selected = case_report(directory, case)
             if any(
                 e.kind == "reserve"
@@ -551,6 +614,8 @@ async def execute(
                 and e.case_id == case.case_id
                 for e in ledger.events()
             ):
+                if not consumed:
+                    new_handoffs += 1
                 ledger.finish(
                     proposal,
                     case,
@@ -571,7 +636,13 @@ async def execute(
                 )
             if execution_failed or not selected["continuation_allowed"]:
                 break
-    return report(directory, digest, campaign)
+    result = report(directory, digest, campaign)
+    result["invocation"] = {
+        "max_new_cases": max_new_cases,
+        "new_handoffs": new_handoffs,
+        "case_limit_reached": limit_reached,
+    }
+    return result
 
 
 def exports(directory: Path, digest: str) -> list[dict[str, object]]:

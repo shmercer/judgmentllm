@@ -864,3 +864,15 @@ attempts, mappings, missing values and once-per-physical-call usage assertions.
 A distinct bounded test-efficiency audit compares accepted PR2-B, feature-complete
 PR2-C and any subsequent optimization, preserving executed lines/arcs and all
 behavioral assertions. It cannot lower coverage, thresholds or CI policy.
+
+### Issue #39 operational launch boundary
+
+Add selected GNOME Keyring process credentials, deferred study lookup after
+admission, bounded one-request execution and a final-source operator procedure.
+Keep all four suites, experimental/source commitments, original and extended
+nontransferable allocations, immutable start times and no-replacement recovery.
+Implementation remains offline and synthetic; account evidence, final merged
+proposals, independent billable/capture consent and operator initiation remain
+separate live gates. High-risk final-head acceptance retains local coverage/history,
+all seven strict R gates plus a paused SDK-export R fixture, applicable durability,
+resource/security/package checks and hosted Linux/Windows/macOS functionality.
