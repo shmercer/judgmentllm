@@ -25,7 +25,7 @@ from judgmentllm.study.definitions import (
     library,
     write_library,
 )
-from judgmentllm.study.execution import execute, exports, report
+from judgmentllm.study.execution import execute, exports, report, verify_admission
 from judgmentllm.study.plans import (
     build_proposal,
     full_plan,
@@ -37,6 +37,16 @@ from judgmentllm.study.plans import (
 )
 from judgmentllm.study.records import Authorization, Eligibility, Price
 from judgmentllm.study.sources import verify_originals
+
+
+def _case_limit(value: str) -> int:
+    try:
+        limit = int(value)
+        if 1 <= limit <= 98:
+            return limit
+    except ValueError:
+        pass
+    raise argparse.ArgumentTypeError("Use an integer from 1 through 98")
 
 
 def verify_library(package: Path) -> dict[str, object]:
@@ -209,14 +219,36 @@ def main(argv: list[str] | None = None) -> int:
     proposal.add_argument("--prices", type=Path)
     proposal.add_argument("--proofs", type=Path)
     proposal.add_argument("--capture", choices=("full", "minimal"), default="full")
-    for operation in ("status", "report", "export", "cancel", "execute", "recover"):
+    for operation in (
+        "status",
+        "report",
+        "export",
+        "cancel",
+        "execute",
+        "recover",
+        "check-admission",
+    ):
         p = sub.add_parser(operation)
         p.add_argument("--proposal", type=Path, required=True)
         p.add_argument("--proposal-sha256", required=True)
         p.add_argument("--campaign", type=Path)
-        if operation in {"execute", "recover"}:
+        if operation in {"execute", "recover", "check-admission"}:
             p.add_argument("--authorization", type=Path, required=True)
             p.add_argument("--proofs", type=Path, required=True)
+        if operation in {"execute", "recover"}:
+            p.add_argument(
+                "--keyring-provider",
+                action="append",
+                default=[],
+                choices=("openai", "anthropic", "gemini"),
+                help="Resolve only the current case's selected key after authorization gates",
+            )
+        if operation == "execute":
+            p.add_argument(
+                "--max-new-cases",
+                type=_case_limit,
+                help="Return normally after at most N new physical handoffs (1–98)",
+            )
     args = parser.parse_args(argv)
     try:
         result: Any
@@ -318,6 +350,16 @@ def main(argv: list[str] | None = None) -> int:
             with BudgetLedger(args.campaign).locked() as ledger:
                 ledger.cancel(loaded)
             result = {"cancelled": True}
+        elif args.operation == "check-admission":
+            verify_admission(
+                args.proposal,
+                args.proposal_sha256,
+                Authorization.model_validate_json(args.authorization.read_bytes()),
+                args.proofs,
+            )
+            result = report(args.proposal, args.proposal_sha256, args.campaign)
+            result["admission_documents_verified"] = True
+            result["credential_binding_check"] = "deferred_until_authorized_execution"
         else:
             if args.campaign is None:
                 raise ValueError("Campaign directory is required")
@@ -332,6 +374,10 @@ def main(argv: list[str] | None = None) -> int:
                     authorization,
                     args.proofs,
                     recover_only=args.operation == "recover",
+                    max_new_cases=args.max_new_cases
+                    if args.operation == "execute"
+                    else None,
+                    keyring_providers=tuple(args.keyring_provider),
                 )
             )
         print(json.dumps(result, indent=2, ensure_ascii=False))

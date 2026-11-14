@@ -595,3 +595,32 @@ nor an account. PR2-C adds the offline `controls` matrix and separately selectab
 library remains unchanged. Extension execution additionally requires explicit
 98-request/USD16/68,400-second cumulative consent; original suites retain their
 independent 66-request/USD10 sub-cap. No proposal authorizes a provider call.
+
+`execute --max-new-cases N` accepts integers 1–98, counting new physical HTTP
+handoffs at the existing durable reservation guard. Omission retains sequential
+execution. The limit returns normally without changing proposals, consent,
+campaign identity, journal schema, allocations or start times. Terminal cases and
+recovery bookkeeping do not count; uncertainty never authorizes replacement.
+`recover` rejects this option. Reports add `suite_execution_state` and safe
+assessment/physical identity metadata. Execution additionally returns invocation
+`max_new_cases`, `new_handoffs` and `case_limit_reached`; this transient reason is
+not persisted as a campaign event. Holds, cancellations, integrity, budget and
+deadline checks retain precedence. An incomplete pause reports
+`awaiting_explicit_execution`, never completion.
+
+`check-admission --proposal DIR --proposal-sha256 DIGEST --authorization FILE
+--proofs DIR [--campaign DIR]` verifies source, sealed requests, explicit consent,
+proof hashes and existing report state without credentials, a provider client,
+generation or starting a suite clock. Credential matching remains deferred until
+authorized execution. No consent is created by this operation.
+
+The Linux-only `judgmentllm-keyring --provider NAME [--provider NAME] --
+judgmentllm ARGS...` console loads only selected GNOME keys into the existing
+resolver's environment. It replaces itself with the ordinary CLI; status and
+signals belong to that process. It accepts JudgmentLLM arguments, not arbitrary
+shell commands. `-- study execute|recover ARGS...` instead forwards the selected
+provider names to the repository study CLI's `--keyring-provider` options. The
+study executor resolves only its current case's credential, after source, consent,
+proof, checkpoint and budget admission. Read-only study commands never look up
+keys. Vertex selection uses `api_key` explicitly; `--vertex-auth-mode adc` retains
+ADC and reads no key. See the [operator guide](../examples/study-native/live-qualification.md).

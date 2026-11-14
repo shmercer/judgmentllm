@@ -717,3 +717,10 @@ explicit. Requested controls and frozen reasoning policies stay safe provenance;
 grouped assessment rows do not multiply physical usage. The original study R
 checker and all seven strict gates, including leading-zero IDs and complete
 probability fixtures, remain unchanged. No normalized export column is added.
+
+The operational launch additionally executes a bounded synthetic SDK handoff,
+exports its paused run through the existing exporters and imports those actual
+files in strict R/jsonlite. The fixture checks 12 grouped trait rows against one
+physical reservation, original request/attempt identities, complete category
+mappings and absent fabricated probabilities. All seven standing strict gates
+remain required locally. No normalized CSV/JSONL/R schema changes.
