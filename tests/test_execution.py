@@ -520,7 +520,7 @@ async def test_unsupported_execution_fails_before_submission(
         setattr(spec.execution, setting, value)
     spec = RunSpec.model_validate(spec.model_dump())
     store = tmp_path / "store"
-    if setting == "cache_policy":
+    if setting in {"provider", "cache_policy"}:
         adapter = MockAdapter(tmp_path / "ledger")
         assert any(
             issue.code == "unsupported_cache_policy"
