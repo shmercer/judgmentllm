@@ -50,6 +50,66 @@ def test_inventory_taxonomy_is_complete_and_references_are_live(
     }
 
 
+@pytest.mark.parametrize("compact", [False, True])
+def test_compact_windows_paths_preserve_case_ids_and_private_store_isolation(
+    repository: Any, tmp_path: Path, compact: bool
+) -> None:
+    from acceptance import clean_environment
+
+    source, _ = repository
+    (source / "tests").mkdir()
+    (source / "conftest.py").write_text(
+        "import ci.local.pytest_report as reporter\n"
+        f"reporter._WINDOWS_COMPACT_TEMP = {compact!r}\n"
+    )
+    names = (
+        "test_first_long_descriptive_case_with_private_state",
+        "test_second_long_descriptive_case_with_private_state",
+    )
+    (source / "tests/test_paths.py").write_text(
+        "seen = []\n"
+        f"def {names[0]}(tmp_path):\n"
+        f"    assert (len(tmp_path.name) <= 8) == {compact!r}\n"
+        "    (tmp_path / 'store').write_text('independent state')\n"
+        "    seen.append(tmp_path)\n"
+        f"def {names[1]}(tmp_path):\n"
+        "    assert tmp_path != seen[0] and not (tmp_path / 'store').exists()\n"
+        "    assert (seen[0] / 'store').read_text() == 'independent state'\n"
+    )
+    freeze(source)
+    report = tmp_path / "cases.json"
+    environment = clean_environment()
+    environment["PYTHONPATH"] = str(HERE.parent)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-p",
+            "ci.local.pytest_report",
+            "--ci-report=" + str(report),
+            "--no-cov",
+            "-q",
+            "tests",
+            "--basetemp=" + str(tmp_path / "temporary"),
+            "-o",
+            "cache_dir=" + str(tmp_path / "cache"),
+        ],
+        cwd=source,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    receipt = read(report)
+    assert {case["nodeid"] for case in receipt["collected"]} == {
+        "tests/test_paths.py::" + name for name in names
+    }
+    assert len(receipt["reports"]) == 6
+    assert all(item["outcome"] == "passed" for item in receipt["reports"])
+
+
 @pytest.mark.parametrize("minimum", [2, 3])
 @pytest.mark.parametrize(
     "module,distribution",

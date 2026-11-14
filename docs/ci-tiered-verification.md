@@ -227,6 +227,26 @@ production store behavior, IDs, filenames, VM allocation or Windows settings
 changed. Original invalid-root parameter IDs remain and additional guards test
 the new namespace. Fresh qualification is required after these corrections.
 
+Source `dd7c299` passed complete local qualification: all 8,553 cases, zero skips,
+95.2310% combined coverage with no historical losses, all seven R gates, twenty
+resource cases and package checks. Its [candidate Level 3 run](https://github.com/shmercer/judgmentllm/actions/runs/43585838628)
+passed all profiles and independently revalidated aggregation: Linux full 8,519
+passes (2,598.37 seconds), Windows extended 3,144 passes/four approved skips
+(2,535.78 seconds), macOS extended 3,148 passes (1,929.04 seconds). Its protected
+Linux/macOS full jobs passed while Windows reached the unchanged job cap.
+
+The native run then exposed longer acknowledgment paths at exactly 260
+characters. The shorter parent namespace alone covered preparation and did not
+cover this execution path. Windows qualification now allocates fresh compact
+pytest directories through the existing factory; POSIX uses the original fixture.
+Full node IDs, original IDs, artifact filenames, independent stores and retention
+are preserved. Two real child-pytest selftests check node IDs, directory width,
+stored state and isolation in both modes. An external probe ran complete Vertex
+API-key, Vertex ADC and Gemini execution under the original longer namespace;
+all three unchanged tests passed in 36.51 seconds using the actual SDKs and
+durable writes. This final CI-only correction requires another exact-head run;
+the earlier source's successful receipts remain historical evidence.
+
 Raw evidence is retained outside Git under `/tmp/judgmentllm-issue54/`, with
 source/run/plan identities. The final PR reports actual checks and runtime by
 scope, deliberate fault detection, hosted bootstrap and Level 4 evidence. A

@@ -223,6 +223,8 @@ it never publishes or authorizes provider calls.
   adapter's `C:\jllm` namespace. Its optional scratch-root override is limited to
   nine characters before exclusive run allocation. Do not truncate IDs or
   filenames, change Windows settings, or suppress durable-publication assertions.
+  Use the runner commands above: their reporter allocates compact, independent
+  Windows pytest directories while preserving complete node IDs in receipts.
 
 Every test PR should include classification/impact updates, complete case
 accounting, focused feedback, the automatic plan, exact-source local/hosted

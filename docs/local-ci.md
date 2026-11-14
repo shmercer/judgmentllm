@@ -73,6 +73,10 @@ name. This keeps deep SDK preparation paths below legacy Win32 path limits
 without shortening IDs or filenames, enabling long paths globally, or changing
 the VM allocation. Existing `C:\JudgmentLLM-ci\tmp` evidence is left intact;
 an override using that former namespace must be updated.
+The qualification reporter also gives Windows tests fresh compact pytest
+directories. Full node IDs stay in raw receipts; item IDs, artifact filenames,
+mutable-store isolation and retention remain unchanged. This leaves room for
+longer acknowledgment references as well as initial preparation artifacts.
 
 Grid and direct guest adapters also reject incomplete allocation recovery journals
 under `/mnt/VM_Fast/judgmentllm-ci/overrides` before guest work. No supported
