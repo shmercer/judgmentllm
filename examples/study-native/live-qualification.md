@@ -25,6 +25,19 @@ export LIVE
 uv run --offline --no-sync python -m judgmentllm.study verify
 ```
 
+Before sealing a proposal or starting a campaign, the **post-merge operator** must
+exercise the source-checkout launcher against the real unlocked desktop service:
+
+```bash
+uv run --offline --no-sync python -m judgmentllm.keyring --provider openai -- \
+  judgmentllm auth status --require openai
+```
+
+This offline configuration check verifies actual `gdbus` formatting and key lookup
+without displaying keys or making provider requests. It is operator-only: the
+implementation and automated tests use synthetic Secret Service fixtures. Existing
+successful provider authentication/discovery need not be repeated.
+
 Keep this persistent directory off Dropbox and outside the checkout. Keep account
 proofs, credential fingerprints, proposals, consent, reports and exports private.
 Retain the existing independent `~/.judgmentllm/study-campaign-bindings/` and
@@ -208,7 +221,7 @@ under the campaign lock immediately before execution.
 From a normal unlocked Pop!_OS desktop terminal:
 
 ```bash
-uv run --offline --no-sync judgmentllm-keyring --provider openai -- \
+uv run --offline --no-sync python -m judgmentllm.keyring --provider openai -- \
   judgmentllm auth status --require openai
 ```
 
@@ -220,6 +233,8 @@ explicit `api_key` mode; `--vertex-auth-mode adc` reads no Vertex key and preser
 the existing ADC chain. Ordinary JudgmentLLM ADC behavior is unchanged. No Vertex
 fallback to ADC or a Gemini key occurs in selected API-key mode.
 
+The helper is available only in the editable development checkout; public wheels
+and sdists contain neither its module nor a `judgmentllm-keyring` entry point.
 The launcher uses metadata-only D-Bus `SearchItems` to reject missing, locked or
 ambiguous entries, then exactly `secret-tool lookup provider NAME` with captured
 output. `gdbus` and `secret-tool` are Pop!_OS prerequisites. Selected keys live only
@@ -247,7 +262,7 @@ forwards only provider names, and resolves only the current case's key **after**
 source, consent, proofs, campaign checkpoints, deadlines and budget checks pass.
 
 ```bash
-uv run --offline --no-sync judgmentllm-keyring --provider openai -- study execute \
+uv run --offline --no-sync python -m judgmentllm.keyring --provider openai -- study execute \
   --proposal "$LIVE/native-pilot" --proposal-sha256 '<SEALED_PROPOSAL_SHA256>' \
   --authorization "$LIVE/authorizations/native-pilot.json" --proofs "$LIVE/proofs" \
   --campaign "$LIVE/campaign" --max-new-cases 1

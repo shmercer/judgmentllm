@@ -35,7 +35,6 @@ Issues = "https://github.com/shmercer/judgmentllm/issues"
 
 [project.scripts]
 judgmentllm = "judgmentllm.cli:app"
-judgmentllm-keyring = "judgmentllm.keyring:main"
 
 [project.optional-dependencies]
 openai = ["openai>=3.42.1,<4"]
@@ -80,10 +79,10 @@ path = "src/judgmentllm/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/judgmentllm"]
-exclude = ["/src/judgmentllm/study/**"]
+exclude = ["/src/judgmentllm/study/**", "/src/judgmentllm/keyring.py"]
 
 [tool.hatch.build.targets.sdist]
-exclude = ["/src/judgmentllm/study/**"]
+exclude = ["/src/judgmentllm/study/**", "/src/judgmentllm/keyring.py"]
 include = [
     "/.gitignore",
     "/src",

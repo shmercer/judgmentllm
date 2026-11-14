@@ -169,7 +169,9 @@ def audit(source: Path, output: Path) -> dict[str, Any]:
     expected = {
         p.relative_to(clean / "src").as_posix(): p.read_bytes()
         for p in (clean / "src/judgmentllm").rglob("*")
-        if p.is_file() and "study" not in p.relative_to(clean / "src/judgmentllm").parts
+        if p.is_file()
+        and "study" not in p.relative_to(clean / "src/judgmentllm").parts
+        and p != clean / "src/judgmentllm/keyring.py"
     }
     first, second, source_files = members(wheel), members(rebuilt), members(sdist)
     assert {n: b for n, b in first.items() if n.startswith("judgmentllm/")} == expected
@@ -197,6 +199,12 @@ def audit(source: Path, output: Path) -> dict[str, Any]:
     )
     (entry,) = (n for n in first if n.endswith(".dist-info/entry_points.txt"))
     assert b"judgmentllm = judgmentllm.cli:app" in first[entry]
+    assert b"judgmentllm-keyring" not in first[entry]
+    assert "judgmentllm/keyring.py" not in first
+    assert "src/judgmentllm/keyring.py" not in source_files
+    assert tomllib.loads(source_files["pyproject.toml"].decode())["project"][
+        "scripts"
+    ] == {"judgmentllm": "judgmentllm.cli:app"}
     (license_name,) = (n for n in first if n.endswith(".dist-info/licenses/LICENSE"))
     assert first[license_name] == (clean / "LICENSE").read_bytes()
     for name, raw in (first | source_files).items():

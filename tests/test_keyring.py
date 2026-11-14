@@ -22,18 +22,16 @@ KEY = "SYNTHETIC_KEYRING_SENTINEL"
 ITEM = b"([objectpath '/org/freedesktop/secrets/collection/login/1'], @ao [])\n"
 
 
-def test_installed_launcher_entry_point() -> None:
-    entries = list(
-        metadata.entry_points(group="console_scripts", name="judgmentllm-keyring")
+def test_launcher_has_no_public_console_entry_point() -> None:
+    assert not metadata.entry_points(
+        group="console_scripts", name="judgmentllm-keyring"
     )
-    assert len(entries) == 1
-    assert entries[0].load() is keyring.main
 
 
 def test_module_help_never_resolves_credentials(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(sys, "argv", ["judgmentllm-keyring", "--help"])
+    monkeypatch.setattr(sys, "argv", ["judgmentllm.keyring", "--help"])
     with pytest.raises(SystemExit) as stopped:
         runpy.run_path(str(keyring.__file__), run_name="__main__")
     assert stopped.value.code == 0
@@ -306,7 +304,12 @@ def test_actual_cli_exit_propagation_without_real_service(
             "import sys",
             "from judgmentllm import keyring",
             "sys.platform = 'linux'",
-            "keyring._lookup = lambda provider: 'SYNTHETIC_KEYRING_SENTINEL'",
+            "import subprocess",
+            "def service(command, **kwargs):",
+            "    assert command[0] in {'gdbus', 'secret-tool'}",
+            "    output = b\"([objectpath '/synthetic/item'], @ao [])\" if command[0] == 'gdbus' else b'SYNTHETIC_KEYRING_SENTINEL'",
+            "    return subprocess.CompletedProcess(command, 0, output, b'')",
+            "keyring.subprocess.run = service",
             "raise SystemExit(keyring.main(sys.argv[1:]))",
         ]
     )

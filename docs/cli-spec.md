@@ -615,8 +615,8 @@ proof hashes and existing report state without credentials, a provider client,
 generation or starting a suite clock. Credential matching remains deferred until
 authorized execution. No consent is created by this operation.
 
-The Linux-only `judgmentllm-keyring --provider NAME [--provider NAME] --
-judgmentllm ARGS...` console loads only selected GNOME keys into the existing
+The checkout-only Linux launcher `python -m judgmentllm.keyring --provider NAME
+[--provider NAME] -- judgmentllm ARGS...` loads only selected GNOME keys into the existing
 resolver's environment. It replaces itself with the ordinary CLI; status and
 signals belong to that process. It accepts JudgmentLLM arguments, not arbitrary
 shell commands. `-- study execute|recover ARGS...` instead forwards the selected
@@ -624,4 +624,6 @@ provider names to the repository study CLI's `--keyring-provider` options. The
 study executor resolves only its current case's credential, after source, consent,
 proof, checkpoint and budget admission. Read-only study commands never look up
 keys. Vertex selection uses `api_key` explicitly; `--vertex-auth-mode adc` retains
-ADC and reads no key. See the [operator guide](../examples/study-native/live-qualification.md).
+ADC and reads no key. The helper and study module are excluded from wheel and
+sdist, and the public distribution retains only the existing `judgmentllm` console.
+See the [operator guide](../examples/study-native/live-qualification.md).

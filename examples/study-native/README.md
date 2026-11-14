@@ -11,8 +11,8 @@ first explicitly initiated request, follow the [live operator guide](live-qualif
 No readiness command or credential lookup initiates generation.
 
 This workflow requires an actual Git checkout and its editable development
-environment. The study module, sources, archives, configurations and experiments
-are repository tooling, excluded from public wheels and source distributions.
+environment. The study module, keyring launcher, sources, archives, configurations
+and experiments are repository tooling, excluded from public wheels and source distributions.
 Installing a package artifact provides the ordinary JudgmentLLM library and CLI;
 it does not install `python -m judgmentllm.study` or these study assets.
 

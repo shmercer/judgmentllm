@@ -596,6 +596,9 @@ locked/missing entries before exact `secret-tool lookup`; selected environment
 variables remain memory-only. The study launcher defers resolution to each
 authorized case, inside the permanent campaign lock and after durable admission.
 Vertex API-key mode remains explicit and separate from ADC and Gemini.
+The launcher is checkout-only, with no public console entry point. Wheel and
+sdist exclude it alongside the study module; installed public CLI smokes must
+work without importing either helper.
 
 Bounded `execute --max-new-cases` uses the existing final HTTP reservation boundary.
 Return normally after durable evidence handling; add no pause journal schema or
