@@ -16,7 +16,8 @@
     "tests/test_output_contracts.py",
     "tests/test_export_validation.py",
     "tests/test_auth_privacy.py",
-    "tests/test_execution_safety.py"
+    "tests/test_execution_safety.py",
+    "tests/test_cache_policy.py::test_new_defaults_and_legacy_only_auto"
   ],
   "extended": [
     "tests/test_study_limits.py::test_separate_process_resume_and_recovery_never_replace_requests",
@@ -27,7 +28,8 @@
     "tests/test_vertex_qualification_execution.py::test_hard_crash_and_fresh_process_recovery_do_not_reset_allocation",
     "tests/test_vertex_qualification_execution.py::test_concurrent_guards_cannot_consume_the_same_allocation_twice",
     "tests/test_vertex_qualification_execution.py::test_guard_token_duplicate_and_ledger_reset_cannot_replenish",
-    "tests/test_vertex_qualification_execution.py::test_authorization_before_credentials_or_clients"
+    "tests/test_vertex_qualification_execution.py::test_authorization_before_credentials_or_clients",
+    "tests/test_cache_policy.py"
   ],
   "mandatory_smoke": [
     "tests/test_persistence_hashing.py::test_scalar_subclasses_do_not_bypass_canonical_validation",
@@ -1476,6 +1478,16 @@
         "darwin"
       ],
       "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_cache_policy.py": {
+      "cost": "process",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Exact offline SDK controls, immutable replay and actual pre-change Git-source producer subprocesses with real source identity and resume checks on all supported platforms"
     }
   },
   "providers": {
@@ -1490,6 +1502,7 @@
       "tests/test_anthropic_response.py",
       "tests/test_anthropic_sdk_adapter.py",
       "tests/test_anthropic_transport.py",
+      "tests/test_cache_policy.py",
       "tests/test_native_other_providers.py",
       "tests/test_native_preseal_validation.py",
       "tests/test_native_schema_privacy.py",
@@ -1555,6 +1568,7 @@
       "tests/test_anthropic_sdk_adapter.py",
       "tests/test_assessment_capture.py",
       "tests/test_assessment_diagnostics.py",
+      "tests/test_cache_policy.py",
       "tests/test_gemini_lifecycle.py",
       "tests/test_native_other_providers.py",
       "tests/test_native_preseal_validation.py",
@@ -1629,6 +1643,7 @@
     "src/judgmentllm/assessment_errors.py",
     "src/judgmentllm/assessment_inspection.py",
     "src/judgmentllm/auth.py",
+    "src/judgmentllm/cache_policy.py",
     "src/judgmentllm/cli.py",
     "src/judgmentllm/cli_controls.py",
     "src/judgmentllm/config.py",

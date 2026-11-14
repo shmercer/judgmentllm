@@ -772,6 +772,22 @@ Synthetic production fixtures cover each mode and exact routing without real
 projects or credentials. Additional provider calls, qualification, credential or
 keyring access, spending, publication and merging are outside this phase.
 
+## Milestone 3 corrective work: Issue #56
+
+Default new rubric/CJ runs to OFF, retire new-run auto, and seal independent cache
+policy revision 2. Exact supported OpenAI routes commit/serialize explicit-only
+mode without breakpoints; unsupported scopes fail preflight. Preserve historical
+auto/off, request bytes, retries and CLI resume under omission-as-revision-1.
+Explicit semantic breakpoints remain the separate dependent Issue #57.
+
+Acceptance covers pinned SDK bytes on both endpoints, native/Flex/reasoning
+coexistence, unsupported scopes before credentials, genuine pre-change runs,
+strict configuration, immutable retry/recovery and reported cache usage consumed
+in R. Keep all seven strict local R gates and the automatic risk-based local and
+hosted requirements; no exploratory paid campaign or duplicate complete grid.
+Leave the PR unmerged for independent review. No live calls, credential access,
+qualification promotion, publication or cache-retention overrides are authorized.
+
 ## Milestone 3 corrective work: issue #38
 
 Implement shared Markdown rubric/criterion/essay blocks, exact positional CJ wire

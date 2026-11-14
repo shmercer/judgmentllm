@@ -26,6 +26,7 @@ from study_fixture import (
 from judgmentllm.config import InputSpec, load_run_spec
 from judgmentllm.execution import execute_run
 from judgmentllm.execution.retry import RetryPolicy
+from judgmentllm.output_commitments import ordered_json_bytes
 from judgmentllm.persistence.hashing import bytes_digest
 from judgmentllm.providers.protocol import ProviderError
 from judgmentllm.study import plans
@@ -251,7 +252,12 @@ async def test_complete_native_plans(
             assert wire.payload_sha256 == bytes_digest(wire.payload)
             if (config_id, wire.request_uid) in goldens:
                 golden = goldens[(config_id, wire.request_uid)]
-                assert wire.payload.decode() == golden["files"]["00.payload.json"]
+                comparison = wire.payload
+                if provider == "openai":
+                    body = json.loads(wire.payload)
+                    assert body.pop("prompt_cache_options") == {"mode": "explicit"}
+                    comparison = ordered_json_bytes(body)
+                assert comparison.decode() == golden["files"]["00.payload.json"]
                 assert wire.prompt_sha256 == golden["prompt_sha256"]
                 assert (
                     wire.output_commitment.schema_text

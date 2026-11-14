@@ -6,7 +6,7 @@ criteria: criteria.yaml
 pairs: pairs.jsonl
 provider: openai
 endpoint: responses
-model: REPLACE_WITH_AVAILABLE_MODEL_ID
+model: gpt-6-luna
 prompt:
   preset: pairwise_forced_choice
 execution:

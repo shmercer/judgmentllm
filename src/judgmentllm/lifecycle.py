@@ -671,7 +671,7 @@ def estimate_run(
                 else pairs,
                 trait_groups=manifest.trait_groups,
                 capabilities=profile,
-                cache_policy=spec.execution.cache_policy or "auto",
+                cache_policy=spec.execution.cache_policy or "off",
                 cache_report="uncached" if mock else "unknown",
                 pricing="not_applicable" if mock else "unknown",
                 transport_protocol="vertex-production-v1"

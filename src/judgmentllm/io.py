@@ -100,7 +100,16 @@ def _record_data(value: object) -> object:
 
 def _revalidate_record(record: Record) -> Record:
     """Reconstruct from current plain data and reject validator-induced repairs."""
-    validated = type(record).model_validate(_record_data(record), by_name=True)
+    from judgmentllm.config import RunSpec, RunSpecV2, RunSpecV3
+
+    context = (
+        {"cache_policy_version": record.cache_policy_version}
+        if isinstance(record, (RunSpec, RunSpecV2, RunSpecV3))
+        else None
+    )
+    validated = type(record).model_validate(
+        _record_data(record), by_name=True, context=context
+    )
     if _record_data(validated) != _record_data(record):
         raise ValueError(
             "record data would change during validation; export requires valid current data"

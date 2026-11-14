@@ -17,6 +17,7 @@ from judgmentllm.anthropic_transport import (
     production_context,
 )
 from judgmentllm.assessment_diagnostics import diagnose_assessment_output
+from judgmentllm.config import RunSpecV3, validate_run_spec
 from judgmentllm.output_contracts import (
     RubricOutputContract,
     validate_rubric_contract_output,
@@ -254,6 +255,8 @@ async def test_explicit_cache_tier_bytes_and_generation_omission(
     spec.model = "claude-sonnet-4-6"
     spec.execution.cache_policy = cache
     spec.execution.tier = tier
+    if cache != "off":
+        spec = cast(RunSpecV3, validate_run_spec(spec, _cache_policy_version=1))
     from judgmentllm.planning import plan_record
     from judgmentllm.preparation.session import RequestDependency
 

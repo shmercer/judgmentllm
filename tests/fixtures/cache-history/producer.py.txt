@@ -1,0 +1,73 @@
+from __future__ import annotations
+
+import asyncio
+import base64
+import hashlib
+import json
+import os
+import tarfile
+from pathlib import Path
+
+import httpx2
+
+from judgmentllm.config import RunSpecV3
+from judgmentllm.execution import execute_run
+from judgmentllm.persistence.hashing import canonical_bytes
+from judgmentllm.preparation import prepare_run
+from judgmentllm.production_transport import production_context
+from judgmentllm.providers.openai import OpenAIAdapter
+
+ROOT = Path('/tmp/issue56-history-pending')
+os.chdir(ROOT)
+Path('responses.jsonl').write_text('{"item_id":"001","text":"Synthetic seed grows."}\n')
+os.environ['OPENAI_API_KEY'] = 'SYNTHETIC_HISTORY_ONLY'
+
+async def produce():
+    for cache in ('auto', 'off'):
+        for capture in ('full', 'minimal'):
+            run_id = f'{cache}-{capture}'
+            spec = RunSpecV3.model_validate({
+                'task_kind':'rubric', 'input':Path('responses.jsonl'),
+                'provider':'openai', 'endpoint':'responses', 'model':'gpt-6-luna',
+                'prompt':{'structured_output':'text'}, 'capture':capture,
+                'execution':{'cache_policy':cache, 'concurrency':1},
+                'rubric':{'rubric_id':'01','name':'Synthetic','traits':[
+                    {'trait_id':'01','name':'Clarity','description':'Synthetic.',
+                     'levels':[{'label':'low'},{'label':'high'}]}]},
+            })
+            Path(f'{run_id}.json').write_bytes(canonical_bytes(spec))
+            with prepare_run(spec, store='store', run_id=run_id,
+                capabilities=OpenAIAdapter.capabilities_for('openai','responses',spec.model),
+                transport_context=production_context(spec)) as prepared:
+                dependency = next(prepared.iter_request_dependencies())
+                receipt = next(prepared.repository.iter_attempts(run_id))
+                wire = prepared.prepare_transport_attempt(dependency,
+                    prepared.transport_for_attempt(receipt.attempt_id).identity)
+                Path(f'{run_id}-payload.bin').write_bytes(wire.payload)
+                Path(f'{run_id}-receipt.json').write_bytes(canonical_bytes(wire.transport_commitment))
+                assert b'prompt_cache_options' not in wire.payload
+            if False:
+                def respond(request):
+                    return httpx2.Response(200,json={
+                        'id':'resp-history','object':'response','status':'completed','model':'gpt-6-luna',
+                        'output':[{'type':'message','role':'assistant','content':[
+                            {'type':'output_text','text':'{"scores":[{"trait_id":"01","category_label":"high"}]}'}]}],
+                    },request=request)
+                adapter=OpenAIAdapter('responses',spec.model,http_transport=httpx2.MockTransport(respond))
+                def fault(point, request):
+                    if point=='after_evidence_commit':
+                        raise RuntimeError('Synthetic interruption')
+                try:
+                    await execute_run(run_id,store='store',spec=spec,adapter=adapter,fault=fault)
+                except ExceptionGroup:
+                    pass
+                assert adapter.actual_call_count == 1
+
+asyncio.run(produce())
+archive=Path('/tmp/issue56-history.tar.gz')
+with tarfile.open(archive,'w:gz') as tar:
+    for path in sorted(ROOT.rglob('*')):
+        if path.is_file():
+            tar.add(path,arcname=str(path.relative_to(ROOT)),recursive=False)
+Path('/tmp/issue56-history.base64').write_text(base64.b64encode(archive.read_bytes()).decode()+'\n')
+print(json.dumps({'source_commit':'34dd83f','sha256':hashlib.sha256(archive.read_bytes()).hexdigest(),'bytes':archive.stat().st_size}))

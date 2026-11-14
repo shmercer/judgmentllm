@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import Literal
 
 import pytest
 import yaml
@@ -34,7 +35,7 @@ from judgmentllm.planning import (
 )
 
 
-def run_spec(**updates: object) -> RunSpec:
+def run_spec(*, cache_policy_version: Literal[1, 2] = 2, **updates: object) -> RunSpec:
     data: dict[str, object] = {
         "task_kind": "rubric",
         "input": "responses.csv",
@@ -56,7 +57,9 @@ def run_spec(**updates: object) -> RunSpec:
         "model": "unknown-model",
     }
     data.update(updates)
-    return RunSpec.model_validate(data)
+    return RunSpec.model_validate(
+        data, context={"cache_policy_version": cache_policy_version}
+    )
 
 
 def capabilities(**updates: object) -> GenerationCapabilities:
@@ -144,8 +147,8 @@ def test_invalid_or_unimplemented_controls_are_rejected(
     ],
 )
 def test_unspecified_preserves_exact_milestone_one_contract(settings: object) -> None:
-    legacy = run_spec()
-    spec = run_spec(generation=settings)
+    legacy = run_spec(cache_policy_version=1)
+    spec = run_spec(cache_policy_version=1, generation=settings)
     assert spec.generation is None
     assert spec.model_dump() == legacy.model_dump()
     assert spec.model_dump_json() == legacy.model_dump_json()

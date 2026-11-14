@@ -7,7 +7,12 @@ import os
 from pathlib import Path
 from typing import cast
 
-from judgmentllm.config import RunSpecification, parse_json
+from judgmentllm.config import (
+    RunSpecification,
+    _load_run_spec,  # pyright: ignore[reportPrivateUsage]
+    parse_json,
+    read_document,
+)
 from judgmentllm.lifecycle_models import (
     ArtifactPaths,
     LifecycleError,
@@ -124,6 +129,23 @@ def resolve_run(
                 store=str(root),
             ) from None
     return str(run_id), root
+
+
+def load_resume_spec(
+    config: Path, run_id: str | Path, store: str | Path | None
+) -> RunSpecification:
+    """Read original configuration only under the verified run's sealed policy."""
+    discovery = _load_run_spec(
+        config, document_reader=read_document, cache_policy_version=1
+    )
+    identifier, root = resolve_run(run_id, store, discovery)
+    with ReadOnlyRepository(root) as repository:
+        manifest = _load_manifest(repository, identifier, unsealed=False)
+    return _load_run_spec(
+        config,
+        document_reader=read_document,
+        cache_policy_version=manifest.cache_policy_version,
+    )
 
 
 def encode_cursor(store: Path, created_at: str, run_id: str) -> str:

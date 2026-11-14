@@ -79,6 +79,7 @@ def case(
     ties: bool = False,
     generation: GenerationSpec | None = None,
     strict: bool = False,
+    cache_policy_version: Literal[1, 2] = 2,
 ) -> tuple[RunSpecV3, RequestDependency, dict[str, ResponseItem]]:
     mechanism = (
         "openai.responses.text.format"
@@ -98,6 +99,7 @@ def case(
         ties=ties,
         generation=generation,
         strict=strict,
+        cache_policy_version=cache_policy_version,
     )
 
 
@@ -152,6 +154,7 @@ def test_exact_complete_production_body(
 ) -> None:
     wire, _, _, _ = wire_for(
         tmp_path,
+        cache_policy_version=1,  # Preserve the original arbitrary-model sampling body.
         endpoint=endpoint,
         policy=policy,
         probe=policy == "native",
@@ -242,6 +245,8 @@ async def test_actual_pinned_sdk_serializes_committed_body(
         pytest.skip("OpenAI extra unavailable")
     wire, _, _, _ = wire_for(
         tmp_path,
+        # Explicit sampling retains its historical arbitrary-model wire contract.
+        cache_policy_version=1 if explicit_generation else 2,
         endpoint=endpoint,
         policy=policy,
         probe=policy == "native",
@@ -256,6 +261,10 @@ async def test_actual_pinned_sdk_serializes_committed_body(
         if explicit_generation
         else None,
     )
+    if not explicit_generation:
+        assert wire.output_commitment.cache_policy_version == 2
+        assert json.loads(wire.payload)["prompt_cache_options"] == {"mode": "explicit"}
+        assert b"prompt_cache_breakpoint" not in wire.payload
 
     async def denied_transport(*args: Any, **kwargs: Any) -> Any:
         raise AssertionError("External provider network transport blocked offline")
@@ -398,9 +407,7 @@ def test_credential_presence_does_not_authorize_native(
     monkeypatch.setenv("OPENAI_API_KEY", "synthetic-present-key")
     with pytest.raises((ValueError, TransportIntegrityError)):
         wire_for(tmp_path, policy="native")
-    context = production_context_for_identity(
-        "openai", "responses", "offline-qualified-model"
-    )
+    context = production_context_for_identity("openai", "responses", "gpt-6-luna")
     assert context == production_context(case(tmp_path)[0])
     with pytest.raises(TransportIntegrityError):
         production_context_for_identity(
@@ -693,6 +700,7 @@ def test_generation_uses_only_reviewed_exact_scope_rules(
 
     spec, dep, _ = case(
         tmp_path,
+        cache_policy_version=1,
         generation=GenerationSpec(temperature=0, max_output_tokens=32),
     )
     spec.strict_capabilities = True

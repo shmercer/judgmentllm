@@ -32,7 +32,7 @@ class _Authorization(TypedDict):
 
 def pricing() -> q._PricingProfile:
     return q._PricingProfile(
-        model="synthetic-model",
+        model="gpt-6-luna",
         endpoints=("responses", "chat.completions"),
         reviewed_on=date(2026, 11, 7),
         context_tokens=100_000,
@@ -50,7 +50,7 @@ def _build_plan(directory: Path) -> q._QualificationPlan:
         source_commit="a" * 40,
         provider="openai",
         endpoints=("responses", "chat.completions"),
-        model="synthetic-model",
+        model="gpt-6-luna",
         pricing=pricing(),
         max_requests=8,
         max_output_tokens=256,
@@ -166,7 +166,7 @@ def test_unreviewed_or_excessive_plan_fails_before_materializing(
             endpoints=("responses",)
             if changed == "scope"
             else ("responses", "chat.completions"),
-            model="different-model" if changed == "model" else "synthetic-model",
+            model="different-model" if changed == "model" else "gpt-6-luna",
             pricing=profile,
             max_requests=9 if changed == "count" else 8,
             max_output_tokens=256,

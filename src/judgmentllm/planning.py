@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Iterable, Iterator
+from importlib.metadata import PackageNotFoundError, version
 from typing import Literal
 
 from pydantic import Field
@@ -314,6 +315,48 @@ def validate_run(
                 name,
                 f"{name} support is unknown; no provider capability was inferred",
                 unknown=True,
+            )
+
+    if spec.cache_policy_version == 2:
+        if spec.execution.cache_policy == "explicit":
+            issue(
+                "unsupported_cache_policy",
+                "execution.cache_policy",
+                "explicit prompt caching is not supported yet; use off until semantic breakpoints are implemented",
+            )
+        elif spec.provider == "openai" and spec.model not in {
+            # These private protocol fixtures cannot enter production transport.
+            "judgmentllm-synthetic-native-v1",
+            "judgmentllm-synthetic-native-v2",
+        }:
+            from judgmentllm.cache_policy import validate_openai_off
+            from judgmentllm.native_schema import NativeProjectionScopeV1
+
+            try:
+                validate_openai_off(
+                    NativeProjectionScopeV1(
+                        provider=spec.provider,
+                        endpoint=spec.endpoint,
+                        model=spec.model,
+                        model_scope="exact",
+                        sdk_package="openai",
+                        sdk_version=version("openai"),
+                    )
+                )
+            except (ValueError, PackageNotFoundError):
+                issue(
+                    "unsupported_cache_policy",
+                    "execution.cache_policy",
+                    "off requires a supported exact OpenAI model/endpoint and openai==3.42.1; use a documented supported route",
+                )
+        elif spec.provider == "gemini":
+            issues.append(
+                ValidationIssue(
+                    code="implicit_cache_uncontrollable",
+                    field="execution.cache_policy",
+                    message="off disables application-managed cached_content; Gemini provider-managed implicit caching cannot be disabled",
+                    severity="warning",
+                )
             )
 
     if profile.modes is None:

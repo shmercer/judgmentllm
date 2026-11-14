@@ -85,7 +85,7 @@ def specification(
         "input": responses,
         "provider": "openai",
         "endpoint": endpoint,
-        "model": "offline-unqualified-model",
+        "model": "gpt-6-luna",
         "account_scope": "synthetic-account",
         "capture": capture,
         "generation": {"max_output_tokens": 256},
@@ -149,11 +149,13 @@ class FixtureTransport:
         *,
         invalid_first_group: bool = False,
         assessment_text: str | None = None,
+        cache_write_tokens: int | None = None,
     ) -> None:
         self.endpoint = endpoint
         self.calls = 0
         self.invalid_first_group = invalid_first_group
         self.assessment_text = assessment_text
+        self.cache_write_tokens = cache_write_tokens
 
     def respond(self, request: httpx2.Request) -> httpx2.Response:
         prepared = _INVOKING.get()
@@ -234,6 +236,13 @@ class FixtureTransport:
                     "completion_tokens_details": {"reasoning_tokens": 2},
                 },
             }
+        if self.cache_write_tokens is not None:
+            details = (
+                "input_tokens_details"
+                if self.endpoint == "responses"
+                else "prompt_tokens_details"
+            )
+            body["usage"][details]["cache_write_tokens"] = self.cache_write_tokens
         return httpx2.Response(200, json=body, request=request)
 
     def adapter(self, spec: RunSpecV3) -> OpenAIAdapter:
@@ -311,7 +320,9 @@ async def persist_assessment_diagnostics(output: Path) -> None:
                     capture=capture,
                 )
                 transport = FixtureTransport(
-                    endpoint, assessment_text=_INVALID_ASSESSMENT_TEXT
+                    endpoint,
+                    assessment_text=_INVALID_ASSESSMENT_TEXT,
+                    cache_write_tokens=0 if capture == "full" else 7,
                 )
                 adapter = transport.adapter(spec)
                 try:
@@ -372,6 +383,9 @@ def export_assessment_diagnostics(output: Path) -> None:
                         "expected_byte_length": len(expected),
                         "normalized_result": results[0].model_dump(mode="json"),
                         "receipt_identity": receipt.identity.model_dump(mode="json"),
+                        "usage": receipt.usage.model_dump(mode="json")
+                        if receipt.usage
+                        else None,
                     }
                 )
     # The combined execution gate also has older mock receipts without this field.

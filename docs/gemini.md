@@ -287,3 +287,8 @@ qualification and served-tier evidence are documented in [service tiers](service
 
 Flex uses a 930-second local read timeout and 960-second overall deadline;
 Gemini SDK configuration uses milliseconds. Its server timeout is an advisory hint.
+
+New runs default to `execution.cache_policy: off`. This omits explicit
+`cached_content`; Gemini's provider-managed implicit caching cannot be disabled.
+Preflight reports that limitation without blocking otherwise valid studies.
+See [cache policy and migration](prompt-caching.md).

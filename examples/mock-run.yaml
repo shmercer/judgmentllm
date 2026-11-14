@@ -11,7 +11,7 @@ execution:
   mode: live
   grouping: grouped
   explanations: false
-  cache_policy: auto
+  cache_policy: "off"
   concurrency: 2
 capture: full
 output_path: run-data/mock-example

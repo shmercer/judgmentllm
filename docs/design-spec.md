@@ -160,10 +160,9 @@ No provider-specific details should leak into normalized assessment interpretati
 
 ## 8. Prompt caching
 
-- Pairwise default `off`; rubric default `auto`.
-- Policies: `off`, `auto`, `explicit`. `off` disables cache controls under library control; do not guarantee the provider cannot cache when its system performs implicit caching.
-- In `auto`, assess whether stable reusable prefix is supported and long enough for provider documented thresholds. Do not manufacture economic savings guarantees: log rationale, provider configuration, cache hits/writes when reported, and unknowns. With no supported cache capability, continue uncached or provider-default after a clear status message.
-- `explicit` requests eligible provider-specific breakpoints or keys and errors if unsupported. Provider-specific TTL and settings are validated against endpoint/model capabilities.
+- New rubric and pairwise runs default to `off`. New policies are `off` and `explicit`; `auto` is historical-only and rejected in new configurations.
+- Supported exact OpenAI routes send explicit-only cache mode with no breakpoints to disable reads/writes. Unsupported scopes fail preflight. Anthropic omits cache controls; Gemini cannot disable provider-managed implicit caching and reports that limitation.
+- `explicit` remains unsupported until the separate semantic-breakpoint feature. [Cache revision 2](prompt-caching.md) preserves historical sealed payloads and records reported cache usage without inferred costs.
 - Credential secrets, response IDs and private student content must not be embedded into user-visible cache keys. Document per-provider data retention and caching caveats.
 
 ## 9. Submission modes, priorities and retries

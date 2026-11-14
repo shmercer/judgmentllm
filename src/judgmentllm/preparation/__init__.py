@@ -24,6 +24,7 @@ from judgmentllm.config import (
     RunSpecV3,
     _load_run_spec,  # pyright: ignore[reportPrivateUsage]
     parse_document,
+    validate_run_spec,
     validate_run_spec_json,
 )
 from judgmentllm.io import _revalidate_record  # pyright: ignore[reportPrivateUsage]
@@ -183,6 +184,7 @@ def _manifest(
         else TemplateCommitment
     )
     manifest_data: dict[str, object] = dict(
+        cache_policy_version=2,
         run_id=builder.run_id,
         task_kind=spec.task_kind,
         capture=spec.capture,
@@ -291,7 +293,7 @@ def prepare_run(
         discovered: dict[str, tuple[FileSignature, str]] = {}
         if origin is None:
             assert isinstance(spec_or_path, (RunSpec, RunSpecV2, RunSpecV3))
-            spec = _revalidate_record(spec_or_path)
+            spec = validate_run_spec(spec_or_path, _cache_policy_version=2)
         else:
             raw, sig, digest = _memory_source(origin)
             # Bootstrap only in memory: privacy policy is unknown until parsed.
@@ -326,7 +328,18 @@ def prepare_run(
         if transport_context is not None:
             from judgmentllm.transport_dispatch import context_protocol
 
-            context_protocol(transport_context)
+            if context_protocol(transport_context) == "production":
+                from judgmentllm.cache_policy import validate_openai_off
+                from judgmentllm.production_transport import ProductionContext
+
+                assert isinstance(transport_context, ProductionContext)
+                validate_openai_off(transport_context.scope)
+                if (spec.provider, spec.endpoint, spec.model) != (
+                    transport_context.scope.provider,
+                    transport_context.scope.endpoint,
+                    transport_context.scope.model,
+                ):
+                    raise PreparationError("production transport scope differs")
         plan_run(spec, capabilities=profile)
         repository.create_run(
             RunRecord(
@@ -554,9 +567,16 @@ def _restore_context(
     store = ArtifactStore(repository.run_directory(manifest.run_id))
     if manifest.capture == "full":
         frozen = validate_run_spec_json(
-            store.read(manifest.specification).decode("utf-8")
+            store.read(manifest.specification).decode("utf-8"),
+            _cache_policy_version=manifest.cache_policy_version,
         )
-        spec = _revalidate_record(supplied) if supplied is not None else frozen
+        spec = (
+            validate_run_spec(
+                supplied, _cache_policy_version=manifest.cache_policy_version
+            )
+            if supplied is not None
+            else frozen
+        )
     elif manifest.configuration_location is not None:
         by_location = {s.original_location: s for s in manifest.sources}
 
@@ -572,15 +592,25 @@ def _restore_context(
             return parse_document(data.decode("utf-8"), path)
 
         frozen = _load_run_spec(
-            manifest.configuration_location, document_reader=verified_document
+            manifest.configuration_location,
+            document_reader=verified_document,
+            cache_policy_version=manifest.cache_policy_version,
         )
-        spec = _revalidate_record(supplied) if supplied is not None else frozen
+        spec = (
+            validate_run_spec(
+                supplied, _cache_policy_version=manifest.cache_policy_version
+            )
+            if supplied is not None
+            else frozen
+        )
     else:
         if supplied is None:
             raise PreparationError(
                 "minimal Python-origin preparation requires the original RunSpec"
             )
-        spec = _revalidate_record(supplied)
+        spec = validate_run_spec(
+            supplied, _cache_policy_version=manifest.cache_policy_version
+        )
     if (
         configuration_digest(spec) != manifest.configuration_sha256
         or assessment_digest(spec) != manifest.assessment_sha256

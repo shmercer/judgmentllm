@@ -219,6 +219,24 @@
       "test_r_gate_excludes_inherited_authentication_settings": {"": []},
       "test_status_isolated_from_io_discovery_sdk_and_runtime_boundaries": {"": []}
     },
+    "tests/test_cache_policy.py": {
+      "test_actual_sdk_off_native_flex_reasoning_and_retry": {"[False-chat.completions-gpt-6-luna]": [], "[False-chat.completions-gpt-6.1-terra]": [], "[False-responses-gpt-6-luna]": [], "[False-responses-gpt-6.1-terra]": [], "[True-chat.completions-gpt-6-luna]": [], "[True-chat.completions-gpt-6.1-terra]": [], "[True-responses-gpt-6-luna]": [], "[True-responses-gpt-6.1-terra]": []},
+      "test_anthropic_new_explicit_does_not_reuse_the_legacy_breakpoint": {"": []},
+      "test_cache_revision_tokens_are_strict": {"[0]": [], "[2.0]": [], "[2]": [], "[3]": [], "[True]": []},
+      "test_cache_write_usage_keeps_unknown_and_zero": {"[0-chat.completions]": [], "[0-responses]": [], "[7-chat.completions]": [], "[7-responses]": [], "[None-chat.completions]": [], "[None-responses]": []},
+      "test_common_off_preflight_leaves_no_durable_identity": {"[context_sdk]": [], "[endpoint]": [], "[missing_sdk]": [], "[model]": [], "[sdk]": [], "[synthetic_scope]": []},
+      "test_configuration_rejects_unknown_cache_revision": {"[0]": [], "[2.0]": [], "[2]": [], "[3]": [], "[True]": []},
+      "test_direct_compilation_cannot_enable_explicit_caching": {"": []},
+      "test_explicit_remains_unsupported_and_gemini_warning_is_nonblocking": {"": []},
+      "test_genuine_historical_requests_replay_without_new_control": {"[full-auto]": [], "[full-off]": [], "[minimal-auto]": [], "[minimal-off]": []},
+      "test_historical_fixture_checkout_preserves_bytes": {"[false]": [], "[true]": []},
+      "test_minimal_legacy_in_place_resume_and_interrupted_retry": {"[auto]": [], "[off]": []},
+      "test_new_defaults_and_legacy_only_auto": {"[False-1]": [], "[False-2]": [], "[False-3]": [], "[True-1]": [], "[True-2]": [], "[True-3]": []},
+      "test_off_scope_is_exact": {"[change0]": [], "[change1]": [], "[change2]": []},
+      "test_scope_rejects_untyped_values": {"": []},
+      "test_unsupported_openai_off_fails_before_credentials": {"[chat.completions-gpt-4.1-mini-2025-04-14]": [], "[chat.completions-gpt-6-luna-other]": [], "[chat.completions-unknown-model]": [], "[responses-gpt-4.1-mini-2025-04-14]": [], "[responses-gpt-6-luna-other]": [], "[responses-unknown-model]": []},
+      "test_usage_versions_do_not_borrow_other_sources_or_legacy_semantics": {"": []}
+    },
     "tests/test_cli.py": {
       "test_cli_previews_and_errors": {"": []},
       "test_default_invocation_prints_help": {"": []},

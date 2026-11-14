@@ -347,6 +347,13 @@ class OpenAIAdapter:
     def validate_new_run(self, spec: RunSpecification) -> None:
         """Check new tier entitlement without changing sealed historical validation."""
         self.validate(spec)
+        from judgmentllm.cache_policy import validate_openai_off
+
+        if spec.cache_policy_version == 2:
+            try:
+                validate_openai_off(self.transport_context.scope)
+            except ValueError:
+                raise OpenAIConfigurationError(("execution.cache_policy",)) from None
         assert spec.schema_version == 3
         from judgmentllm.production_registry import _profile_for
 

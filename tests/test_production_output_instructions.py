@@ -7,7 +7,7 @@ import json
 import socket
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import pytest
 from anthropic_fixture import case as anthropic_case
@@ -22,6 +22,7 @@ from judgmentllm.anthropic_transport import (
     _qualification_context as anthropic_context,
 )
 from judgmentllm.anthropic_transport import build_output_commitment_v5
+from judgmentllm.config import RunSpecV3, validate_run_spec
 from judgmentllm.gemini_prompts import render_gemini_request
 from judgmentllm.gemini_transport import _qualification_context as gemini_context
 from judgmentllm.gemini_transport import build_output_commitment_v6
@@ -135,8 +136,16 @@ def rendered_case(
         explanations=explanations,
         pairwise=pairwise,
         ties=ties,
+        **(
+            {"cache_policy_version": 1 if service_policy_version == 1 else 2}
+            if route.startswith("openai.")
+            else {}
+        ),
         **ROUTES[route],
     )
+    if service_policy_version == 1:
+        spec.execution.cache_policy = "off" if pairwise else "auto"
+        spec = cast(RunSpecV3, validate_run_spec(spec, _cache_policy_version=1))
     service_options: dict[str, Any] = {}
     if spec.provider in {"openai", "anthropic", "gemini"}:
         service_options["service_policy_version"] = service_policy_version

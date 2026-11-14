@@ -1,5 +1,17 @@
 # Recorded design decisions
 
+## Issue #56: cache policy revision 2
+
+New runs default to OFF for both assessment kinds; user-selectable auto is
+retired. Seal cache revision 2 independently of RunSpec and provider protocols;
+historical omission remains revision 1 for exact replay/retry. The two exact
+OpenAI model scopes on each endpoint use explicit-only wire mode with zero
+breakpoints. Unknown routes fail safely. Gemini's inability to disable implicit
+caching is a nonblocking preflight warning. Reported OpenAI cache writes use
+additive usage semantics 2, preserving missing values and all historical bytes.
+See [cache policy and migration](prompt-caching.md). Explicit semantic breakpoints
+remain Issue #57; no live execution or qualification promotion is included.
+
 ## PR #50 review: explicit sampling and reviewed bounds
 
 Native qualification gates every explicit temperature/top-p override even when
@@ -24,7 +36,7 @@ Reasoning syntax never upgrades an existing reviewed restriction.
 | Exemplars | Zero to many; IDs, text and optional trait/level scores, rationales, annotations; no automatic dropping/selection; warn/error on context overflow or unknown limit |
 | Prompts | Fully editable text prompts with accessible placeholders; advanced Jinja2 opt-in; no arbitrary JSON API requests |
 | Pairwise | Forced winner default, optional ties where compatible, repetitions and presentation-reversal audits, optional explanations when available |
-| Cache | Pairwise off by default, rubric auto by default; `off`, `auto`, `explicit`; explain provider implicit caching constraints |
+| Cache | New runs default off for both tasks; `off` or currently unsupported `explicit`. Historical auto/off retain sealed revision-1 semantics; see [cache policy](prompt-caching.md). |
 | Execution | Live (provider tiers where supported), native Batch (where supported), and managed bulk-live; no unapproved fallback in model/tier |
 | Generation | Optional strict RunSpec generation controls, separate from execution and pairing seed; preserve omission, validate exact model/endpoint capabilities, commit requested values for reproducibility |
 | Scale | Design for 100,000 response input, hundreds of traits, thousands of stored exemplars; do not hold entire work in RAM |

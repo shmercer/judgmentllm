@@ -453,6 +453,8 @@ def _request_policy(
         raise ValueError("Unsupported Anthropic service tier")
     service = resolve_service_policy(spec, service_policy_version)
     cache = spec.execution.cache_policy
+    if cache == "explicit" and spec.cache_policy_version == 2:
+        raise ValueError("Explicit caching is not supported for new runs yet")
     if cache == "explicit" and spec.model != "claude-sonnet-4-6":
         raise ValueError("Explicit caching requires documented exact-model support")
     limit = spec.generation.max_output_tokens if spec.generation else None

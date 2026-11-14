@@ -52,6 +52,9 @@ The repository includes complete synthetic examples in
 [examples/openai](../examples/openai/). Copy this directory to your own working
 folder. Replace `YOUR_EXACT_MODEL` in the configuration with the exact model you
 intend to use. Review its endpoint, output-token and pricing documentation.
+For new OFF requests, the currently covered exact model scopes are `gpt-6-luna`
+and `gpt-6.1-terra`, with pinned OpenAI SDK 3.42.1 on each endpoint. Unlisted or
+older models fail before submission until their OFF control is verified.
 `endpoint: responses` selects Responses; `endpoint: chat.completions` selects Chat.
 No automatic model or endpoint substitution occurs.
 
@@ -144,8 +147,10 @@ from ordinary capture. `store=false` controls the API storage option; consult
 OpenAI's current account-specific data policies for its broader handling of data.
 Usage is reported once per physical request. Cache and reasoning counters overlap
 with their documented parent counters and must not be added again. Unknown usage
-or costs remain unknown. Pairwise `cache_policy: off` is local intent; this adapter
-cannot disable provider-imposed implicit caching and reports cache behavior unknown.
+or costs remain unknown. New runs default to `cache_policy: off` and send
+`prompt_cache_options: {"mode":"explicit"}` without breakpoints on supported exact
+routes. Older/unknown routes fail safely; sealed historical runs retain their
+original controls. See [cache policy and migration](prompt-caching.md).
 
 If an extra or key is missing, install `[openai]` or configure `OPENAI_API_KEY`.
 For rejected parameters, review exact-model documentation and change the next

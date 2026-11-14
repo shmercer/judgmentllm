@@ -40,6 +40,8 @@ UsageField = Literal[
     "total_tokens",
     "prompt_tokens_details.cached_tokens",
     "input_tokens_details.cached_tokens",
+    "prompt_tokens_details.cache_write_tokens",
+    "input_tokens_details.cache_write_tokens",
     "output_tokens_details.reasoning_tokens",
     "completion_tokens_details.reasoning_tokens",
     "input_tokens",
@@ -61,12 +63,12 @@ Amount = Annotated[Decimal, Field(ge=0, allow_inf_nan=False)]
 
 
 class _UsageSemantics(EvidenceModel):
-    semantics_version: Literal[1] = 1
+    semantics_version: Literal[1, 2] = 1
 
     @field_validator("semantics_version", mode="before")
     @classmethod
     def strict_semantics_version(cls, value: object) -> object:
-        if type(value) is not int or value != 1:
+        if type(value) is not int or value not in (1, 2):
             raise ValueError("unsupported usage semantics version")
         return value
 
@@ -80,10 +82,17 @@ class UsageBreakdown(_UsageSemantics):
     relationship: UsageRelationship
     related_counter: UsageCounter | None = None
     usage_source: UsageSource
-    semantics_version: Literal[1] = 1
+    semantics_version: Literal[1, 2] = 1
 
     @model_validator(mode="after")
     def consistent(self) -> UsageBreakdown:
+        if self.semantics_version == 2 and self.usage_source not in {
+            "openai.chat.usage",
+            "openai.responses.usage",
+        }:
+            raise ValueError("usage semantics 2 requires an OpenAI usage source")
+        if self.field.endswith(".cache_write_tokens") and self.semantics_version != 2:
+            raise ValueError("cache write breakdown requires usage semantics 2")
         expected = _SEMANTICS.get((self.usage_source, self.field))
         if expected is None or expected != (self.relationship, self.related_counter):
             raise ValueError("usage breakdown semantics are not established")
@@ -137,6 +146,10 @@ _SEMANTICS: dict[
         "included_in",
         "input_tokens",
     ),
+    ("openai.responses.usage", "input_tokens_details.cache_write_tokens"): (
+        "included_in",
+        "input_tokens",
+    ),
     ("openai.responses.usage", "output_tokens_details.reasoning_tokens"): (
         "included_in",
         "output_tokens",
@@ -145,6 +158,10 @@ _SEMANTICS: dict[
     ("openai.chat.usage", "completion_tokens"): ("reported", None),
     ("openai.chat.usage", "total_tokens"): ("reported", None),
     ("openai.chat.usage", "prompt_tokens_details.cached_tokens"): (
+        "included_in",
+        "input_tokens",
+    ),
+    ("openai.chat.usage", "prompt_tokens_details.cache_write_tokens"): (
         "included_in",
         "input_tokens",
     ),
@@ -183,7 +200,7 @@ class ReportedCost(_UsageSemantics):
     amount: Amount
     currency: Currency
     source: Literal["synthetic.reported_cost"]
-    semantics_version: Literal[1] = 1
+    semantics_version: Literal[1] = 1  # pyright: ignore[reportIncompatibleVariableOverride]
 
 
 class EstimatedCost(EvidenceModel):
@@ -305,7 +322,7 @@ class ReportedUsageInput(_UsageSemantics):
     """Explicit already-interpreted counters; unknown source means unknown semantics."""
 
     usage_source: UsageSource = "unknown"
-    semantics_version: Literal[1] = 1
+    semantics_version: Literal[1, 2] = 1
     input_tokens: TokenCount | None = None
     output_tokens: TokenCount | None = None
     total_tokens: TokenCount | None = None
@@ -317,9 +334,16 @@ class ReportedUsageInput(_UsageSemantics):
 
     @model_validator(mode="after")
     def source_consistency(self) -> ReportedUsageInput:
+        if self.semantics_version == 2 and self.usage_source not in {
+            "openai.chat.usage",
+            "openai.responses.usage",
+        }:
+            raise ValueError("usage semantics 2 requires an OpenAI usage source")
         fields = tuple(row.field for row in self.breakdown)
         if len(fields) != len(set(fields)) or any(
-            row.usage_source != self.usage_source for row in self.breakdown
+            row.usage_source != self.usage_source
+            or row.semantics_version != self.semantics_version
+            for row in self.breakdown
         ):
             raise ValueError(
                 "usage breakdown sources must match without duplicate fields"
@@ -332,11 +356,12 @@ class ReportedUsageInput(_UsageSemantics):
                 "reported cost semantics are not established for this source"
             )
         if self.usage_source in {"openai.chat.usage", "openai.responses.usage"}:
-            if self.cache_write_tokens is not None:
+            if self.cache_write_tokens is not None and self.semantics_version != 2:
                 raise ValueError("4A mapping does not establish cache write tokens")
             for component, parent in (
                 (self.reasoning_tokens, self.output_tokens),
                 (self.cache_read_tokens, self.input_tokens),
+                (self.cache_write_tokens, self.input_tokens),
             ):
                 if component is not None and parent is not None and component > parent:
                     raise ValueError("usage component exceeds its reported parent")
@@ -357,6 +382,8 @@ class ReportedUsageInput(_UsageSemantics):
             "output_tokens": "output_tokens",
             "prompt_tokens_details.cached_tokens": "cache_read_tokens",
             "input_tokens_details.cached_tokens": "cache_read_tokens",
+            "prompt_tokens_details.cache_write_tokens": "cache_write_tokens",
+            "input_tokens_details.cache_write_tokens": "cache_write_tokens",
             "output_tokens_details.reasoning_tokens": "reasoning_tokens",
             "completion_tokens_details.reasoning_tokens": "reasoning_tokens",
             "cache_read_input_tokens": "cache_read_tokens",
@@ -436,6 +463,9 @@ class ProviderUsage(EvidenceIdentity, UsageContext, ReportedUsageInput):
 
 class OpenAIInputTokenDetails(EvidenceModel):
     cached_tokens: TokenCount | None = None
+    cache_write_tokens: TokenCount | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 class OpenAIOutputTokenDetails(EvidenceModel):
@@ -486,10 +516,14 @@ def extract_provider_usage(
 
 
 def _breakdown(
-    source: UsageSource, values: tuple[tuple[UsageField, int | None], ...]
+    source: UsageSource,
+    values: tuple[tuple[UsageField, int | None], ...],
+    *,
+    semantics_version: Literal[1, 2] = 1,
 ) -> tuple[UsageBreakdown, ...]:
     return tuple(
         UsageBreakdown(
+            semantics_version=semantics_version,
             field=field,
             value=value,
             usage_source=source,
@@ -526,13 +560,21 @@ def interpret_openai_chat_usage(usage: OpenAIChatUsageInput) -> ReportedUsageInp
         if usage.completion_tokens_details
         else None
     )
+    written = (
+        usage.prompt_tokens_details.cache_write_tokens
+        if usage.prompt_tokens_details
+        else None
+    )
+    revision: Literal[1, 2] = 2 if written is not None else 1
     return ReportedUsageInput(
+        semantics_version=revision,
         usage_source="openai.chat.usage",
         input_tokens=usage.prompt_tokens,
         output_tokens=usage.completion_tokens,
         total_tokens=usage.total_tokens,
         reasoning_tokens=reasoning,
         cache_read_tokens=cached,
+        cache_write_tokens=written,
         breakdown=_breakdown(
             "openai.chat.usage",
             (
@@ -540,8 +582,10 @@ def interpret_openai_chat_usage(usage: OpenAIChatUsageInput) -> ReportedUsageInp
                 ("completion_tokens", usage.completion_tokens),
                 ("total_tokens", usage.total_tokens),
                 ("prompt_tokens_details.cached_tokens", cached),
+                ("prompt_tokens_details.cache_write_tokens", written),
                 ("completion_tokens_details.reasoning_tokens", reasoning),
             ),
+            semantics_version=revision,
         ),
     )
 
@@ -613,12 +657,20 @@ def interpret_openai_responses_usage(
         if usage.output_tokens_details
         else None
     )
+    written = (
+        usage.input_tokens_details.cache_write_tokens
+        if usage.input_tokens_details
+        else None
+    )
+    revision: Literal[1, 2] = 2 if written is not None else 1
     return ReportedUsageInput(
+        semantics_version=revision,
         usage_source="openai.responses.usage",
         input_tokens=usage.input_tokens,
         output_tokens=usage.output_tokens,
         total_tokens=usage.total_tokens,
         cache_read_tokens=cached,
+        cache_write_tokens=written,
         reasoning_tokens=reasoning,
         breakdown=_breakdown(
             "openai.responses.usage",
@@ -627,8 +679,10 @@ def interpret_openai_responses_usage(
                 ("output_tokens", usage.output_tokens),
                 ("total_tokens", usage.total_tokens),
                 ("input_tokens_details.cached_tokens", cached),
+                ("input_tokens_details.cache_write_tokens", written),
                 ("output_tokens_details.reasoning_tokens", reasoning),
             ),
+            semantics_version=revision,
         ),
     )
 

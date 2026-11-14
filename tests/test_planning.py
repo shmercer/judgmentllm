@@ -2,11 +2,12 @@
 
 from collections.abc import Iterator
 from pathlib import Path
+from typing import cast
 
 import pytest
 from pydantic import ValidationError
 
-from judgmentllm.config import ExecutionSpec, InputSpec, RunSpec
+from judgmentllm.config import ExecutionSpec, InputSpec, RunSpec, validate_run_spec
 from judgmentllm.models import (
     Level,
     PairTask,
@@ -174,6 +175,11 @@ def test_score_only_explanations_fail(provider: str, endpoint: str) -> None:
 def _score_levels_spec(count: int, *, provider: str, endpoint: str) -> RunSpec:
     spec = rubric_spec()
     spec.provider, spec.endpoint = provider, endpoint
+    if provider == "openai":
+        spec.model = "gpt-6-luna"
+        if endpoint == "decisions":
+            # Historical structural bounds remain independent of new OFF scopes.
+            spec = cast(RunSpec, validate_run_spec(spec, _cache_policy_version=1))
     assert spec.rubric is not None
     spec.rubric.traits = [
         Trait(

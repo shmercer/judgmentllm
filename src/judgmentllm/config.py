@@ -16,6 +16,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    PrivateAttr,
     ValidationError,
     ValidationInfo,
     field_validator,
@@ -23,6 +24,7 @@ from pydantic import (
 )
 from yaml.nodes import MappingNode
 
+from judgmentllm.cache_policy import CachePolicyVersion
 from judgmentllm.models import (
     ID,
     Exemplar,
@@ -109,7 +111,17 @@ class ExecutionSpec(StrictModel):
     groups: list[list[str]] | None = None
     max_traits_per_request: int | None = Field(default=None, gt=0)
     explanations: bool = False
-    cache_policy: Literal["off", "auto", "explicit"] | None = None
+    cache_policy: Literal["off", "auto", "explicit"] | None = Field(
+        default=None,
+        description="New runs accept off (default) or explicit (currently unsupported); auto is historical-only.",
+        json_schema_extra={
+            "anyOf": [
+                {"enum": ["off", "explicit"], "type": "string"},
+                {"type": "null"},
+            ],
+            "default": "off",
+        },
+    )
     tier: str | None = None
     concurrency: int = Field(default=4, gt=0)
 
@@ -186,6 +198,12 @@ class _RunSpecFields(StrictModel, Generic[_Version, _Prompt]):
     """Shared assessment fields and validation, independent of root version."""
 
     schema_version: _Version
+    _cache_policy_version: CachePolicyVersion = PrivateAttr(default=2)
+
+    @property
+    def cache_policy_version(self) -> CachePolicyVersion:
+        """Internal sealed revision; never a user-selectable configuration field."""
+        return self._cache_policy_version
 
     task_kind: Literal["rubric", "pairwise"]
     input: InputSpec
@@ -246,7 +264,19 @@ class _RunSpecFields(StrictModel, Generic[_Version, _Prompt]):
         return value
 
     @model_validator(mode="after")
-    def validate_assessment(self) -> _RunSpecFields[_Version, _Prompt]:
+    def validate_assessment(
+        self, info: ValidationInfo
+    ) -> _RunSpecFields[_Version, _Prompt]:
+        context = cast(dict[str, object], info.context) if info.context else {}
+        revision = context.get("cache_policy_version", 2)
+        if type(revision) is not int or revision not in (1, 2):
+            raise ValueError("unsupported cache policy version")
+        self._cache_policy_version = revision
+        if self.execution.cache_policy == "auto" and self.cache_policy_version != 1:
+            raise ValueError(
+                "execution.cache_policy: auto is legacy-only; replace it with off "
+                "or explicit (unsupported until semantic breakpoints are available)"
+            )
         if (
             self.schema_version != 3
             and self.generation is not None
@@ -273,7 +303,11 @@ class _RunSpecFields(StrictModel, Generic[_Version, _Prompt]):
         validate_exemplars(self.exemplars, self.rubric, self.criteria)
         if self.execution.cache_policy is None:
             self.execution = self.execution.model_copy(
-                update={"cache_policy": "auto" if self.task_kind == "rubric" else "off"}
+                update={
+                    "cache_policy": "auto"
+                    if self.cache_policy_version == 1 and self.task_kind == "rubric"
+                    else "off"
+                }
             )
         if self.prompt.preset is None and self.prompt.file is None:
             preset = "pairwise_forced_choice"
@@ -414,7 +448,9 @@ def _spec_snapshot(value: object) -> object:
     return value
 
 
-def validate_run_spec(value: object) -> RunSpecification:
+def validate_run_spec(
+    value: object, *, _cache_policy_version: CachePolicyVersion | None = None
+) -> RunSpecification:
     """Dispatch strict root run versions and revalidate mutable model snapshots.
 
     Omitted versions select v1. Strings, floats, booleans, and unsupported
@@ -446,7 +482,15 @@ def validate_run_spec(value: object) -> RunSpecification:
             "schema_version must be a supported integer 1, 2, or 3"
         )
     model = RunSpecV3 if version == 3 else RunSpecV2 if version == 2 else RunSpec
-    checked = model.model_validate(data)
+    revision = (
+        value.cache_policy_version
+        if isinstance(value, (RunSpec, RunSpecV2, RunSpecV3))
+        and _cache_policy_version is None
+        else 2
+        if _cache_policy_version is None
+        else _cache_policy_version
+    )
+    checked = model.model_validate(data, context={"cache_policy_version": revision})
     if (
         isinstance(value, (RunSpec, RunSpecV2, RunSpecV3))
         and _spec_snapshot(checked) != snapshot
@@ -455,9 +499,13 @@ def validate_run_spec(value: object) -> RunSpecification:
     return checked
 
 
-def validate_run_spec_json(text: str) -> RunSpecification:
+def validate_run_spec_json(
+    text: str, *, _cache_policy_version: CachePolicyVersion = 2
+) -> RunSpecification:
     """Decode strict JSON, then dispatch without resolving filesystem references."""
-    return validate_run_spec(parse_json(text))
+    return validate_run_spec(
+        parse_json(text), _cache_policy_version=_cache_policy_version
+    )
 
 
 class _ExemplarDocument(VersionedModel):
@@ -590,7 +638,10 @@ def load_run_spec(path: str | Path) -> RunSpecification:
 
 
 def _load_run_spec(
-    path: str | Path, *, document_reader: Callable[[Path], object]
+    path: str | Path,
+    *,
+    document_reader: Callable[[Path], object],
+    cache_policy_version: CachePolicyVersion = 2,
 ) -> RunSpecification:
     """Resolve a run using a caller-owned, verified document reader.
 
@@ -648,7 +699,7 @@ def _load_run_spec(
         output = data.get("output_path", "run-data")
         if isinstance(output, (str, Path)):
             data["output_path"] = _relative_path(output, source)
-        return validate_run_spec(data)
+        return validate_run_spec(data, _cache_policy_version=cache_policy_version)
     except ValidationError as exc:
         raise ConfigurationError(f"{source}: {_validation_message(exc)}") from exc
     except ConfigurationError as exc:

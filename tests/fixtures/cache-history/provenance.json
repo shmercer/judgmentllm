@@ -1,0 +1,6 @@
+{
+  "source_commit": "34dd83f57525dc3898fd735530710c4be03fa2a9",
+  "archive_sha256": "2d85f9aabb61acf50e14fb8cdbe2936446c8f67d454bc168be47e13d1c5b7de7",
+  "producer_script_sha256": "569512a3a921971055fd1a7a82c942e6db620a0b56059050df76f25f62bf8758",
+  "description": "Four pending, SDK-free OpenAI runs sealed by original main: auto/off and full/minimal."
+}

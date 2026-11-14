@@ -15,7 +15,8 @@ from test_preparation_rendering import specification
 from judgmentllm.config import RunSpec
 from judgmentllm.execution import execute_run, recover_run
 from judgmentllm.persistence.repository import Repository
-from judgmentllm.preparation import prepare_run
+from judgmentllm.planning import validate_run
+from judgmentllm.preparation import PreparationError, prepare_run
 from judgmentllm.providers import (
     MockAdapter,
     MockScenario,
@@ -519,6 +520,28 @@ async def test_unsupported_execution_fails_before_submission(
         setattr(spec.execution, setting, value)
     spec = RunSpec.model_validate(spec.model_dump())
     store = tmp_path / "store"
+    if setting in {"provider", "cache_policy"}:
+        adapter = MockAdapter(tmp_path / "ledger")
+        assert any(
+            issue.code == "unsupported_cache_policy"
+            for issue in validate_run(spec).issues
+        )
+        with pytest.raises(PreparationError, match="source/configuration validation"):
+            with prepare_run(spec, store=store, run_id="001"):
+                pass
+        assert adapter.submit_calls == adapter.ledger.acceptance_count() == 0
+        with Repository(store) as repository:
+            assert (
+                repository.connection.execute("SELECT COUNT(*) FROM runs").fetchone()[0]
+                == 0
+            )
+            assert (
+                repository.connection.execute(
+                    "SELECT COUNT(*) FROM observations"
+                ).fetchone()[0]
+                == 0
+            )
+        return
     with prepare_run(spec, store=store, run_id="001"):
         pass
     adapter = MockAdapter(tmp_path / "ledger")

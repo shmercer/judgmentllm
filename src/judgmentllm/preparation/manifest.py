@@ -13,6 +13,7 @@ from pydantic import (
     model_validator,
 )
 
+from judgmentllm.cache_policy import CachePolicyVersion
 from judgmentllm.config import ExecutionSpec, InputSpec, RunSpecification
 from judgmentllm.models import ID
 from judgmentllm.output_commitments import SchemaSelectionV2
@@ -98,6 +99,9 @@ class ExecutableRunManifest(ExecutionModel):
     """Complete executable *input* foundation; contains no provider payloads."""
 
     kind: Literal["executable_run_manifest"] = "executable_run_manifest"
+    cache_policy_version: CachePolicyVersion = Field(
+        default=1, exclude_if=lambda value: value == 1
+    )
     run_id: ID
     task_kind: Literal["rubric", "pairwise"]
     capture: Literal["full", "minimal"]
