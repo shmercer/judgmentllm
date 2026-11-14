@@ -721,7 +721,7 @@ class PreparedRun:
             frozen=frozen,
             parent=parent,
         )
-        if self.spec.provider == "openai" and (
+        if isinstance(self.manifest, ExecutableRunManifestV4) and (
             getattr(wire.output_commitment, "cache_policy_version", 1)
             != self.manifest.cache_policy_version
         ):

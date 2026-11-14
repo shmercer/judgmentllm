@@ -9,6 +9,7 @@ import io
 import json
 import socket
 import tarfile
+from copy import deepcopy
 from pathlib import Path
 from typing import Any, cast
 
@@ -27,6 +28,7 @@ from judgmentllm.config import (
     validate_run_spec,
     validate_run_spec_json,
 )
+from judgmentllm.evidence.usage import ReportedUsageInput, UsageBreakdown
 from judgmentllm.execution import execute_run
 from judgmentllm.models import ResponseItem
 from judgmentllm.persistence.hashing import canonical_bytes
@@ -35,6 +37,7 @@ from judgmentllm.preparation import PreparationError, open_prepared_run
 from judgmentllm.preparation.session import RequestDependency
 from judgmentllm.production_transport import (
     TransportCommitmentV2,
+    build_output_commitment_v4,
     prepare_production_request,
     production_context,
     production_context_for_identity,
@@ -43,7 +46,7 @@ from judgmentllm.providers.openai import OpenAIAdapter
 from judgmentllm.providers.openai_response import _usage
 from judgmentllm.reasoning import ReasoningQualificationScopeV1, ReasoningSpec
 from judgmentllm.service_tiers import ServiceQualificationScope
-from judgmentllm.transport import physical_identity
+from judgmentllm.transport import TransportIntegrityError, physical_identity
 
 
 @pytest.fixture(autouse=True)
@@ -134,6 +137,49 @@ def test_cache_revision_tokens_are_strict(version: Any) -> None:
 def test_scope_rejects_untyped_values() -> None:
     with pytest.raises(ValueError):
         validate_openai_off(None)
+
+
+@pytest.mark.parametrize("version", [True, "2", 2.0, 0, 3])
+def test_configuration_rejects_unknown_cache_revision(
+    tmp_path: Path, version: Any
+) -> None:
+    spec, _ = new_case(tmp_path)
+    with pytest.raises(ValueError, match="cache policy version"):
+        validate_run_spec(spec, _cache_policy_version=version)
+
+
+def test_usage_versions_do_not_borrow_other_sources_or_legacy_semantics() -> None:
+    with pytest.raises(ValueError):
+        UsageBreakdown(
+            semantics_version=2,
+            usage_source="synthetic.reported_usage",
+            field="input_tokens",
+            value=1,
+            relationship="reported",
+        )
+    with pytest.raises(ValueError):
+        UsageBreakdown(
+            semantics_version=1,
+            usage_source="openai.responses.usage",
+            field="input_tokens_details.cache_write_tokens",
+            value=0,
+            relationship="included_in",
+            related_counter="input_tokens",
+        )
+    with pytest.raises(ValueError):
+        ReportedUsageInput(
+            semantics_version=2,
+            usage_source="openai.responses.usage",
+            input_tokens=1,
+            cache_write_tokens=2,
+        )
+
+
+def test_direct_compilation_cannot_enable_explicit_caching(tmp_path: Path) -> None:
+    spec, dependency = new_case(tmp_path)
+    spec.execution.cache_policy = "explicit"
+    with pytest.raises(TransportIntegrityError):
+        build_output_commitment_v4(spec, dependency.request, production_context(spec))
 
 
 @pytest.mark.parametrize(
@@ -379,6 +425,17 @@ async def test_genuine_historical_requests_replay_without_new_control(
         )
         rebuilt = prepared.prepare_transport_attempt(dependency, receipt.identity)
         assert rebuilt.payload == original
+        import judgmentllm.transport_dispatch as dispatch
+
+        def inconsistent(*args: Any, **kwargs: Any) -> Any:
+            changed = deepcopy(rebuilt)
+            object.__setattr__(changed.output_commitment, "cache_policy_version", 2)
+            return changed
+
+        with monkeypatch.context() as patch:
+            patch.setattr(dispatch, "prepare_request", inconsistent)
+            with pytest.raises(PreparationError, match="transport cache policy"):
+                prepared.prepare_transport_attempt(dependency, receipt.identity)
         prepared.spec._cache_policy_version = 2
         with pytest.raises(PreparationError):
             prepared.verify_compatibility()
