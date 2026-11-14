@@ -277,6 +277,15 @@ production-regression detection.
 All 477 CI-policy selftests and strict type checks passed before freezing this
 correction. These development checks are separate from final exact-head qualification.
 
+Follow-up independent review verified the source-closure and MinGit corrections
+and found the contributor scaffolding sufficient. Its two onboarding suggestions
+are now included: a complete provider-source/closure JSON example and an example
+risk plan with escalation diagnostics. At source `9b6e125`, six actual in-memory
+production mutations were detected through failing test calls with passing setup
+and teardown, including a Together schema omission selected by its Level 2 source
+closure. This is behavioral fault evidence, separate from receipt simulations;
+the final documentation commit still requires its own exact-source qualification.
+
 Serial isolation does not establish a platform requirement. The reviewed
 `platform_overrides` record exact per-function OS subsets and rationale;
 ambiguous, overlapping or stale placements fail policy selftests. Changed known

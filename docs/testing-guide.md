@@ -127,6 +127,45 @@ resource success never replaces functional, coverage or R qualification.
 
 ## Development and acceptance commands
 
+For a new provider source, merge exact source bindings and its complete test
+closure into the existing registry. For example, an approved future offline
+Together response parser could add the following entries. Preserve other
+`shared_sources`, provider bindings and existing test-closure members:
+
+```json
+{
+  "provider_sources": {
+    "src/judgmentllm/providers/together_response.py": "together"
+  },
+  "providers": {
+    "together": [
+      "tests/test_native_other_providers.py",
+      "tests/test_native_preseal_validation.py",
+      "tests/test_native_schema_privacy.py",
+      "tests/test_native_selection.py",
+      "tests/test_native_v2_compatibility.py",
+      "tests/test_together_response.py"
+    ]
+  },
+  "shared_sources": [
+    "src/judgmentllm/providers/together_response.py"
+  ],
+  "modules": {
+    "tests/test_together_response.py": {
+      "domain": "provider-sdk",
+      "cost": "quick",
+      "platforms": [],
+      "reason": "Offline response-parser shapes and errors; transport has independent platform coverage"
+    }
+  }
+}
+```
+
+Add the actual positive/negative tests, reconcile inventory and verify the
+direct-import/selection regressions. A mapping permits narrow selection only
+when the risk rules also allow it; credential, privacy, shared authority and
+recovery changes still escalate. Editing the registry itself requires Level 3.
+
 1. Read the design and policy; classify the behavior, platform reach and isolation.
 2. Add independent positive/negative assertions and reuse existing fixture helpers.
    Share immutable inputs; give each mutable repository, ledger and campaign its
@@ -148,6 +187,26 @@ python3 ci/check.py --profile fast --test ci/local
 python3 ci/check.py --profile pr --plan-only --changed-since origin/main
 python3 ci/check.py --profile pr --changed-since origin/main --workers 12
 ```
+
+For a parse-only edit to an already reviewed provider response module, a Level 2
+plan can look like this (worker/scheduling details abbreviated):
+
+```text
+Risk 2; plan: /external/pr-check/plan.json
+  linux-3.11: impacted
+  windows-3.12: platform-smoke
+  macos-3.11: platform-smoke
+Local requirements: coverage=True, R=['exports', 'execution'], resources=False
+```
+
+Linux runs the affected closure plus essential contracts; the other platforms
+retain their genuine smoke checks. Local primary acceptance still requires full
+historical coverage and the applicable R gates. A Level 3 plan after editing CI
+metadata, assertions or shared behavior is expected. For an unexpected escalation,
+read `changes[].reason`, `unknown_dependencies`, `selection_reasons` and `impact`
+in the saved plan. Check for an unreviewed source path or a sensitive boundary;
+resolve the classification with evidence. Diff size and a lower `--risk` argument
+cannot lower the automatic plan.
 
 `--workers 12` is the measured workstation choice, not a hosted default. The
 plan prints each hosted profile, worker cap, distribution, reasons and local
