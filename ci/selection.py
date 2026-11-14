@@ -101,6 +101,7 @@ def validate_registry(policy: dict[str, Any], known: dict[str, Any]) -> None:
             "smoke",
             "mandatory_smoke",
             "extended",
+            "platform_overrides",
             "essential",
             "providers",
             "shared_sources",
@@ -125,7 +126,9 @@ def validate_registry(policy: dict[str, Any], known: dict[str, Any]) -> None:
             set(entry) != {"domain", "cost", "platforms", "reason"}
             or entry["domain"] not in policy["domains"]
             or entry["cost"] not in {"quick", "io", "process", "heavy", "resource"}
-            or entry["platforms"] not in [[], ["linux", "win32", "darwin"]]
+            or not isinstance(entry["platforms"], list)
+            or len(entry["platforms"]) != len(set(entry["platforms"]))
+            or not set(entry["platforms"]) <= {"linux", "win32", "darwin"}
             or not entry["reason"]
         ):
             raise ValueError(f"Invalid test classification: {module}")
@@ -135,6 +138,21 @@ def validate_registry(policy: dict[str, Any], known: dict[str, Any]) -> None:
             not any(matches(node, selector) for node in nodes) for selector in selectors
         ):
             raise ValueError(f"Duplicate or stale {group} selector")
+    for selector, override in policy["platform_overrides"].items():
+        if (
+            not any(matches(node, selector) for node in nodes)
+            or set(override) != {"platforms", "reason"}
+            or not isinstance(override["platforms"], list)
+            or len(override["platforms"]) != len(set(override["platforms"]))
+            or not set(override["platforms"]) <= {"linux", "win32", "darwin"}
+            or not override["reason"]
+            or any(
+                other != selector
+                and (matches(other, selector) or matches(selector, other))
+                for other in policy["platform_overrides"]
+            )
+        ):
+            raise ValueError(f"Invalid or overlapping platform placement: {selector}")
     if not set(policy["mandatory_smoke"]) <= set(policy["smoke"]):
         raise ValueError("Mandatory cross-platform smoke/negative boundary removed")
     for selectors in policy["providers"].values():
@@ -153,11 +171,19 @@ def manifest(
     impacted: list[str],
     include_r: bool,
     include_resources: bool,
+    platform: str = "linux",
+    partition: str = "all",
     policy: dict[str, Any] | None = None,
     known: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     if profile not in PROFILES:
         raise ValueError("Unknown lane test profile")
+    if platform not in {"linux", "win32", "darwin"} or partition not in {
+        "all",
+        "ordinary",
+        "serial",
+    }:
+        raise ValueError("Unknown platform or grid partition")
     policy = policy if policy is not None else read(HERE / "test-profiles.json")
     known = known if known is not None else read(HERE / "test-inventory.json")
     validate_registry(policy, known)
@@ -174,6 +200,19 @@ def manifest(
     for node, item in sorted(current.items()):
         module = node.split("::", 1)[0]
         metadata = policy["modules"].get(module)
+        placement = next(
+            (
+                entry
+                for selector, entry in policy["platform_overrides"].items()
+                if matches(node, selector)
+            ),
+            metadata,
+        )
+        platform_relevant = placement is not None and (
+            platform in placement["platforms"]
+            or not any(matches(node, s) for s in policy["platform_overrides"])
+            and any(matches(node, s) for s in policy["extended"])
+        )
         markers = item["markers"]
         reason = (
             "complete profile" if profile == "full" else "platform-neutral or unrelated"
@@ -183,16 +222,17 @@ def manifest(
             selected, reason = True, "new/unclassified case; mandatory on every lane"
         elif any(matches(node, selector) for selector in policy["smoke"]):
             selected, reason = True, "essential real platform smoke/negative boundary"
-        elif any(matches(node, selector) for selector in impacted):
+        elif any(matches(node, selector) for selector in impacted) and (
+            profile in {"focused", "impacted", "full"} or platform_relevant
+        ):
             selected, reason = True, "affected component or changed test module"
         elif profile in {"focused", "impacted"} and any(
             matches(node, selector) for selector in policy["essential"]
         ):
             selected, reason = True, "shared critical contract regression"
-        elif profile == "platform-extended" and (
-            metadata["platforms"] or any(matches(node, s) for s in policy["extended"])
-        ):
-            selected, reason = True, metadata["reason"]
+        elif profile == "platform-extended" and platform_relevant:
+            assert placement is not None
+            selected, reason = True, placement["reason"]
         stage = (
             "resource"
             if "resource" in markers
@@ -201,6 +241,11 @@ def manifest(
             else "ordinary"
         )
         disposition = "required" if selected else "not-required-for-this-lane"
+        if selected and partition != "all" and stage != partition:
+            disposition, reason = (
+                "covered-by-grid-partition",
+                "required on the other isolated hosted VM",
+            )
         # All new R/resource cases retain their execution location and isolation.
         if "r_interop" in markers and not include_r:
             disposition, reason = "deferred-by-policy", "actual R executes locally"
@@ -220,8 +265,8 @@ def manifest(
                 else metadata["cost"]
                 if metadata
                 else "unknown",
-                "platforms": metadata["platforms"]
-                if metadata
+                "platforms": placement["platforms"]
+                if placement
                 else ["linux", "win32", "darwin"],
                 "disposition": disposition,
                 "reason": reason,
@@ -230,6 +275,8 @@ def manifest(
     result = {
         "schema_version": 1,
         "profile": profile,
+        "platform": platform,
+        "grid_partition": partition,
         "impacted": sorted(impacted),
         "inventory_sha256": digest(actual),
         "policy_sha256": digest({"taxonomy": policy, "inventory": known}),

@@ -70,6 +70,7 @@ def run_lane(
     quality_only: bool = False,
     quality_receipt: Path | None = None,
     execution_scope: str = "hosted",
+    partition: str = "all",
 ) -> int:
     if execution_scope not in {"local", "hosted"}:
         raise ValueError("Execution scope must be local or hosted")
@@ -79,7 +80,20 @@ def run_lane(
     if output.is_relative_to(source):
         raise ValueError("Evidence must be outside the checkout")
     expected = next(item for item in plan["lanes"] if item["id"] == lane)
-    if execution_scope == "hosted" and workers != expected["workers"]:
+    if execution_scope == "local" and partition != "all":
+        raise ValueError("Local qualification requires all partitions")
+    if (
+        execution_scope == "hosted"
+        and not quality_only
+        and not any(
+            item["id"] == lane and item["partition"] == partition
+            for item in plan["hosted_tasks"]
+        )
+    ):
+        raise ValueError("Hosted partition must match the trusted plan")
+    if execution_scope == "hosted" and workers != (
+        1 if partition == "serial" else expected["workers"]
+    ):
         raise ValueError("Hosted workers must match the trusted plan")
     systems = {
         "ubuntu-latest": "Linux",
@@ -92,11 +106,14 @@ def run_lane(
     ):
         raise ValueError("Lane interpreter/OS does not match its plan")
     output.mkdir(parents=True, exist_ok=False)
-    needed = required_steps(plan, lane, execution_scope=execution_scope)
+    needed = required_steps(
+        plan, lane, execution_scope=execution_scope, partition=partition
+    )
     report: dict[str, Any] = {
         "source_sha": plan["source_sha"],
         "plan_sha256": plan["plan_sha256"],
         "lane": lane,
+        "partition": partition,
         "run_id": run_id,
         "execution_scope": execution_scope,
         "status": "failed",
@@ -116,6 +133,8 @@ def run_lane(
     }
     environment = clean_environment()
     environment["JUDGMENTLLM_CI_RUN_ID"] = f"{run_id}:{lane}"
+    if partition != "all":
+        environment["JUDGMENTLLM_CI_RUN_ID"] += f":{partition}"
     if execution_scope == "local":
         environment["JUDGMENTLLM_R_STRICT"] = "1"
     environment["JUDGMENTLLM_OPENAI_RESOURCE_EVIDENCE"] = str(
@@ -161,7 +180,11 @@ def run_lane(
 
     try:
         verify_source()
-        if quality_receipt is not None and lane == "linux-3.11":
+        if (
+            quality_receipt is not None
+            and lane == "linux-3.11"
+            and partition != "serial"
+        ):
             prior = read(quality_receipt)
             if (
                 any(
@@ -277,6 +300,8 @@ def run_lane(
                 lane,
                 "--execution-scope",
                 execution_scope,
+                "--grid-partition",
+                partition,
             ]
             if "coverage" in needed:
                 command += [
@@ -311,7 +336,9 @@ def run_lane(
                 raise ValueError("Hosted lanes must not measure coverage")
             if execution_scope == "local" and suite.get("deferred_r_cases"):
                 raise ValueError("Required local R cases were deferred")
-            validate_suite(plan, lane, output, run_id, scope=execution_scope)
+            validate_suite(
+                plan, lane, output, run_id, scope=execution_scope, partition=partition
+            )
             report["selection_sha256"] = suite["selection_sha256"]
             for alias in ("coverage", "resources"):
                 if alias in needed:
@@ -422,6 +449,9 @@ def main() -> int:
     parser.add_argument("--run-id", default="local")
     parser.add_argument("--receipts", type=Path)
     parser.add_argument("--workers", type=int)
+    parser.add_argument(
+        "--partition", choices=("all", "ordinary", "serial"), default="all"
+    )
     parser.add_argument("--name", choices=R_GATES)
     parser.add_argument("--quality-only", action="store_true")
     parser.add_argument("--quality-receipt", type=Path)
@@ -442,7 +472,9 @@ def main() -> int:
             with Path(os.environ["GITHUB_OUTPUT"]).open(
                 "a", encoding="utf-8"
             ) as stream:
-                stream.write("matrix=" + json.dumps({"include": plan["lanes"]}) + "\n")
+                stream.write(
+                    "matrix=" + json.dumps({"include": plan["hosted_tasks"]}) + "\n"
+                )
                 stream.write(f"risk={plan['risk']}\n")
                 stream.write(f"packaging={str(plan['packaging']).lower()}\n")
         return 0
@@ -458,12 +490,15 @@ def main() -> int:
             args.run_id,
             workers=args.workers
             if args.workers is not None
+            else 1
+            if args.partition == "serial"
             else next(
                 item["workers"] for item in plan["lanes"] if item["id"] == args.lane
             ),
             quality_only=args.quality_only,
             quality_receipt=args.quality_receipt,
             execution_scope=args.execution_scope,
+            partition=args.partition,
         )
     if not args.base or not args.head:
         parser.error("aggregation requires independently supplied --base and --head")
@@ -473,13 +508,25 @@ def main() -> int:
     paths = list(args.receipts.rglob("receipt.json"))
     receipts = [read(path) for path in paths]
     errors = admit(plan, receipts, args.run_id)
+    universes: dict[str, str] = {}
     for path, receipt in zip(paths, receipts, strict=True):
         if plan["risk"] < 1:
             continue
         try:
-            suite = validate_suite(plan, receipt["lane"], path.parent, args.run_id)
+            suite = validate_suite(
+                plan,
+                receipt["lane"],
+                path.parent,
+                args.run_id,
+                partition=receipt.get("partition", "all"),
+            )
             if suite["selection_sha256"] != receipt.get("selection_sha256"):
                 raise ValueError("Lane receipt does not bind its exact selection")
+            universe = read(path.parent / "suite/selection-manifest.json")[
+                "inventory_sha256"
+            ]
+            if universes.setdefault(receipt["lane"], universe) != universe:
+                raise ValueError("Hosted partitions collected different case universes")
         except (OSError, ValueError, KeyError, TypeError, StopIteration) as error:
             errors.append(f"Invalid raw case evidence ({receipt.get('lane')}): {error}")
     save(

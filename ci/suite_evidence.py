@@ -16,14 +16,30 @@ from local.suite import outcomes, verify_contract, verify_skips
 
 
 def validate_suite(
-    plan: dict[str, Any], lane: str, output: Path, run_id: str, *, scope: str = "hosted"
+    plan: dict[str, Any],
+    lane: str,
+    output: Path,
+    run_id: str,
+    *,
+    scope: str = "hosted",
+    partition: str = "all",
 ) -> dict[str, Any]:
     """Recompute the exact scope and require one terminal report per planned case."""
     root = output / "suite"
     summary = read(root / "summary.json")
     collection = read(root / "collection.json")
-    needed = required_steps(plan, lane, execution_scope=scope)
+    needed = required_steps(plan, lane, execution_scope=scope, partition=partition)
     expected = next(item for item in plan["lanes"] if item["id"] == lane)
+    if scope == "hosted" and not any(
+        item["id"] == lane and item["partition"] == partition
+        for item in plan["hosted_tasks"]
+    ):
+        raise ValueError("Unexpected hosted grid partition")
+    platform = {
+        "ubuntu-24.04": "linux",
+        "windows-latest": "win32",
+        "macos-latest": "darwin",
+    }[expected["os"]]
     profile = lane_profile(plan, lane, scope)
     selection = manifest(
         collection["collected"],
@@ -31,6 +47,8 @@ def validate_suite(
         impacted=plan["impact"],
         include_r=scope == "local",
         include_resources="resources" in needed,
+        platform=platform,
+        partition=partition,
     )
     if (
         type(collection.get("exit_code")) is not int
@@ -41,6 +59,7 @@ def validate_suite(
         or summary.get("test_profile") != profile
         or summary.get("selection_sha256") != selection["selection_sha256"]
         or summary.get("stage") != "full"
+        or summary.get("grid_partition", "all") != partition
         or summary.get("status") != "passed"
         or summary.get("selection_complete") is not True
         or summary.get("coverage_enabled") is not ("coverage" in needed)
@@ -49,26 +68,25 @@ def validate_suite(
     ):
         raise ValueError("Incomplete, stale or incorrect suite selection/identity")
     if scope == "hosted" and (
-        summary.get("requested_workers") != expected["workers"]
+        summary.get("requested_workers")
+        != (1 if partition == "serial" else expected["workers"])
         or summary.get("distribution") != expected["distribution"]
         or type(summary.get("workers")) is not int
-        or not 1 <= summary["workers"] <= expected["workers"]
+        or not 1
+        <= summary["workers"]
+        <= (1 if partition == "serial" else expected["workers"])
     ):
         raise ValueError("Suite scheduling differs from the hosted plan")
     provenance = summary["provenance"]
     interpreter = provenance["interpreter"]
-    platform = {
-        "ubuntu-24.04": "linux",
-        "windows-latest": "win32",
-        "macos-latest": "darwin",
-    }[expected["os"]]
+    execution_id = f"{run_id}:{lane}" + (f":{partition}" if partition != "all" else "")
     expected_locks = {plan["lockfile_sha256"]}
     if platform == "win32":
         expected_locks.add(plan["windows_crlf_lockfile_sha256"])
     if (
         provenance["source"]["commit"] != plan["source_sha"]
         or provenance["source"]["dirty"] is not False
-        or provenance["qualification_run_id"] != f"{run_id}:{lane}"
+        or provenance["qualification_run_id"] != execution_id
         or interpreter["platform"] != platform
         or not interpreter["version"].startswith(expected["python"] + ".")
         or provenance["lockfile_sha256"] not in expected_locks

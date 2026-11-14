@@ -87,9 +87,9 @@ jobs:
 
   verify:
     needs: plan
-    name: ${{ matrix.id }} (${{ matrix.profile }})
+    name: ${{ matrix.id }} (${{ matrix.profile }}, ${{ matrix.partition }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 50
+    timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
@@ -123,7 +123,7 @@ jobs:
         if: needs.plan.outputs.risk != '0'
         run: uv sync --project candidate --locked --all-extras --group dev
       - name: Prepare offline core installation cache
-        if: needs.plan.outputs.packaging == 'true' && (matrix.id == 'linux-3.11' || needs.plan.outputs.risk == '4')
+        if: needs.plan.outputs.packaging == 'true' && matrix.partition != 'serial' && (matrix.id == 'linux-3.11' || needs.plan.outputs.risk == '4')
         shell: bash
         run: |
           uv export --project candidate --locked --no-default-groups --no-emit-project --output-file "$RUNNER_TEMP/core-requirements.txt"
@@ -135,15 +135,17 @@ jobs:
         run: |
           launcher=(python)
           if [ "$RISK" != 0 ]; then launcher=(uv run --project candidate --offline --no-sync python); fi
+          partition=()
+          if [ -n "${{ matrix.partition }}" ]; then partition=(--partition "${{ matrix.partition }}"); fi
           "${launcher[@]}" policy/ci/acceptance.py lane \
             --source candidate --plan "$RUNNER_TEMP/p/plan.json" --lane "${{ matrix.id }}" \
-            --execution-scope hosted \
+            --execution-scope hosted "${partition[@]}" \
             --quality-receipt "$RUNNER_TEMP/p/quality/quality.json" --run-id "$RUN_ID" --output "$RUNNER_TEMP/v"
       - name: Preserve diagnostics even on failure
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
-          name: verification-${{ matrix.id }}
+          name: verification-${{ matrix.id }}-${{ matrix.partition || 'all' }}
           path: |
             ${{ runner.temp }}/v/*.json
             ${{ runner.temp }}/v/*.log

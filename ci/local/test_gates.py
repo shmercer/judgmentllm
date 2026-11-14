@@ -114,12 +114,17 @@ def fake_commands(
     *,
     fail_lint: bool = False,
     fail_pytest: bool = False,
+    missing_git: bool = False,
     mutate: Path | None = None,
 ) -> list[list[str]]:
     calls: list[list[str]] = []
 
     def execute(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         calls.append(command)
+        if missing_git and command == ["git", "--version"]:
+            raise FileNotFoundError(
+                "Git is required for genuine source-admission tests"
+            )
         stream = kwargs["stdout"]
         environment = kwargs["env"]
         assert environment["UV_OFFLINE"] == "1"
@@ -183,6 +188,18 @@ def fake_commands(
     monkeypatch.setenv("PYTHONPATH", "ignored-external-source")
     monkeypatch.setenv("UV_PROJECT_ENVIRONMENT", "ignored-old-environment")
     return calls
+
+
+def test_missing_git_fails_before_costly_setup_or_synthetic_suite_execution(
+    staged: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    calls = fake_commands(monkeypatch, missing_git=True)
+    runner = gates.Runner(options(staged, tmp_path / "missing-git"))
+    assert runner.run() == 1
+    assert calls == [["git", "--version"]]
+    assert runner.summary["status"] == "failed"
+    assert runner.summary["error"]["phase"] == "environment-setup"
+    assert runner.summary["source_verified_after"] is True
 
 
 @pytest.mark.parametrize(

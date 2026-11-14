@@ -50,6 +50,95 @@ def test_inventory_taxonomy_is_complete_and_references_are_live(
     }
 
 
+@pytest.mark.parametrize("level", range(5))
+def test_hosted_grid_splits_expensive_serial_work_without_changing_os_depth(
+    repository: Any, level: int
+) -> None:
+    source, base = repository
+    (source / "README.md").write_text("Changed prose")
+    plan = make_plan(source, base, freeze(source), minimum=level)
+    for lane in plan["lanes"]:
+        tasks = [task for task in plan["hosted_tasks"] if task["id"] == lane["id"]]
+        assert [task["partition"] for task in tasks] == (
+            ["ordinary", "serial"] if level >= 3 else ["all"]
+        )
+        assert all(task["profile"] == lane["profile"] for task in tasks)
+        assert all(
+            task["workers"] == 1 for task in tasks if task["partition"] == "serial"
+        )
+    assert len(plan["lanes"]) == (8 if level == 4 else 3 if level >= 2 else 1)
+    assert all(lane["profile"] != "full" for lane in plan["lanes"] if level < 3)
+
+
+@pytest.mark.parametrize("platform", ["linux", "win32", "darwin"])
+def test_platform_placement_and_split_union_retain_exact_required_cases(
+    cases: list[dict[str, Any]], platform: str
+) -> None:
+    generic = "tests/test_study_limits.py::test_one_handoff_resume_and_completion_preserve_all_identities"
+    fork = "tests/test_persistence_ownership.py::test_forked_child_release_does_not_unlock_parent"
+    new_node = "tests/test_study_limits.py::test_new_serial_parameter[001]"
+    items = [*cases, {"nodeid": new_node, "markers": ["serial"]}]
+    options: dict[str, Any] = dict(
+        profile="full" if platform == "linux" else "platform-extended",
+        impacted=["tests/test_study_limits.py"],
+        include_r=False,
+        include_resources=False,
+        platform=platform,
+    )
+    whole = manifest(items, **options)
+    selected = {
+        case["nodeid"] for case in whole["cases"] if case["disposition"] == "required"
+    }
+    assert (generic in selected) is (platform == "linux")
+    assert (fork in selected) is (platform != "win32")
+    assert new_node in selected
+    slices: list[set[str]] = []
+    for part in ("ordinary", "serial"):
+        selection = manifest(items, partition=part, **options)
+        slices.append(
+            {
+                case["nodeid"]
+                for case in selection["cases"]
+                if case["disposition"] == "required"
+            }
+        )
+    assert not slices[0] & slices[1]
+    assert slices[0] | slices[1] == selected
+    assert new_node in slices[1]
+    full_windows = manifest(
+        items,
+        profile="full",
+        impacted=[],
+        include_r=False,
+        include_resources=False,
+        platform="win32",
+    )
+    assert any(
+        case["nodeid"] == generic and case["disposition"] == "required"
+        for case in full_windows["cases"]
+    )
+
+
+@pytest.mark.parametrize("fault", ["stale", "platform", "overlap"])
+def test_invalid_platform_placement_cannot_reduce_verification(fault: str) -> None:
+    taxonomy = read(HERE / "test-profiles.json")
+    known = read(HERE / "test-inventory.json")
+    if fault == "stale":
+        taxonomy["platform_overrides"]["tests/test_gone.py::test_missing"] = {
+            "platforms": [],
+            "reason": "invalid",
+        }
+    elif fault == "platform":
+        next(iter(taxonomy["platform_overrides"].values()))["platforms"] = ["invented"]
+    else:
+        taxonomy["platform_overrides"]["tests/test_study_limits.py"] = {
+            "platforms": [],
+            "reason": "ambiguous parent",
+        }
+    with pytest.raises(ValueError, match="platform placement"):
+        validate_registry(taxonomy, known)
+
+
 @pytest.mark.parametrize("compact", [False, True])
 def test_compact_windows_paths_preserve_case_ids_and_private_store_isolation(
     repository: Any, tmp_path: Path, compact: bool
@@ -487,7 +576,7 @@ def test_lock_identity_permits_only_committed_windows_newline_forms(
     )
     output = tmp_path / "lane"
     output.mkdir()
-    write_suite(plan, lane, output / "suite")
+    write_suite(plan, lane, output / "suite", partition="ordinary")
     value = {
         "lf": plan["lockfile_sha256"],
         "crlf": plan["windows_crlf_lockfile_sha256"],
@@ -500,10 +589,13 @@ def test_lock_identity_permits_only_committed_windows_newline_forms(
             raw["provenance"]["lockfile_sha256"] = value
             path.write_text(json.dumps(raw))
     if checkout == "lf" or checkout == "crlf" and lane == "windows-3.12":
-        assert validate_suite(plan, lane, output, "run:1")["status"] == "passed"
+        assert (
+            validate_suite(plan, lane, output, "run:1", partition="ordinary")["status"]
+            == "passed"
+        )
     else:
         with pytest.raises(ValueError, match="lock mismatch"):
-            validate_suite(plan, lane, output, "run:1")
+            validate_suite(plan, lane, output, "run:1", partition="ordinary")
 
 
 @pytest.mark.parametrize(
@@ -548,7 +640,7 @@ def test_critical_fault_probes_remain_required_and_cannot_report_success(
     lane = "linux-3.11" if boundary == "schema" else "windows-3.12"
     output = tmp_path / "fault"
     output.mkdir()
-    write_suite(plan, lane, output / "suite")
+    write_suite(plan, lane, output / "suite", partition="ordinary")
     selection = read(output / "suite/selection-manifest.json")
     required = [
         case for case in selection["cases"] if case["nodeid"].split("[", 1)[0] == probe
@@ -566,7 +658,7 @@ def test_critical_fault_probes_remain_required_and_cannot_report_success(
     report["outcome"] = "failed"
     path.write_text(json.dumps(receipt))
     with pytest.raises(ValueError, match="Failed, incomplete or foreign"):
-        validate_suite(plan, lane, output, "run:1")
+        validate_suite(plan, lane, output, "run:1", partition="ordinary")
 
 
 def test_testing_guide_commands_and_marker_names_match_interfaces() -> None:
@@ -595,8 +687,9 @@ def test_testing_guide_commands_and_marker_names_match_interfaces() -> None:
 
 
 @pytest.mark.parametrize("fault", ["none", "ordinary", "serial", "worker-crash"])
+@pytest.mark.parametrize("grid_partition", ["all", "ordinary", "serial"])
 def test_planned_runner_executes_real_disjoint_partitions_and_propagates_failure(
-    tmp_path: Path, fault: str
+    tmp_path: Path, fault: str, grid_partition: str
 ) -> None:
     from acceptance import clean_environment
 
@@ -645,6 +738,7 @@ def test_planned_runner_executes_real_disjoint_partitions_and_propagates_failure
         "smoke": ["tests/test_probe.py"],
         "mandatory_smoke": ["tests/test_probe.py"],
         "extended": [],
+        "platform_overrides": {},
         "essential": [],
         "providers": {},
         "shared_sources": [],
@@ -676,6 +770,12 @@ def test_planned_runner_executes_real_disjoint_partitions_and_propagates_failure
         "coverage": False,
         "impact": [],
         "lanes": [{"id": "linux-3.11", "profile": "platform-smoke"}],
+        "hosted_tasks": [
+            {"id": "linux-3.11", "partition": part}
+            for part in (
+                ("all",) if grid_partition == "all" else ("ordinary", "serial")
+            )
+        ],
         "selection_policy_sha256": digest({"taxonomy": taxonomy, "inventory": known}),
     }
     plan_path = tmp_path / "plan.json"
@@ -701,6 +801,8 @@ def test_planned_runner_executes_real_disjoint_partitions_and_propagates_failure
             str(plan_path),
             "--execution-scope",
             "hosted",
+            "--grid-partition",
+            grid_partition,
             "--contract",
             str(policy / "test-contract.json"),
             "tests",
@@ -712,15 +814,20 @@ def test_planned_runner_executes_real_disjoint_partitions_and_propagates_failure
         timeout=60,
     )
     summary = read(output / "summary.json")
-    assert (result.returncode == 0) == (fault == "none"), result.stdout + result.stderr
-    assert summary["status"] == ("passed" if fault == "none" else "failed")
-    if fault == "none":
-        assert summary["counts"]["passed"] == 2
-        assert [part["name"] for part in summary["partitions"]] == [
-            "ordinary",
-            "serial",
-        ]
+    failing_part = "ordinary" if fault == "worker-crash" else fault
+    passed = fault == "none" or grid_partition not in {"all", failing_part}
+    assert (result.returncode == 0) == passed, result.stdout + result.stderr
+    assert summary["status"] == ("passed" if passed else "failed")
+    if passed:
+        assert summary["counts"]["passed"] == (2 if grid_partition == "all" else 1)
+        assert [part["name"] for part in summary["partitions"]] == (
+            ["ordinary", "serial"] if grid_partition == "all" else [grid_partition]
+        )
         assert {
             case["disposition"]
             for case in json.loads((output / "case-accounting.json").read_text())
-        } == {"executed"}
+        } == (
+            {"executed"}
+            if grid_partition == "all"
+            else {"executed", "covered-by-grid-partition"}
+        )

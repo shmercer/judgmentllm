@@ -109,7 +109,7 @@ def test_workflow_runs_quality_before_dynamic_matrix_and_keeps_diagnostics() -> 
     assert verify["needs"] == "plan"
     assert verify["strategy"]["fail-fast"] == "false"
     assert verify["strategy"]["matrix"] == "${{ fromJSON(needs.plan.outputs.matrix) }}"
-    assert verify["timeout-minutes"] == "50"
+    assert verify["timeout-minutes"] == "90"
     commands = "\n".join(step.get("run", "") for step in plan["steps"])
     assert "python policy/ci/acceptance.py plan" in commands
     assert "--quality-only" in commands
@@ -120,6 +120,8 @@ def test_workflow_runs_quality_before_dynamic_matrix_and_keeps_diagnostics() -> 
     )
     assert "policy/ci/acceptance.py lane" in lane["run"]
     assert "--quality-receipt" in lane["run"]
+    assert 'partition=(--partition "${{ matrix.partition }}")' in lane["run"]
+    assert "matrix.partition" in verify["name"]
     for job in (plan, verify):
         install = next(
             step
@@ -177,7 +179,7 @@ def test_offline_package_cache_is_prepared_only_for_planned_installation_lanes()
         if step.get("name") == "Prepare offline core installation cache"
     )
     assert prepare["if"] == (
-        "needs.plan.outputs.packaging == 'true' && "
+        "needs.plan.outputs.packaging == 'true' && matrix.partition != 'serial' && "
         "(matrix.id == 'linux-3.11' || needs.plan.outputs.risk == '4')"
     )
     assert prepare["shell"] == "bash"

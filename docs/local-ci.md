@@ -74,9 +74,23 @@ without shortening IDs or filenames, enabling long paths globally, or changing
 the VM allocation. Existing `C:\JudgmentLLM-ci\tmp` evidence is left intact;
 an override using that former namespace must be updated.
 The qualification reporter also gives Windows tests fresh compact pytest
-directories. Full node IDs stay in raw receipts; item IDs, artifact filenames,
+directories. The deep full-plan test also uses its own short-lived,
+exclusively allocated Windows workspace. Full node IDs stay in raw receipts; item IDs, artifact filenames,
 mutable-store isolation and retention remain unchanged. This leaves room for
 longer acknowledgment references as well as initial preparation artifacts.
+
+Git is a real test dependency: source-admission tests create and inspect actual
+repositories. The Windows adapter adds `C:\JudgmentLLM-ci\tools\git\cmd` to its
+process PATH; provision official portable MinGit there if Git is not already
+available. Doctor reports Git availability/version and gates fail before the
+suite when it is missing. Setup may download dependencies; test execution remains
+offline. The paused-export R consumer uses a retained `.R` file to avoid the
+Windows multiline `Rscript -e` crash; assertions and deadlines remain intact.
+
+Old Windows CI run copies and scratch may be cleared with explicit owner approval
+under the existing shared VM lock, after retaining portable result receipts/logs.
+Preserve active runs, dependency caches, installed runtimes/tools, unrelated
+projects and historical failures. Do not traverse junctions or force-stop the VM.
 
 Grid and direct guest adapters also reject incomplete allocation recovery journals
 under `/mnt/VM_Fast/judgmentllm-ci/overrides` before guest work. No supported

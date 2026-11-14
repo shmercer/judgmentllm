@@ -408,6 +408,7 @@ def passing_receipts(plan: dict[str, Any]) -> list[dict[str, Any]]:
     return [
         {
             "lane": lane["id"],
+            "partition": lane["partition"],
             "source_sha": plan["source_sha"],
             "plan_sha256": plan["plan_sha256"],
             "run_id": "run:1",
@@ -419,10 +420,12 @@ def passing_receipts(plan: dict[str, Any]) -> list[dict[str, Any]]:
             "selection_sha256": "a" * 64,
             "steps": [
                 {"name": name, "exit_code": 0}
-                for name in required_steps(plan, lane["id"])
+                for name in required_steps(
+                    plan, lane["id"], partition=lane["partition"]
+                )
             ],
         }
-        for lane in plan["lanes"]
+        for lane in plan["hosted_tasks"]
     ]
 
 
@@ -542,6 +545,10 @@ def test_malformed_receipt_is_a_failing_command(
         pytest.param("hosted-r-step", id="missing-r"),
         "missing-receipt",
         "wrong-source",
+        "missing-serial",
+        "duplicate-ordinary",
+        "wrong-partition",
+        "different-universe",
     ],
 )
 def test_aggregate_reconstructs_trusted_plan_and_checks_artifacts(
@@ -564,6 +571,12 @@ def test_aggregate_reconstructs_trusted_plan_and_checks_artifacts(
         receipts.pop()
     elif fault == "wrong-source":
         receipts[0]["source_sha"] = base
+    elif fault == "missing-serial":
+        receipts = [receipt for receipt in receipts if receipt["partition"] != "serial"]
+    elif fault == "duplicate-ordinary":
+        receipts[-1] = copy.deepcopy(receipts[-2])
+    elif fault == "wrong-partition":
+        receipts[0]["partition"] = "all"
     plan_path = tmp_path / "plan.json"
     plan_path.write_text(json.dumps(plan))
     evidence = tmp_path / "evidence"
@@ -573,7 +586,20 @@ def test_aggregate_reconstructs_trusted_plan_and_checks_artifacts(
         lane.mkdir()
         from selection_fixture import write_suite
 
-        receipt["selection_sha256"] = write_suite(plan, receipt["lane"], lane / "suite")
+        receipt["selection_sha256"] = write_suite(
+            plan,
+            receipt["lane"],
+            lane / "suite",
+            partition=receipt["partition"],
+            extra_cases=[
+                {
+                    "nodeid": "tests/test_models.py::test_new_unshared_case",
+                    "markers": ["serial"],
+                }
+            ]
+            if fault == "different-universe" and index == 0
+            else None,
+        )
         (lane / "receipt.json").write_text(json.dumps(receipt))
     result = subprocess.run(
         [

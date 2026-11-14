@@ -29,7 +29,7 @@ systems; Level 4 retains all eight supported OS/Python combinations.
 ## Exact lane profiles and evidence
 
 `ci/test-profiles.json` contains reviewed module domain/cost/platform defaults,
-exact smoke/extended/essential selectors and provider impact closures.
+exact smoke/extended/essential selectors, per-function platform placements and provider impact closures.
 `ci/test-inventory.json` groups all exact parameter IDs under their functions;
 it supplements the historical replacement/skip contract. Every planned test lane
 collects the complete `tests` universe first, regardless of its selected depth.
@@ -52,7 +52,21 @@ resource measurements while preserving cold pinned-SDK byte-identity correctness
 Each source-bound `selection-manifest.json` records exact nodes, partitions,
 domains, costs, platform relevance, reasons and its selection digest. Final
 `case-accounting.json` labels cases `executed`, `deferred-by-policy` or
-`not-required-for-this-lane`; only actual terminal reports count as execution.
+`not-required-for-this-lane` or `covered-by-grid-partition`; only actual terminal reports count as execution.
+
+Test isolation and OS relevance are independent. Changed modules run whole on the
+primary platform; extended/smoke lanes add their reviewed platform-relevant cases.
+Unknown/new cases remain mandatory, and Level 4 still selects everything. Real
+child recovery stays on each relevant OS; fork inheritance selects Linux/macOS.
+Large platform-neutral semantic campaigns remain in complete primary and Level 4
+coverage.
+
+Levels 3/4 run ordinary and serial correctness partitions on separate hosted VMs
+per logical OS/Python lane. Each serial VM uses one pytest process. The plan seals
+both tasks; missing/duplicated partitions, mismatched full collections or raw
+source/run/partition evidence fail aggregation. Quality runs once and planned
+packaging runs once per logical lane. Levels 0–2 keep one VM per lane. The hosted
+job cap is 90 minutes; subprocess, fixture and resource deadlines are unchanged.
 
 Trusted aggregation independently reconstructs the plan and selection, parses
 the full collection and raw ordinary/serial/resource receipts, and verifies

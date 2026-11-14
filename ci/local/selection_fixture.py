@@ -11,22 +11,33 @@ from risk import lane_profile
 from selection import HERE, digest, inventory_items, manifest, read
 
 
-def write_suite(plan: dict[str, Any], lane: str, root: Path) -> str:
+def write_suite(
+    plan: dict[str, Any],
+    lane: str,
+    root: Path,
+    *,
+    partition: str = "all",
+    extra_cases: list[dict[str, Any]] | None = None,
+) -> str:
     items = inventory_items(read(HERE / "test-inventory.json"))
+    items.extend(extra_cases or [])
+    platform = {"linux": "linux", "windows": "win32", "macos": "darwin"}[
+        lane.split("-")[0]
+    ]
     selected = manifest(
         items,
         profile=lane_profile(plan, lane, "hosted"),
         impacted=plan["impact"],
         include_r=False,
         include_resources=False,
+        platform=platform,
+        partition=partition,
     )
-    platform = {"linux": "linux", "windows": "win32", "macos": "darwin"}[
-        lane.split("-")[0]
-    ]
     version = next(item["python"] for item in plan["lanes"] if item["id"] == lane)
     provenance = {
         "source": {"commit": plan["source_sha"], "dirty": False},
-        "qualification_run_id": f"run:1:{lane}",
+        "qualification_run_id": f"run:1:{lane}"
+        + (f":{partition}" if partition != "all" else ""),
         "lockfile_sha256": plan["lockfile_sha256"],
         "interpreter": {"platform": platform, "version": version + ".0 (synthetic)"},
     }
@@ -87,15 +98,16 @@ def write_suite(plan: dict[str, Any], lane: str, root: Path) -> str:
             "status": "passed",
             "selection_complete": True,
             "stage": "full",
+            "grid_partition": partition,
             "test_profile": selected["profile"],
             "selection_sha256": selected["selection_sha256"],
             "coverage_enabled": False,
-            "workers": next(
-                item["workers"] for item in plan["lanes"] if item["id"] == lane
-            ),
-            "requested_workers": next(
-                item["workers"] for item in plan["lanes"] if item["id"] == lane
-            ),
+            "workers": 1
+            if partition == "serial"
+            else next(item["workers"] for item in plan["lanes"] if item["id"] == lane),
+            "requested_workers": 1
+            if partition == "serial"
+            else next(item["workers"] for item in plan["lanes"] if item["id"] == lane),
             "distribution": next(
                 item["distribution"] for item in plan["lanes"] if item["id"] == lane
             ),

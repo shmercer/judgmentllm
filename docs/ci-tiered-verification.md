@@ -50,11 +50,13 @@ failed Windows and aggregate acceptance; its failure remains failed evidence.
 | 3 | Complete suite/history, seven R gates, affected resources/packages | Complete functional suite | Extended OS-sensitive/high-consequence and affected cases |
 | 4 | Existing comprehensive requirements | Complete supported versions | Complete supported versions |
 
-The final registry selects **108** hosted smoke cases or **2,422** extended cases
-before change-specific impact additions. Both explicitly defer **34** local-only
+The final registry selects **108** hosted smoke cases, **2,426** Windows extended
+cases or **2,425** Linux/macOS extended cases before change-specific impact
+additions. All explicitly defer **34** local-only
 R/resource cases. Full hosted selection retains **8,519** cases. All counts are
 derived from complete collection and exact selectors, not acceptance thresholds.
-The final plan may add whole changed modules and new cases. Each lane preserves
+The final plan adds whole changed modules on the primary platform, relevant
+affected cases on OS lanes, and all new cases on every logical lane. Each lane preserves
 ordinary/serial/resource partitioning and the genuine cold SDK correctness probe.
 
 Plans bind impact closures, reasons, per-lane depth/platform/scheduling and policy
@@ -90,7 +92,7 @@ protected-base status. Full eight-lane Level 4 availability remains intact.
   mandatory extended-platform cases.
 
 No coverage baseline, supported version, resource ceiling, workload size,
-deadline, historical fixture or skip allowance is changed. Production adjustments
+subprocess/fixture deadline, historical fixture or skip allowance is changed. Production adjustments
 are limited to the equivalent identifier scan and scalar snapshot branch ordering
 described below; public validation and serialized outputs retain their behavior.
 
@@ -253,6 +255,74 @@ scope, deliberate fault detection, hosted bootstrap and Level 4 evidence. A
 focused success or old-source result never qualifies a new head. Required local
 and hosted outcomes will be recorded separately; absent evidence remains
 unqualified. This record must be read with the final PR's exact-head ledger.
+
+## Final placement and parallel-hosted refinement
+
+Serial isolation does not establish a platform requirement. The reviewed
+`platform_overrides` record exact per-function OS subsets and rationale;
+ambiguous, overlapping or stale placements fail policy selftests. Changed known
+neutral tests remain required on the primary platform. Unknown/new cases are
+mandatory and Level 4 still collects and selects the full supported matrix.
+
+| Work | Required placement |
+|---|---|
+| Complete Python semantics, historical combined coverage, fourteen actual R pytest consumers and twenty resource cases | Local Linux/Python 3.11 primary acceptance; original coverage/resource limits |
+| Seven named R/jsonlite gates | Required local primary; explicit native comprehensive retains its existing per-lane campaign |
+| Ordinary functional correctness | Complete hosted Linux primary; selected Windows/macOS; full eight-lane Level 4 |
+| Generic 42-case handoff/complete-pilot serial semantics | Complete primary and Level 4; independent assertions remain intact |
+| Real process death, fresh-process recovery, cancellation, durable locks and pinned SDK identity | Reviewed affected OS smoke/extended/full cases; actual subprocesses/SDKs retained |
+| Fork ownership | Linux/macOS extended and full; original Windows full-suite skip remains explicitly accounted |
+| Deep plan/diagnostic paths | Windows extended and full; primary semantics also retained |
+| Wheel/sdist and metadata | Existing planned logical lanes, once per lane; actual independent manifest/install assertions retained |
+
+Levels 3/4 use two hosted VMs per logical lane: ordinary xdist work and a single
+serial pytest process run concurrently. This keeps three representative/eight
+comprehensive logical lanes, with six/sixteen sealed hosted tasks. Both VMs
+collect the full universe. Per-task selection/accounting identifies cases
+required on the other VM; trusted aggregation requires all task receipts and
+matching collected inventories before accepting the grid. Source/run/attempt,
+partition, OS/interpreter, raw phases, SDK identity, omission, duplication,
+skip/xfail and benchmark-stage protections remain. Quality runs once; planned
+packaging belongs to the ordinary VM. Levels 0–2 avoid duplicate VM setup.
+
+The default Windows extended profile has 2,418 ordinary/eight serial cases;
+macOS has 2,417 ordinary/eight serial cases. Complete hosted profiles retain
+8,506 ordinary/thirteen serial cases, with fourteen R/twenty resource cases
+explicitly deferred to local verification. Full Windows is rare: Level 4 or
+the conservative unknown-dependency fallback. A focused pass cannot replace it.
+
+The owner authorized raising the whole hosted job cap from fifty to ninety
+minutes. Individual child, fixture and resource limits remain unchanged. This
+does not change the protected-base bootstrap: its existing fifty-minute workflow
+remains authoritative until independently reviewed policy is adopted. Feature
+dispatch continues to publish only `CI candidate policy`.
+
+At historical source `856d19c9101d07106957ea851837d07f9ee76497`, complete local
+acceptance passed 8,553 cases with zero skips, combined coverage **95.2310%**
+(line 96.4428%, branch 91.6757%, no historical losses), all seven actual R gates,
+twenty resource cases and isolated packaging. Its 438 policy selftests passed.
+Its candidate Level 4 completed five full lanes, including Windows 3.11, while
+three reached the old cap; the whole run failed. A later Level 3 retry passed
+Linux full and macOS extended, with Windows again reaching the old cap. These
+results preserve real failures and do not qualify the refined implementation.
+The refinement's preliminary 461 policy selftests and strict type check pass;
+the final exact-source results and hosted run links are recorded in the PR ledger.
+
+The supplementary native Windows attempt at that source failed six genuine Git
+source-admission cases because Git was missing, one full-plan hard link at a
+278-character path, one diagnostic child, and one Windows `Rscript -e` consumer
+with access violation `0xC0000005`. It is unqualified. The harness now checks Git
+before costly work and exposes portable Git on its process PATH. The full-plan
+test uses a fresh, short-lived private Windows workspace, preserving artifact
+IDs/filenames and every assertion. The paused-export R test passes the identical
+R program through a retained script file with the original sixty-second deadline.
+Focused actual Windows development verification now passes the deep-plan case,
+all six genuine Git source-admission cases, the identical paused-export R program
+on the original generated files, and the diagnostic with its unchanged free-space
+reserve. These targeted checks do not qualify the complete final source. No mock
+or platform skip replaces these failures. Old completed VM run copies/scratch are cleared only under the
+existing shared lock with owner authorization, retaining portable failure results,
+the active diagnostic source, dependency caches and installed tools/runtimes.
 
 Independent review should inspect conservative dependency closures and platform
 selectors, trusted aggregation and bootstrap separation, fixture equivalence,

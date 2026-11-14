@@ -172,6 +172,7 @@ def run(
     plan: dict[str, Any] | None = None,
     lane: str = "linux-3.11",
     execution_scope: str = "local",
+    grid_partition: str = "all",
 ) -> int:
     if isinstance(workers, bool) or not 0 <= workers <= 32:
         raise ValueError("pytest workers must be an integer from 0 through 32")
@@ -180,6 +181,11 @@ def run(
     if coverage and not include_r:
         raise ValueError("Local coverage qualification must include R cases")
     profile = None
+    if grid_partition not in {"all", "ordinary", "serial"} or (
+        grid_partition != "all"
+        and (plan is None or execution_scope != "hosted" or coverage)
+    ):
+        raise ValueError("Only planned hosted lanes can split grid partitions")
     if plan is not None:
         from risk import lane_profile
 
@@ -188,6 +194,11 @@ def run(
                 "Planned lanes require full collection and independent execution"
             )
         profile = lane_profile(plan, lane, execution_scope)
+        if execution_scope == "hosted" and not any(
+            item["id"] == lane and item["partition"] == grid_partition
+            for item in plan["hosted_tasks"]
+        ):
+            raise ValueError("Grid partition differs from the trusted plan")
         if coverage and profile != "full":
             raise ValueError(
                 "Selected coverage cannot establish historical qualification"
@@ -229,6 +240,7 @@ def run(
         "manifest_complete": False,
         "selection_complete": False,
         "stage": stage,
+        "grid_partition": grid_partition,
         "source": source_record(source),
         "qualification_run_id": qualification_run_id,
     }
@@ -298,7 +310,11 @@ def run(
                 for path in temporary.rglob("*.json")
                 if path.name.startswith("measurement")
                 or path.name
-                in {"transient-peak-measurement.json", "parent-child-measurement.json"}
+                in {
+                    "transient-peak-measurement.json",
+                    "parent-child-measurement.json",
+                    "single-request-resources.json",
+                }
                 or (
                     path.parent.name == "raw" and path.parent.parent.parent == temporary
                 )
@@ -333,6 +349,8 @@ def run(
                 impacted=plan["impact"],
                 include_r=include_r,
                 include_resources=include_resources,
+                platform=sys.platform,
+                partition=grid_partition,
             )
             if selection_manifest["policy_sha256"] != plan["selection_policy_sha256"]:
                 raise ValueError("Selection policy differs from planned trusted policy")
@@ -502,6 +520,7 @@ def run(
         summary["selection_complete"] = sum(totals.values()) == expected_selection
         summary["manifest_complete"] = (
             stage == "full"
+            and grid_partition == "all"
             and summary["selection_complete"]
             and not summary["deferred_resource_cases"]
             and not deferred_r
@@ -605,6 +624,9 @@ def main() -> int:
     parser.add_argument("--contract", type=Path)
     parser.add_argument("--plan", type=Path)
     parser.add_argument("--lane", default="linux-3.11")
+    parser.add_argument(
+        "--grid-partition", choices=("all", "ordinary", "serial"), default="all"
+    )
     parser.add_argument(
         "--execution-scope", choices=("local", "hosted"), default="local"
     )
@@ -713,6 +735,7 @@ def main() -> int:
         plan=read(options.plan) if options.plan else None,
         lane=options.lane,
         execution_scope=options.execution_scope,
+        grid_partition=options.grid_partition,
     )
 
 

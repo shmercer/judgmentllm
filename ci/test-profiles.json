@@ -1745,5 +1745,58 @@
     "tests/test_gemini_lifecycle.py::test_missing_credentials_fail_before_store_or_submission",
     "tests/test_vertex_lifecycle.py::test_production_seal_execute_export_reopen",
     "tests/test_vertex_lifecycle.py::test_missing_credentials_fail_before_store_or_submission"
-  ]
+  ],
+  "platform_overrides": {
+    "tests/test_persistence_ownership.py::test_forked_child_release_does_not_unlock_parent": {
+      "platforms": [
+        "linux",
+        "darwin"
+      ],
+      "reason": "Real fork inheritance and OS lock ownership; Windows has no fork."
+    },
+    "tests/test_study_limits.py::test_one_handoff_resume_and_completion_preserve_all_identities": {
+      "platforms": [],
+      "reason": "Complete 42-case semantic accounting: full primary platform and Level 4; smaller independent process tests cover OS recovery."
+    },
+    "tests/test_study_workflow.py::test_complete_synthetic_pilot_recovery_never_forwards_again": {
+      "platforms": [],
+      "reason": "Complete synthetic pilot semantics: full primary platform and Level 4; platform process/SQLite cases remain independent."
+    },
+    "tests/test_study_limits.py::test_separate_process_resume_and_recovery_never_replace_requests": {
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Real fresh-process resume and crash recovery with the original 120-second child limit on each OS."
+    },
+    "tests/test_study_failures.py::test_process_death_cannot_replenish_calls_tokens_or_money": {
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Real abruptly exiting process and durable authority recovery on each OS."
+    },
+    "tests/test_study_control_failures.py::test_control_process_death_cannot_replenish_authority": {
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Actual child process death preserves control-study authority and persisted reservations on each OS."
+    },
+    "tests/test_study_workflow.py::test_plan_artifacts_and_holistic_cli_previews": {
+      "platforms": [
+        "win32"
+      ],
+      "reason": "Deep real artifact publication exercises the legacy Windows path budget; CLI semantic assertions also run on the primary platform."
+    },
+    "tests/test_scale_diagnostics.py::test_focused_execution_cli_uses_tiny_test_only_prefixes": {
+      "platforms": [
+        "win32"
+      ],
+      "reason": "Actual diagnostic child CLI and deep fixture paths exercise Windows path limits with the unchanged 60-second deadline."
+    }
+  }
 }

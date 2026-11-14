@@ -12,8 +12,9 @@ object has one entry per test module, with `domain`, `cost`, `platforms` and a
 plain-language `reason`. Domains cover core contracts, provider SDKs, immutable
 evidence/privacy, durable execution, process ownership, native transport, R,
 resources and packaging. Cost is `quick`, `io`, `process`, `heavy` or `resource`.
-Empty `platforms` means platform-neutral; OS-sensitive defaults list
-`["linux", "win32", "darwin"]`. Neutral tests still run in complete local
+Empty `platforms` means platform-neutral; OS-sensitive defaults list the relevant
+subset of `["linux", "win32", "darwin"]`. `platform_overrides` supplies exact
+function placements and reasons for mixed modules. Neutral tests still run in complete local
 qualification and Level 4.
 
 The `smoke`, `mandatory_smoke`, `extended` and `essential` arrays contain exact
@@ -34,7 +35,7 @@ No original case is deleted by this redesign.
 | Marker | Execution rule |
 |---|---|
 | `smoke` | Existing short essential regressions; platform smoke is additionally defined by exact selectors, without relabeling expensive tests |
-| `serial` | A single pytest process, after ordinary xdist work; real child/lock tests retain their children |
+| `serial` | A single pytest process; Levels 3/4 use a separate hosted VM alongside ordinary xdist work; real child/lock tests retain their children |
 | `resource` | Bounded resource partition with a lease and original workloads, ceilings and deadlines; local execution only |
 | `r_interop` | Actually runs R/jsonlite on Python outputs; strict local acceptance, explicit hosted deferral |
 
@@ -62,7 +63,8 @@ def test_numeric_label_is_canonical_but_boolean_is_rejected():
 
 Its existing module default is `core-contract`, `quick`, `platforms: []`.
 Recollect and reconcile the added function. A changed test module is selected
-whole on affected lanes; any newly collected case is mandatory on every lane
+whole on the primary lane; OS lanes select its platform-relevant cases.
+Any newly collected case is mandatory on every logical lane
 even before it enters the trusted inventory. A new module needs the same real
 JSON entry shape:
 
@@ -149,6 +151,34 @@ selected coverage cannot substitute. Hosted Level 2 Linux is impacted regression
 plus shared essential contracts; Windows/macOS run smoke and affected components.
 OS-sensitive changes strengthen those lanes to extended. Level 3 uses complete
 primary and extended Windows/macOS regression. Level 4 uses full suites everywhere.
+Generic serial semantics need complete primary coverage. Real process recovery,
+locks, SDK identity and native path behavior retain their reviewed OS placements.
+Full Windows runs are reserved for Level 4 and conservative unknown-dependency
+fallback.
+
+At Levels 3/4, `hosted_tasks` seals ordinary/serial tasks for each logical lane.
+Both VMs collect the whole suite, execute disjoint cases and bind receipts to
+the source, plan, workflow attempt, lane and partition. Acceptance requires both
+receipts and matching collection universes. `covered-by-grid-partition` means
+required on the other VM; it is never a passed case in this receipt. Local
+coverage/R/resources still use the complete local lane. Levels 0–2 avoid another
+VM setup for their small serial scope. The hosted job cap is 90 minutes; child,
+fixture, resource and coverage limits are unchanged.
+
+To reproduce one hosted task without measuring coverage or running R/resources:
+
+```bash
+# Use a committed head and the plan written by --profile pr --plan-only.
+uv run --offline --no-sync python ci/acceptance.py lane --source . \
+  --plan /external/plan.json --lane linux-3.11 --partition ordinary \
+  --execution-scope hosted --run-id diagnostic:1 --output /external/ordinary
+uv run --offline --no-sync python ci/acceptance.py lane --source . \
+  --plan /external/plan.json --lane linux-3.11 --partition serial \
+  --execution-scope hosted --run-id diagnostic:1 --output /external/serial
+```
+
+These are task diagnostics. Required hosted qualification comes from the complete
+GitHub grid and trusted aggregation; a single task cannot qualify a PR.
 
 To reconcile inventory, keep collection evidence outside Git:
 

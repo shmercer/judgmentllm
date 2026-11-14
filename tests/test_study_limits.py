@@ -619,8 +619,10 @@ async def test_paused_sdk_exports_are_consumed_in_strict_r(
     stopifnot(nrow(csv) == 12L, length(unique(csv$attempt_id)) == 1L)
     cat("Paused study export passed\\n")
     """
+    script = tmp_path / "paused.R"
+    script.write_text(program, encoding="utf-8", newline="\n")
     checked = subprocess.run(
-        [rscript, "--vanilla", "-e", program, str(tmp_path / "paused.json")],
+        [rscript, "--vanilla", str(script), str(tmp_path / "paused.json")],
         capture_output=True,
         text=True,
         timeout=60,

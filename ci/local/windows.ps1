@@ -36,7 +36,8 @@ $env:UV_MANAGED_PYTHON = '1'
 $env:PYTHONDONTWRITEBYTECODE = '1'
 $env:NO_COLOR = '1'
 $rBin = 'C:\Program Files\R\R-4.6.1\bin'
-$env:PATH = "$rBin;$env:PATH"
+$gitBin = Join-Path $workRoot 'tools\git\cmd'
+$env:PATH = "$gitBin;$rBin;$env:PATH"
 
 if ($settings.mode -eq 'doctor') {
     $rscript = Join-Path $rBin 'Rscript.exe'
@@ -47,9 +48,11 @@ if ($settings.mode -eq 'doctor') {
         uv_exists = (Test-Path -LiteralPath $uvExe -PathType Leaf)
         python_root_exists = (Test-Path -LiteralPath $env:UV_PYTHON_INSTALL_DIR)
         rscript_exists = (Test-Path -LiteralPath $rscript -PathType Leaf)
+        git_exists = [bool](Get-Command git.exe -ErrorAction SilentlyContinue)
         work_root = $workRoot
         free_bytes = (Get-PSDrive C).Free
     } | ConvertTo-Json
+    if (Get-Command git.exe -ErrorAction SilentlyContinue) { & git.exe --version }
     if (Test-Path -LiteralPath $uvExe -PathType Leaf) {
         if ((Get-FileHash -LiteralPath $uvExe -Algorithm SHA256).Hash.ToLowerInvariant() -ne $uvExeSha256) {
             throw 'Isolated uv executable hash differs from the pinned release'

@@ -558,6 +558,15 @@ def make_plan(
         "requested_minimum": minimum,
         "changes": changes,
         "lanes": lanes,
+        "hosted_tasks": [
+            {
+                **lane,
+                "partition": part,
+                "workers": 1 if part == "serial" else lane["workers"],
+            }
+            for lane in lanes
+            for part in (("ordinary", "serial") if level >= 3 else ("all",))
+        ],
         "targets": PROMPT_TESTS if level == 1 else ["tests"],
         "impact": sorted(set(impacted + (PROMPT_TESTS if level == 1 else []))),
         "selection_reasons": impact_reasons,
@@ -612,15 +621,25 @@ def lane_profile(plan: dict[str, Any], lane: str, scope: str) -> str:
 
 
 def required_steps(
-    plan: dict[str, Any], lane: str, *, execution_scope: str = "hosted"
+    plan: dict[str, Any],
+    lane: str,
+    *,
+    execution_scope: str = "hosted",
+    partition: str = "all",
 ) -> set[str]:
     if execution_scope not in {"local", "hosted"}:
         raise ValueError("Execution scope must be local or hosted")
+    if partition not in {"all", "ordinary", "serial"} or (
+        execution_scope == "local" and partition != "all"
+    ):
+        raise ValueError("Local qualification requires all partitions")
     if any(
         plan.get(name) != "local"
         for name in ("resource_execution", "coverage_execution", "r_execution")
     ):
         raise ValueError("Plan must declare local resource, coverage and R policy")
+    if partition == "serial":
+        return {"tests"}
     primary = lane == "linux-3.11"
     names: set[str] = {"docs"} if primary else set()
     if plan["risk"] >= 1 and primary:
@@ -649,13 +668,14 @@ def admit(
 ) -> list[str]:
     """Missing/extra/duplicate/stale/failed lanes or required steps never pass."""
     errors: list[str] = []
-    expected = {item["id"] for item in plan["lanes"]}
-    actual = [item.get("lane") for item in receipts]
+    expected = {(item["id"], item["partition"]) for item in plan["hosted_tasks"]}
+    actual = [(item.get("lane"), item.get("partition", "all")) for item in receipts]
     if len(actual) != len(expected) or set(actual) != expected:
         errors.append("Missing, duplicate or unexpected lane receipts")
     for receipt in receipts:
         lane = receipt.get("lane")
-        if not isinstance(lane, str) or lane not in expected:
+        part = receipt.get("partition", "all")
+        if not isinstance(lane, str) or (lane, part) not in expected:
             continue
         if (
             receipt.get("source_sha") != plan["source_sha"]
@@ -682,9 +702,9 @@ def admit(
             for name in names
         ):
             errors.append(f"Local-only checks claimed in a hosted receipt: {lane}")
-        if len(names) != len(set(names)) or not required_steps(plan, lane) <= set(
-            names
-        ):
+        if len(names) != len(set(names)) or not required_steps(
+            plan, lane, partition=part
+        ) <= set(names):
             errors.append(f"Missing or duplicated required steps: {lane}")
         if any(
             type(step.get("exit_code")) is not int or step["exit_code"] != 0

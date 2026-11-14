@@ -584,6 +584,7 @@ class Runner:
             self.configure_data_paths()
             verify_interpreter(self.options.python_version)
             self.summary["interpreter_verified"] = True
+            self.required("git-version", ["git", "--version"], timeout=30)
             self.required("uv-version", [self.uv, "--version"], timeout=30)
             self.summary["uv"] = (
                 (self.output / self.summary["steps"][-1]["log"])
