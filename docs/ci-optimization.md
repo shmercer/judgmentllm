@@ -30,6 +30,10 @@ systems; Level 4 retains all eight supported OS/Python combinations.
 
 `ci/test-profiles.json` contains reviewed module domain/cost/platform defaults,
 exact smoke/extended/essential selectors, per-function platform placements and provider impact closures.
+Fourteen explicit `provider_sources` entries bind reviewed source paths to
+nonempty closures, including their native-schema/dispatch and direct-import
+tests. Prefix matching is insufficient. An unmapped Level 2 production path
+escalates to complete platform verification; default fast feedback expands too.
 `ci/test-inventory.json` groups all exact parameter IDs under their functions;
 it supplements the historical replacement/skip contract. Every planned test lane
 collects the complete `tests` universe first, regardless of its selected depth.

@@ -342,7 +342,7 @@ def test_stronger_request_and_complete_matrix_are_recorded(repository: Any) -> N
 
 def test_moderate_adapter_gets_primary_coverage_and_affected_r(repository: Any) -> None:
     source, base = repository
-    path = source / "src/judgmentllm/providers/gemini_developer.py"
+    path = source / "src/judgmentllm/providers/gemini_response.py"
     path.parent.mkdir(parents=True)
     path.write_text("def parse(): return 1\n")
     plan = make_plan(source, base, freeze(source))

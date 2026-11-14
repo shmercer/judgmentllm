@@ -502,6 +502,16 @@ def make_plan(
             change["path"] == name and change["level"] == 2 for change in changes
         )
     ]
+    unknown = sorted(
+        set(unknown)
+        | {
+            change["path"]
+            for change in changes
+            if change["path"].startswith("src/")
+            and change["level"] == 2
+            and not impact([change["path"]], taxonomy)[0]
+        }
+    )
     if unknown:
         level = max(level, 3)
         impact_reasons.append("Unknown test/source dependency: full platform fallback")

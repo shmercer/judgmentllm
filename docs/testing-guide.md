@@ -21,9 +21,15 @@ The `smoke`, `mandatory_smoke`, `extended` and `essential` arrays contain exact
 module/function selectors. A function selector includes every parameter; it is
 not a substring match. These provide per-node overrides for heterogeneous
 modules. `providers` supplies conservative component closures; `shared_sources`
-lists reviewed source paths. Unknown source dependencies escalate to full
+lists reviewed source paths. `provider_sources` binds each reviewed provider
+source path to its nonempty provider test closure, including native schema,
+dispatch and directly importing tests. A provider name prefix never establishes
+a dependency closure. Unknown source dependencies escalate to full
 platform verification. New independent adapters require a reviewed closure;
-sharing a directory never proves independence.
+sharing a directory never proves independence. A Level 2 production source
+without a verified nonempty closure escalates to full platform verification;
+default fast feedback also expands to the suite. Add an exact source entry and
+policy regressions when establishing a new narrow closure.
 
 `ci/test-inventory.json` is generated, with one line per function. Keys beneath
 each function preserve exact parameter suffixes and isolation markers. No one

@@ -104,6 +104,7 @@ def validate_registry(policy: dict[str, Any], known: dict[str, Any]) -> None:
             "platform_overrides",
             "essential",
             "providers",
+            "provider_sources",
             "shared_sources",
         }
         or type(policy.get("schema_version")) is not int
@@ -162,6 +163,14 @@ def validate_registry(policy: dict[str, Any], known: dict[str, Any]) -> None:
             or not set(selectors) <= set(policy["modules"])
         ):
             raise ValueError("Unclassified provider impact mapping")
+    for path, provider in policy["provider_sources"].items():
+        if (
+            not path.startswith("src/judgmentllm/providers/")
+            or not path.endswith(".py")
+            or path not in sources
+            or provider not in policy["providers"]
+        ):
+            raise ValueError(f"Unreviewed provider source closure: {path}")
 
 
 def manifest(
@@ -294,11 +303,10 @@ def impact(paths: list[str], policy: dict[str, Any]) -> tuple[list[str], list[st
         if path in policy["modules"]:
             selected.add(path)
             reasons.append(f"{path}: entire changed test module")
-        elif path.startswith("src/judgmentllm/providers/"):
-            provider = Path(path).stem.split("_", 1)[0]
-            if provider in policy["providers"]:
-                selected.update(policy["providers"][provider])
-                reasons.append(f"{path}: reviewed {provider} component closure")
+        elif path in policy["provider_sources"]:
+            provider = policy["provider_sources"][path]
+            selected.update(policy["providers"][provider])
+            reasons.append(f"{path}: reviewed source-to-{provider} test closure")
     return sorted(selected), reasons
 
 

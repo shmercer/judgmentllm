@@ -1486,9 +1486,16 @@
       "tests/test_anthropic_invalid_utf8.py",
       "tests/test_anthropic_lifecycle.py",
       "tests/test_anthropic_processes.py",
+      "tests/test_anthropic_qualification.py",
       "tests/test_anthropic_response.py",
       "tests/test_anthropic_sdk_adapter.py",
-      "tests/test_anthropic_transport.py"
+      "tests/test_anthropic_transport.py",
+      "tests/test_native_other_providers.py",
+      "tests/test_native_preseal_validation.py",
+      "tests/test_native_schema_privacy.py",
+      "tests/test_native_selection.py",
+      "tests/test_native_v2_compatibility.py",
+      "tests/test_service_tiers.py"
     ],
     "gemini": [
       "tests/test_gemini_authority_compatibility.py",
@@ -1500,10 +1507,15 @@
       "tests/test_gemini_lifecycle.py",
       "tests/test_gemini_processes.py",
       "tests/test_gemini_production_acceptance.py",
+      "tests/test_gemini_qualification_execution.py",
       "tests/test_gemini_response.py",
       "tests/test_gemini_sdk_adapter.py",
       "tests/test_gemini_shared_boundaries.py",
-      "tests/test_gemini_transport.py"
+      "tests/test_gemini_transport.py",
+      "tests/test_google_response_equivalence.py",
+      "tests/test_google_schema.py",
+      "tests/test_native_v2.py",
+      "tests/test_service_tiers.py"
     ],
     "google": [
       "tests/test_gemini_authority_compatibility.py",
@@ -1521,6 +1533,7 @@
       "tests/test_gemini_transport.py",
       "tests/test_google_response_equivalence.py",
       "tests/test_google_schema.py",
+      "tests/test_native_v2.py",
       "tests/test_vertex_auth.py",
       "tests/test_vertex_authority_compatibility.py",
       "tests/test_vertex_boundaries.py",
@@ -1538,17 +1551,35 @@
       "tests/test_vertex_transport.py"
     ],
     "openai": [
+      "tests/test_anthropic_lifecycle.py",
+      "tests/test_anthropic_sdk_adapter.py",
+      "tests/test_assessment_capture.py",
+      "tests/test_assessment_diagnostics.py",
+      "tests/test_gemini_lifecycle.py",
+      "tests/test_native_other_providers.py",
+      "tests/test_native_preseal_validation.py",
+      "tests/test_native_schema.py",
+      "tests/test_native_schema_privacy.py",
+      "tests/test_native_selection.py",
+      "tests/test_native_v2_compatibility.py",
       "tests/test_openai_cancellation.py",
       "tests/test_openai_capabilities.py",
       "tests/test_openai_diagnostics.py",
       "tests/test_openai_invalid_utf8.py",
       "tests/test_openai_lifecycle.py",
+      "tests/test_openai_qualification.py",
       "tests/test_openai_responses_parsing.py",
       "tests/test_openai_sdk_adapter.py",
       "tests/test_openai_uncertain_usage.py",
-      "tests/test_openai_validation.py"
+      "tests/test_openai_validation.py",
+      "tests/test_service_tier_integrity.py",
+      "tests/test_study_integrity.py",
+      "tests/test_vertex_lifecycle.py"
     ],
     "vertex": [
+      "tests/test_google_response_equivalence.py",
+      "tests/test_google_schema.py",
+      "tests/test_native_v2.py",
       "tests/test_vertex_auth.py",
       "tests/test_vertex_authority_compatibility.py",
       "tests/test_vertex_boundaries.py",
@@ -1559,11 +1590,27 @@
       "tests/test_vertex_processes.py",
       "tests/test_vertex_production_acceptance.py",
       "tests/test_vertex_proposal.py",
+      "tests/test_vertex_qualification.py",
+      "tests/test_vertex_qualification_execution.py",
       "tests/test_vertex_response.py",
       "tests/test_vertex_sdk_adapter.py",
       "tests/test_vertex_security.py",
       "tests/test_vertex_shared_boundaries.py",
       "tests/test_vertex_transport.py"
+    ],
+    "together": [
+      "tests/test_native_other_providers.py",
+      "tests/test_native_preseal_validation.py",
+      "tests/test_native_schema_privacy.py",
+      "tests/test_native_selection.py",
+      "tests/test_native_v2_compatibility.py"
+    ],
+    "ollama": [
+      "tests/test_native_other_providers.py",
+      "tests/test_native_preseal_validation.py",
+      "tests/test_native_schema_privacy.py",
+      "tests/test_native_selection.py",
+      "tests/test_native_v2_compatibility.py"
     ]
   },
   "schema_version": 1,
@@ -1798,5 +1845,21 @@
       ],
       "reason": "Actual diagnostic child CLI and deep fixture paths exercise Windows path limits with the unchanged 60-second deadline."
     }
+  },
+  "provider_sources": {
+    "src/judgmentllm/providers/anthropic.py": "anthropic",
+    "src/judgmentllm/providers/anthropic_response.py": "anthropic",
+    "src/judgmentllm/providers/anthropic_schema.py": "anthropic",
+    "src/judgmentllm/providers/gemini.py": "gemini",
+    "src/judgmentllm/providers/gemini_response.py": "gemini",
+    "src/judgmentllm/providers/google_response.py": "google",
+    "src/judgmentllm/providers/google_schema.py": "google",
+    "src/judgmentllm/providers/ollama_schema.py": "ollama",
+    "src/judgmentllm/providers/openai.py": "openai",
+    "src/judgmentllm/providers/openai_response.py": "openai",
+    "src/judgmentllm/providers/openai_schema.py": "openai",
+    "src/judgmentllm/providers/together_schema.py": "together",
+    "src/judgmentllm/providers/vertex.py": "vertex",
+    "src/judgmentllm/providers/vertex_response.py": "vertex"
   }
 }

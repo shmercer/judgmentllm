@@ -741,6 +741,7 @@ def test_planned_runner_executes_real_disjoint_partitions_and_propagates_failure
         "platform_overrides": {},
         "essential": [],
         "providers": {},
+        "provider_sources": {},
         "shared_sources": [],
     }
     metadata: list[tuple[str, dict[str, Any]]] = [

@@ -258,6 +258,25 @@ unqualified. This record must be read with the final PR's exact-head ledger.
 
 ## Final placement and parallel-hosted refinement
 
+Independent review of source `c76bdc1` found incomplete Level 2 native-schema
+closures and contradictory MinGit installation paths. The correction replaces
+provider-prefix inference with fourteen explicitly reviewed source paths, adds
+Together/Ollama and missing native-schema/direct-import tests, and escalates any
+Level 2 production source without a verified nonempty closure. Default fast
+feedback also expands for unmapped sources. Policy regressions verify every
+parameter in the review's exact examples, missing known closures, unknown source
+names, direct imports and the actual fast-profile selection. The MinGit release,
+asset hash and private directory now agree with the launcher. Qualification at
+the reviewed source was stopped before editing; its partial/older receipts do
+not qualify the correction. Final runtime reporting includes per-partition
+Windows elapsed time, critical-path latency and aggregate active runner-minutes,
+including duplicate setup. Behavioral mutations and receipt-forgery simulations
+are reported separately; only actual failing behavioral calls demonstrate
+production-regression detection.
+
+All 477 CI-policy selftests and strict type checks passed before freezing this
+correction. These development checks are separate from final exact-head qualification.
+
 Serial isolation does not establish a platform requirement. The reviewed
 `platform_overrides` record exact per-function OS subsets and rationale;
 ambiguous, overlapping or stale placements fail policy selftests. Changed known

@@ -64,10 +64,7 @@ def fast(changed_since: str, output: Path, focused: list[str], workers: int) -> 
         ):
             # Unknown dependencies must expand selection, rather than silently
             # claiming that a guessed component mapping establishes protection.
-            if not (
-                name.startswith("src/judgmentllm/providers/")
-                and path.stem.split("_", 1)[0] in taxonomy["providers"]
-            ):
+            if not impact([name], taxonomy)[0]:
                 expanded = True
     # An explicit implementation-cycle target is a caller choice. Essential
     # short regressions always remain; neither selection establishes PR acceptance.
