@@ -84,7 +84,7 @@ jobs:
 
   verify:
     needs: plan
-    name: ${{ matrix.id }}
+    name: ${{ matrix.id }} (${{ matrix.profile }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 50
     strategy:
@@ -206,8 +206,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           STATE: ${{ job.status == 'success' && 'success' || 'failure' }}
+          STATUS_CONTEXT: ${{ github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main' && 'CI candidate policy' || 'CI acceptance' }}
         run: |
           gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$SOURCE_SHA" \
-            -f state="$STATE" -f context="CI acceptance" \
+            -f state="$STATE" -f context="$STATUS_CONTEXT" \
             -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
             -f description="Hosted functional verification; local acceptance required separately"

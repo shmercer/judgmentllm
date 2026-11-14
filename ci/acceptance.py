@@ -13,7 +13,8 @@ import time
 from pathlib import Path
 from typing import Any
 
-from risk import R_GATES, admit, git, make_plan, required_steps
+from risk import R_GATES, admit, git, lane_profile, make_plan, required_steps
+from suite_evidence import validate_suite
 
 HERE = Path(__file__).resolve().parent
 
@@ -105,6 +106,7 @@ def run_lane(
             "r_interoperability": execution_scope == "hosted",
         },
         "risk": plan["risk"],
+        "test_profile": lane_profile(plan, lane, execution_scope),
         "python": sys.version,
         "os": platform.platform(),
         "phase": "quality" if quality_only else "complete",
@@ -172,6 +174,7 @@ def run_lane(
                 or prior.get("phase") != "quality"
                 or prior.get("status") != "passed"
                 or prior.get("source_verified") is not True
+                or len(prior["steps"]) != len(cheap)
                 or {item["name"] for item in prior["steps"]} != cheap
                 or any(item["exit_code"] != 0 for item in prior["steps"])
             ):
@@ -210,10 +213,22 @@ def run_lane(
             )
         if "infrastructure" in needed:
             step(
-                "infrastructure", [python, "-m", "pytest", "--no-cov", "-q", "ci/local"]
+                "infrastructure",
+                [
+                    python,
+                    "-m",
+                    "pytest",
+                    "--no-cov",
+                    "-q",
+                    "ci/local",
+                    f"--basetemp={output / 'infrastructure-tmp'}",
+                    "-o",
+                    f"cache_dir={output / 'pytest-cache'}",
+                ],
             )
         if "build" in needed:
-            step("build", ["uv", "build", "--offline"])
+            distributions = output / "dist"
+            step("build", ["uv", "build", "--offline", "--out-dir", str(distributions)])
             step(
                 "metadata",
                 [
@@ -222,11 +237,11 @@ def run_lane(
                     "twine",
                     "check",
                     "--strict",
-                    *sorted(glob.glob(str(source / "dist/*"))),
+                    *sorted(glob.glob(str(distributions / "*"))),
                 ],
             )
             for kind, pattern in (("wheel", "*.whl"), ("sdist", "*.tar.gz")):
-                artifacts = list((source / "dist").glob(pattern))
+                artifacts = list(distributions.glob(pattern))
                 if len(artifacts) != 1:
                     raise ValueError(f"Expected exactly one {kind}")
                 step(
@@ -248,9 +263,17 @@ def run_lane(
                 str(output / "suite"),
                 "--workers",
                 str(workers),
+                "--distribution",
+                expected["distribution"],
                 "--bound-workers",
                 "--contract",
                 str(HERE / "test-contract.json"),
+                "--plan",
+                str(output / "executed-plan.json"),
+                "--lane",
+                lane,
+                "--execution-scope",
+                execution_scope,
             ]
             if "coverage" in needed:
                 command += [
@@ -265,7 +288,8 @@ def run_lane(
                 command.append("--skip-resources")
             if execution_scope == "hosted":
                 command.append("--skip-r")
-            command += plan["targets"]
+            save(output / "executed-plan.json", plan)
+            command += ["tests"]
             step("tests", command)
             suite = json.loads(
                 (output / "suite/summary.json").read_text(encoding="utf-8")
@@ -284,6 +308,8 @@ def run_lane(
                 raise ValueError("Hosted lanes must not measure coverage")
             if execution_scope == "local" and suite.get("deferred_r_cases"):
                 raise ValueError("Required local R cases were deferred")
+            validate_suite(plan, lane, output, run_id, scope=execution_scope)
+            report["selection_sha256"] = suite["selection_sha256"]
             for alias in ("coverage", "resources"):
                 if alias in needed:
                     if (
@@ -392,7 +418,7 @@ def main() -> int:
     parser.add_argument("--lane", default="linux-3.11")
     parser.add_argument("--run-id", default="local")
     parser.add_argument("--receipts", type=Path)
-    parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--workers", type=int)
     parser.add_argument("--name", choices=R_GATES)
     parser.add_argument("--quality-only", action="store_true")
     parser.add_argument("--quality-receipt", type=Path)
@@ -427,7 +453,11 @@ def main() -> int:
             args.output,
             args.lane,
             args.run_id,
-            workers=args.workers,
+            workers=args.workers
+            if args.workers is not None
+            else next(
+                item["workers"] for item in plan["lanes"] if item["id"] == args.lane
+            ),
             quality_only=args.quality_only,
             quality_receipt=args.quality_receipt,
             execution_scope=args.execution_scope,
@@ -437,11 +467,18 @@ def main() -> int:
     expected_plan = make_plan(args.source, args.base, args.head, minimum=args.risk)
     if plan != expected_plan:
         raise ValueError("Plan artifact differs from protected-base classification")
-    receipts = [
-        json.loads(path.read_text(encoding="utf-8"))
-        for path in args.receipts.rglob("receipt.json")
-    ]
+    paths = list(args.receipts.rglob("receipt.json"))
+    receipts = [json.loads(path.read_text(encoding="utf-8")) for path in paths]
     errors = admit(plan, receipts, args.run_id)
+    for path, receipt in zip(paths, receipts, strict=True):
+        if plan["risk"] < 1:
+            continue
+        try:
+            suite = validate_suite(plan, receipt["lane"], path.parent, args.run_id)
+            if suite["selection_sha256"] != receipt.get("selection_sha256"):
+                raise ValueError("Lane receipt does not bind its exact selection")
+        except (OSError, ValueError, KeyError, TypeError, StopIteration) as error:
+            errors.append(f"Invalid raw case evidence ({receipt.get('lane')}): {error}")
     save(
         args.output,
         {

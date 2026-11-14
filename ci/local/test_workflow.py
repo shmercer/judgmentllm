@@ -61,7 +61,10 @@ def test_workflow_is_base_owned_and_only_aggregator_can_write_statuses() -> None
     )
     assert status["if"] == "always()"
     assert "/statuses/$SOURCE_SHA" in status["run"]
-    assert 'context="CI acceptance"' in status["run"]
+    assert 'context="$STATUS_CONTEXT"' in status["run"]
+    assert status["env"]["STATUS_CONTEXT"] == (
+        "${{ github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main' && 'CI candidate policy' || 'CI acceptance' }}"
+    )
     assert "job.status == 'success'" in status["env"]["STATE"]
 
 

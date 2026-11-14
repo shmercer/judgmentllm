@@ -15,6 +15,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, cast
 
+# The policy checkout owns selection even when tests execute in a candidate.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from preflight_provenance import (
     RUN_ID_ENV,
     receipt_provenance,
@@ -23,6 +25,7 @@ from preflight_provenance import (
 )
 from resource_budget import ResourceLease
 from resource_specs import read_resources
+from selection import digest, manifest, read
 from telemetry import ProcessSampler
 
 WARNINGS = [
@@ -45,7 +48,7 @@ def outcomes(receipt: dict[str, Any], expected: set[str]) -> Counter[str]:
     result: Counter[str] = Counter()
     for reports in grouped.values():
         phases = [report["phase"] for report in reports]
-        if len(phases) != len(set(phases)) or not reports or "teardown" not in phases:
+        if len(phases) != len(set(phases)) or not {"setup", "teardown"} <= set(phases):
             raise ValueError("Missing or duplicated case execution")
         if any(report["xfail"] for report in reports):
             raise ValueError("Unexpected xfail in qualification")
@@ -160,6 +163,9 @@ def run(
     include_resources: bool = True,
     include_r: bool = True,
     coverage_ref: str | None = None,
+    plan: dict[str, Any] | None = None,
+    lane: str = "linux-3.11",
+    execution_scope: str = "local",
 ) -> int:
     if isinstance(workers, bool) or not 0 <= workers <= 32:
         raise ValueError("pytest workers must be an integer from 0 through 32")
@@ -167,6 +173,19 @@ def run(
         raise ValueError("Coverage qualification requires the complete suite")
     if coverage and not include_r:
         raise ValueError("Local coverage qualification must include R cases")
+    profile = None
+    if plan is not None:
+        from risk import lane_profile
+
+        if stage != "full" or targets != ["tests"] or preflight_reports:
+            raise ValueError(
+                "Planned lanes require full collection and independent execution"
+            )
+        profile = lane_profile(plan, lane, execution_scope)
+        if coverage and profile != "full":
+            raise ValueError(
+                "Selected coverage cannot establish historical qualification"
+            )
     source = source.resolve(strict=True)
     output = output.resolve()
     if output.is_relative_to(source):
@@ -183,7 +202,7 @@ def run(
     # Load only this checkout's reporting plugin, independent of editable installs.
     plugin_root = str(Path(__file__).resolve().parents[2])
     environment["PYTHONPATH"] = os.pathsep.join(
-        [plugin_root, environment.get("PYTHONPATH", "")]
+        [plugin_root, str(source), environment.get("PYTHONPATH", "")]
     ).rstrip(os.pathsep)
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
     qualification_run_id = environment.setdefault(RUN_ID_ENV, uuid.uuid4().hex)
@@ -224,11 +243,16 @@ def run(
         )
         command = [
             sys.executable,
+            "-P",
             "-m",
             "pytest",
             "-p",
             "ci.local.pytest_report",
-            *targets,
+            *(
+                targets
+                if label == "collection"
+                else sorted({node.split("::", 1)[0] for node in parts[label]})
+            ),
             f"--ci-report={output / (label + '.json')}",
             f"--basetemp={temporary}",
             "-o",
@@ -294,6 +318,37 @@ def run(
         if code != 0 or not collected.get("collected"):
             raise ValueError("Full-suite collection failed or produced no cases")
         parts = partition(collected["collected"])
+        selection_manifest = None
+        if profile is not None:
+            assert plan is not None
+            selection_manifest = manifest(
+                collected["collected"],
+                profile=profile,
+                impacted=plan["impact"],
+                include_r=include_r,
+                include_resources=include_resources,
+            )
+            if selection_manifest["policy_sha256"] != plan["selection_policy_sha256"]:
+                raise ValueError("Selection policy differs from planned trusted policy")
+            required = {
+                case["nodeid"]
+                for case in selection_manifest["cases"]
+                if case["disposition"] == "required"
+            }
+            for label in parts:
+                parts[label] = [node for node in parts[label] if node in required]
+            (output / "selection-manifest.json").write_text(
+                json.dumps(selection_manifest, indent=2) + "\n", encoding="utf-8"
+            )
+            summary.update(
+                test_profile=profile,
+                selection_sha256=selection_manifest["selection_sha256"],
+                universe_cases=len(collected["collected"]),
+                not_required_cases=sum(
+                    case["disposition"] == "not-required-for-this-lane"
+                    for case in selection_manifest["cases"]
+                ),
+            )
         deferred_r = (
             [
                 item["nodeid"]
@@ -319,6 +374,13 @@ def run(
                 node for node in parts["resource"] if node not in deferred
             ]
         summary["deferred_resource_cases"] = deferred
+        if selection_manifest is not None:
+            summary["deferred_resource_cases"] = [
+                case["nodeid"]
+                for case in selection_manifest["cases"]
+                if case["disposition"] == "deferred-by-policy"
+                and case["partition"] == "resource"
+            ]
         summary["expected_cases"] = sum(map(len, parts.values()))
         all_nodes = {item["nodeid"] for item in collected["collected"]}
         if contract is not None:
@@ -339,7 +401,7 @@ def run(
             nodes = {item["nodeid"] for item in receipt["collected"]}
             if (
                 not nodes
-                or not nodes <= all_nodes
+                or not nodes <= set().union(*map(set, parts.values()))
                 or nodes & already_executed
                 or nodes & set(parts["resource"])
             ):
@@ -435,8 +497,9 @@ def run(
         summary["manifest_complete"] = (
             stage == "full"
             and summary["selection_complete"]
-            and not deferred
+            and not summary["deferred_resource_cases"]
             and not deferred_r
+            and not summary.get("not_required_cases", 0)
         )
         if not summary["selection_complete"]:
             raise ValueError(
@@ -471,6 +534,22 @@ def run(
                     f"Total coverage: {comparison['combined_percent']:.2f}%", flush=True
                 )
         summary["status"] = "failed" if failed else "passed"
+        if selection_manifest is not None:
+            accounting = [
+                {
+                    **case,
+                    "disposition": "executed"
+                    if case["disposition"] == "required"
+                    else case["disposition"],
+                }
+                for case in selection_manifest["cases"]
+            ]
+            (output / "case-accounting.json").write_text(
+                json.dumps(accounting, indent=2) + "\n", encoding="utf-8"
+            )
+            summary["accounting_sha256"] = digest(accounting)
+        if source_record(source) != summary["source"]:
+            raise ValueError("Source/environment changed during suite execution")
     except (OSError, ValueError, KeyError, TypeError) as error:
         summary.update(
             status="failed", error={"type": type(error).__name__, "message": str(error)}
@@ -518,6 +597,11 @@ def main() -> int:
     parser.add_argument("--skip-resources", action="store_true")
     parser.add_argument("--skip-r", action="store_true")
     parser.add_argument("--contract", type=Path)
+    parser.add_argument("--plan", type=Path)
+    parser.add_argument("--lane", default="linux-3.11")
+    parser.add_argument(
+        "--execution-scope", choices=("local", "hosted"), default="local"
+    )
     parser.add_argument("--preflight-report", type=Path, action="append", default=[])
     parser.add_argument(
         "--preflight-root",
@@ -620,6 +704,9 @@ def main() -> int:
         include_resources=not options.skip_resources,
         include_r=not options.skip_r,
         coverage_ref=options.coverage_ref,
+        plan=read(options.plan) if options.plan else None,
+        lane=options.lane,
+        execution_scope=options.execution_scope,
     )
 
 

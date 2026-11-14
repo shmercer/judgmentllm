@@ -4,6 +4,10 @@
 
 Read `docs/design-spec.md`, `docs/decisions.md`, `docs/data-contracts.md`, and the corresponding milestone in `docs/implementation-plan.md` before making a change. For changes to schemas, results, exports, execution services, or CLI interfaces, also read `docs/r-interoperability.md` and the cross-language acceptance gate in the implementation plan. For Milestone 7, also read `docs/http-api-spec.md`.
 
+Before changing tests, fixtures/helpers, pytest configuration or CI metadata, read
+the authoritative [verification policy](docs/ci-optimization.md) and
+[testing guide](docs/testing-guide.md).
+
 ## Implementation principles
 
 1. Prefer simple, readable Python and small cohesive modules over complex abstractions. Do not introduce LangChain, LiteLLM, or a broad LLM framework.
@@ -29,6 +33,33 @@ Read `docs/design-spec.md`, `docs/decisions.md`, `docs/data-contracts.md`, and t
 - Local Linux/Python 3.11 is the primary coverage environment. Keep the 90% combined floor and the change-aware historical comparison locally. All actual R/jsonlite checks and resource measurements run locally only, including comprehensive verification. Missing required local R dependencies fail acceptance; hosted deferrals are not passed local gates. GitHub retains ordinary and serial correctness tests without coverage instrumentation or R execution. Full local/hosted matrices, repeated R campaigns and package/resource checks are required only where the risk policy calls for them.
 - Do not duplicate hosted verification with a seven-lane local campaign. Complete qualification remains available with `--profile comprehensive`; releases also require the independent release-readiness, compatibility, scale and live-capability safeguards. No ordinary verification command authorizes provider calls or publication.
 - For native VM work, follow `docs/local-ci.md`: preserve locks, isolated state, graceful shutdown, exact-source evidence, resource thresholds and the 180-second fixture deadline. Benchmark-only stages never establish qualification. Preserve historical failures accurately.
+
+## Adding or modifying tests
+
+- Classify behavior/domain, platform relevance and cost/isolation in
+  `ci/test-profiles.json`; reconcile the generated `ci/test-inventory.json`.
+  Follow the guide's module defaults, per-node selectors and provider impact map.
+  Include privacy/credentials, immutable evidence, SDK/protocol, durability,
+  concurrency, SQLite/children, real R consumers, resources and installed packages
+  wherever applicable. Metadata is executable acceptance policy.
+- Use `serial`, `resource`, `r_interop` and `smoke` only for their documented
+  needs. Preserve cold SDK isolation, real OS processes and heavy-fixture bounds.
+  Add actual OS-focused or R-facing checks when introducing those boundaries;
+  ordinary provider fixtures stay synthetic and offline. Expensive integration
+  tests do not become smoke merely to increase early coverage.
+- Update impact metadata alongside behavior. New modules/parameters are collected
+  and mandatory on every lane until classified; removed/renamed historical cases
+  and isolation drift fail. Never mark platform neutrality without a rationale.
+- Run targeted fast checks, inspect
+  `ci/check.py --profile pr --plan-only --changed-since origin/main`, then complete
+  the source-bound local and hosted requirements. Focused feedback is preliminary;
+  Level 2/3 still require complete local historical coverage. Unknown dependencies
+  escalate. Run `ci/local` selector/inventory selftests for metadata, case IDs,
+  collection hooks, fixtures or CI-policy changes.
+- Preserve independent assertions and historical fixtures/coverage. No blanket
+  skips/xfails, reduced resource workloads/deadlines, mocked replacements for real
+  process guarantees or silent coverage-floor regeneration. See the single
+  [testing guide](docs/testing-guide.md) for examples and troubleshooting.
 
 ## Proposed tools
 

@@ -1,5 +1,12 @@
 # Local verification and optional complete grid
 
+For adding tests, taxonomy/parameter maintenance and troubleshooting, use the
+single [contributor testing guide](testing-guide.md). Level 2/3 hosted platforms
+now use exact smoke/extended selections; complete primary historical coverage
+and all applicable local R/resource gates remain required. Every hosted lane
+first validates full collection and emits executed/deferred/not-required case
+accounting. Level 4 below still runs complete supported suites.
+
 Use the authoritative [risk decision table and commands](ci-optimization.md)
 for development and PR acceptance. Targeted feedback uses the existing locked
 worktree environment; local Linux/Python 3.11 is the principal full-suite and coverage

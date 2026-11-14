@@ -9,8 +9,8 @@ risk. Unknowns and ambiguity escalate. Deferred checks are **not passed checks**
 |---|---|---|
 | 0 — Documentation | Non-executable prose | Relevant offline links and example syntax checks |
 | 1 — Low | Designated prompt-instruction wording or template prose with unchanged schema, selection, sandbox and control flow | Affected Ruff/format/Pyright, focused unit/regression and prompt/serialization contracts; no comprehensive coverage, platform, resource, R or package campaign |
-| 2 — Moderate | Independent adapter or response handling | Local Linux/Python 3.11 suite/coverage and affected strict R/resource checks; hosted functional suite, affected platforms and packaging |
-| 3 — High | Execution, persistence/recovery, schemas/exports, authentication/privacy, CI/selection/coverage controls | Local primary suite/coverage, all seven strict R gates and affected resources; hosted full functional Linux 3.11, Windows 3.12 and macOS 3.11, including serial correctness; relevant security/durability/concurrency/compatibility tests and package checks |
+| 2 — Moderate | Known independent adapter or response handling | Complete local Linux/Python 3.11 historical coverage and affected strict R/resource checks; hosted impacted Linux regression plus essential contracts, actual Windows/macOS smoke and affected components; OS-sensitive changes strengthen platform depth; affected packaging |
+| 3 — High | Execution, persistence/recovery, schemas/exports, authentication/privacy, CI/selection/coverage controls | Complete local primary suite/coverage, all seven strict R gates and affected resources; hosted complete Linux 3.11 and extended OS-sensitive/affected Windows 3.12 and macOS 3.11 regression, including serial correctness and genuine SDK probes; relevant package checks |
 | 4 — Release/comprehensive | Publication, compatibility milestone, weekly/manual complete check | Supported platform/version union; all strict R gates, primary coverage and resource workloads locally; hosted functional matrix, wheel/sdist metadata and isolated installs; releases additionally require compatibility, scale/reproducibility and alpha-readiness evidence |
 
 All existing critical tests remain available. No provider calls are authorized.
@@ -19,6 +19,57 @@ capability qualification remain separate. Resource sizes, 90/180-second child
 deadlines, memory ceilings, ownership/credential/privacy safeguards and historical
 fixtures remain unchanged. The [requirement map](../ci/verification-map.json)
 records the protected assertions and applicability, rather than a test-count gate.
+
+The [testing guide](testing-guide.md) is the canonical contributor workflow.
+[The implementation report](ci-tiered-verification.md) records Issue #54's
+inventory, measured evidence and limitations. Test depth and OS reach are
+separate: every Level 2/3 plan includes all three representative operating
+systems; Level 4 retains all eight supported OS/Python combinations.
+
+## Exact lane profiles and evidence
+
+`ci/test-profiles.json` contains reviewed module domain/cost/platform defaults,
+exact smoke/extended/essential selectors and provider impact closures.
+`ci/test-inventory.json` groups all exact parameter IDs under their functions;
+it supplements the historical replacement/skip contract. Every planned test lane
+collects the complete `tests` universe first, regardless of its selected depth.
+Historical case removal, renamed parameters, marker/isolation drift, duplicate
+classification or stale selectors fail. New cases are mandatory on every lane;
+unknown test/source dependencies request full platform fallback. Candidate
+metadata cannot reduce its own protected-base requirements.
+
+| Profile | Exact scope |
+|---|---|
+| `focused` | Trusted wording regressions, shared essential contracts and smoke; Level 1 only |
+| `impacted` | Reviewed provider closure/changed test modules, essential contracts and smoke; hosted Level 2 primary |
+| `platform-smoke` | Actual configuration, pinned SDK lifecycle, persistence/recovery/export, real locks/children/cancellation, UTF-8 and negative paths, plus affected components |
+| `platform-extended` | Smoke plus reviewed OS-sensitive/high-consequence modules and explicit per-function overrides, plus affected components |
+| `full` | Every collected required case; complete Level 3 primary and every Level 4 lane |
+
+Local primary Level 2/3 coverage always strengthens selection to `full`.
+Partial coverage never qualifies. Hosted profiles explicitly defer actual R and
+resource measurements while preserving cold pinned-SDK byte-identity correctness.
+Each source-bound `selection-manifest.json` records exact nodes, partitions,
+domains, costs, platform relevance, reasons and its selection digest. Final
+`case-accounting.json` labels cases `executed`, `deferred-by-policy` or
+`not-required-for-this-lane`; only actual terminal reports count as execution.
+
+Trusted aggregation independently reconstructs the plan and selection, parses
+the full collection and raw ordinary/serial/resource receipts, and verifies
+source/lock/run/platform/interpreter identities, all phases, uniqueness, outcomes,
+skip policy, hashes and totals. Missing artifacts or a smoke receipt mislabeled
+as full fail. Candidate code is not imported by the status-publishing job.
+The test reporter is imported from the policy path before candidate paths.
+Manual feature-branch dispatch publishes `CI candidate policy`, keeping bootstrap
+evidence separate from the protected-base `CI acceptance` status.
+
+Subset lanes use file affinity and at most two Windows workers; complete lanes
+retain work stealing and the existing four-worker hosted cap. Explicit local
+worker choices remain supported. Ordinary partition execution imports only its
+selected modules after full authoritative collection. Serial tests retain real
+children, locks, R consumers and cold SDK probes; resource leases/deadlines and
+coverage instrumentation remain unchanged. Build outputs, caches and all bulky
+receipts live outside the source tree.
 
 ## Hosted Linux setup recovery (2026-11-11)
 
@@ -186,7 +237,7 @@ CLI routes are Level 3. Credential/privacy/authority/recovery edits inside an ad
 also escalate, including predicate-only edits to a sensitive helper. Unknown provider
 modules escalate; a directory name never downgrades a shared boundary. Touching
 shared execution raises the whole change to Level 3. Path/process/OS-sensitive moderate code adds
-representative platforms. All CI, risk-map, coverage, dependency, selection and
+representative platform regression depth. All CI, risk-map, coverage, dependency, selection and
 exclusion controls are Level 3, regardless of their size. Level 3 runs all seven
 R gates locally on Linux; Level 2 runs relevant local export/execution gates for provider output
 changes. Unknown R-facing modules escalate to Level 3. Packaging is conditional;

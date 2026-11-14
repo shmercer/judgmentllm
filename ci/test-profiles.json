@@ -1,0 +1,1744 @@
+{
+  "domains": {
+    "core-contract": "Configuration, schemas, parsing, normalization and prompt contracts",
+    "durable-execution": "Preparation, execution, retries, journal/recovery and study authority",
+    "immutable-evidence": "Private/credential evidence, immutable artifacts and provenance",
+    "native-transport": "Native schema translation, selection and exact physical commitments",
+    "packaging": "Installed CLI/import and genuine distribution compatibility",
+    "process-ownership": "Actual children, OS locks, cancellation and process death",
+    "provider-sdk": "Actual pinned SDK bytes, protocol, refusal/model identity and provider errors",
+    "r-interface": "Python outputs independently consumed by real R/jsonlite",
+    "resource-stress": "Bounded fresh-process resource, memory and scale workloads"
+  },
+  "essential": [
+    "tests/test_models.py",
+    "tests/test_results.py",
+    "tests/test_output_contracts.py",
+    "tests/test_export_validation.py",
+    "tests/test_auth_privacy.py",
+    "tests/test_execution_safety.py"
+  ],
+  "extended": [
+    "tests/test_gemini_qualification_execution.py::test_hard_crash_and_fresh_process_recovery_do_not_reset_allocation",
+    "tests/test_gemini_qualification_execution.py::test_concurrent_guards_cannot_consume_the_same_allocation_twice",
+    "tests/test_gemini_qualification_execution.py::test_guard_token_duplicate_and_ledger_reset_cannot_replenish",
+    "tests/test_gemini_qualification_execution.py::test_authorization_before_credentials_or_clients",
+    "tests/test_vertex_qualification_execution.py::test_hard_crash_and_fresh_process_recovery_do_not_reset_allocation",
+    "tests/test_vertex_qualification_execution.py::test_concurrent_guards_cannot_consume_the_same_allocation_twice",
+    "tests/test_vertex_qualification_execution.py::test_guard_token_duplicate_and_ledger_reset_cannot_replenish",
+    "tests/test_vertex_qualification_execution.py::test_authorization_before_credentials_or_clients"
+  ],
+  "mandatory_smoke": [
+    "tests/test_config.py",
+    "tests/test_package.py",
+    "tests/test_public_lifecycle.py::test_shared_run_resume_export_and_durable_counts",
+    "tests/test_public_lifecycle.py::test_complete_validation_planning_and_unknown_counts",
+    "tests/test_persistence_ownership.py::test_independent_process_cannot_take_live_lock",
+    "tests/test_persistence_ownership.py::test_process_death_releases_lock_and_recovers_stale_metadata",
+    "tests/test_persistence_artifacts.py::test_simultaneous_publication_preserves_one_complete_object",
+    "tests/test_persistence_artifacts.py::test_interrupted_publication_has_no_partial_target",
+    "tests/test_execution_cancellation_processes.py::test_competing_process_cannot_cancel_exclusive_executor",
+    "tests/test_io.py::test_response_input_preserves_text_metadata_and_order",
+    "tests/test_io.py::test_missing_or_invalid_encoding_inputs",
+    "tests/test_native_other_sdk.py",
+    "tests/test_auth_privacy.py",
+    "tests/test_openai_lifecycle.py::test_production_seal_execute_export_reopen",
+    "tests/test_openai_lifecycle.py::test_missing_credentials_fail_before_store_or_submission",
+    "tests/test_anthropic_lifecycle.py::test_production_seal_execute_export_reopen",
+    "tests/test_anthropic_lifecycle.py::test_missing_credentials_fail_before_store_or_submission",
+    "tests/test_gemini_lifecycle.py::test_production_seal_execute_export_reopen",
+    "tests/test_gemini_lifecycle.py::test_missing_credentials_fail_before_store_or_submission",
+    "tests/test_vertex_lifecycle.py::test_production_seal_execute_export_reopen",
+    "tests/test_vertex_lifecycle.py::test_missing_credentials_fail_before_store_or_submission"
+  ],
+  "modules": {
+    "tests/test_anthropic_cancellation.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_anthropic_diagnostics.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_anthropic_integrity.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_anthropic_invalid_utf8.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_anthropic_lifecycle.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_anthropic_processes.py": {
+      "cost": "process",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_anthropic_qualification.py": {
+      "cost": "heavy",
+      "domain": "provider-sdk",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_anthropic_resources.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_anthropic_response.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_anthropic_sdk_adapter.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_anthropic_transport.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_assessment_capture.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_assessment_diagnostics.py": {
+      "cost": "io",
+      "domain": "immutable-evidence",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_assessment_fixture.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_auth.py": {
+      "cost": "io",
+      "domain": "immutable-evidence",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_auth_cli.py": {
+      "cost": "io",
+      "domain": "immutable-evidence",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_auth_cli_processes.py": {
+      "cost": "process",
+      "domain": "process-ownership",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_auth_privacy.py": {
+      "cost": "io",
+      "domain": "immutable-evidence",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_cli.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_cli_lifecycle.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_cli_process_safety.py": {
+      "cost": "process",
+      "domain": "process-ownership",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_cli_processes.py": {
+      "cost": "process",
+      "domain": "process-ownership",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_compatibility_qualification.py": {
+      "cost": "heavy",
+      "domain": "packaging",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_config.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_distribution_manifest.py": {
+      "cost": "process",
+      "domain": "packaging",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_durable_evidence_lifecycle.py": {
+      "cost": "io",
+      "domain": "immutable-evidence",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_durable_native_preparation.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_evidence_failure_retry.py": {
+      "cost": "io",
+      "domain": "immutable-evidence",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_evidence_offline.py": {
+      "cost": "io",
+      "domain": "immutable-evidence",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_evidence_order.py": {
+      "cost": "io",
+      "domain": "immutable-evidence",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_evidence_persistence.py": {
+      "cost": "io",
+      "domain": "immutable-evidence",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_evidence_reasoning_scope.py": {
+      "cost": "io",
+      "domain": "immutable-evidence",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_evidence_receipt_omission.py": {
+      "cost": "io",
+      "domain": "immutable-evidence",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_evidence_recovery_integrity.py": {
+      "cost": "io",
+      "domain": "immutable-evidence",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_evidence_usage.py": {
+      "cost": "io",
+      "domain": "immutable-evidence",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_evidence_validation_cache.py": {
+      "cost": "io",
+      "domain": "immutable-evidence",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_execution.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_execution_automatic_retry.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_execution_cancellation.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_execution_cancellation_processes.py": {
+      "cost": "process",
+      "domain": "process-ownership",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_execution_exports.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_execution_performance_integrity.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_execution_persistence.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_execution_privacy.py": {
+      "cost": "io",
+      "domain": "immutable-evidence",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_execution_processes.py": {
+      "cost": "process",
+      "domain": "process-ownership",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_execution_r.py": {
+      "cost": "quick",
+      "domain": "r-interface",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_execution_resources.py": {
+      "cost": "resource",
+      "domain": "resource-stress",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_execution_retry.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_execution_safety.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_export_durability.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_export_validation.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_gemini_authority_compatibility.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_gemini_boundaries.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_gemini_cancellation.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_gemini_diagnostics.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_gemini_integrity.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_gemini_invalid_utf8.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_gemini_lifecycle.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_gemini_processes.py": {
+      "cost": "process",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_gemini_production_acceptance.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_gemini_qualification.py": {
+      "cost": "heavy",
+      "domain": "provider-sdk",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_gemini_qualification_execution.py": {
+      "cost": "heavy",
+      "domain": "provider-sdk",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_gemini_response.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_gemini_sdk_adapter.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_gemini_shared_boundaries.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_gemini_transport.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_generation.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_generation_commitment.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_generation_r.py": {
+      "cost": "quick",
+      "domain": "r-interface",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_google_response_equivalence.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_google_schema.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_grouped_execution.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_grouped_lifecycle_r.py": {
+      "cost": "quick",
+      "domain": "r-interface",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_grouped_resources.py": {
+      "cost": "resource",
+      "domain": "resource-stress",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_initial_usage_commitment.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_io.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_keyring.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_mock_provider.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_models.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_native_memory_accounting.py": {
+      "cost": "resource",
+      "domain": "resource-stress",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_native_other_providers.py": {
+      "cost": "quick",
+      "domain": "native-transport",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_native_other_sdk.py": {
+      "cost": "quick",
+      "domain": "native-transport",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_native_preparation_reuse.py": {
+      "cost": "quick",
+      "domain": "native-transport",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_native_preseal_memory.py": {
+      "cost": "resource",
+      "domain": "resource-stress",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_native_preseal_validation.py": {
+      "cost": "quick",
+      "domain": "native-transport",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_native_retry_integrity.py": {
+      "cost": "quick",
+      "domain": "native-transport",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_native_schema.py": {
+      "cost": "quick",
+      "domain": "native-transport",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_native_schema_privacy.py": {
+      "cost": "io",
+      "domain": "immutable-evidence",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_native_selection.py": {
+      "cost": "quick",
+      "domain": "native-transport",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_native_transport_integration.py": {
+      "cost": "quick",
+      "domain": "native-transport",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_native_transport_integrity.py": {
+      "cost": "quick",
+      "domain": "native-transport",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_native_transport_processes.py": {
+      "cost": "process",
+      "domain": "process-ownership",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_native_transport_r.py": {
+      "cost": "quick",
+      "domain": "r-interface",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_native_transport_rendering.py": {
+      "cost": "quick",
+      "domain": "native-transport",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_native_v2.py": {
+      "cost": "quick",
+      "domain": "native-transport",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_native_v2_compatibility.py": {
+      "cost": "quick",
+      "domain": "native-transport",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_native_v2_privacy.py": {
+      "cost": "io",
+      "domain": "immutable-evidence",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_observation_lookup_benchmark.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_openai_cancellation.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_openai_capabilities.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_openai_diagnostics.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_openai_invalid_utf8.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_openai_lifecycle.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_openai_qualification.py": {
+      "cost": "heavy",
+      "domain": "provider-sdk",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_openai_resources.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_openai_responses_parsing.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_openai_sdk_adapter.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_openai_uncertain_usage.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_openai_validation.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_output_contract_compatibility.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_output_contract_interpretation.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_output_contracts.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_package.py": {
+      "cost": "io",
+      "domain": "packaging",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_persistence_artifacts.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_persistence_hashing.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_persistence_models.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_persistence_ownership.py": {
+      "cost": "process",
+      "domain": "process-ownership",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_persistence_r.py": {
+      "cost": "quick",
+      "domain": "r-interface",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_persistence_repository.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_persistence_schema.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_persistence_sources.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_planning.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_preparation_attempt_rendering.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_preparation_index.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_preparation_integrity.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_preparation_manifest.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_preparation_recovery.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_preparation_rendering.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_preparation_resources.py": {
+      "cost": "resource",
+      "domain": "resource-stress",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_presentation_compatibility.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_presentation_lifecycle.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_presentation_providers.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_presentation_revision.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_preview.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_production_output_instructions.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_production_transport.py": {
+      "cost": "quick",
+      "domain": "native-transport",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_prompts.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_provider_diagnostic_cli.py": {
+      "cost": "io",
+      "domain": "immutable-evidence",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_provider_evidence_boundary.py": {
+      "cost": "io",
+      "domain": "immutable-evidence",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_public_lifecycle.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_public_lifecycle_integrity.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_r_dependencies.py": {
+      "cost": "quick",
+      "domain": "r-interface",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_r_exports.py": {
+      "cost": "quick",
+      "domain": "r-interface",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_readonly_diagnostic_repository.py": {
+      "cost": "io",
+      "domain": "immutable-evidence",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_readonly_inspection.py": {
+      "cost": "io",
+      "domain": "immutable-evidence",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_reasoning_controls.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_results.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_scale_benchmarks.py": {
+      "cost": "resource",
+      "domain": "resource-stress",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_scale_diagnostics.py": {
+      "cost": "resource",
+      "domain": "resource-stress",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_scale_storage.py": {
+      "cost": "resource",
+      "domain": "resource-stress",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_service_tier_integrity.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_service_tiers.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_source_preparation_r.py": {
+      "cost": "quick",
+      "domain": "r-interface",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_source_signatures.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_study_budget.py": {
+      "cost": "heavy",
+      "domain": "durable-execution",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_study_checkpoint_integrity.py": {
+      "cost": "heavy",
+      "domain": "durable-execution",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_study_control_failures.py": {
+      "cost": "heavy",
+      "domain": "durable-execution",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_study_control_scope.py": {
+      "cost": "heavy",
+      "domain": "durable-execution",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_study_controls.py": {
+      "cost": "heavy",
+      "domain": "durable-execution",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_study_failures.py": {
+      "cost": "heavy",
+      "domain": "durable-execution",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_study_integrity.py": {
+      "cost": "heavy",
+      "domain": "durable-execution",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_study_limits.py": {
+      "cost": "heavy",
+      "domain": "durable-execution",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_study_native.py": {
+      "cost": "heavy",
+      "domain": "durable-execution",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_study_r.py": {
+      "cost": "heavy",
+      "domain": "r-interface",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_study_review.py": {
+      "cost": "heavy",
+      "domain": "durable-execution",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_study_workflow.py": {
+      "cost": "heavy",
+      "domain": "durable-execution",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_test_efficiency_audit.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_transport_rendering.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_v2_durable_contracts.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_v2_public_lifecycle.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_v2_rendering.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_version_compatibility.py": {
+      "cost": "io",
+      "domain": "packaging",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_vertex_auth.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_vertex_authority_compatibility.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_vertex_boundaries.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_vertex_cancellation.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_vertex_integrity.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_vertex_invalid_utf8.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_vertex_lifecycle.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_vertex_processes.py": {
+      "cost": "process",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_vertex_production_acceptance.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_vertex_proposal.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_vertex_qualification.py": {
+      "cost": "heavy",
+      "domain": "provider-sdk",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_vertex_qualification_execution.py": {
+      "cost": "heavy",
+      "domain": "provider-sdk",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_vertex_response.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_vertex_sdk_adapter.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_vertex_security.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_vertex_shared_boundaries.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [],
+      "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_vertex_transport.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    }
+  },
+  "providers": {
+    "anthropic": [
+      "tests/test_anthropic_cancellation.py",
+      "tests/test_anthropic_diagnostics.py",
+      "tests/test_anthropic_integrity.py",
+      "tests/test_anthropic_invalid_utf8.py",
+      "tests/test_anthropic_lifecycle.py",
+      "tests/test_anthropic_processes.py",
+      "tests/test_anthropic_response.py",
+      "tests/test_anthropic_sdk_adapter.py",
+      "tests/test_anthropic_transport.py"
+    ],
+    "gemini": [
+      "tests/test_gemini_authority_compatibility.py",
+      "tests/test_gemini_boundaries.py",
+      "tests/test_gemini_cancellation.py",
+      "tests/test_gemini_diagnostics.py",
+      "tests/test_gemini_integrity.py",
+      "tests/test_gemini_invalid_utf8.py",
+      "tests/test_gemini_lifecycle.py",
+      "tests/test_gemini_processes.py",
+      "tests/test_gemini_production_acceptance.py",
+      "tests/test_gemini_response.py",
+      "tests/test_gemini_sdk_adapter.py",
+      "tests/test_gemini_shared_boundaries.py",
+      "tests/test_gemini_transport.py"
+    ],
+    "google": [
+      "tests/test_gemini_authority_compatibility.py",
+      "tests/test_gemini_boundaries.py",
+      "tests/test_gemini_cancellation.py",
+      "tests/test_gemini_diagnostics.py",
+      "tests/test_gemini_integrity.py",
+      "tests/test_gemini_invalid_utf8.py",
+      "tests/test_gemini_lifecycle.py",
+      "tests/test_gemini_processes.py",
+      "tests/test_gemini_production_acceptance.py",
+      "tests/test_gemini_response.py",
+      "tests/test_gemini_sdk_adapter.py",
+      "tests/test_gemini_shared_boundaries.py",
+      "tests/test_gemini_transport.py",
+      "tests/test_google_response_equivalence.py",
+      "tests/test_google_schema.py",
+      "tests/test_vertex_auth.py",
+      "tests/test_vertex_authority_compatibility.py",
+      "tests/test_vertex_boundaries.py",
+      "tests/test_vertex_cancellation.py",
+      "tests/test_vertex_integrity.py",
+      "tests/test_vertex_invalid_utf8.py",
+      "tests/test_vertex_lifecycle.py",
+      "tests/test_vertex_processes.py",
+      "tests/test_vertex_production_acceptance.py",
+      "tests/test_vertex_proposal.py",
+      "tests/test_vertex_response.py",
+      "tests/test_vertex_sdk_adapter.py",
+      "tests/test_vertex_security.py",
+      "tests/test_vertex_shared_boundaries.py",
+      "tests/test_vertex_transport.py"
+    ],
+    "openai": [
+      "tests/test_openai_cancellation.py",
+      "tests/test_openai_capabilities.py",
+      "tests/test_openai_diagnostics.py",
+      "tests/test_openai_invalid_utf8.py",
+      "tests/test_openai_lifecycle.py",
+      "tests/test_openai_responses_parsing.py",
+      "tests/test_openai_sdk_adapter.py",
+      "tests/test_openai_uncertain_usage.py",
+      "tests/test_openai_validation.py"
+    ],
+    "vertex": [
+      "tests/test_vertex_auth.py",
+      "tests/test_vertex_authority_compatibility.py",
+      "tests/test_vertex_boundaries.py",
+      "tests/test_vertex_cancellation.py",
+      "tests/test_vertex_integrity.py",
+      "tests/test_vertex_invalid_utf8.py",
+      "tests/test_vertex_lifecycle.py",
+      "tests/test_vertex_processes.py",
+      "tests/test_vertex_production_acceptance.py",
+      "tests/test_vertex_proposal.py",
+      "tests/test_vertex_response.py",
+      "tests/test_vertex_sdk_adapter.py",
+      "tests/test_vertex_security.py",
+      "tests/test_vertex_shared_boundaries.py",
+      "tests/test_vertex_transport.py"
+    ]
+  },
+  "schema_version": 1,
+  "shared_sources": [
+    "src/judgmentllm/__init__.py",
+    "src/judgmentllm/_auth.py",
+    "src/judgmentllm/_lifecycle_store.py",
+    "src/judgmentllm/_verification.py",
+    "src/judgmentllm/anthropic_assessment.py",
+    "src/judgmentllm/anthropic_diagnostics.py",
+    "src/judgmentllm/anthropic_prompts.py",
+    "src/judgmentllm/anthropic_qualification.py",
+    "src/judgmentllm/anthropic_registry.py",
+    "src/judgmentllm/anthropic_transport.py",
+    "src/judgmentllm/assessment_diagnostics.py",
+    "src/judgmentllm/assessment_errors.py",
+    "src/judgmentllm/assessment_inspection.py",
+    "src/judgmentllm/auth.py",
+    "src/judgmentllm/cli.py",
+    "src/judgmentllm/cli_controls.py",
+    "src/judgmentllm/config.py",
+    "src/judgmentllm/evidence/__init__.py",
+    "src/judgmentllm/evidence/_base.py",
+    "src/judgmentllm/evidence/assessment.py",
+    "src/judgmentllm/evidence/order.py",
+    "src/judgmentllm/evidence/reasoning.py",
+    "src/judgmentllm/evidence/scope.py",
+    "src/judgmentllm/evidence/usage.py",
+    "src/judgmentllm/execution/__init__.py",
+    "src/judgmentllm/execution/cancellation.py",
+    "src/judgmentllm/execution/core.py",
+    "src/judgmentllm/execution/durable_evidence.py",
+    "src/judgmentllm/execution/evidence.py",
+    "src/judgmentllm/execution/exports.py",
+    "src/judgmentllm/execution/processing.py",
+    "src/judgmentllm/execution/retry.py",
+    "src/judgmentllm/execution/session.py",
+    "src/judgmentllm/gemini_assessment.py",
+    "src/judgmentllm/gemini_diagnostics.py",
+    "src/judgmentllm/gemini_prompts.py",
+    "src/judgmentllm/gemini_qualification.py",
+    "src/judgmentllm/gemini_qualification_execution.py",
+    "src/judgmentllm/gemini_registry.py",
+    "src/judgmentllm/gemini_transport.py",
+    "src/judgmentllm/gemini_types.py",
+    "src/judgmentllm/gemini_types.pyi",
+    "src/judgmentllm/gemini_usage.py",
+    "src/judgmentllm/generation.py",
+    "src/judgmentllm/io.py",
+    "src/judgmentllm/keyring.py",
+    "src/judgmentllm/lifecycle.py",
+    "src/judgmentllm/lifecycle_models.py",
+    "src/judgmentllm/models.py",
+    "src/judgmentllm/native_prompts.py",
+    "src/judgmentllm/native_schema.py",
+    "src/judgmentllm/native_schema_v2.py",
+    "src/judgmentllm/native_selection.py",
+    "src/judgmentllm/native_selection_v2.py",
+    "src/judgmentllm/openai_diagnostics.py",
+    "src/judgmentllm/output_commitments.py",
+    "src/judgmentllm/output_contracts.py",
+    "src/judgmentllm/persistence/__init__.py",
+    "src/judgmentllm/persistence/artifacts.py",
+    "src/judgmentllm/persistence/evidence.py",
+    "src/judgmentllm/persistence/generation.py",
+    "src/judgmentllm/persistence/hashing.py",
+    "src/judgmentllm/persistence/models.py",
+    "src/judgmentllm/persistence/ownership.py",
+    "src/judgmentllm/persistence/receipts.py",
+    "src/judgmentllm/persistence/repository.py",
+    "src/judgmentllm/persistence/schema.py",
+    "src/judgmentllm/persistence/sources.py",
+    "src/judgmentllm/persistence/transport_receipts.py",
+    "src/judgmentllm/planning.py",
+    "src/judgmentllm/preparation/__init__.py",
+    "src/judgmentllm/preparation/capture.py",
+    "src/judgmentllm/preparation/freezing.py",
+    "src/judgmentllm/preparation/index.py",
+    "src/judgmentllm/preparation/manifest.py",
+    "src/judgmentllm/preparation/native.py",
+    "src/judgmentllm/preparation/records.py",
+    "src/judgmentllm/preparation/session.py",
+    "src/judgmentllm/presentation.py",
+    "src/judgmentllm/presentation_blocks.py",
+    "src/judgmentllm/preview.py",
+    "src/judgmentllm/production_prompts.py",
+    "src/judgmentllm/production_registry.py",
+    "src/judgmentllm/production_transport.py",
+    "src/judgmentllm/prompts.py",
+    "src/judgmentllm/provider_diagnostics.py",
+    "src/judgmentllm/provider_diagnostics.pyi",
+    "src/judgmentllm/providers/__init__.py",
+    "src/judgmentllm/providers/_assessment_schema.py",
+    "src/judgmentllm/providers/anthropic.py",
+    "src/judgmentllm/providers/anthropic_cli.py",
+    "src/judgmentllm/providers/anthropic_response.py",
+    "src/judgmentllm/providers/anthropic_schema.py",
+    "src/judgmentllm/providers/evidence.py",
+    "src/judgmentllm/providers/gemini.py",
+    "src/judgmentllm/providers/gemini_cli.py",
+    "src/judgmentllm/providers/gemini_response.py",
+    "src/judgmentllm/providers/google_response.py",
+    "src/judgmentllm/providers/google_schema.py",
+    "src/judgmentllm/providers/ledger.py",
+    "src/judgmentllm/providers/mock.py",
+    "src/judgmentllm/providers/ollama_schema.py",
+    "src/judgmentllm/providers/openai.py",
+    "src/judgmentllm/providers/openai_cli.py",
+    "src/judgmentllm/providers/openai_response.py",
+    "src/judgmentllm/providers/openai_schema.py",
+    "src/judgmentllm/providers/protocol.py",
+    "src/judgmentllm/providers/reasoning.py",
+    "src/judgmentllm/providers/together_schema.py",
+    "src/judgmentllm/providers/vertex.py",
+    "src/judgmentllm/providers/vertex_cli.py",
+    "src/judgmentllm/providers/vertex_response.py",
+    "src/judgmentllm/py.typed",
+    "src/judgmentllm/qualification.py",
+    "src/judgmentllm/r_exports.py",
+    "src/judgmentllm/reasoning.py",
+    "src/judgmentllm/request_rendering.py",
+    "src/judgmentllm/results.py",
+    "src/judgmentllm/service_tiers.py",
+    "src/judgmentllm/study/__init__.py",
+    "src/judgmentllm/study/__main__.py",
+    "src/judgmentllm/study/admission.py",
+    "src/judgmentllm/study/budget.py",
+    "src/judgmentllm/study/cli.py",
+    "src/judgmentllm/study/definitions.py",
+    "src/judgmentllm/study/execution.py",
+    "src/judgmentllm/study/plans.py",
+    "src/judgmentllm/study/records.py",
+    "src/judgmentllm/study/sources.py",
+    "src/judgmentllm/templates/pairwise_forced_choice.txt",
+    "src/judgmentllm/templates/presentation_v2/pairwise_forced_choice.txt",
+    "src/judgmentllm/templates/presentation_v2/rubric_scores_only.txt",
+    "src/judgmentllm/templates/presentation_v2/rubric_scores_with_explanations.txt",
+    "src/judgmentllm/templates/rubric_scores_only.txt",
+    "src/judgmentllm/templates/rubric_scores_with_explanations.txt",
+    "src/judgmentllm/templates/v2/pairwise_forced_choice.txt",
+    "src/judgmentllm/templates/v2/rubric_scores_only.txt",
+    "src/judgmentllm/templates/v2/rubric_scores_with_explanations.txt",
+    "src/judgmentllm/transport.py",
+    "src/judgmentllm/transport_dispatch.py",
+    "src/judgmentllm/vertex_assessment.py",
+    "src/judgmentllm/vertex_config.py",
+    "src/judgmentllm/vertex_diagnostics.py",
+    "src/judgmentllm/vertex_prompts.py",
+    "src/judgmentllm/vertex_qualification.py",
+    "src/judgmentllm/vertex_qualification_execution.py",
+    "src/judgmentllm/vertex_qualification_sdk.py",
+    "src/judgmentllm/vertex_registry.py",
+    "src/judgmentllm/vertex_transport.py",
+    "src/judgmentllm/vertex_types.py",
+    "src/judgmentllm/vertex_types.pyi",
+    "src/judgmentllm/vertex_usage.py"
+  ],
+  "smoke": [
+    "tests/test_config.py",
+    "tests/test_package.py",
+    "tests/test_public_lifecycle.py::test_shared_run_resume_export_and_durable_counts",
+    "tests/test_public_lifecycle.py::test_complete_validation_planning_and_unknown_counts",
+    "tests/test_persistence_ownership.py::test_independent_process_cannot_take_live_lock",
+    "tests/test_persistence_ownership.py::test_process_death_releases_lock_and_recovers_stale_metadata",
+    "tests/test_persistence_artifacts.py::test_simultaneous_publication_preserves_one_complete_object",
+    "tests/test_persistence_artifacts.py::test_interrupted_publication_has_no_partial_target",
+    "tests/test_execution_cancellation_processes.py::test_competing_process_cannot_cancel_exclusive_executor",
+    "tests/test_io.py::test_response_input_preserves_text_metadata_and_order",
+    "tests/test_io.py::test_missing_or_invalid_encoding_inputs",
+    "tests/test_native_other_sdk.py",
+    "tests/test_auth_privacy.py",
+    "tests/test_openai_lifecycle.py::test_production_seal_execute_export_reopen",
+    "tests/test_openai_lifecycle.py::test_missing_credentials_fail_before_store_or_submission",
+    "tests/test_anthropic_lifecycle.py::test_production_seal_execute_export_reopen",
+    "tests/test_anthropic_lifecycle.py::test_missing_credentials_fail_before_store_or_submission",
+    "tests/test_gemini_lifecycle.py::test_production_seal_execute_export_reopen",
+    "tests/test_gemini_lifecycle.py::test_missing_credentials_fail_before_store_or_submission",
+    "tests/test_vertex_lifecycle.py::test_production_seal_execute_export_reopen",
+    "tests/test_vertex_lifecycle.py::test_missing_credentials_fail_before_store_or_submission"
+  ]
+}

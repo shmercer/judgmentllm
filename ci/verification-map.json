@@ -274,11 +274,24 @@
       ]
     },
     "hosted-required-jobs": {
-      "execution": "Risk plan selects Linux/Python 3.11; representative Windows 3.12/macOS 3.11 for level 3, affected platforms at level 2, full eight-lane union at level 4.",
+      "execution": "Levels 2/3 always include Linux 3.11, Windows 3.12 and macOS 3.11. Level 2 uses impacted primary plus real platform smoke; Level 3 uses full primary plus extended affected OS-sensitive regression. Level 4 retains the complete eight-lane matrix.",
       "manual": "Comprehensive workflow_dispatch includes complete Windows 3.11 verification.",
-      "guarantees": "CI acceptance requires all planned lanes, exact source/run identity and required steps; protected-base policy.",
+      "guarantees": "Protected-base aggregation reconstructs the plan and exact selection from complete collection, verifies raw case/phase receipts, source/lock/run/platform/interpreter, and accounts for every case; no partial or candidate-policy status substitutes for acceptance.",
       "risk_levels": [
         2,
+        3,
+        4
+      ]
+    },
+    "tiered-selection-integrity": {
+      "tests": [
+        "ci/local/test_selection.py",
+        "ci/local/test_risk.py",
+        "ci/local/test_acceptance.py",
+        "ci/local/test_optimization.py"
+      ],
+      "guarantees": "Complete case universe, new cases mandatory on every lane, historical case removal/marker drift blocked, unknown dependencies escalate, missing/tampered profiles and raw receipts fail",
+      "risk_levels": [
         3,
         4
       ]
@@ -289,10 +302,13 @@
     "Level 0/1 omit comprehensive coverage, resource campaigns and unrelated R/package checks.",
     "R gates run locally on the primary lane for affected PRs; local cross-platform campaigns are level 4.",
     "Static analysis runs once. Resource and packaging work are conditional outside level 4.",
-    "Coverage instrumentation/history, all R checks and resource workloads run locally only; hosted ordinary/serial correctness and SDK byte identity remain required. Complete PR acceptance needs both applicable local and hosted evidence."
+    "Coverage instrumentation/history, all R checks and resource workloads run locally only; hosted ordinary/serial correctness and SDK byte identity remain required. Complete PR acceptance needs both applicable local and hosted evidence.",
+    "Platform-neutral repetition is omitted only by explicit per-case manifests at Levels 2/3; all cases remain in complete primary historical qualification and Level 4. Local Level 2 coverage remains complete."
   ],
   "test_replacement_contract": "ci/test-contract.json",
   "coverage_floor": "ci/coverage-floor.json",
   "risk_policy": "docs/ci-optimization.md",
-  "classification": "ci/risk.py (protected-base code; AST wording checks, boundary rules and conservative unknowns)"
+  "classification": "ci/risk.py (protected-base code; AST wording checks, boundary rules and conservative unknowns)",
+  "test_taxonomy": "ci/test-profiles.json",
+  "complete_case_inventory": "ci/test-inventory.json"
 }
