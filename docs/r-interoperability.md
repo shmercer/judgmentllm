@@ -705,3 +705,15 @@ fixture verifies omission of optional controls. Existing gates still cover
 leading-zero IDs, complete probabilities and mappings. No normalized/result/R
 column or schema version changes. Missing Rscript/jsonlite fails local acceptance;
 hosted execution explicitly defers R.
+
+## Issue #39 PR2-C control acceptance
+
+The additional serial study test generates actual guarded SDK observations for
+omitted/explicit effort and omitted/explicit temperature, then checks 27 rows and
+five physical receipts in `examples/study-native/check_control_exports.R`. Invalid
+grouped results, exact category mappings, missing probabilities/expectations,
+attempt identity joins, full/minimal capture and both CJ orientations remain
+explicit. Requested controls and frozen reasoning policies stay safe provenance;
+grouped assessment rows do not multiply physical usage. The original study R
+checker and all seven strict gates, including leading-zero IDs and complete
+probability fixtures, remain unchanged. No normalized export column is added.

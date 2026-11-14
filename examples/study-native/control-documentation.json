@@ -1,0 +1,27 @@
+{
+  "documentation_version": 1,
+  "checked_on": "2026-11-13",
+  "qualification": false,
+  "account_control_eligibility": "unknown",
+  "account_prices": "unknown",
+  "sources": [
+    {"url": "https://developers.openai.com/api/docs/models/gpt-6-luna", "scope": "Exact Luna model: default medium, explicit none candidate"},
+    {"url": "https://developers.openai.com/api/docs/models/gpt-6.1-terra", "scope": "Exact Terra model: default medium, explicit none candidate"},
+    {"url": "https://developers.openai.com/api/docs/guides/latest-model", "scope": "Temperature/top-p conditional on reasoning effort none; medium/high and omission cannot enable sampling"},
+    {"url": "https://platform.claude.com/docs/en/build-with-claude/effort", "scope": "Haiku 5.5 medium default; Sonnet 5.5 high default; explicit low effort via output_config"},
+    {"url": "https://platform.claude.com/docs/en/build-with-claude/thinking", "scope": "Adaptive default, disabled/between_tools distinctions; API 2026-10-21 rejects sampling even with disabled thinking"},
+    {"url": "https://ai.google.dev/gemini-api/docs/thinking?generate-content=true", "scope": "GenerateContent: 3.5 Flash-Lite minimal default/high contrast; 3.8 Flash medium default/low contrast; MINIMAL unsupported on 3.8; neither has full thinking off"}
+  ],
+  "sdk_evidence": {
+    "tests": "tests/test_study_controls.py::test_complete_control_matrix_and_actual_pinned_sdk_bytes",
+    "scope": "All 32 exact model/task/condition native request bodies, controls and tiers through actual pinned SDK MockTransport HTTP; zero provider sockets or real credentials",
+    "openai": "3.42.1 / Responses / openai-v1",
+    "anthropic": "2.3.0 / Messages / 2026-10-21",
+    "gemini": "google-genai 2.34.0 / Developer GenerateContent / v1beta",
+    "gemini_sdk_field": "generationConfig.thinkingConfig.thinking_level",
+    "gemini_documented_field": "generationConfig.thinkingConfig.thinkingLevel"
+  },
+  "before_sealing": "Independently review current documentation, exact control/account/native/tier scope, input and all billable output bounds, credential binding and dated prices. Changed or unsupported findings block the candidate without substitution.",
+  "live_observations": [],
+  "authorized_calls": 0
+}

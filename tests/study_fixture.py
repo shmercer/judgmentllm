@@ -16,6 +16,7 @@ import httpx2
 
 from judgmentllm.config import RunSpecV3, validate_run_spec_json
 from judgmentllm.persistence.hashing import bytes_digest, canonical_bytes
+from judgmentllm.study.definitions import ORIGINAL_SUITES
 from judgmentllm.study.execution import CredentialBinding
 from judgmentllm.study.records import (
     Authorization,
@@ -154,6 +155,9 @@ def authorization(proposal: Proposal) -> Authorization:
         maximum_calls=proposal.max_calls,
         ceiling_usd=proposal.ceiling_usd,
         elapsed_seconds=proposal.elapsed_seconds,
+        campaign_calls=66 if proposal.suite in ORIGINAL_SUITES else 98,
+        campaign_usd=Decimal(10 if proposal.suite in ORIGINAL_SUITES else 16),
+        campaign_seconds=39600 if proposal.suite in ORIGINAL_SUITES else 68400,
         accept_billable_calls=True,
         accept_synthetic_capture=True,
         authorized_by="synthetic-reviewer",

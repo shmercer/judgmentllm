@@ -8,13 +8,20 @@ import json
 from pathlib import Path
 from typing import Any, Literal, cast
 
-from judgmentllm.config import InputSpec, RunSpecV3, validate_run_spec_json
+from judgmentllm.config import (
+    GenerationSpec,
+    InputSpec,
+    RunSpecV3,
+    validate_run_spec_json,
+)
 from judgmentllm.persistence.hashing import bytes_digest, canonical_bytes
 from judgmentllm.planning import stable_id
 from judgmentllm.preparation import open_prepared_run, prepare_run
 from judgmentllm.qualification import _immutable, _source_commit
 from judgmentllm.study.admission import candidate_context, study_generation
 from judgmentllm.study.definitions import (
+    CONTRASTS,
+    EXTENSION_CAPS,
     HOLISTIC,
     MODELS,
     ROUTES,
@@ -39,6 +46,24 @@ from judgmentllm.transport import physical_identity
 def suite_selections(suite: SuiteName) -> tuple[Selection, ...]:
     selections: list[Selection] = []
     for provider, model in MODELS:
+        if suite in {"reasoning_comparison", "temperature_acceptance"}:
+            if suite == "temperature_acceptance" and provider != "openai":
+                continue
+            for scenario in ("grouped_scores", "cj"):
+                for condition in (
+                    ("A", "B") if suite == "reasoning_comparison" else ("T0", "T1")
+                ):
+                    selections.append(
+                        Selection(
+                            provider=cast(Any, provider),
+                            model=model,
+                            scenario=cast(Any, scenario),
+                            tier="standard_only" if provider == "anthropic" else "flex",
+                            trait_id=HOLISTIC if scenario == "cj" else None,
+                            control_condition=cast(Any, condition),
+                        )
+                    )
+            continue
         if suite == "native_pilot":
             tier = "standard_only" if provider == "anthropic" else "flex"
             cases = [
@@ -75,6 +100,49 @@ def suite_selections(suite: SuiteName) -> tuple[Selection, ...]:
                     )
                 )
     return tuple(selections)
+
+
+def selected_configuration(
+    package: Path,
+    selection: Selection,
+    account_scope: str = "study-account-unbound",
+    capture: Literal["full", "minimal"] = "full",
+) -> tuple[str, RunSpecV3]:
+    """Extend a source-verified original without changing its library identity."""
+    identity, spec = configuration(
+        package,
+        selection.provider,
+        selection.model,
+        selection.scenario,
+        selection.tier,
+        account_scope,
+        capture,
+    )
+    if selection.control_condition is not None:
+        generation: dict[str, Any] = {
+            "max_output_tokens": EXTENSION_CAPS[selection.scenario]
+        }
+        if selection.control_condition != "A":
+            generation["reasoning"] = {"effort": CONTRASTS[selection.model]}
+        if selection.control_condition == "T1":
+            generation["temperature"] = 0.2
+        spec.generation = GenerationSpec.model_validate(generation)
+        identity = "study-control-config-" + bytes_digest(
+            canonical_bytes(
+                {
+                    "control_configuration_version": 1,
+                    "original_configuration_id": identity,
+                    "selection": selection,
+                    "generation": generation,
+                }
+            )
+        )
+        spec.output_path = Path("study-output") / identity
+    if selection.reversed:
+        spec.pairs = InputSpec(
+            path=package.resolve() / "sources/cj/pairs_reversal_demo.jsonl"
+        )
+    return identity, spec
 
 
 def prepare(spec: RunSpecV3, source: str, store: Path, run_id: str) -> Any:
@@ -154,20 +222,13 @@ def build_proposal(
     directory.mkdir(parents=True, exist_ok=False)
     calls: list[Case] = []
     for index, selection in enumerate(suite_selections(suite)):
-        config_id, spec = configuration(
+        config_id, spec = selected_configuration(
             package,
-            selection.provider,
-            selection.model,
-            selection.scenario,
-            selection.tier,
+            selection,
             account_scope,
             capture,
         )
         case_id = f"case-{index + 1:02d}"
-        if selection.reversed:
-            spec.pairs = InputSpec(
-                path=package.resolve() / "sources/cj/pairs_reversal_demo.jsonl"
-            )
         run_id = stable_id(
             "study-run", source, suite, config_id, selection.model_dump(mode="json")
         )
@@ -302,20 +363,12 @@ def load_proposal(directory: Path, digest: str) -> Proposal:
         spec = validate_run_spec_json(case.specification_json)
         assert isinstance(spec, RunSpecV3)
         assert spec.prompt.file is not None
-        identity, expected = configuration(
+        identity, expected = selected_configuration(
             spec.prompt.file.parents[3],
-            case.selection.provider,
-            case.selection.model,
-            case.selection.scenario,
-            case.selection.tier,
+            case.selection,
             case.account_scope,
             proposal.capture,
         )
-        if case.selection.reversed:
-            expected.pairs = InputSpec(
-                path=spec.prompt.file.parents[3]
-                / "sources/cj/pairs_reversal_demo.jsonl"
-            )
         if identity != case.configuration_id or canonical_bytes(
             spec
         ) != canonical_bytes(expected):

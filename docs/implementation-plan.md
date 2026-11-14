@@ -846,3 +846,21 @@ plus actual study-to-R fixtures, and hosted Linux/Windows/macOS functional check
 Retain exact-source evidence outside the checkout and report passed, failed,
 deferred and unexecuted checks in the draft PR. Leave it open and unmerged for
 independent review; implementation and acceptance authorize no provider operation.
+
+### Issue #39 PR2-C offline implementation boundary
+
+The separate 24-candidate reasoning and eight-candidate temperature matrices
+reuse the accepted PR2-B source verification, preparation, guarded execution,
+durable reservations/recovery and evidence/export interfaces. The original
+50/30 library and 66/$10 sub-cap remain unchanged. The proposed 98/$16 aggregate
+requires separate future approval. Exact controls and paired 8,192/4,096 output
+caps are source-bound; no unsupported scope is substituted or promoted.
+
+High-risk final-head acceptance retains local branch-aware coverage/history,
+all seven strict R gates, applicable resources/durability/package installations
+and protected-base Linux/Windows/macOS functionality. Actual synthetic SDK-to-R
+tests extend explicit/omitted control provenance and retain original CJ reversal,
+attempts, mappings, missing values and once-per-physical-call usage assertions.
+A distinct bounded test-efficiency audit compares accepted PR2-B, feature-complete
+PR2-C and any subsequent optimization, preserving executed lines/arcs and all
+behavioral assertions. It cannot lower coverage, thresholds or CI policy.

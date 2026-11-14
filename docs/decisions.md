@@ -575,3 +575,15 @@ sub-cap. PR2-C contributes later definitions to this shared mechanism; it is not
 implemented here. No production qualification, credential access or live call is
 authorized by these changes. Exact-source acceptance and independent review are
 reported separately from implementation.
+
+## Issue #39 PR2-C independent control suites
+
+Reuse the PR2-B proposal, source, execution, checkpoint and evidence paths. Add
+only the approved exact effort contrasts and OpenAI effort-none temperature
+conditions; preserve the original library and all production native boundaries.
+An omitted control never receives its documented default as a requested value.
+Extension configuration IDs and proof selections bind the condition and output
+cap. Original cumulative consent remains independently protected; new suites
+require explicit extended cumulative consent without replacing the old header.
+All proposals remain unexecuted, blocked on account/pricing evidence and without
+production promotion. See the [study guide](../examples/study-native/README.md).

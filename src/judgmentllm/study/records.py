@@ -12,7 +12,18 @@ from judgmentllm.models import ID
 from judgmentllm.native_schema import NativeModel
 from judgmentllm.persistence.hashing import bytes_digest, canonical_bytes
 from judgmentllm.persistence.models import SHA256
-from judgmentllm.study.definitions import SCENARIOS, STUDY_VERSION, SUITES, SuiteName
+from judgmentllm.study.definitions import (
+    CAMPAIGN_LIMITS,
+    EXTENDED_CAMPAIGN_LIMITS,
+    EXTENSION_CAPS,
+    HOLISTIC,
+    MODELS,
+    ORIGINAL_SUITES,
+    SCENARIOS,
+    STUDY_VERSION,
+    SUITES,
+    SuiteName,
+)
 
 
 class StudyRecord(NativeModel):
@@ -66,6 +77,23 @@ class Selection(StudyRecord):
     tier: ID
     trait_id: ID | None = None
     reversed: bool = False
+    control_condition: Literal["A", "B", "T0", "T1"] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
+    @model_validator(mode="after")
+    def control_scope(self) -> Selection:
+        if self.control_condition is not None and (
+            (self.provider, self.model) not in MODELS
+            or self.scenario not in EXTENSION_CAPS
+            or self.trait_id != (HOLISTIC if self.scenario == "cj" else None)
+            or self.reversed
+            or self.tier
+            != ("standard_only" if self.provider == "anthropic" else "flex")
+            or (self.control_condition in {"T0", "T1"} and self.provider != "openai")
+        ):
+            raise ValueError("Unsupported exact study control selection")
+        return self
 
 
 class Eligibility(StudyRecord):
@@ -159,9 +187,12 @@ class Case(StudyRecord):
 
     @model_validator(mode="after")
     def commitments(self) -> Case:
-        if self.max_output_tokens != SCENARIOS[self.selection.scenario][
-            1
-        ] or self.operation_deadline_seconds != (
+        cap = (
+            SCENARIOS[self.selection.scenario][1]
+            if self.selection.control_condition is None
+            else EXTENSION_CAPS[self.selection.scenario]
+        )
+        if self.max_output_tokens != cap or self.operation_deadline_seconds != (
             960 if self.selection.tier == "flex" else 90
         ):
             raise ValueError("Scenario output cap or service deadline differs")
@@ -271,15 +302,24 @@ class Authorization(StudyRecord):
     maximum_calls: int
     ceiling_usd: Decimal
     elapsed_seconds: int
-    campaign_calls: Literal[66] = 66
-    campaign_usd: Decimal = Field(default=Decimal(10), ge=10, le=10)
-    campaign_seconds: Literal[39600] = 39600
+    campaign_calls: Literal[66, 98] = 66
+    campaign_usd: Decimal = Field(default=Decimal(10), ge=10, le=16)
+    campaign_seconds: Literal[39600, 68400] = 39600
     accept_billable_calls: Literal[True]
     accept_synthetic_capture: Literal[True]
     authorized_by: ID
     authorized_at: datetime
 
     def verify(self, proposal: Proposal) -> None:
+        limits = (
+            CAMPAIGN_LIMITS
+            if self.suite in ORIGINAL_SUITES
+            else EXTENDED_CAMPAIGN_LIMITS
+        )
+        if (self.campaign_calls, self.campaign_usd, self.campaign_seconds) != limits:
+            raise ValueError(
+                "Independent original or extended campaign consent differs"
+            )
         if (
             self.accept_billable_calls is not True
             or self.accept_synthetic_capture is not True

@@ -590,4 +590,8 @@ cancellation uses the existing engine's Ctrl-C cleanup. Installed lifecycle CLI
 names and envelope version 1 are unchanged. See the
 [beginner guide](../examples/study-native/README.md) for complete commands,
 immutable limits and current blockers. These commands qualify neither a model
-nor an account and do not implement the PR2-C experiments.
+nor an account. PR2-C adds the offline `controls` matrix and separately selectable
+`reasoning_comparison` / `temperature_acceptance` proposals. The original 50/30
+library remains unchanged. Extension execution additionally requires explicit
+98-request/USD16/68,400-second cumulative consent; original suites retain their
+independent 66-request/USD10 sub-cap. No proposal authorizes a provider call.

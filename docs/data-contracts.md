@@ -845,3 +845,19 @@ are durable; restart cannot renew their allocations or deadlines. Explicit
 reasoning/sampling remains outside original study admission and retains PR2-A's
 control-specific qualification requirements. See the
 [study guide](../examples/study-native/README.md).
+
+PR2-C adds the `reasoning_comparison` and `temperature_acceptance` suite names.
+`Selection.control_condition` is optional (`A`, `B`, `T0`, `T1`); omission remains
+omitted in serialized original records, preserving original identities. Explicit
+conditions bind exact experimental configuration/generation and the extension's
+8,192/4,096 caps, independently of the unchanged library. Eligibility and price
+records bind that complete selection, so omitted-control proof cannot authorize
+another control condition. Reports expose safe requested generation separately
+from physical observed usage. Normalized result/export/R schemas do not change.
+
+Original `Authorization` campaign defaults remain 66/USD10/39,600 seconds. Each
+extension requires explicit 98/USD16/68,400-second consent; an independent
+version-1 campaign-extension record adds the aggregate while preserving the
+original immutable header and sub-caps. Existing durable ownership, checkpoint,
+reservation and review-hold contracts apply to all four suites. No authorization,
+credential access, billable call or production qualification is implied.
