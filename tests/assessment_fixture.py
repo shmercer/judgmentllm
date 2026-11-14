@@ -11,6 +11,7 @@ from judgmentllm.config import (
     InputSpec,
     PromptSpecV3,
     RunSpecV3,
+    validate_run_spec,
 )
 from judgmentllm.models import (
     Level,
@@ -95,6 +96,9 @@ def assessment_case(
         allow_ties=ties,
         strict_capabilities=strict,
     )
+    if provider == "openai":
+        # Existing arbitrary-model fixtures exercise historical wire semantics.
+        spec = cast(RunSpecV3, validate_run_spec(spec, _cache_policy_version=1))
     record = (
         PairTask(
             pair_id="pair-001",

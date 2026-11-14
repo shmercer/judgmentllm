@@ -1,5 +1,12 @@
 # R interoperability: explicit audit and analysis views
 
+Issue #56 extends the existing execution gate's four diagnostic observations with
+reported OpenAI cache-write counts under usage semantics 2: full capture reports
+zero and minimal reports seven. R consumes reopened SDK-produced evidence and
+checks those values, observation/attempt joins, parent counts and missing costs.
+The original six physical usage rows retain missing writes and semantics 1; all
+seven strict local gates and normalized JSONL/CSV/R schemas are unchanged.
+
 JudgmentLLM is a standalone Python library and CLI. Its primary R integration
 uses the installed CLI, normally through `processx`, and exchanges canonical
 JSONL or documented R-compatible CSV files. `reticulate` is an optional secondary

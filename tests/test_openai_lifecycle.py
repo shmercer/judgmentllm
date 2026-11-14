@@ -59,7 +59,7 @@ def production_spec(
         schema_version=3,
         provider="openai",
         endpoint=endpoint,
-        model="offline-unqualified-model",
+        model="gpt-6-luna",
         account_scope="synthetic-account",
     )
     document["prompt"]["structured_output"] = "text"
@@ -470,7 +470,7 @@ async def test_client_cleanup_survives_repeated_cancellation() -> None:
             await release.wait()
             closed.set()
 
-    adapter = SlowClose("responses", "offline-unqualified-model")
+    adapter = SlowClose("responses", "gpt-6-luna")
     task = asyncio.create_task(_close_adapter(adapter))
     await started.wait()
     task.cancel()

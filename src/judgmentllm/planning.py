@@ -316,6 +316,23 @@ def validate_run(
                 unknown=True,
             )
 
+    if spec.cache_policy_version == 2:
+        if spec.execution.cache_policy == "explicit":
+            issue(
+                "unsupported_cache_policy",
+                "execution.cache_policy",
+                "explicit prompt caching is not supported yet; use off until semantic breakpoints are implemented",
+            )
+        elif spec.provider == "gemini":
+            issues.append(
+                ValidationIssue(
+                    code="implicit_cache_uncontrollable",
+                    field="execution.cache_policy",
+                    message="off disables application-managed cached_content; Gemini provider-managed implicit caching cannot be disabled",
+                    severity="warning",
+                )
+            )
+
     if profile.modes is None:
         issue(
             "unknown_capability",

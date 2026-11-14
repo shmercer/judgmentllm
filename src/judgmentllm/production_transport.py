@@ -15,6 +15,7 @@ from typing import Literal, cast
 
 from pydantic import Field, field_validator, model_validator
 
+from judgmentllm.cache_policy import CachePolicyVersion, validate_openai_off
 from judgmentllm.config import (
     GenerationSpec,
     NativeTransportMechanism,
@@ -422,6 +423,9 @@ class OutputCommitmentV4(_TransportModel):
 
     commitment_version: Literal[4] = 4
     renderer_version: Literal[3] = 3
+    cache_policy_version: CachePolicyVersion = Field(
+        default=1, exclude_if=lambda value: value == 1
+    )
     reasoning_policy: ReasoningPolicyV1 | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
@@ -442,6 +446,8 @@ class OutputCommitmentV4(_TransportModel):
 
     @model_validator(mode="after")
     def exact_representation(self) -> OutputCommitmentV4:
+        if self.cache_policy_version == 2:
+            validate_openai_off(self.scope)
         verify_policy_scope(
             self.reasoning_policy,
             self.scope,
@@ -507,6 +513,15 @@ def _build_output_commitment_v4(
     if inherited_commitment is not None:
         service_policy_version = 1 if inherited_commitment.service_policy is None else 2
     service = resolve_service_policy(spec, service_policy_version)
+    cache_revision = (
+        inherited_commitment.cache_policy_version
+        if inherited_commitment is not None
+        else spec.cache_policy_version
+    )
+    if cache_revision == 2:
+        if spec.execution.cache_policy != "off":
+            raise ValueError("explicit prompt caching is not supported yet")
+        validate_openai_off(context.scope)
     profile = _profile_for(context.scope)
     validate_service_support(
         service,
@@ -535,6 +550,7 @@ def _build_output_commitment_v4(
     )
     raw = serialize_output_schema(contract)
     return OutputCommitmentV4(
+        cache_policy_version=cache_revision,
         reasoning_policy=build_reasoning_policy(spec, context.scope),
         service_policy=service,
         scope=context.scope,
@@ -630,8 +646,11 @@ def build_openai_request_body(
         ] = settings.max_output_tokens
     if endpoint == "chat.completions":
         values["n"] = 1
-        if fragment:
-            values["response_format"] = fragment["response_format"]
+    if output.cache_policy_version == 2:
+        validate_openai_off(output.scope)
+        values["prompt_cache_options"] = {"mode": "explicit"}
+    if endpoint == "chat.completions" and fragment:
+        values["response_format"] = fragment["response_format"]
     controls = wire_controls(settings, output.reasoning_policy)
     if controls:
         if endpoint != "responses":
@@ -656,6 +675,9 @@ class TransportCommitmentV2(_TransportModel):
     transport_protocol: Literal["openai-production-v1"] = "openai-production-v1"
     api_scope: Literal["openai-v1"] = "openai-v1"
     renderer_version: Literal[3] = 3
+    cache_policy_version: CachePolicyVersion = Field(
+        default=1, exclude_if=lambda value: value == 1
+    )
     presentation_version: PresentationVersion = Field(
         default=1, exclude_if=lambda value: value == 1
     )
@@ -702,6 +724,8 @@ class TransportCommitmentV2(_TransportModel):
 
     @model_validator(mode="after")
     def exact_commitment(self) -> TransportCommitmentV2:
+        if self.cache_policy_version == 2:
+            validate_openai_off(self.scope)
         native = self.mechanism != "text"
         if (
             self.scope.provider != "openai"
@@ -796,6 +820,8 @@ def _receipt(
     )
     if output.service_policy is not None:
         values["service_policy"] = output.service_policy.model_dump(mode="json")
+    if output.cache_policy_version == 2:
+        values["cache_policy_version"] = 2
     if output.contract.presentation_version == 1:
         values.pop("presentation_version")
     return TransportCommitmentV2.model_validate_json(
@@ -957,6 +983,13 @@ def prepare_production_request(
             frozen = TransportCommitmentV2.model_validate(dict(frozen))
             if frozen.identity != identity or frozen.context_sha256 != context_digest:
                 raise TransportIntegrityError()
+        historical = frozen if frozen is not None else parent
+        if historical is not None:
+            historical_spec = validate_run_spec(
+                spec, _cache_policy_version=historical.cache_policy_version
+            )
+            assert isinstance(historical_spec, RunSpecV3)
+            spec = historical_spec
         output = build_output_commitment_v4(
             spec,
             dependency.request,

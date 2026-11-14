@@ -13,7 +13,7 @@ execution:
   mode: live
   grouping: independent
   explanations: false
-  cache_policy: auto
+  cache_policy: "off"
   tier: null
   concurrency: 4
 capture: full

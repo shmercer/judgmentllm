@@ -66,14 +66,12 @@ def _usage(endpoint: str, value: object) -> ReportedUsageInput | None:
         convert = interpret_openai_chat_usage
     selected = {name: fields[name] for name in names if name in fields}
     for name, component in (
-        (names[3], "cached_tokens"),
-        (names[4], "reasoning_tokens"),
+        (names[3], ("cached_tokens", "cache_write_tokens")),
+        (names[4], ("reasoning_tokens",)),
     ):
         if selected.get(name) is not None:
             detail = _mapping(selected[name])
-            selected[name] = (
-                {component: detail[component]} if component in detail else {}
-            )
+            selected[name] = {key: detail[key] for key in component if key in detail}
     return convert(model.model_validate(selected))
 
 
@@ -368,6 +366,7 @@ def _safe_original_envelope(
                 details = _mapping(value)
                 if set(details) - {
                     "cached_tokens",
+                    "cache_write_tokens",
                     "reasoning_tokens",
                     "audio_tokens",
                     "accepted_prediction_tokens",

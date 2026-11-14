@@ -313,6 +313,8 @@ class PreparedRun:
     ) -> None:
         if self._closed:
             raise PreparationError("prepared run session is closed")
+        if self.spec.cache_policy_version != self.manifest.cache_policy_version:
+            raise PreparationError("cache policy differs from its sealed manifest")
         template = self.template
         if isinstance(
             self.manifest,
@@ -719,6 +721,13 @@ class PreparedRun:
             frozen=frozen,
             parent=parent,
         )
+        if self.spec.provider == "openai" and (
+            getattr(wire.output_commitment, "cache_policy_version", 1)
+            != self.manifest.cache_policy_version
+        ):
+            raise PreparationError(
+                "transport cache policy differs from its sealed manifest"
+            )
         if self.spec.provider in {"openai", "anthropic", "gemini"} and (
             getattr(wire.output_commitment, "service_policy", None)
             != getattr(self.manifest, "service_policy", None)

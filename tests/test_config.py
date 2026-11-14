@@ -76,7 +76,7 @@ def test_paths_resolve_against_containing_configuration(
     assert spec.prompt.limits.max_output_bytes == 300
     assert spec.output_path == tmp_path / "local-output"
     assert not spec.output_path.exists()
-    assert spec.execution.cache_policy == "auto"
+    assert spec.execution.cache_policy == "off"
 
 
 def test_load_inline_rubric_and_typed_input(tmp_path: Path) -> None:

@@ -7,6 +7,7 @@ import typer
 
 from judgmentllm import __version__
 from judgmentllm._auth import _select_providers  # pyright: ignore[reportPrivateUsage]
+from judgmentllm._lifecycle_store import load_resume_spec
 from judgmentllm.auth import credential_status
 from judgmentllm.cli_controls import (
     LifecycleGroup,
@@ -347,7 +348,7 @@ def resume_command(
         return resume_run(
             run,
             store=store,
-            spec=load_run_spec(config) if config is not None else None,
+            spec=load_resume_spec(config, run, store) if config is not None else None,
             use_frozen_snapshot=use_frozen_snapshot,
             retry=retry,
             progress=progress,

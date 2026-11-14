@@ -187,7 +187,7 @@ validation never opens files.
 | `exemplars` | Ordered inline list or referenced `{schema_version, exemplars}` document; defaults to empty. |
 | `provider`, `endpoint`, `model` | Required nonempty strings. Model IDs remain open; these values do not imply an implemented or qualified provider adapter. |
 | `generation` | Optional strict `GenerationSpec` with `temperature`, `top_p`, and `max_output_tokens`; omitted/null/empty means no requested controls. Only non-null requested members serialize. No provider defaults are inferred. |
-| `execution` | `mode=live` (`live/bulk_live/batch_native` intent), `grouping=independent` (`independent/grouped/auto`), optional fixed `groups`, optional positive `max_traits_per_request`, `explanations=false`, optional `tier`, `concurrency=4`. `cache_policy` defaults to `auto` for rubric and `off` for pairwise; valid values are `off/auto/explicit`. Mock live execution supports `off` and uncached `auto`; `explicit`, non-null tier and other execution modes fail before submission. |
+| `execution` | `mode=live` (`live/bulk_live/batch_native` intent), `grouping=independent` (`independent/grouped/auto`), optional fixed `groups`, optional positive `max_traits_per_request`, `explanations=false`, optional `tier`, `concurrency=4`. New-run `cache_policy` defaults to `off` for both task kinds; `explicit` is recognized but unsupported. `auto` is historical-only. See [versioned cache semantics and migration](prompt-caching.md). |
 | `prompt` | Choose `preset` or `file`; `advanced=false`; configurable rendering safeguards under `limits`. Default preset follows task kind and explanation setting. Advanced mode requires a custom file. |
 | `normalization` | `NormalizationOptions`, with `probability_sum_tolerance=1e-8`, configurable in `[0,1)`. |
 | `capture`, `output_path` | `capture=full` (`full/minimal`); output defaults to `run-data` relative to the run configuration. Internal preparation enforces source retention policy; its runtime store is supplied separately and must be local. |
@@ -779,6 +779,21 @@ resolved once through the committed occurrence's `presented_order` before
 original-ID normalization. Ties retain explicit `tie` and null-winner semantics;
 forced choice rejects extra fields. Rubric category labels/codes, all normalized
 schema-1 columns, probabilities, expected scores and R exports are unchanged.
+
+## Issue #56 cache policy
+
+New executable manifests carry strict integer `cache_policy_version: 2`;
+OpenAI output and transport commitments carry the same revision. Historical
+omission means 1 and remains omitted during serialization. The root RunSpec and
+all provider protocols/results retain their versions. New configs accept only
+OFF or currently unsupported explicit intent; sealed legacy auto remains readable.
+OpenAI OFF bodies contain explicit-only cache mode and zero breakpoint markers.
+See [the complete provider and migration contract](prompt-caching.md).
+
+OpenAI usage semantics 2 adds reported cache-write detail paths and retains
+cache-read/write overlap with input counts. Historical missing writes keep
+semantics 1 and nulls, without backfill. Existing normalized CSV/R columns remain
+unchanged; physical evidence keeps counts once per observation.
 
 ## Issue #39 PR1 service intent and observation
 
