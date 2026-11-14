@@ -497,7 +497,7 @@ def test_separate_process_resume_and_recovery_never_replace_requests(
 
 
 @pytest.mark.asyncio
-async def test_case_limit_never_hides_budget_exhaustion(
+async def test_pause_never_exhausts_budget_and_resuming_rechecks_it(
     prepared: tuple[Path, Path, Proposal, list[str]], tmp_path: Path
 ) -> None:
     directory, proofs, proposal, sent = prepared
@@ -531,9 +531,22 @@ async def test_case_limit_never_hides_budget_exhaustion(
         max_new_cases=1,
     )
     assert sent == ["case-01"]
-    assert result["suite_execution_state"] == "held"
-    assert "USD" in result["campaign_review_holds"][0]
-    assert not result["invocation"]["case_limit_reached"]
+    assert result["suite_execution_state"] == "awaiting_explicit_execution"
+    assert not result["campaign_review_holds"]
+    assert result["invocation"]["case_limit_reached"]
+    resumed = await execution.execute(
+        directory,
+        proposal.digest,
+        tmp_path / "campaign",
+        authorization(proposal),
+        proofs,
+        max_new_cases=1,
+    )
+    assert sent == ["case-01"]
+    assert resumed["suite_execution_state"] == "held"
+    assert "USD" in resumed["campaign_review_holds"][0]
+    assert resumed["campaign_reserved_usd"] == result["campaign_reserved_usd"]
+    assert resumed["invocation"]["new_handoffs"] == 0
 
 
 @pytest.mark.serial

@@ -604,8 +604,9 @@ recovery bookkeeping do not count; uncertainty never authorizes replacement.
 `recover` rejects this option. Reports add `suite_execution_state` and safe
 assessment/physical identity metadata. Execution additionally returns invocation
 `max_new_cases`, `new_handoffs` and `case_limit_reached`; this transient reason is
-not persisted as a campaign event. Holds, cancellations, integrity, budget and
-deadline checks retain precedence. An incomplete pause reports
+not persisted as a campaign event. Existing holds, cancellations and integrity
+checks retain precedence. Resumption rechecks the original budget and deadlines
+before any new credential lookup or handoff. An incomplete pause reports
 `awaiting_explicit_execution`, never completion.
 
 `check-admission --proposal DIR --proposal-sha256 DIGEST --authorization FILE

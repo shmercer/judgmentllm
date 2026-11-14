@@ -558,13 +558,13 @@ async def execute(
             ) or (recover_only and not consumed):
                 break
             if not consumed:
+                if max_new_cases is not None and new_handoffs >= max_new_cases:
+                    limit_reached = True
+                    break
                 try:
                     ledger.reserve(proposal, case, commit=False)
                 except BudgetStop as error:
                     ledger.stop(proposal, case, str(error))
-                    break
-                if max_new_cases is not None and new_handoffs >= max_new_cases:
-                    limit_reached = True
                     break
             spec = validate_run_spec_json(case.specification_json)
             assert isinstance(spec, RunSpecV3)
