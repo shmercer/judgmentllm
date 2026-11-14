@@ -41,6 +41,12 @@ def outcomes(receipt: dict[str, Any], expected: set[str]) -> Counter[str]:
         raise ValueError("Collected cases differ from the partition manifest")
     grouped: dict[str, list[dict[str, Any]]] = {node: [] for node in expected}
     for report in receipt["reports"]:
+        if (
+            report.get("phase") not in {"setup", "call", "teardown"}
+            or report.get("outcome") not in {"passed", "failed", "skipped"}
+            or type(report.get("xfail")) is not bool
+        ):
+            raise ValueError("Invalid case phase, outcome or xfail evidence")
         nodeid = report["nodeid"]
         if nodeid not in grouped:
             raise ValueError("Unexpected case execution")

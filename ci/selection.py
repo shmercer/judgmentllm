@@ -53,7 +53,11 @@ def inventory(items: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def inventory_items(record: dict[str, Any]) -> list[dict[str, Any]]:
-    if record.get("schema_version") != 1 or type(record["schema_version"]) is not int:
+    if (
+        set(record) != {"schema_version", "modules"}
+        or record.get("schema_version") != 1
+        or type(record["schema_version"]) is not int
+    ):
         raise ValueError("Unsupported case inventory")
     return [
         {"nodeid": module + "::" + function + parameter, "markers": markers}
@@ -88,9 +92,32 @@ def matches(node: str, selector: str) -> bool:
 
 
 def validate_registry(policy: dict[str, Any], known: dict[str, Any]) -> None:
-    if policy.get("schema_version") != 1:
+    if (
+        set(policy)
+        != {
+            "schema_version",
+            "domains",
+            "modules",
+            "smoke",
+            "mandatory_smoke",
+            "extended",
+            "essential",
+            "providers",
+            "shared_sources",
+        }
+        or type(policy.get("schema_version")) is not int
+        or policy["schema_version"] != 1
+    ):
         raise ValueError("Unsupported test taxonomy")
-    nodes = {item["nodeid"] for item in inventory_items(known)}
+    prior = inventory_items(known)
+    nodes = {item["nodeid"] for item in prior}
+    if len(nodes) != len(prior):
+        raise ValueError("Duplicate inventory classification")
+    sources = policy["shared_sources"]
+    if len(sources) != len(set(sources)) or any(
+        not path.startswith("src/") for path in sources
+    ):
+        raise ValueError("Duplicate or invalid shared source classification")
     if set(policy["modules"]) != set(known["modules"]):
         raise ValueError("New test unclassified or stale module classification")
     for module, entry in policy["modules"].items():
@@ -111,7 +138,11 @@ def validate_registry(policy: dict[str, Any], known: dict[str, Any]) -> None:
     if not set(policy["mandatory_smoke"]) <= set(policy["smoke"]):
         raise ValueError("Mandatory cross-platform smoke/negative boundary removed")
     for selectors in policy["providers"].values():
-        if not selectors or not set(selectors) <= set(policy["modules"]):
+        if (
+            not selectors
+            or len(selectors) != len(set(selectors))
+            or not set(selectors) <= set(policy["modules"])
+        ):
             raise ValueError("Unclassified provider impact mapping")
 
 

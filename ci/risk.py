@@ -678,6 +678,9 @@ def admit(
             names
         ):
             errors.append(f"Missing or duplicated required steps: {lane}")
-        if any(step.get("exit_code") != 0 for step in steps):
+        if any(
+            type(step.get("exit_code")) is not int or step["exit_code"] != 0
+            for step in steps
+        ):
             errors.append(f"Failed required step: {lane}")
     return errors

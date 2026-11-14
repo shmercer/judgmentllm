@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from risk import R_GATES, admit, git, lane_profile, make_plan, required_steps
+from selection import read
 from suite_evidence import validate_suite
 
 HERE = Path(__file__).resolve().parent
@@ -78,6 +79,8 @@ def run_lane(
     if output.is_relative_to(source):
         raise ValueError("Evidence must be outside the checkout")
     expected = next(item for item in plan["lanes"] if item["id"] == lane)
+    if execution_scope == "hosted" and workers != expected["workers"]:
+        raise ValueError("Hosted workers must match the trusted plan")
     systems = {
         "ubuntu-latest": "Linux",
         "ubuntu-24.04": "Linux",
@@ -159,7 +162,7 @@ def run_lane(
     try:
         verify_source()
         if quality_receipt is not None and lane == "linux-3.11":
-            prior = json.loads(quality_receipt.read_text(encoding="utf-8"))
+            prior = read(quality_receipt)
             if (
                 any(
                     prior.get(key) != report[key]
@@ -445,7 +448,7 @@ def main() -> int:
         return 0
     if args.operation == "r-gate":
         return r_gate(args.name, args.source, args.output)
-    plan = json.loads(args.plan.read_text(encoding="utf-8"))
+    plan = read(args.plan)
     if args.operation == "lane":
         return run_lane(
             plan,
@@ -465,10 +468,10 @@ def main() -> int:
     if not args.base or not args.head:
         parser.error("aggregation requires independently supplied --base and --head")
     expected_plan = make_plan(args.source, args.base, args.head, minimum=args.risk)
-    if plan != expected_plan:
+    if json.dumps(plan, sort_keys=True) != json.dumps(expected_plan, sort_keys=True):
         raise ValueError("Plan artifact differs from protected-base classification")
     paths = list(args.receipts.rglob("receipt.json"))
-    receipts = [json.loads(path.read_text(encoding="utf-8")) for path in paths]
+    receipts = [read(path) for path in paths]
     errors = admit(plan, receipts, args.run_id)
     for path, receipt in zip(paths, receipts, strict=True):
         if plan["risk"] < 1:

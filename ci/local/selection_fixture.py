@@ -90,6 +90,15 @@ def write_suite(plan: dict[str, Any], lane: str, root: Path) -> str:
             "test_profile": selected["profile"],
             "selection_sha256": selected["selection_sha256"],
             "coverage_enabled": False,
+            "workers": next(
+                item["workers"] for item in plan["lanes"] if item["id"] == lane
+            ),
+            "requested_workers": next(
+                item["workers"] for item in plan["lanes"] if item["id"] == lane
+            ),
+            "distribution": next(
+                item["distribution"] for item in plan["lanes"] if item["id"] == lane
+            ),
             "partitions": parts,
             "counts": dict(total),
             "expected_cases": sum(total.values()),

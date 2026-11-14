@@ -446,6 +446,7 @@ def passing_receipts(plan: dict[str, Any]) -> list[dict[str, Any]]:
         "duplicate-step",
         "local-scope",
         "missing-scope",
+        "boolean-step-code",
     ],
 )
 def test_admission_never_conceals_failed_or_omitted_requirements(
@@ -493,6 +494,8 @@ def test_admission_never_conceals_failed_or_omitted_requirements(
         receipts[0]["execution_scope"] = "local"
     elif fault == "missing-scope":
         receipts[0].pop("execution_scope")
+    elif fault == "boolean-step-code":
+        receipts[0]["steps"][0]["exit_code"] = False
     assert bool(admit(plan, receipts, "run:1")) == (fault != "none")
 
 
@@ -535,6 +538,7 @@ def test_malformed_receipt_is_a_failing_command(
     [
         "none",
         "plan-tamper",
+        "boolean-plan",
         pytest.param("hosted-r-step", id="missing-r"),
         "missing-receipt",
         "wrong-source",
@@ -552,6 +556,8 @@ def test_aggregate_reconstructs_trusted_plan_and_checks_artifacts(
     receipts = passing_receipts(plan)
     if fault == "plan-tamper":
         plan["risk"] = 0
+    elif fault == "boolean-plan":
+        plan["coverage"] = 1
     elif fault == "hosted-r-step":
         receipts[0]["steps"].append({"name": "r-execution", "exit_code": 0})
     elif fault == "missing-receipt":

@@ -27,6 +27,10 @@ reported separately. No historical performance campaign was repeated.
 The successful [hosted reference](https://github.com/shmercer/judgmentllm/actions/runs/43532744276)
 took about 41.5 minutes overall, with Linux 18.5, macOS 26.9 and Windows 39.6
 minutes. These are observations on different hosted machines, not distributions.
+Its actual receipts collect 8,482 cases and execute 8,451 hosted cases per lane,
+including allowed platform skips. The current base adds 67 cases and removes
+zero. Comparable full-suite observations must disclose that scope difference;
+shorter selected-platform execution is not an equal-case speed benchmark.
 The later [pre-change PR #53 run](https://github.com/shmercer/judgmentllm/actions/runs/43546038698)
 failed Windows and aggregate acceptance; its failure remains failed evidence.
 
@@ -95,7 +99,7 @@ new modules/parameters, deletion/rename, duplicate/stale metadata, isolation dri
 lost mandatory smoke, all levels/platform reach, missing/wrong-scope/tampered
 receipts, ordinary/serial failures and guide/interface consistency.
 
-Development validation passed 404 CI-policy selftests (42.71 seconds), Ruff,
+Development validation passed 417 CI-policy selftests (46.73 seconds), Ruff,
 formatting, strict Pyright, offline links/examples and unchanged-inventory
 validation. Three isolated in-memory production mutations were detected by
 independent assertions: accepting an invalid schema, claiming retention of
@@ -106,6 +110,15 @@ owned-child cancellation and unexpected Windows-lock contents. Seven selector/
 receipt fault selftests ensure those probes remain selected and failed calls or
 missing platform evidence cannot be reported as success. Mutants and raw logs
 are external and never enter normal execution or tracked production code.
+
+Final receipt review added explicit rejection of unevaluated outcome/phase tokens,
+non-boolean xfail fields, boolean exit codes, duplicate JSON keys, changed hosted
+scheduling, collection-time execution and boolean/unknown taxonomy controls.
+The preliminary `7b421b377b0cc00e0a0edc373a84fa977c826b0b` local campaign was
+gracefully interrupted after 8,452 ordinary passes (596.79 seconds) to apply these
+controls before expensive downstream work. It is **not qualified**: no complete
+coverage, resource or named R-gate pass is credited to that attempt. Final
+qualification uses a new clean commit and independently source-bound receipts.
 
 Raw evidence is retained outside Git under `/tmp/judgmentllm-issue54/`, with
 source/run/plan identities. The final PR reports actual checks and runtime by

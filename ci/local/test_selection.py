@@ -111,6 +111,10 @@ def test_inventory_changes_cannot_disappear(
         "missing-smoke",
         "unknown-domain",
         "bad-cost",
+        "boolean-version",
+        "unknown-field",
+        "duplicate-source",
+        "duplicate-provider",
     ],
 )
 def test_metadata_drift_fails_closed(fault: str) -> None:
@@ -130,6 +134,14 @@ def test_metadata_drift_fails_closed(fault: str) -> None:
         taxonomy["smoke"].pop()
     elif fault == "unknown-domain":
         taxonomy["modules"]["tests/test_config.py"]["domain"] = "invented"
+    elif fault == "boolean-version":
+        taxonomy["schema_version"] = True
+    elif fault == "unknown-field":
+        taxonomy["ignored_control"] = "unsafe"
+    elif fault == "duplicate-source":
+        taxonomy["shared_sources"].append(taxonomy["shared_sources"][0])
+    elif fault == "duplicate-provider":
+        taxonomy["providers"]["openai"].append(taxonomy["providers"]["openai"][0])
     else:
         taxonomy["modules"]["tests/test_config.py"]["cost"] = "unbounded"
     with pytest.raises(ValueError):
@@ -251,6 +263,13 @@ def test_unknown_dependency_escalates_to_complete_platform_verification(
         "wrong-lock",
         "partition",
         "accounting",
+        "unknown-outcome",
+        "unknown-phase",
+        "bad-xfail",
+        "executed-collection",
+        "wrong-workers",
+        "wrong-distribution",
+        "boolean-exit-code",
     ],
 )
 def test_raw_platform_evidence_is_independently_validated(
@@ -271,7 +290,9 @@ def test_raw_platform_evidence_is_independently_validated(
         "selection-manifest.json"
         if fault in {"wrong-profile", "bad-hash"}
         else "summary.json"
-        if fault in {"partition", "accounting"}
+        if fault in {"partition", "accounting", "wrong-workers", "wrong-distribution"}
+        else "collection.json"
+        if fault == "executed-collection"
         else "ordinary.json"
     )
     path = root / "suite" / file
@@ -286,6 +307,27 @@ def test_raw_platform_evidence_is_independently_validated(
         raw["reports"].append(raw["reports"][0])
     elif fault == "missing-phase":
         raw["reports"].pop(0)
+    elif fault == "unknown-outcome":
+        raw["reports"][1]["outcome"] = "unevaluated"
+    elif fault == "unknown-phase":
+        raw["reports"][1]["phase"] = "unrecognized"
+    elif fault == "bad-xfail":
+        raw["reports"][1]["xfail"] = ""
+    elif fault == "executed-collection":
+        raw["reports"] = [
+            {
+                "nodeid": "unplanned-call",
+                "phase": "call",
+                "outcome": "passed",
+                "xfail": False,
+            }
+        ]
+    elif fault == "wrong-workers":
+        raw["requested_workers"] = 32
+    elif fault == "wrong-distribution":
+        raw["distribution"] = "worksteal"
+    elif fault == "boolean-exit-code":
+        raw["exit_code"] = False
     elif fault in {"skip", "xfail"}:
         raw["reports"][1]["outcome"] = "skipped" if fault == "skip" else "passed"
         raw["reports"][1]["xfail"] = fault == "xfail"

@@ -33,7 +33,9 @@ def validate_suite(
         include_resources="resources" in needed,
     )
     if (
-        collection["exit_code"] != 0
+        type(collection.get("exit_code")) is not int
+        or collection["exit_code"] != 0
+        or collection.get("reports") != []
         or selection != read(root / "selection-manifest.json")
         or selection["policy_sha256"] != plan["selection_policy_sha256"]
         or summary.get("test_profile") != profile
@@ -46,6 +48,13 @@ def validate_suite(
         or summary["source"]["dirty"] is not False
     ):
         raise ValueError("Incomplete, stale or incorrect suite selection/identity")
+    if scope == "hosted" and (
+        summary.get("requested_workers") != expected["workers"]
+        or summary.get("distribution") != expected["distribution"]
+        or type(summary.get("workers")) is not int
+        or not 1 <= summary["workers"] <= expected["workers"]
+    ):
+        raise ValueError("Suite scheduling differs from the hosted plan")
     provenance = summary["provenance"]
     interpreter = provenance["interpreter"]
     platform = {
@@ -88,7 +97,9 @@ def validate_suite(
         counts = outcomes(receipt, required[part["name"]])
         if (
             receipt.get("provenance") != provenance
+            or type(receipt.get("exit_code")) is not int
             or receipt["exit_code"] != 0
+            or type(part.get("exit_code")) is not int
             or part["exit_code"] != 0
             or counts["failed"]
             or counts["errors"]
