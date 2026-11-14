@@ -17,6 +17,7 @@ import yaml
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 WORKFLOW = REPOSITORY / ".github/workflows/ci.yml"
+sys.path.insert(0, str(REPOSITORY / "ci"))
 
 
 def workflow() -> dict[str, Any]:
@@ -61,7 +62,10 @@ def test_workflow_is_base_owned_and_only_aggregator_can_write_statuses() -> None
     )
     assert status["if"] == "always()"
     assert "/statuses/$SOURCE_SHA" in status["run"]
-    assert 'context="CI acceptance"' in status["run"]
+    assert 'context="$STATUS_CONTEXT"' in status["run"]
+    assert status["env"]["STATUS_CONTEXT"] == (
+        "${{ github.event_name == 'workflow_dispatch' && github.ref != 'refs/heads/main' && 'CI candidate policy' || 'CI acceptance' }}"
+    )
     assert "job.status == 'success'" in status["env"]["STATE"]
 
 
@@ -83,6 +87,21 @@ def test_acceptance_status_includes_artifact_upload_outcome_and_is_last() -> Non
     )
 
 
+def test_quality_artifact_excludes_deliberately_unsafe_fixture_paths() -> None:
+    upload = next(
+        step
+        for step in workflow()["jobs"]["plan"]["steps"]
+        if step.get("name") == "Preserve plan and quality evidence"
+    )
+    assert upload["with"]["path"].splitlines() == [
+        "${{ runner.temp }}/p/plan.json",
+        "${{ runner.temp }}/p/quality/*.json",
+        "${{ runner.temp }}/p/quality/*.log",
+    ]
+    assert upload["if"] == "always()"
+    assert upload["with"]["if-no-files-found"] == "error"
+
+
 def test_workflow_runs_quality_before_dynamic_matrix_and_keeps_diagnostics() -> None:
     data = workflow()
     plan = data["jobs"]["plan"]
@@ -90,7 +109,7 @@ def test_workflow_runs_quality_before_dynamic_matrix_and_keeps_diagnostics() -> 
     assert verify["needs"] == "plan"
     assert verify["strategy"]["fail-fast"] == "false"
     assert verify["strategy"]["matrix"] == "${{ fromJSON(needs.plan.outputs.matrix) }}"
-    assert verify["timeout-minutes"] == "50"
+    assert verify["timeout-minutes"] == "90"
     commands = "\n".join(step.get("run", "") for step in plan["steps"])
     assert "python policy/ci/acceptance.py plan" in commands
     assert "--quality-only" in commands
@@ -101,6 +120,8 @@ def test_workflow_runs_quality_before_dynamic_matrix_and_keeps_diagnostics() -> 
     )
     assert "policy/ci/acceptance.py lane" in lane["run"]
     assert "--quality-receipt" in lane["run"]
+    assert 'partition=(--partition "${{ matrix.partition }}")' in lane["run"]
+    assert "matrix.partition" in verify["name"]
     for job in (plan, verify):
         install = next(
             step
@@ -158,7 +179,7 @@ def test_offline_package_cache_is_prepared_only_for_planned_installation_lanes()
         if step.get("name") == "Prepare offline core installation cache"
     )
     assert prepare["if"] == (
-        "needs.plan.outputs.packaging == 'true' && "
+        "needs.plan.outputs.packaging == 'true' && matrix.partition != 'serial' && "
         "(matrix.id == 'linux-3.11' || needs.plan.outputs.risk == '4')"
     )
     assert prepare["shell"] == "bash"

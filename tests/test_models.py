@@ -73,6 +73,27 @@ def test_invalid_identifiers(identifier: str) -> None:
         ResponseItem(item_id=identifier, text="")
 
 
+def test_identifier_ascii_control_and_unicode_boundaries() -> None:
+    for codepoint in range(128):
+        identifier = "left" + chr(codepoint) + "right"
+        if codepoint < 32 or codepoint == 127:
+            with pytest.raises(
+                ValidationError,
+                match="identifier must be nonempty with no surrounding whitespace",
+            ):
+                ResponseItem(item_id=identifier, text="")
+        else:
+            assert ResponseItem(item_id=identifier, text="").item_id == identifier
+    for identifier in ("001", "00042", "é漢字😀", "left\x80\x9fright"):
+        assert ResponseItem(item_id=identifier, text="").item_id == identifier
+    for whitespace in " \x85\xa0\u1680\u2000\u2028\u2029\u202f\u205f\u3000":
+        for identifier in (whitespace, whitespace + "001", "001" + whitespace):
+            with pytest.raises(ValidationError, match="identifier"):
+                ResponseItem(item_id=identifier, text="")
+        identifier = "left" + whitespace + "right"
+        assert ResponseItem(item_id=identifier, text="").item_id == identifier
+
+
 def test_empty_response_representable_metadata_roundtrip() -> None:
     item = ResponseItem(item_id="item", text="", metadata={"nested": [1, True, None]})
     assert ResponseItem.model_validate_json(item.model_dump_json()) == item

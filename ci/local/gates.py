@@ -119,17 +119,17 @@ def atomic_json(path: Path, value: Any) -> None:
 def windows_scratch_root(value: str) -> PureWindowsPath:
     """Keep Windows generated data in a short, local, project-owned namespace."""
     path = PureWindowsPath(value)
-    prefix = PureWindowsPath(r"C:\JudgmentLLM-ci\tmp")
+    prefix = PureWindowsPath(r"C:\jllm")
     if (
         not path.is_absolute()
         or tuple(part.casefold() for part in path.parts[: len(prefix.parts)])
         != tuple(part.casefold() for part in prefix.parts)
         or ".." in path.parts
         or any(part.endswith((" ", ".")) or ":" in part for part in path.parts[1:])
-        or len(str(path)) > 32
+        or len(str(path)) > 9
     ):
         raise ValueError(
-            "Windows scratch root must be C:\\JudgmentLLM-ci\\tmp or a short subdirectory (maximum 32 characters)"
+            "Windows scratch root must be C:\\jllm or a short subdirectory (maximum 9 characters before allocation)"
         )
     return path
 
@@ -151,7 +151,7 @@ def allocate_windows_scratch(environment: dict[str, str]) -> Path:
     root = Path(
         str(
             windows_scratch_root(
-                environment.get("JUDGMENTLLM_CI_SCRATCH_ROOT", r"C:\JudgmentLLM-ci\tmp")
+                environment.get("JUDGMENTLLM_CI_SCRATCH_ROOT", r"C:\jllm")
             )
         )
     )
@@ -584,6 +584,7 @@ class Runner:
             self.configure_data_paths()
             verify_interpreter(self.options.python_version)
             self.summary["interpreter_verified"] = True
+            self.required("git-version", ["git", "--version"], timeout=30)
             self.required("uv-version", [self.uv, "--version"], timeout=30)
             self.summary["uv"] = (
                 (self.output / self.summary["steps"][-1]["log"])

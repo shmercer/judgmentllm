@@ -97,6 +97,22 @@ def test_reject_cycles() -> None:
         canonical_bytes(cyclic)
 
 
+def test_scalar_subclasses_do_not_bypass_canonical_validation() -> None:
+    class String(str):
+        pass
+
+    class Integer(int):
+        pass
+
+    class Number(float):
+        pass
+
+    for value in (String("private"), Integer(1), Number(1), Number("nan")):
+        for data in (value, {"nested": [value]}):
+            with pytest.raises(ValueError, match="cannot be canonically encoded"):
+                canonical_bytes(data)
+
+
 @pytest.mark.parametrize("mutation", ["unknown", "wrong_type", "nonfinite", "nested"])
 def test_revalidate_current_model_state(mutation: str) -> None:
     item = ResponseItem(item_id="001", text="Sensitive-sentinel")

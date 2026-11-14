@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 # pyright: reportPrivateUsage=false
+import json
 import os
 import runpy
 import signal
@@ -298,13 +299,19 @@ def test_actual_cli_exit_propagation_without_real_service(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, required: str, expected: int
 ) -> None:
     # The isolated CLI process replaces lookup before launch.
+    # Windows needs a real CLI child with portable quoting; POSIX retains execve.
     monkeypatch.undo()
     code = "\n".join(
         [
             "import sys",
             "from judgmentllm import keyring",
             "sys.platform = 'linux'",
-            "import subprocess",
+            "import os, subprocess",
+            "real_run = subprocess.run",
+            "if os.name == 'nt':",
+            "    def portable_exec(executable, argv, environment):",
+            "        raise SystemExit(real_run(argv, env=environment).returncode)",
+            "    keyring.os.execve = portable_exec",
             "def service(command, **kwargs):",
             "    assert command[0] in {'gdbus', 'secret-tool'}",
             "    output = b\"([objectpath '/synthetic/item'], @ao [])\" if command[0] == 'gdbus' else b'SYNTHETIC_KEYRING_SENTINEL'",
@@ -325,6 +332,7 @@ def test_actual_cli_exit_propagation_without_real_service(
             "status",
             "--require",
             required,
+            "--json",
         ],
         cwd=tmp_path,
         capture_output=True,
@@ -333,5 +341,8 @@ def test_actual_cli_exit_propagation_without_real_service(
         env={k: v for k, v in os.environ.items() if k not in keyring._KEY_VARIABLES},
     )
     assert result.returncode == expected, result.stdout + result.stderr
+    assert "SyntaxError" not in result.stderr
+    envelope = json.loads(result.stdout)
+    assert envelope["data"]["requirements_met"] == (expected == 0)
     assert KEY not in result.stdout + result.stderr
     assert not list(tmp_path.iterdir())

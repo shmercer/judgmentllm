@@ -77,6 +77,8 @@ def _record_data(value: object) -> object:
     model_dump() alone drops unknown keys injected by model_copy(update=...).
     Iterating models retains those keys so reconstruction can reject them.
     """
+    if value is None or type(value) in (str, bool, int, float):
+        return value
     if isinstance(value, BaseModel):
         data = {name: _record_data(item) for name, item in value}
         if value.__pydantic_root_model__:

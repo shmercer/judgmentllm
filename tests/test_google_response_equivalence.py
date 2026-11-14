@@ -202,7 +202,31 @@ def captured(action: Callable[[], object]) -> object:
     try:
         return action()
     except (ValueError, TypeError) as error:
-        return {"error": type(error).__name__, "message": str(error)}
+        message = str(error)
+        if type(error) is TypeError:
+            # Python 3.15 adds context to this builtin error; retain the old snapshot.
+            for name in ("list", "dict"):
+                original = f"unhashable type: '{name}'"
+                if message == f"cannot use '{name}' as a set element ({original})":
+                    message = original
+                    break
+        return {"error": type(error).__name__, "message": message}
+
+
+def test_snapshot_preserves_types_and_only_normalizes_native_set_errors() -> None:
+    values: tuple[object, ...] = ([], {})
+    for value in values:
+        assert captured(lambda value=value: value in frozenset[object]({"STOP"})) == {
+            "error": "TypeError",
+            "message": f"unhashable type: '{type(value).__name__}'",
+        }
+    for kind in (TypeError, ValueError):
+        for message in ("provider-safe-error", "unhashable type: 'set'"):
+
+            def fail(kind: type[Exception] = kind, message: str = message) -> object:
+                raise kind(message)
+
+            assert captured(fail) == {"error": kind.__name__, "message": message}
 
 
 def snapshot(provider: str, body: dict[str, Any], tmp_path: Path) -> dict[str, object]:

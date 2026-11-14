@@ -13,7 +13,9 @@ import time
 from pathlib import Path
 from typing import Any
 
-from risk import R_GATES, admit, git, make_plan, required_steps
+from risk import R_GATES, admit, git, lane_profile, make_plan, required_steps
+from selection import read
+from suite_evidence import validate_suite
 
 HERE = Path(__file__).resolve().parent
 
@@ -68,6 +70,7 @@ def run_lane(
     quality_only: bool = False,
     quality_receipt: Path | None = None,
     execution_scope: str = "hosted",
+    partition: str = "all",
 ) -> int:
     if execution_scope not in {"local", "hosted"}:
         raise ValueError("Execution scope must be local or hosted")
@@ -77,6 +80,21 @@ def run_lane(
     if output.is_relative_to(source):
         raise ValueError("Evidence must be outside the checkout")
     expected = next(item for item in plan["lanes"] if item["id"] == lane)
+    if execution_scope == "local" and partition != "all":
+        raise ValueError("Local qualification requires all partitions")
+    if (
+        execution_scope == "hosted"
+        and not quality_only
+        and not any(
+            item["id"] == lane and item["partition"] == partition
+            for item in plan["hosted_tasks"]
+        )
+    ):
+        raise ValueError("Hosted partition must match the trusted plan")
+    if execution_scope == "hosted" and workers != (
+        1 if partition == "serial" else expected["workers"]
+    ):
+        raise ValueError("Hosted workers must match the trusted plan")
     systems = {
         "ubuntu-latest": "Linux",
         "ubuntu-24.04": "Linux",
@@ -88,11 +106,14 @@ def run_lane(
     ):
         raise ValueError("Lane interpreter/OS does not match its plan")
     output.mkdir(parents=True, exist_ok=False)
-    needed = required_steps(plan, lane, execution_scope=execution_scope)
+    needed = required_steps(
+        plan, lane, execution_scope=execution_scope, partition=partition
+    )
     report: dict[str, Any] = {
         "source_sha": plan["source_sha"],
         "plan_sha256": plan["plan_sha256"],
         "lane": lane,
+        "partition": partition,
         "run_id": run_id,
         "execution_scope": execution_scope,
         "status": "failed",
@@ -105,12 +126,15 @@ def run_lane(
             "r_interoperability": execution_scope == "hosted",
         },
         "risk": plan["risk"],
+        "test_profile": lane_profile(plan, lane, execution_scope),
         "python": sys.version,
         "os": platform.platform(),
         "phase": "quality" if quality_only else "complete",
     }
     environment = clean_environment()
     environment["JUDGMENTLLM_CI_RUN_ID"] = f"{run_id}:{lane}"
+    if partition != "all":
+        environment["JUDGMENTLLM_CI_RUN_ID"] += f":{partition}"
     if execution_scope == "local":
         environment["JUDGMENTLLM_R_STRICT"] = "1"
     environment["JUDGMENTLLM_OPENAI_RESOURCE_EVIDENCE"] = str(
@@ -156,8 +180,12 @@ def run_lane(
 
     try:
         verify_source()
-        if quality_receipt is not None and lane == "linux-3.11":
-            prior = json.loads(quality_receipt.read_text(encoding="utf-8"))
+        if (
+            quality_receipt is not None
+            and lane == "linux-3.11"
+            and partition != "serial"
+        ):
+            prior = read(quality_receipt)
             if (
                 any(
                     prior.get(key) != report[key]
@@ -172,6 +200,7 @@ def run_lane(
                 or prior.get("phase") != "quality"
                 or prior.get("status") != "passed"
                 or prior.get("source_verified") is not True
+                or len(prior["steps"]) != len(cheap)
                 or {item["name"] for item in prior["steps"]} != cheap
                 or any(item["exit_code"] != 0 for item in prior["steps"])
             ):
@@ -210,10 +239,22 @@ def run_lane(
             )
         if "infrastructure" in needed:
             step(
-                "infrastructure", [python, "-m", "pytest", "--no-cov", "-q", "ci/local"]
+                "infrastructure",
+                [
+                    python,
+                    "-m",
+                    "pytest",
+                    "--no-cov",
+                    "-q",
+                    "ci/local",
+                    f"--basetemp={output / 'infrastructure-tmp'}",
+                    "-o",
+                    f"cache_dir={output / 'pytest-cache'}",
+                ],
             )
         if "build" in needed:
-            step("build", ["uv", "build", "--offline"])
+            distributions = output / "dist"
+            step("build", ["uv", "build", "--offline", "--out-dir", str(distributions)])
             step(
                 "metadata",
                 [
@@ -222,11 +263,11 @@ def run_lane(
                     "twine",
                     "check",
                     "--strict",
-                    *sorted(glob.glob(str(source / "dist/*"))),
+                    *sorted(glob.glob(str(distributions / "*"))),
                 ],
             )
             for kind, pattern in (("wheel", "*.whl"), ("sdist", "*.tar.gz")):
-                artifacts = list((source / "dist").glob(pattern))
+                artifacts = list(distributions.glob(pattern))
                 if len(artifacts) != 1:
                     raise ValueError(f"Expected exactly one {kind}")
                 step(
@@ -248,9 +289,19 @@ def run_lane(
                 str(output / "suite"),
                 "--workers",
                 str(workers),
+                "--distribution",
+                expected["distribution"],
                 "--bound-workers",
                 "--contract",
                 str(HERE / "test-contract.json"),
+                "--plan",
+                str(output / "executed-plan.json"),
+                "--lane",
+                lane,
+                "--execution-scope",
+                execution_scope,
+                "--grid-partition",
+                partition,
             ]
             if "coverage" in needed:
                 command += [
@@ -265,7 +316,8 @@ def run_lane(
                 command.append("--skip-resources")
             if execution_scope == "hosted":
                 command.append("--skip-r")
-            command += plan["targets"]
+            save(output / "executed-plan.json", plan)
+            command += ["tests"]
             step("tests", command)
             suite = json.loads(
                 (output / "suite/summary.json").read_text(encoding="utf-8")
@@ -284,6 +336,10 @@ def run_lane(
                 raise ValueError("Hosted lanes must not measure coverage")
             if execution_scope == "local" and suite.get("deferred_r_cases"):
                 raise ValueError("Required local R cases were deferred")
+            validate_suite(
+                plan, lane, output, run_id, scope=execution_scope, partition=partition
+            )
+            report["selection_sha256"] = suite["selection_sha256"]
             for alias in ("coverage", "resources"):
                 if alias in needed:
                     if (
@@ -392,7 +448,10 @@ def main() -> int:
     parser.add_argument("--lane", default="linux-3.11")
     parser.add_argument("--run-id", default="local")
     parser.add_argument("--receipts", type=Path)
-    parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--workers", type=int)
+    parser.add_argument(
+        "--partition", choices=("all", "ordinary", "serial"), default="all"
+    )
     parser.add_argument("--name", choices=R_GATES)
     parser.add_argument("--quality-only", action="store_true")
     parser.add_argument("--quality-receipt", type=Path)
@@ -413,13 +472,15 @@ def main() -> int:
             with Path(os.environ["GITHUB_OUTPUT"]).open(
                 "a", encoding="utf-8"
             ) as stream:
-                stream.write("matrix=" + json.dumps({"include": plan["lanes"]}) + "\n")
+                stream.write(
+                    "matrix=" + json.dumps({"include": plan["hosted_tasks"]}) + "\n"
+                )
                 stream.write(f"risk={plan['risk']}\n")
                 stream.write(f"packaging={str(plan['packaging']).lower()}\n")
         return 0
     if args.operation == "r-gate":
         return r_gate(args.name, args.source, args.output)
-    plan = json.loads(args.plan.read_text(encoding="utf-8"))
+    plan = read(args.plan)
     if args.operation == "lane":
         return run_lane(
             plan,
@@ -427,21 +488,47 @@ def main() -> int:
             args.output,
             args.lane,
             args.run_id,
-            workers=args.workers,
+            workers=args.workers
+            if args.workers is not None
+            else 1
+            if args.partition == "serial"
+            else next(
+                item["workers"] for item in plan["lanes"] if item["id"] == args.lane
+            ),
             quality_only=args.quality_only,
             quality_receipt=args.quality_receipt,
             execution_scope=args.execution_scope,
+            partition=args.partition,
         )
     if not args.base or not args.head:
         parser.error("aggregation requires independently supplied --base and --head")
     expected_plan = make_plan(args.source, args.base, args.head, minimum=args.risk)
-    if plan != expected_plan:
+    if json.dumps(plan, sort_keys=True) != json.dumps(expected_plan, sort_keys=True):
         raise ValueError("Plan artifact differs from protected-base classification")
-    receipts = [
-        json.loads(path.read_text(encoding="utf-8"))
-        for path in args.receipts.rglob("receipt.json")
-    ]
+    paths = list(args.receipts.rglob("receipt.json"))
+    receipts = [read(path) for path in paths]
     errors = admit(plan, receipts, args.run_id)
+    universes: dict[str, str] = {}
+    for path, receipt in zip(paths, receipts, strict=True):
+        if plan["risk"] < 1:
+            continue
+        try:
+            suite = validate_suite(
+                plan,
+                receipt["lane"],
+                path.parent,
+                args.run_id,
+                partition=receipt.get("partition", "all"),
+            )
+            if suite["selection_sha256"] != receipt.get("selection_sha256"):
+                raise ValueError("Lane receipt does not bind its exact selection")
+            universe = read(path.parent / "suite/selection-manifest.json")[
+                "inventory_sha256"
+            ]
+            if universes.setdefault(receipt["lane"], universe) != universe:
+                raise ValueError("Hosted partitions collected different case universes")
+        except (OSError, ValueError, KeyError, TypeError, StopIteration) as error:
+            errors.append(f"Invalid raw case evidence ({receipt.get('lane')}): {error}")
     save(
         args.output,
         {

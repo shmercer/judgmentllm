@@ -1,5 +1,12 @@
 # Local verification and optional complete grid
 
+For adding tests, taxonomy/parameter maintenance and troubleshooting, use the
+single [contributor testing guide](testing-guide.md). Level 2/3 hosted platforms
+now use exact smoke/extended selections; complete primary historical coverage
+and all applicable local R/resource gates remain required. Every hosted lane
+first validates full collection and emits executed/deferred/not-required case
+accounting. Level 4 below still runs complete supported suites.
+
 Use the authoritative [risk decision table and commands](ci-optimization.md)
 for development and PR acceptance. Targeted feedback uses the existing locked
 worktree environment; local Linux/Python 3.11 is the principal full-suite and coverage
@@ -59,6 +66,32 @@ entire operation, including result collection and graceful shutdown:
 /mnt/VM_Fast/pairwiseLLM-checks/macos-ci/.ci.lock
 ```
 
+Windows generated test/R data uses the separate short namespace `C:\jllm`.
+`JUDGMENTLLM_CI_SCRATCH_ROOT`, when set, must stay within that namespace and be
+at most nine characters before the exclusively allocated nine-character run
+name. This keeps deep SDK preparation paths below legacy Win32 path limits
+without shortening IDs or filenames, enabling long paths globally, or changing
+the VM allocation. Existing `C:\JudgmentLLM-ci\tmp` evidence is left intact;
+an override using that former namespace must be updated.
+The qualification reporter also gives Windows tests fresh compact pytest
+directories. The deep full-plan test also uses its own short-lived,
+exclusively allocated Windows workspace. Full node IDs stay in raw receipts; item IDs, artifact filenames,
+mutable-store isolation and retention remain unchanged. This leaves room for
+longer acknowledgment references as well as initial preparation artifacts.
+
+Git is a real test dependency: source-admission tests create and inspect actual
+repositories. The Windows adapter adds `C:\JudgmentLLM-ci\tools\git\cmd` to its
+process PATH; provision official portable MinGit there if Git is not already
+available. Doctor reports Git availability/version and gates fail before the
+suite when it is missing. Setup may download dependencies; test execution remains
+offline. The paused-export R consumer uses a retained `.R` file to avoid the
+Windows multiline `Rscript -e` crash; assertions and deadlines remain intact.
+
+Old Windows CI run copies and scratch may be cleared with explicit owner approval
+under the existing shared VM lock, after retaining portable result receipts/logs.
+Preserve active runs, dependency caches, installed runtimes/tools, unrelated
+projects and historical failures. Do not traverse junctions or force-stop the VM.
+
 Grid and direct guest adapters also reject incomplete allocation recovery journals
 under `/mnt/VM_Fast/judgmentllm-ci/overrides` before guest work. No supported
 per-run CPU/RAM override exists in the current guest launchers, so guest settings
@@ -104,14 +137,14 @@ Preparation installs only project-specific tools and caches:
 - uv 0.13.6 archives and executable bytes are pinned/verified. Official archive
   checksums are in `ci/local/grid.py`; macOS/Windows adapters also verify their
   cached executable bytes.
-- The Anthropic source-authorization integration test requires real Git. The
-  minimal Windows guest can use project-private MinGit 2.56.0.windows.4 at
-  `C:\JudgmentLLM-ci\tools\mingit-2.56.0.4`, prepared before offline checks.
-  The official `MinGit-2.56.0.4-64-bit.zip` SHA-256 is
-  `e3bf78351fe777fba47ddee5950082f8a98bb0f02604fdc7ba3ee2cb68ffa877`
-  ([release and checksums](https://github.com/git-for-windows/git/releases/tag/v2.56.0.windows.4)).
+- Source-authorization integration tests require real Git. The minimal Windows
+  guest uses project-private MinGit 2.56.1.windows.1 at
+  `C:\JudgmentLLM-ci\tools\git`, prepared before offline checks.
+  The official `MinGit-2.56.1-64-bit.zip` SHA-256 is
+  `4a92850b6e917da4fd010669b614b55dccf5b0ec333a534cc4be4700dfefdafd`
+  ([release and asset digest](https://github.com/git-for-windows/git/releases/tag/v2.56.1.windows.1)).
   Extract only the verified portable archive into that private directory. The
-  test adds its `cmd` directory only to its own process environment; system Git,
+  adapter adds its `cmd` directory only to its process environment; system Git,
   startup PATH, registry defaults and preflight provenance are unchanged.
 - Managed CPython 3.11.18/3.12.16 (all platforms) and 3.15.2 (Linux only) installs use their own directory, `--no-bin`
   and `--no-registry`; system Python, PATH startup files, and registry defaults

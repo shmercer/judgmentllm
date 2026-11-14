@@ -2,17 +2,19 @@
 
 from __future__ import annotations
 
+from collections.abc import Generator
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 import pytest
+from fixture_artifacts import snapshot
 
 if TYPE_CHECKING:
     from judgmentllm.study.records import Proposal
 
 
 @pytest.fixture(scope="session")
-def pilot(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, Proposal]:
+def pilot(tmp_path_factory: pytest.TempPathFactory) -> Generator[tuple[Path, Proposal]]:
     from study_fixture import PACKAGE, SOURCE
 
     from judgmentllm.study import plans
@@ -21,11 +23,13 @@ def pilot(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, Proposal]:
     with pytest.MonkeyPatch.context() as patch:
         patch.setattr(plans, "_source_commit", lambda: SOURCE)
         proposal = plans.build_proposal(PACKAGE, root / "proposal", "native_pilot")
-    return root / "proposal", proposal
+    before, model = snapshot(root), proposal.model_dump_json()
+    yield root / "proposal", proposal
+    assert snapshot(root) == before and proposal.model_dump_json() == model
 
 
 @pytest.fixture(scope="session")
-def tier(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, Proposal]:
+def tier(tmp_path_factory: pytest.TempPathFactory) -> Generator[tuple[Path, Proposal]]:
     from study_fixture import PACKAGE, SOURCE
 
     from judgmentllm.study import plans
@@ -36,7 +40,9 @@ def tier(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, Proposal]:
         proposal = plans.build_proposal(
             PACKAGE, root / "proposal", "tier_feasibility", capture="minimal"
         )
-    return root / "proposal", proposal
+    before, model = snapshot(root), proposal.model_dump_json()
+    yield root / "proposal", proposal
+    assert snapshot(root) == before and proposal.model_dump_json() == model
 
 
 @pytest.fixture(
@@ -44,7 +50,7 @@ def tier(tmp_path_factory: pytest.TempPathFactory) -> tuple[Path, Proposal]:
 )
 def control_proposal(
     tmp_path_factory: pytest.TempPathFactory, request: pytest.FixtureRequest
-) -> tuple[Path, Proposal]:
+) -> Generator[tuple[Path, Proposal]]:
     from study_fixture import PACKAGE, SOURCE
 
     from judgmentllm.study import plans
@@ -58,4 +64,6 @@ def control_proposal(
             request.param,
             capture="minimal" if request.param == "temperature_acceptance" else "full",
         )
-    return root / "proposal", proposal
+    before, model = snapshot(root), proposal.model_dump_json()
+    yield root / "proposal", proposal
+    assert snapshot(root) == before and proposal.model_dump_json() == model

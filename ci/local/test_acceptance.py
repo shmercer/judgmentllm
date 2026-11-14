@@ -305,9 +305,24 @@ def test_pr_planning_does_not_write_bytecode_to_its_policy_copy(
 ) -> None:
     source, plan = documentation
     policy = Path(acceptance.__file__).parent
-    for name in ("check.py", "acceptance.py", "risk.py", "verification-map.json"):
+    for name in (
+        "check.py",
+        "acceptance.py",
+        "risk.py",
+        "verification-map.json",
+        "selection.py",
+        "test-profiles.json",
+        "test-inventory.json",
+        "suite_evidence.py",
+        "local/suite.py",
+        "local/pytest_report.py",
+        "local/preflight_provenance.py",
+        "local/resource_budget.py",
+        "local/resource_specs.py",
+        "local/telemetry.py",
+    ):
         destination = source / "ci" / name
-        destination.parent.mkdir(exist_ok=True)
+        destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes((policy / name).read_bytes())
     freeze(source)
     result = subprocess.run(
@@ -354,9 +369,9 @@ def test_package_installation_is_offline_and_missing_cache_fails_closed(
         assert kwargs["env"]["UV_OFFLINE"] == "1"
         if command[:2] == ["uv", "build"]:
             assert "--offline" in command
-            (source / "dist").mkdir()
+            (tmp_path / "packages/dist").mkdir()
             for name in ("synthetic.whl", "synthetic.tar.gz"):
-                (source / "dist" / name).write_bytes(b"synthetic package")
+                (tmp_path / "packages/dist" / name).write_bytes(b"synthetic package")
         elif "scripts/smoke_install.py" in command:
             assert "--offline" in command
             installers.append(command)
@@ -515,6 +530,7 @@ def test_resource_measurement_selection_follows_execution_scope(
                     if scope == "hosted"
                     else [],
                     "coverage_enabled": False,
+                    "selection_sha256": "a" * 64,
                     "deferred_r_cases": ["synthetic R case"]
                     if scope == "hosted"
                     else [],
@@ -524,6 +540,12 @@ def test_resource_measurement_selection_follows_execution_scope(
         return subprocess.CompletedProcess[str](command, 0)
 
     monkeypatch.setattr(acceptance.subprocess, "run", execute)
+
+    # Raw evidence integrity has independent real-run and tampering tests.
+    def validated(*args: Any, **kwargs: Any) -> dict[str, Any]:
+        return {}
+
+    monkeypatch.setattr(acceptance, "validate_suite", validated)
     assert (
         acceptance.run_lane(
             plan,

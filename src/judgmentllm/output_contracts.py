@@ -94,6 +94,8 @@ AssessmentOutputContract = RubricOutputContract | PairwiseOutputContract
 
 
 def _snapshot(value: object) -> object:
+    if value is None or type(value) in (str, bool, int, float):
+        return value
     if isinstance(value, BaseModel):
         return {key: _snapshot(item) for key, item in value}
     if isinstance(value, tuple):

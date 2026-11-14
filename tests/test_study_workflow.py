@@ -4,7 +4,10 @@ from __future__ import annotations
 
 # pyright: reportPrivateUsage=false
 import json
+import os
 import shutil
+import tempfile
+from collections.abc import Iterator
 from decimal import Decimal
 from pathlib import Path
 from typing import Any, cast
@@ -22,6 +25,16 @@ from judgmentllm.study.budget import BudgetLedger, BudgetStop
 from judgmentllm.study.budget import _global_lock_path as default_lock_path
 from judgmentllm.study.definitions import library
 from judgmentllm.study.records import Case, OutcomePrice, Price, Proposal
+
+
+@pytest.fixture
+def plan_directory(tmp_path: Path) -> Iterator[Path]:
+    if os.name == "nt":
+        # Real artifact IDs need more space than an xdist worker path permits on legacy Win32.
+        with tempfile.TemporaryDirectory(prefix="jllm-", dir=tmp_path.anchor) as short:
+            yield Path(short) / "p"
+    else:
+        yield tmp_path / "plan"
 
 
 def test_worst_documented_served_price_and_independent_scope(
@@ -88,7 +101,9 @@ def test_global_ownership_and_plan_cannot_move_to_fresh_budget(
 
 
 def test_plan_artifacts_and_holistic_cli_previews(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    plan_directory: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     entries = library(PACKAGE)
 
@@ -96,9 +111,9 @@ def test_plan_artifacts_and_holistic_cli_previews(
         return entries[:1]
 
     monkeypatch.setattr(plans, "library", first_only)
-    result = plans.full_plan(PACKAGE, tmp_path / "plan", "a" * 40)
+    result = plans.full_plan(PACKAGE, plan_directory, "a" * 40)
     assert result["configurations"] == result["requests"] == 1
-    row = json.loads((tmp_path / "plan/requests.jsonl").read_text())
+    row = json.loads((plan_directory / "requests.jsonl").read_text())
     assert row["configuration_id"] == entries[0][0]
     assert json.loads(row["files"]["00.payload.json"])["max_output_tokens"] == 4096
     for command in ("preview", "schema", "preflight"):

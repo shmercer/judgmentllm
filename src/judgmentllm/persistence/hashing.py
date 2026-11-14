@@ -17,10 +17,6 @@ from judgmentllm.io import _revalidate_record  # pyright: ignore[reportPrivateUs
 
 
 def _snapshot(value: object) -> JsonValue:
-    if isinstance(value, BaseModel):
-        # As with export, model_copy mutations and nested mutable data must be
-        # revalidated before a Pydantic serializer can omit undeclared fields.
-        return _snapshot(_revalidate_record(value).model_dump(mode="json"))
     if value is None or type(value) in (str, bool, int):
         return cast(JsonValue, value)
     if type(value) is float:
@@ -28,6 +24,10 @@ def _snapshot(value: object) -> JsonValue:
         if not math.isfinite(number):
             raise ValueError("canonical data must contain only finite numbers")
         return number
+    if isinstance(value, BaseModel):
+        # As with export, model_copy mutations and nested mutable data must be
+        # revalidated before a Pydantic serializer can omit undeclared fields.
+        return _snapshot(_revalidate_record(value).model_dump(mode="json"))
     if isinstance(value, list):
         return [_snapshot(item) for item in cast(list[object], value)]
     if isinstance(value, dict):
