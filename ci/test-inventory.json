@@ -1224,6 +1224,7 @@
       "test_all_six_approved_example_schemas_and_ordered_serializations": {"": []},
       "test_already_decoded_output_rejects_non_json_values": {"[data0]": [], "[data1]": [], "[data2]": [], "[data3]": [], "[data4]": [], "[data5]": []},
       "test_complete_rubric_validation_returns_existing_typed_output": {"[bytes-explanations_first]": [], "[bytes-scores_first]": [], "[bytes-together]": [], "[object-explanations_first]": [], "[object-scores_first]": [], "[object-together]": [], "[text-explanations_first]": [], "[text-scores_first]": [], "[text-together]": []},
+      "test_copied_contract_rejects_unsupported_nested_objects_privately": {"": []},
       "test_decoded_output_cycles_fail_cleanly": {"": []},
       "test_forced_choice_accepts_winner_only_and_legacy_false": {"[bytes-False-False]": [], "[bytes-False-True]": [], "[bytes-True-False]": [], "[bytes-True-True]": [], "[object-False-False]": [], "[object-False-True]": [], "[object-True-False]": [], "[object-True-True]": [], "[text-False-False]": [], "[text-False-True]": [], "[text-True-False]": [], "[text-True-True]": []},
       "test_large_synthetic_group_preserves_all_members_and_categories": {"": []},

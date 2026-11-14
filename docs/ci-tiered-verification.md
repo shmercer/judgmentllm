@@ -14,9 +14,9 @@ Full offline collection at the base contains **8,549 cases, 1,822 functions,
 189 modules**, with all parameter IDs preserved. The generated compact inventory
 adds no test executions or assertion replacements. Existing replacement/skip
 contracts, genuine historical fixture bytes and coverage floor are unchanged.
-The identifier, scalar-subclass and runtime-snapshot regressions add three
-cases/functions: **8,552 cases and 1,825 functions**, with every original case
-retained.
+The identifier, scalar-subclass, runtime-snapshot and copied-object regressions
+add four cases/functions: **8,553 cases and 1,826 functions**, with every original
+case retained.
 The module taxonomy records domain, cost/isolation and platform rationale;
 function selectors cover heterogeneous modules. Unclassified additions are
 mandatory on every lane and unknown dependencies strengthen platform depth.
@@ -52,7 +52,7 @@ failed Windows and aggregate acceptance; its failure remains failed evidence.
 
 The final registry selects **108** hosted smoke cases or **2,422** extended cases
 before change-specific impact additions. Both explicitly defer **34** local-only
-R/resource cases. Full hosted selection retains **8,518** cases. All counts are
+R/resource cases. Full hosted selection retains **8,519** cases. All counts are
 derived from complete collection and exact selectors, not acceptance thresholds.
 The final plan may add whole changed modules and new cases. Each lane preserves
 ordinary/serial/resource partitioning and the genuine cold SDK correctness probe.
@@ -200,6 +200,32 @@ Python 3.11 and 3.15; 667 focused correction cases pass on Python 3.15. These
 corrections require fresh exact-head qualification; the earlier source's local
 pass and candidate pass cannot qualify the final source. Full Windows budget
 pressure remains unresolved until fresh actual receipts establish otherwise.
+
+At source `d81609e`, all 8,552 functional cases passed, including eighteen serial
+and twenty resource cases. Combined coverage was 95.2241%, but historical
+coverage rejected one previously covered fallback return in contract snapshots:
+scalar fast paths had removed its former coverage. That source is **unqualified**
+and did not reach the seven named R gates. An independent copied-contract test
+now rejects unsupported nested objects through public schema serialization and
+asserts its error cannot expose their private representation; no baseline or
+threshold changed. Its [candidate run](https://github.com/shmercer/judgmentllm/actions/runs/43580189411)
+passed macOS extended (2,859 cases, zero skips, 1,545.98 seconds), but Linux full
+and Windows extended timed out in serial work after passing their complete
+ordinary partitions. Its [protected-base run](https://github.com/shmercer/judgmentllm/actions/runs/43580160416)
+reached the fifty-minute cap on all three full lanes. These are failed outcomes.
+
+A supplementary native Windows 3.12 diagnostic found durable-publication
+failures at legacy Win32 path limits. An external wrapper recorded an actual
+hard-link failure (WinError 3, destination length 266); shorter paths then exposed
+the same limit on transport-reference filenames at length 260. All three
+unchanged focused Vertex/Gemini cases pass under `C:\jllm` with the ordinary
+worker/test directory suffixes intact. The native CI harness now uses that
+short, project-owned root, with a nine-character limit on an override before
+run allocation. The original 32-bit random suffix, exclusive allocation/retries,
+path/junction validation and preservation of existing evidence remain. No
+production store behavior, IDs, filenames, VM allocation or Windows settings
+changed. Original invalid-root parameter IDs remain and additional guards test
+the new namespace. Fresh qualification is required after these corrections.
 
 Raw evidence is retained outside Git under `/tmp/judgmentllm-issue54/`, with
 source/run/plan identities. The final PR reports actual checks and runtime by

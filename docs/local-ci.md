@@ -66,6 +66,14 @@ entire operation, including result collection and graceful shutdown:
 /mnt/VM_Fast/pairwiseLLM-checks/macos-ci/.ci.lock
 ```
 
+Windows generated test/R data uses the separate short namespace `C:\jllm`.
+`JUDGMENTLLM_CI_SCRATCH_ROOT`, when set, must stay within that namespace and be
+at most nine characters before the exclusively allocated nine-character run
+name. This keeps deep SDK preparation paths below legacy Win32 path limits
+without shortening IDs or filenames, enabling long paths globally, or changing
+the VM allocation. Existing `C:\JudgmentLLM-ci\tmp` evidence is left intact;
+an override using that former namespace must be updated.
+
 Grid and direct guest adapters also reject incomplete allocation recovery journals
 under `/mnt/VM_Fast/judgmentllm-ci/overrides` before guest work. No supported
 per-run CPU/RAM override exists in the current guest launchers, so guest settings

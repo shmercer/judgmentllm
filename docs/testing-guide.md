@@ -219,6 +219,10 @@ it never publishes or authorizes provider calls.
 - **Slow fixture:** use retained timing receipts first. Move cheap pre-admission
   faults ahead of expensive sealing, preserve positive paths, hash-guard shared
   immutable artifacts and isolate mutable stores. Keep real lock/process tests.
+- **Native Windows publication/path failure:** keep generated data in the native
+  adapter's `C:\jllm` namespace. Its optional scratch-root override is limited to
+  nine characters before exclusive run allocation. Do not truncate IDs or
+  filenames, change Windows settings, or suppress durable-publication assertions.
 
 Every test PR should include classification/impact updates, complete case
 accounting, focused feedback, the automatic plan, exact-source local/hosted
