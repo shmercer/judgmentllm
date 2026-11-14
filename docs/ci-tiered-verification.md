@@ -14,6 +14,8 @@ Full offline collection at the base contains **8,549 cases, 1,822 functions,
 189 modules**, with all parameter IDs preserved. The generated compact inventory
 adds no test executions or assertion replacements. Existing replacement/skip
 contracts, genuine historical fixture bytes and coverage floor are unchanged.
+The final identifier regression adds one case/function: **8,550 cases and
+1,823 functions**, with every original case retained.
 The module taxonomy records domain, cost/isolation and platform rationale;
 function selectors cover heterogeneous modules. Unclassified additions are
 mandatory on every lane and unknown dependencies strengthen platform depth.
@@ -47,9 +49,9 @@ failed Windows and aggregate acceptance; its failure remains failed evidence.
 | 3 | Complete suite/history, seven R gates, affected resources/packages | Complete functional suite | Extended OS-sensitive/high-consequence and affected cases |
 | 4 | Existing comprehensive requirements | Complete supported versions | Complete supported versions |
 
-Base collection selects **106** hosted smoke cases or **2,418** extended cases
+The final registry selects **107** hosted smoke cases or **2,421** extended cases
 before change-specific impact additions. Both explicitly defer **34** local-only
-R/resource cases. Full hosted selection retains **8,515** cases. All counts are
+R/resource cases. Full hosted selection retains **8,516** cases. All counts are
 derived from complete collection and exact selectors, not acceptance thresholds.
 The final plan may add whole changed modules and new cases. Each lane preserves
 ordinary/serial/resource partitioning and the genuine cold SDK correctness probe.
@@ -68,8 +70,9 @@ protected-base status. Full eight-lane Level 4 availability remains intact.
 - Full authoritative collection happens once per lane; partition workers import
   only selected modules. This removes unnecessary repeated broad collection in
   smoke/extended lanes without changing their case receipts.
-- Selected profiles use file affinity and two Windows workers. Complete suites
-  retain work stealing/four hosted workers, avoiding a long single-file tail.
+- Selected profiles use file affinity, switching to work stealing when affected
+  modules are classified heavy. Windows subsets keep two workers. Complete
+  suites retain work stealing/four hosted workers, avoiding a long single-file tail.
   The 12-worker local choice remains explicit, supported by retained evidence.
 - Six invalid study-limit cases use typed synthetic consent and absent paths and
   assert admission/credential code is unreachable, avoiding repeated 42-case
@@ -80,9 +83,15 @@ protected-base status. Full eight-lane Level 4 availability remains intact.
   Vertex/Gemini plans are deliberately rebuilt; unsafe sharing was rejected.
 - Quality runs once; build/cache/evidence outputs are external. Genuine
   distribution reconstruction and independent installs retain their assertions.
+- The two bounded study subprocess cases run serially with their original
+  120-second deadline. This removes xdist CPU contention from process-death and
+  fresh-process recovery verification; both remain actual subprocess tests and
+  mandatory extended-platform cases.
 
-No production code, coverage baseline, supported version, resource ceiling,
-workload size, deadline, historical fixture or skip allowance is changed.
+No coverage baseline, supported version, resource ceiling, workload size,
+deadline, historical fixture or skip allowance is changed. The only production
+adjustment is the equivalent identifier scan described below; public validation
+and serialized outputs retain their existing behavior.
 
 The six invalid-limit cases took **49.02 seconds before / 1.30 seconds after**
 in bounded single-process runs (97.3% lower elapsed time). The original test and
@@ -92,6 +101,19 @@ The pre-change Windows failure was the Linux-only launcher's test forcing a
 POSIX exec path under Windows. The test now retains genuine CLI execution via a
 portable Windows child and asserts the actual JSON result as well as exit status;
 POSIX still uses real process replacement. No launcher production behavior changes.
+
+A focused profile of one real study-limit case records 1.98 billion function
+calls in 438.14 instrumented seconds. Identifier validation accounts for 84.58
+cumulative seconds, including 255 million Python character-generator iterations.
+The validator now scans the same ASCII control range with a compiled character
+class, retaining the whitespace checks and exact error text. It adds no cache or
+dependency. Comparison with the committed original on 2,228,224 strings spanning
+every Unicode code point found identical acceptance, values and errors. The new
+regression covers every ASCII boundary, Unicode whitespace and leading-zero IDs;
+it is mandatory platform smoke. For the same 500,000 synthetic valid IDs, the
+predicate took 0.9133 seconds before and 0.1651 after. This narrow production
+performance correction addresses the measured hosted-budget pressure without
+reducing validation; its microbenchmark is not an end-to-end speedup claim.
 
 ## D — qualification and contributor scaffolding
 
@@ -136,6 +158,17 @@ Plans derive that exact alternative byte hash from the committed lock, while
 receipts retain their actual bytes' hash. Only Windows admits LF or that committed
 CRLF form; changed content and foreign hashes still fail. This avoids treating a
 valid checkout normalization as a dependency substitution.
+
+The source-`37c7fae` [candidate run](https://github.com/shmercer/judgmentllm/actions/runs/43562912436)
+passed macOS (2,444 cases, zero skips, 1,458.60 suite seconds), but Linux and
+Windows reached the unchanged 50-minute job limit. Linux's ordinary receipt
+records 8,503 passes and a genuine 120-second child timeout under parallel load;
+Windows remained in the heavy file-affinity tail. Actual macOS reports attribute
+1,012.60 of 1,133.71 ordinary seconds to the changed study-limit module. These
+observations justify serial child isolation and work stealing for heavy impact;
+they do not qualify that failed run. Its local campaign was interrupted after
+8,513 ordinary passes (1,588.29 seconds) and twelve serial passes to apply the
+correction. No complete coverage/resource/named-R result is credited to it.
 
 Raw evidence is retained outside Git under `/tmp/judgmentllm-issue54/`, with
 source/run/plan identities. The final PR reports actual checks and runtime by

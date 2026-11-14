@@ -66,9 +66,12 @@ and unrelated content remains invalid.
 Manual feature-branch dispatch publishes `CI candidate policy`, keeping bootstrap
 evidence separate from the protected-base `CI acceptance` status.
 
-Subset lanes use file affinity and at most two Windows workers; complete lanes
-retain work stealing and the existing four-worker hosted cap. Explicit local
-worker choices remain supported. Ordinary partition execution imports only its
+Subset lanes use file affinity unless an affected module is classified `heavy`;
+heavy affected modules use work stealing to avoid a long single-file tail.
+Windows subsets retain at most two workers. Complete lanes retain work stealing
+and the existing four-worker hosted cap. Bounded study child-process tests run
+serially so their unchanged 120-second deadline is independent of xdist load.
+Explicit local worker choices remain supported. Ordinary partition execution imports only its
 selected modules after full authoritative collection. Serial tests retain real
 children, locks, R consumers and cold SDK probes; resource leases/deadlines and
 coverage instrumentation remain unchanged. Build outputs, caches and all bulky

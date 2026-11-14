@@ -874,6 +874,7 @@
       "test_exemplar_invalid_assignments": {"": ["smoke"]},
       "test_explicit_empty_pair_order_is_invalid": {"[original_order]": ["smoke"], "[presented_order]": ["smoke"]},
       "test_explicit_mapping_overrides_numeric_labels_and_roundtrips": {"": ["smoke"]},
+      "test_identifier_ascii_control_and_unicode_boundaries": {"": ["smoke"]},
       "test_invalid_category_scalar": {"[  ]": ["smoke"], "[False]": ["smoke"], "[None]": ["smoke"], "[True]": ["smoke"], "[]": ["smoke"], "[inf]": ["smoke"], "[label2]": ["smoke"], "[label3]": ["smoke"], "[nan]": ["smoke"]},
       "test_invalid_explicit_values": {"[values0]": ["smoke"], "[values1]": ["smoke"], "[values2]": ["smoke"], "[values3]": ["smoke"], "[values4]": ["smoke"]},
       "test_invalid_identifiers": {"[ ]": ["smoke"], "[ x]": ["smoke"], "[]": ["smoke"], "[a\\tb]": ["smoke"], "[a\\x7fb]": ["smoke"], "[x ]": ["smoke"], "[x\\n]": ["smoke"]},
@@ -1878,7 +1879,7 @@
       "test_one_handoff_resume_and_completion_preserve_all_identities": {"": ["serial"]},
       "test_pause_never_exhausts_budget_and_resuming_rechecks_it": {"": []},
       "test_paused_sdk_exports_are_consumed_in_strict_r": {"": ["r_interop", "serial"]},
-      "test_separate_process_resume_and_recovery_never_replace_requests": {"[crash]": [], "[execute]": []},
+      "test_separate_process_resume_and_recovery_never_replace_requests": {"[crash]": ["serial"], "[execute]": ["serial"]},
       "test_single_handoff_resource_and_cleanup_bounds": {"": ["resource"]}
     },
     "tests/test_study_native.py": {

@@ -487,6 +487,9 @@ def make_plan(
     case_inventory = read(SELECTION_ROOT / "test-inventory.json")
     validate_registry(taxonomy, case_inventory)
     impacted, impact_reasons = impact(names, taxonomy)
+    heavy_impact = any(
+        taxonomy["modules"][module]["cost"] == "heavy" for module in impacted
+    )
     unknown = [
         name
         for name in names
@@ -518,7 +521,7 @@ def make_plan(
                 else "platform-smoke"
             ),
             "workers": 2 if lane["id"].startswith("windows-") else 4,
-            "distribution": "loadfile",
+            "distribution": "worksteal" if heavy_impact else "loadfile",
         }
         for lane in reach
     ]

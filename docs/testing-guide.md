@@ -81,10 +81,14 @@ For SQLite/child ownership, follow
 The ownership module is `process-ownership`, `process`, with all three platforms.
 Its `test_independent_process_cannot_take_live_lock` and
 `test_process_death_releases_lock_and_recovers_stale_metadata` are mandatory smoke
-selectors. Retain actual subprocesses and independent SQLite handles. Only the
-fork-inheritance case requires `serial`; ordinary child tests may run in xdist
-with independent stores. Add new OS-sensitive selectors/defaults alongside new
-behavior, including a negative lock/cancellation assertion.
+selectors. Retain actual subprocesses and independent SQLite handles. In that
+module, only fork inheritance requires `serial`; ordinary child tests may run in
+xdist with independent stores. The heavier study-limit child cases use `serial`
+and an explicit `extended` function selector so the original 120-second deadline
+holds without competing workers. Affected modules classified `heavy` use work
+stealing rather than file affinity; the Windows subset cap remains two. Add new
+OS-sensitive selectors/defaults alongside new behavior, including a negative
+lock/cancellation assertion.
 
 For an offline SDK test, follow
 [OpenAI SDK bytes](../tests/test_openai_sdk_adapter.py) and the four provider

@@ -50,6 +50,25 @@ def test_inventory_taxonomy_is_complete_and_references_are_live(
     }
 
 
+@pytest.mark.parametrize("minimum", [2, 3])
+@pytest.mark.parametrize(
+    "module,distribution",
+    [("test_study_limits.py", "worksteal"), ("test_models.py", "loadfile")],
+)
+def test_heavy_impact_uses_work_stealing_without_raising_platform_caps(
+    repository: Any, minimum: int, module: str, distribution: str
+) -> None:
+    source, base = repository
+    (source / "tests").mkdir()
+    (source / "tests" / module).write_text("def test_synthetic(): assert True\n")
+    plan = make_plan(source, base, freeze(source), minimum=minimum)
+    for lane in plan["lanes"]:
+        assert lane["distribution"] == (
+            "worksteal" if lane["profile"] == "full" else distribution
+        )
+        assert lane["workers"] == (2 if lane["id"].startswith("windows-") else 4)
+
+
 @pytest.mark.parametrize(
     "profile", ["focused", "impacted", "platform-smoke", "platform-extended", "full"]
 )
@@ -175,6 +194,16 @@ def test_platform_profiles_retain_genuine_sdk_process_privacy_and_negative_paths
             and c["partition"] == "serial"
             for c in selected
         )
+        if record["profile"] == "platform-extended":
+            children = [
+                c
+                for c in selected
+                if c["nodeid"].startswith(
+                    "tests/test_study_limits.py::test_separate_process_resume_and_recovery_never_replace_requests["
+                )
+            ]
+            assert len(children) == 2
+            assert all(c["partition"] == "serial" for c in children)
         for provider in ("openai", "anthropic", "gemini", "vertex"):
             assert any(
                 c["nodeid"].startswith(

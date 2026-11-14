@@ -471,10 +471,12 @@ async def test_limit_retains_validation_failures_and_uncertainty(
     assert not resumed["invocation"]["case_limit_reached"]
 
 
+@pytest.mark.serial
 @pytest.mark.parametrize("mode", ["execute", "crash"])
 def test_separate_process_resume_and_recovery_never_replace_requests(
     prepared: tuple[Path, Path, Proposal, list[str]], tmp_path: Path, mode: str
 ) -> None:
+    # The 120-second child deadline must hold without parallel worker contention.
     assert prepared[0].parent == tmp_path
     helper = Path(__file__).with_name("study_limit_process.py")
     environment = {
