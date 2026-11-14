@@ -17,6 +17,7 @@ import yaml
 
 REPOSITORY = Path(__file__).resolve().parents[2]
 WORKFLOW = REPOSITORY / ".github/workflows/ci.yml"
+sys.path.insert(0, str(REPOSITORY / "ci"))
 
 
 def workflow() -> dict[str, Any]:
@@ -84,6 +85,21 @@ def test_acceptance_status_includes_artifact_upload_outcome_and_is_last() -> Non
     assert status["env"]["STATE"] == (
         "${{ job.status == 'success' && 'success' || 'failure' }}"
     )
+
+
+def test_quality_artifact_excludes_deliberately_unsafe_fixture_paths() -> None:
+    upload = next(
+        step
+        for step in workflow()["jobs"]["plan"]["steps"]
+        if step.get("name") == "Preserve plan and quality evidence"
+    )
+    assert upload["with"]["path"].splitlines() == [
+        "${{ runner.temp }}/p/plan.json",
+        "${{ runner.temp }}/p/quality/*.json",
+        "${{ runner.temp }}/p/quality/*.log",
+    ]
+    assert upload["if"] == "always()"
+    assert upload["with"]["if-no-files-found"] == "error"
 
 
 def test_workflow_runs_quality_before_dynamic_matrix_and_keeps_diagnostics() -> None:

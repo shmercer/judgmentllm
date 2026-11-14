@@ -120,6 +120,14 @@ controls before expensive downstream work. It is **not qualified**: no complete
 coverage, resource or named R-gate pass is credited to that attempt. Final
 qualification uses a new clean commit and independently source-bound receipts.
 
+The first [candidate-policy dispatch](https://github.com/shmercer/judgmentllm/actions/runs/43560873475)
+reached artifact upload, then failed because a recursive quality upload included
+the deliberately invalid `drive:stream` filename from an infrastructure test.
+Uploads now enumerate only plan/receipt JSON and diagnostic logs, preserving
+the negative fixture and keeping scratch trees external. That failed dispatch
+and the interrupted source-3928301 local campaign remain unqualified; final
+source-bound checks are rerun after the upload correction.
+
 Raw evidence is retained outside Git under `/tmp/judgmentllm-issue54/`, with
 source/run/plan identities. The final PR reports actual checks and runtime by
 scope, deliberate fault detection, hosted bootstrap and Level 4 evidence. A
