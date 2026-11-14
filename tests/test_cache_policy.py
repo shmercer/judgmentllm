@@ -234,6 +234,12 @@ def test_anthropic_new_explicit_does_not_reuse_the_legacy_breakpoint(
     spec.execution.cache_policy = "explicit"
     with pytest.raises(TransportIntegrityError):
         build_output_commitment_v5(spec, dependency.request, anthropic_context(spec))
+    legacy = cast(RunSpecV3, validate_run_spec(spec, _cache_policy_version=1))
+    legacy.model = "claude-haiku-4-5"
+    with pytest.raises(TransportIntegrityError):
+        build_output_commitment_v5(
+            legacy, dependency.request, anthropic_context(legacy)
+        )
 
 
 @pytest.mark.parametrize(
