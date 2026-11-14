@@ -182,6 +182,21 @@ def test_direct_compilation_cannot_enable_explicit_caching(tmp_path: Path) -> No
         build_output_commitment_v4(spec, dependency.request, production_context(spec))
 
 
+def test_anthropic_new_explicit_does_not_reuse_the_legacy_breakpoint(
+    tmp_path: Path,
+) -> None:
+    from anthropic_fixture import case as anthropic_case
+
+    from judgmentllm.anthropic_transport import build_output_commitment_v5
+    from judgmentllm.anthropic_transport import production_context as anthropic_context
+
+    spec, dependency, _ = anthropic_case(tmp_path)
+    spec.model = "claude-sonnet-4-6"
+    spec.execution.cache_policy = "explicit"
+    with pytest.raises(TransportIntegrityError):
+        build_output_commitment_v5(spec, dependency.request, anthropic_context(spec))
+
+
 @pytest.mark.parametrize(
     "model", ["gpt-4.1-mini-2025-04-14", "gpt-6-luna-other", "unknown-model"]
 )

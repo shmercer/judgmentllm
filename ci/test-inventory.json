@@ -221,6 +221,7 @@
     },
     "tests/test_cache_policy.py": {
       "test_actual_sdk_off_native_flex_reasoning_and_retry": {"[False-chat.completions-gpt-6-luna]": [], "[False-chat.completions-gpt-6.1-terra]": [], "[False-responses-gpt-6-luna]": [], "[False-responses-gpt-6.1-terra]": [], "[True-chat.completions-gpt-6-luna]": [], "[True-chat.completions-gpt-6.1-terra]": [], "[True-responses-gpt-6-luna]": [], "[True-responses-gpt-6.1-terra]": []},
+      "test_anthropic_new_explicit_does_not_reuse_the_legacy_breakpoint": {"": []},
       "test_cache_revision_tokens_are_strict": {"[0]": [], "[2.0]": [], "[2]": [], "[3]": [], "[True]": []},
       "test_cache_write_usage_keeps_unknown_and_zero": {"[0-chat.completions]": [], "[0-responses]": [], "[7-chat.completions]": [], "[7-responses]": [], "[None-chat.completions]": [], "[None-responses]": []},
       "test_configuration_rejects_unknown_cache_revision": {"[0]": [], "[2.0]": [], "[2]": [], "[3]": [], "[True]": []},

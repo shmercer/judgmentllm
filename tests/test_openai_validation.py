@@ -37,6 +37,7 @@ def strict_case(
     path = directory / "run.json"
     document = json.loads(path.read_text())
     document.update(
+        model="offline-unqualified-model",
         strict_capabilities=True,
         generation={"temperature": 0.2, "max_output_tokens": 64},
     )

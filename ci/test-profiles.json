@@ -1502,6 +1502,7 @@
       "tests/test_anthropic_response.py",
       "tests/test_anthropic_sdk_adapter.py",
       "tests/test_anthropic_transport.py",
+      "tests/test_cache_policy.py",
       "tests/test_native_other_providers.py",
       "tests/test_native_preseal_validation.py",
       "tests/test_native_schema_privacy.py",
