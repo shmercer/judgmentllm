@@ -115,7 +115,16 @@ def assessment_case(
         if pairwise
         else responses["001"]
     )
-    request = next(plan_record(spec, record))
+    capabilities = None
+    if (
+        provider == "openai"
+        and generation is not None
+        and generation.reasoning is not None
+    ):
+        from judgmentllm.providers.openai import OpenAIAdapter
+
+        capabilities = OpenAIAdapter(endpoint, spec.model).capabilities(spec)
+    request = next(plan_record(spec, record, capabilities=capabilities))
     return (
         spec,
         RequestDependency(request=request, dependency_sha256="0" * 64),

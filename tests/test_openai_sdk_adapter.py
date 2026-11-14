@@ -27,7 +27,7 @@ from judgmentllm.providers.protocol import (
     RetrievalUnavailable,
     SubmissionUncertain,
 )
-from judgmentllm.reasoning import ReasoningQualificationScopeV1
+from judgmentllm.reasoning import ReasoningQualificationScopeV1, ReasoningSpec
 from judgmentllm.service_tiers import ServiceQualificationScope
 
 
@@ -136,7 +136,12 @@ async def test_actual_sdk_bytes_matrix(
     policy: Literal["text", "native", "auto"],
     scenario: str,
 ) -> None:
-    generation = GenerationSpec(temperature=0, top_p=1.0, max_output_tokens=64)
+    generation = GenerationSpec(
+        temperature=0,
+        top_p=1.0,
+        max_output_tokens=64,
+        reasoning=ReasoningSpec(effort="none") if endpoint == "responses" else None,
+    )
     options: dict[str, Any] = dict(
         endpoint=endpoint,
         policy=policy,
@@ -157,6 +162,9 @@ async def test_actual_sdk_bytes_matrix(
         generation=generation,
     )
     wire, spec, _, context = wire_for(tmp_path, **options)
+    assert spec.cache_policy_version == 2
+    assert json.loads(wire.payload)["prompt_cache_options"] == {"mode": "explicit"}
+    assert b"prompt_cache_breakpoint" not in wire.payload
     seen: list[bytes] = []
 
     def handler(request: httpx2.Request) -> httpx2.Response:

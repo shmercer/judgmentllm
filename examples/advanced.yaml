@@ -5,7 +5,7 @@ rubric: rubric.yaml
 exemplars: exemplars.yaml
 provider: openai
 endpoint: responses
-model: REPLACE_WITH_AVAILABLE_MODEL_ID
+model: gpt-6-luna
 execution:
   grouping: grouped
 prompt:

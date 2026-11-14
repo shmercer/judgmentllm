@@ -6,7 +6,7 @@ rubric: rubric.yaml
 exemplars: exemplars.yaml
 provider: openai
 endpoint: responses
-model: REPLACE_WITH_AVAILABLE_MODEL_ID
+model: gpt-6-luna
 prompt:
   preset: rubric_scores_only
 execution:

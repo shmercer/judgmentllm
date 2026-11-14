@@ -225,6 +225,21 @@ def test_unsupported_openai_off_fails_before_credentials(
         provider.OpenAIConfigurationError, match="execution.cache_policy"
     ):
         OpenAIAdapter(endpoint, model).validate_new_run(spec)
+    legacy = validate_run_spec(spec, _cache_policy_version=1)
+    OpenAIAdapter(endpoint, model).validate_new_run(legacy)
+    supported, _ = new_case(tmp_path, endpoint=endpoint)
+    with pytest.raises(
+        provider.OpenAIConfigurationError, match="execution.cache_policy"
+    ):
+        context = production_context(supported)
+        OpenAIAdapter(
+            endpoint,
+            supported.model,
+            context=replace(
+                context,
+                scope=context.scope.model_copy(update={"sdk_version": "3.42.2"}),
+            ),
+        ).validate_new_run(supported)
 
 
 @pytest.mark.parametrize(

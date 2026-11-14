@@ -43,7 +43,7 @@ uv run --offline --no-sync judgmentllm templates init --preset rubric_scores_onl
 uv run --offline --no-sync python examples/offline.py
 ```
 
-All bundled inputs are synthetic. Preview makes no network requests and needs no credentials. Example provider/model fields declare future intent; they do not establish provider support. The initial dependency installation may download packages. Use `uv sync --locked --no-dev` for core-only installation.
+All bundled inputs are synthetic. Preview makes no network requests and needs no credentials. The OpenAI preview examples use a documented cache-OFF route and require the pinned OpenAI SDK installed by the checkout command above. These V1 examples remain offline-only and establish no account access or assessment qualification. The initial dependency installation may download packages. Use `uv sync --locked --no-dev` for core-only installation; mock examples need no provider SDK.
 
 ## Standalone provider evidence
 
