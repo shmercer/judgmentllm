@@ -165,7 +165,7 @@
     "ci/local/test_gates.py": "d636a55867f671f3b9efcb99d316fafd945f42831e85a057bc09845d894e2460",
     "ci/local/test_grid.py": "028a9f616c6be3798ac1327154dc37e473f49363d2f4699bb7cfdb4009341473",
     "ci/local/test_issue59.py": "daca9aa2078a85105535106a5c1f066e0567cfcbc3cc0581087c390b75bd4fb1",
-    "ci/local/test_issue59_evidence.py": "ad1e76b218d18706d837d4a8a9572a5001571e2fdf64ba88a43f6f0acae0b8b3",
+    "ci/local/test_issue59_evidence.py": "dc673d3e57a4bae431334ef8b1b9ff9066545067a3d865cc3f72fcad921988ee",
     "ci/local/test_linux.py": "ed6b35425e0a433b622aab210ec5d9857505fbe91d55490d8327d095ba7db802",
     "ci/local/test_optimization.py": "221164c5ba342eccf58a6f37fec222069dfce68524049e2fc77417676bbfe4c6",
     "ci/local/test_provider_impact.py": "d8a4292db616e1a1b4cb2e8d7a2ff6ee914a98fcbd821e200e9b4343cee72290",

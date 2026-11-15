@@ -903,12 +903,14 @@ def test_scheduler_health_requires_reserves_but_latency_outliers_are_diagnostic(
         ("auto", None, True),
     ],
 )
+@pytest.mark.parametrize("cpu_limit", [4, 32])
 def test_suite_resolves_policy_workers_and_preserves_real_deadline_failures(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     requested: str,
     workers: int | None,
     deadline: bool,
+    cpu_limit: int,
 ) -> None:
     import orchestrator
     import suite
@@ -916,8 +918,9 @@ def test_suite_resolves_policy_workers_and_preserves_real_deadline_failures(
     source = tmp_path / "source"
     source.mkdir()
     (source / "pyproject.toml").write_text('[tool.pytest.ini_options]\naddopts=""\n')
-    expected = (
-        workers if workers is not None else 12 if requested == "conservative" else 10
+    concurrent = requested != "conservative" and cpu_limit == 32
+    expected = min(
+        workers if workers is not None else 10 if concurrent else 12, cpu_limit
     )
     (source / "test_probe.py").write_text(
         f"import os, subprocess, sys\ndef test_workers():\n    assert os.environ['PYTEST_XDIST_WORKER_COUNT'] == '{expected}'\n"
@@ -929,17 +932,25 @@ def test_suite_resolves_policy_workers_and_preserves_real_deadline_failures(
     )
     choose = orchestrator.choose
 
-    # Simulate admission capacity; real subprocess ownership and pytest still run.
+    # Simulate one consistent allocation; real ownership and pytest still run.
+    from resource_specs import Resources
+
+    resources: Resources = {
+        "logical_cpus": cpu_limit,
+        "effective_cpus": cpu_limit,
+        "quota_cpus": None,
+        "memory_bytes": 128 * 1024**3,
+        "available_memory_bytes": 64 * 1024**3,
+    }
+    monkeypatch.setattr(suite, "read_resources", lambda: resources)
+
     def admitted(requested: str, **kwargs: Any) -> tuple[str, str]:
         return choose(
             requested,
             policy=kwargs["policy"],
             ubuntu=True,
             process_ownership=True,
-            resources={
-                "effective_cpus": 32,
-                "available_memory_bytes": 64 * 1024**3,
-            },
+            resources=kwargs["resources"],
         )
 
     monkeypatch.setattr(orchestrator, "choose", admitted)
@@ -958,9 +969,7 @@ def test_suite_resolves_policy_workers_and_preserves_real_deadline_failures(
     summary = json.loads((output / "summary.json").read_text())
     assert summary["workers"] == expected
     assert summary["requested_workers"] == workers
-    assert summary["local_schedule"] == (
-        "conservative" if requested == "conservative" else "concurrent"
-    )
+    assert summary["local_schedule"] == ("concurrent" if concurrent else "conservative")
     assert summary["counts"]["failed"] == int(deadline)
     assert summary["status"] == ("failed" if deadline else "passed")
     assert "schedule_certificate_error" in summary
