@@ -37,6 +37,16 @@ Absent new evidence means historical behavior/unavailable data, never fabricated
 grouping proof or implicit migration. See the
 [version plan](native-decisions-design.md#7-version-and-compatibility-plan).
 
+The proposed [pair presentation input](native-decisions-design.md#pair-presentation-identity)
+owns repetition/reversal expansion and seeded orientation once, before projecting
+criterion-specific tasks. Its explicit versioned source membership retains each
+member's original source `pair_uid`; the crosswalk keeps each projected task's
+`source_pair_uid` alongside the shared `source_presentation_id`. The worked SCHED1
+case defines three criteria, two repetitions and
+reversals with one common schedule. Existing V1–V3 inputs and `prepare_pairs()`
+remain independent; their criterion-specific schedules cannot be combined or
+overwritten to manufacture compatible grouped members.
+
 ## Explicit RunSpec v2
 
 `RunSpec` remains the public version-1 model. `RunSpecV2` opts into the new

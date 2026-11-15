@@ -139,22 +139,124 @@ against its largest supported group; do not silently increase shared safety caps
 ### Pair presentation identity
 
 `PairTask` V1 is criterion-specific; its `pair_uid` and task ID cannot be replaced
-by a group ID. Recommend a new typed **explicit presentation membership** record
-in PR B: `presentation_id: ID` and an ordered immutable tuple of existing
-criterion-specific `PairTask` members. It binds one source occurrence and its
-original/presented IDs, text hashes, repetition index, reversal flag/group and
-presentation policy. Every member must agree on that evidence, have a unique
-criterion/task identity and belong to that declared occurrence. Different
-`pair_uid` values remain intact in results.
+by a group ID. The existing `prepare_pairs()` keys seeded orientation and
+reversal groups by each criterion's source `pair_uid`. Calling it independently
+for several criteria does not establish one shared presentation, even with the
+same seed and essay IDs. Grouping those independently scheduled rows afterward
+is therefore prohibited.
 
-V1 pair inputs have no such cross-criterion proof and remain singleton groups;
-matching `pair_id`, item IDs or text never invents it. PR B must expose the
-versioned membership input through the ordinary Python/CLI source path, with
-explicit source provenance, not a private fixture-only switch. The choice
-between that additive input and an expanded pair-source schema is a review gate
-(D3); neither is implemented here. Repetitions and reversals get distinct
-presentation identities. Do not use `reversal_group`, which intentionally links
-two orientations, as permission to combine them.
+Recommend two distinct version-1 records in PR B: an unexpanded
+`PairPresentationInputV1` and its prepared explicit presentation membership.
+**The source presentation owns repetition expansion, reversal expansion and
+randomized orientation, once before projecting any criterion tasks.** Its closed,
+strict, immutable input has:
+
+| Field | Contract |
+|---|---|
+| `pair_presentation_version` | Literal integer `1`, independent of assessment rendering's `presentation_version`. |
+| `source_presentation_id` | Unique source occurrence ID; repeated comparisons of the same pair need distinct source IDs. |
+| `pair_id`, `left_item_id`, `right_item_id` | Common underlying pair and distinct original item IDs, referencing verified texts. Original order is `[left_item_id, right_item_id]`. |
+| `members` | Nonempty ordered tuple of closed `{pair_uid, trait_id}` records naming unscheduled criterion-specific source occurrences. Each criterion appears once, belongs to the run, and every member `pair_uid` is unique across the run's source occurrences. |
+| `schedule` | Strict positive integer `repetitions=1`, boolean `include_reversals=false`, and optional strict integer `seed=null`. This is the sole scheduling authority; any supplied run-level seed must agree. |
+
+The input rejects per-member order, seed, repetition, reversal and already-expanded
+provenance. It is not a wrapper that silently reschedules existing `PairTask`
+rows. PR B exposes it through the ordinary versioned Python/CLI source path;
+it is not a fixture-only input. Proposed syntax, **not accepted by today's
+loaders**:
+
+```yaml
+pair_presentation_version: 1
+source_presentation_id: comparison-001
+pair_id: pair-001
+left_item_id: "001"
+right_item_id: "002"
+members:
+  - {pair_uid: criterion-01, trait_id: "01"}
+  - {pair_uid: criterion-02, trait_id: "02"}
+  - {pair_uid: criterion-03, trait_id: "03"}
+schedule:
+  repetitions: 2
+  include_reversals: true
+  seed: 41
+```
+
+The proposed schedule uses the existing `stable_id()` canonical hashing primitive
+without changing it, with new presentation-specific domains:
+
+1. In source order and zero-based repetition order, compute the base orientation
+   once from `stable_id("presentation-orientation-v1", seed,
+   source_presentation_id, pair_id, repetition_index)`. Even parity of the final
+   hex digit preserves original order; odd parity reverses it. Without a seed,
+   preserve original order. No criterion ID, member `pair_uid`, member order,
+   grouping mode or request maximum enters this choice.
+2. Emit the base presentation, then its exact opposite when reversals are enabled.
+   Each has `presentation_id = stable_id("presentation-v1",
+   source_presentation_id, pair_id, left_item_id, right_item_id,
+   repetition_index, is_reversal)`. Both orientations of one repetition share
+   `reversal_group = stable_id("presentation-reversal-v1",
+   source_presentation_id, pair_id, repetition_index)`. Different repetitions
+   have distinct groups. Presentation IDs exclude the seed, as legacy occurrence
+   IDs do; the seed and exact order still enter frozen request commitments.
+3. Project that single schedule into members in declared order. Every resulting
+   `PairTask` receives the common original/presented order, repetition index,
+   reversal flag/group and verified text dependencies. Preserve its own source
+   occurrence as `source_pair_uid = member.pair_uid`, not the shared presentation
+   source ID. Reuse the existing member occurrence formula:
+   `stable_id("pair", member.pair_uid, pair_id, left_item_id, right_item_id,
+   member.trait_id, repetition_index, is_reversal)`; task IDs retain
+   `stable_id("task", "pairwise", pair_uid, trait_id)`. Do not call the legacy
+   scheduler before or after this projection.
+4. The prepared version-1 membership binds `source_presentation_id`,
+   `presentation_id`, schedule/version, common presentation evidence and the
+   ordered projected `PairTask` tuple. Only then apply single/auto question
+   grouping and deterministic splitting **within** that presentation. A retry
+   inherits this frozen schedule; it never draws a fresh orientation.
+
+The shared `source_presentation_id` belongs in the crosswalk alongside each
+criterion-specific `source_pair_uid`. Preserve all member IDs and never replace
+them with a presentation ID. A different seed may change order and physical
+commitments, but not logical occurrence IDs. Explicit new input gets new shared
+presentation/reversal-group provenance; it does not claim byte identity with
+legacy independently scheduled records.
+
+V1–V3 inputs and `prepare_pairs()` retain their existing independent schedule,
+hash domains, IDs and frozen outputs. Legacy rows remain singleton groups;
+matching `pair_id`, item IDs or text never supplies missing common provenance.
+Do not use `reversal_group`, which intentionally links two orientations, as
+permission to combine them. D3 remains subject to final-head acceptance before B.
+
+### SCHED1: worked synthetic presentation case
+
+The input above references synthetic texts `001`/`002` and three separately
+defined criteria `01`/`02`/`03`. Under the proposed version-1 orientation rule,
+seed 41 produces final hash digits `5` and `b` for repetitions 0 and 1. The
+expected schedule is:
+
+| Repetition | `is_reversal` | Presented order for **every** criterion | Membership / physical requests with auto maximum 32 |
+|---|---|---|---|
+| 0 | false | `[002,001]` | `[01,02,03]` / 1 |
+| 0 | true | `[001,002]` | `[01,02,03]` / 1 |
+| 1 | false | `[002,001]` | `[01,02,03]` / 1 |
+| 1 | true | `[001,002]` | `[01,02,03]` / 1 |
+
+This is four distinct presentation IDs, two reversal groups, twelve distinct
+member `pair_uid`/task IDs and four physical requests, not one request for all
+twelve judgments. Auto maximum 2 produces eight requests with `[2,1]` questions
+per presentation; single mode produces twelve. Every mode retains the same
+twelve logical IDs, question keys, schedule and member order. Switching only the
+seed to 42 changes repetition 0's base orientation to `[001,002]` (hash digit
+`0`), keeps repetition 1's base `[002,001]` (digit `d`), and preserves occurrence
+IDs; physical commitments must reflect the changed seed/order.
+
+The negative fixture must reject independently scheduled members as shared-input
+proof: legacy seed-41 scheduling of `criterion-01`/`02`/`03` on repetition 1
+produces `[002,001]`, `[001,002]`, `[001,002]`, respectively. Never repair that
+mismatch by overwriting their order/provenance. PR B must test SCHED1 through
+fresh-process preparation/reopening; C–E and R fixtures must retain each
+criterion, repetition, reversal, original/presented order and both source-ID
+layers. These are documented fixture expectations, not an implementation or
+executed native lifecycle test in PR A.
 
 ## 3. Identity, rendering and provenance crosswalk
 
@@ -428,8 +530,10 @@ fixtures; C/D/E supply independent vendor shapes; F integrates installed usage.
 | Isolation | Different essay identity even with equal text, different pair/presentation/repetition/reversal, route/model/tier/account/cache/generation/capture/presentation/source policy never combine. Unsupported controls fail before credential resolution. | B, C–E |
 | Identity/order | Regroup max 1/2/32 and replay in a fresh process: logical IDs and question keys stable, requested policy/request/physical commitments distinct. Jev/Gemini map reorder joins correctly; OpenAI array order mismatch fails per section 4. Collision, changed bytes and rehashed foreign crosswalk fail. | B, C–E |
 | Answers | Missing, duplicate, unexpected, wrong-type and refusal members follow the section 4 outcome table; malformed/truncated JSON and escaped duplicate keys fail before SDK last-key-wins parsing. No successful sibling is silently retried or fabricated. | B, C–E |
+| Physical acknowledgment | Independently test route-documented complete synchronous response evidence with a returned remote ID and with no remote ID, definitive nonacceptance, and timeout/drop or lost-response uncertainty. Only authoritative evidence acknowledges; an SDK object/hash alone or missing remote ID cannot establish acceptance/nonacceptance. Uncertain cases remain held without retry authority; replay records accepted evidence once and never fabricates a provider ID. | B shared; C–E each |
 | Probabilities | Labels `01/02/03`, codes [1,2,7], probabilities [0.10,0.25,0.65] -> mapped 5.15, native index 1.55, mode `03`, selected label null unless explicitly supplied; reported confidence retained. Missing/extra index, bad legend, NaN/negative/>1, wrong sum and distribution/type confusion fail. | B, C–E |
 | CJ | Original [001,002], presented [002,001], choice `essay_02`, presented probabilities [0.2,0.8] -> observed winner 001, original [0.8,0.2], R result 0/winner position 2. A separately observed reversal stays separate; repetition/13 criteria keep independent IDs. No choice -> no winner even with probabilities. | B, C–E |
+| CJ schedule / SCHED1 | Use the versioned three-criterion input and exact seed/repetition/reversal schedule above: one schedule before projection, 4 presentations / 12 distinct logical tasks, 4/8/12 physical requests for auto max 32 / auto max 2 / single. All criteria share each occurrence's order and reversal group. Reject independently scheduled or conflicting members; seed/grouping changes obey the specified identity rules and both source-ID layers survive reopen/R export. | B, C–E; F installed parity |
 | Atomic/recovery | Real child death before submitting, after uncertain forwarding, after acknowledgment, after response/evidence publication, during member validation and inside/after result commit. Fresh process recovers only proven observations, with zero/whole-vector visibility and no second physical acceptance. Minimal lost response stays unresolved without retrieval. | B, F |
 | Retry/accounting | Two-member response: first complete, second missing; explicit retry of second gives a new one-question physical request with original key/task, parent receipt and authorization. Original results retained; same retry ID creates no third call. Usage 120 then 30 sums to 150 once, not per trait; null cost remains null and revisions replace selection. | B, C–F |
 | R round-trip | At least one multi-trait and one multi-criterion request **per provider** through Python/CLI persist, separate-process reopen/export, then actual R/jsonlite import of JSONL/lossless CSV/R audit and crosswalk. Assert every ID/order/attempt/reversal, full maps, 5.15 vs 1.55, selected/modal distinction, CJ orientation, partial/null/unknown fields and once-per-submission usage. | B shared; C–E each; F installed parity |
@@ -456,17 +560,26 @@ documented selftests. Live calls and publication require separate authority.
 
 ## 9. Decision ledger and handoff gate
 
+The [architecture review](https://github.com/shmercer/judgmentllm/pull/62#issuecomment-6901792039)
+covered head `1482d0702da737a869dfe61adc3f4d93caed72c2`. It recommends D1/D2,
+supports D3 subject to the presentation-level scheduling clarification now
+specified above, accepts D4's direction with authoritative-versus-uncertain
+adapter tests, and prefers D5 while deferring dependency approval. These are
+review recommendations; the revised final head still needs independent
+acceptance and merge before PR B begins.
+
 | ID | Status / options | Recommended resolution / review consequence |
 |---|---|---|
 | A0 | Approved by Issue #61 | M4: OpenAI Decisions, Jev, Gemini Decisions in order, shared-input multi-question support required. Together/Ollama live completion remains a lower-priority commitment. M5 handles actual batch/bulk modes. |
 | A1 | Approved by Issue #61 | Defer first alpha to an explicit post-M5 go/no-go; preserve the intended all-provider qualification question, including Together/Ollama, until that review. No publication in A–F. |
-| D1 | **Proposed; needs high-reasoning review before B:** extend V3 versus explicit new RunSpec; reuse legacy grouping versus new immutable control | New boundary and `RequestGroupingSpecV1` single/auto union above; preserve V1–V3. The 62-character task-derived key rule is part of this review. |
-| D2 | **Proposed; needs review before B:** whole-request rollback versus independently valid member salvage | Recognizable-envelope sibling salvage with an atomic full outcome vector and group-wide failures exactly as section 4; aligns with existing rubric lifecycle without treating partial output as valid whole output. |
-| D3 | **Proposed; needs review before B:** infer common pair occurrence versus explicit typed presentation membership versus new expanded pair-source schema | Explicit membership preserves current criterion-specific PairTask IDs and avoids accidental repeat/reversal merging. Review public source syntax and validation together; no implicit grouping of historical rows. |
-| D4 | **Proposed; needs review before B:** require remote IDs on every endpoint versus versioned nullable-ID response-bound acknowledgment | Accept only documented synchronous response evidence bound to one invocation, keep local/remote identities distinct and retain unresolved windows. No fabricated IDs or claimed remote idempotence. |
-| D5 | **Proposed; review before E dependency changes:** one Google 3.x migration versus isolated official-SDK process | Prefer one reviewed migration after the Developer/Vertex compatibility gates; retain original 2.34.0 reconstruction environments. Do not widen constraints now. |
+| D1 | **Review recommends acceptance; final-head acceptance/merge pending:** extend V3 versus explicit new RunSpec; reuse legacy grouping versus new immutable control | New boundary and `RequestGroupingSpecV1` single/auto union above; preserve V1–V3 and the 62-character task-derived key rule. |
+| D2 | **Review recommends acceptance; final-head acceptance/merge pending:** whole-request rollback versus independently valid member salvage | Recognizable-envelope sibling salvage with an atomic full outcome vector and group-wide failures exactly as section 4; aligns with existing rubric lifecycle without treating partial output as valid whole output. |
+| D3 | **Review supports explicit membership subject to clarified scheduling; revised-head acceptance/merge pending:** infer common pair occurrence versus explicit typed presentation input | The source presentation schedules repetition/reversal/orientation once, then projects criterion-specific tasks. The versioned input and SCHED1 fix the shared order, identity and compatibility expectations; no implicit grouping or rescheduling of historical rows. |
+| D4 | **Review accepts direction; final-head acceptance/merge pending:** require remote IDs on every endpoint versus versioned nullable-ID response-bound acknowledgment | Accept only documented synchronous response evidence bound to one invocation, keep local/remote identities distinct and retain unresolved windows. Adapter tests must distinguish authoritative responses from uncertain outcomes; no fabricated IDs or claimed remote idempotence. |
+| D5 | **Review prefers single migration; dependency approval deferred before E:** one Google 3.x migration versus isolated official-SDK process | Prefer one reviewed migration after version-specific Developer/Vertex compatibility evidence; retain original 2.34.0 reconstruction environments. Do not widen constraints now. |
 
-PR A stops at this concrete design for independent review. Accept/revise D1–D4
-before PR B implements public schemas, pair presentation or durability; D5 needs
+PR A stops at this concrete design for independent review. Accept/revise the final
+head's D1–D4 contracts and merge PR A before PR B implements public schemas, pair
+presentation or durability; this task leaves PR A open and unmerged. D5 needs
 confirmation with chosen SDK evidence before PR E. Approval of this design does
 not qualify a model or authorize credentials, live requests, merging or alpha.

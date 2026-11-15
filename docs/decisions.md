@@ -19,6 +19,14 @@ high-reasoning independent review before PR B, not silently accepted project-wid
 choices. D5 recommends a reviewed Google SDK3.x migration only after existing
 Developer/Vertex compatibility evidence, with review before PR E changes pins.
 
+The [PR #62 architecture review](https://github.com/shmercer/judgmentllm/pull/62#issuecomment-6901792039)
+recommends D1/D2, supports D3 conditional on presentation-level scheduling,
+accepts D4's direction with authoritative/uncertain-response adapter tests and
+prefers D5 without approving dependency changes. The D3 clarification specifies
+one source-presentation schedule before criterion projection, a versioned input
+example and SCHED1's seeded repetitions/reversals. The revised head still needs
+independent acceptance and merge before PR B; this PR remains open and unmerged.
+
 PR A adds no executable schema, adapter, migration, test fixture, dependency or
 qualification. PRs B–F own implementation and exact-source acceptance. No
 credentials, live requests, merge or alpha publication is authorized here.
