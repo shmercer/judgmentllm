@@ -6,11 +6,24 @@
     "tests/test_anthropic_response.py",
     "tests/test_openai_responses_parsing.py",
     "tests/test_anthropic_transport.py",
-    "tests/test_study_limits.py::test_one_handoff_resume_and_completion_preserve_all_identities",
+    "tests/test_study_workflow.py::test_complete_synthetic_pilot_recovery_never_forwards_again",
     "tests/test_native_other_sdk.py::test_pinned_sdk_preserves_sixteen_fragments_under_offline_guards[anthropic]",
-    "tests/test_preparation_resources.py::test_trait_product_remains_incremental_without_execution_rows"
+    "tests/test_grouped_resources.py::test_grouped_memory_and_buffers_ignore_total_pending_product"
   ],
-  "r_gates": ["exports", "persistence", "generation", "source-preparation", "execution", "grouped-lifecycle", "cli-lifecycle"],
-  "worker_candidates": [8, 10, 12],
-  "maximum_trials": 6
+  "r_gates": [
+    "exports",
+    "persistence",
+    "generation",
+    "source-preparation",
+    "execution",
+    "grouped-lifecycle",
+    "cli-lifecycle"
+  ],
+  "worker_candidates": [
+    8,
+    10,
+    12
+  ],
+  "maximum_trials": 6,
+  "reason": "Retained source-bound timings select a 154-second safe serial workflow and the 126-133-second grouped-memory workload; the 791-second handoff remains mandatory in full qualification, not repeated profiling"
 }

@@ -298,7 +298,7 @@ def run(
         }.get(label, label)
         group_environment = {
             **environment,
-            "JUDGMENTLLM_CI_GROUP": f"{qualification_run_id}:{label}",
+            "JUDGMENTLLM_CI_GROUP": label,
         }
         if coverage and label != "collection":
             directory = output / "coverage-groups" / label
@@ -670,6 +670,7 @@ def run(
             if coverage:
                 arguments += [
                     "--ci-coverage",
+                    "--cov-append",
                     "--cov-context=test",
                     f"--cov-report=xml:{output / ('coverage-' + label + '.xml')}",
                     "--cov-fail-under=0",
@@ -813,6 +814,7 @@ def run(
                     memory_bytes=min(memory_budget, 16 * 1024**3)
                     if chosen == "conservative"
                     else min(memory_budget // 4, 8 * 1024**3),
+                    kind=group_kinds[label],
                 )
             )
             previous = (label,)

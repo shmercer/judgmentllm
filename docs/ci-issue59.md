@@ -110,7 +110,10 @@ source identity and all artifacts are independently checked.
 Coverage uses normal pytest-cov xdist combination inside each execution group.
 The reporter records contributor completion/context metadata through public hooks;
 it does not snapshot worker data or use pytest-cov internals. A group is sealed
-only after passing and normal combination. The final dataset is built once from
+only after passing and normal combination. The pinned pytest-cov startup erase race is prevented with supported `--cov-append`
+inside each newly created private group directory. That directory must not exist
+before execution; there is no cross-group append or reuse. Two- and twelve-worker
+integration cases protect this compatibility requirement. The final dataset is built once from
 explicitly enumerated authorized files, with source/run/group/attempt provenance,
 checksums, branch mode and source hashes. Independent admission rebuilds that exact
 union and reruns the coverage comparison. No shared append file or directory glob

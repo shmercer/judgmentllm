@@ -27,9 +27,10 @@ from process import run as owned_run
 from test_risk import freeze
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="module", params=[2, 12], ids=["two-workers", "twelve-workers"])
 def real_coverage(
     tmp_path_factory: pytest.TempPathFactory,
+    request: pytest.FixtureRequest,
 ) -> tuple[Path, Path, dict[str, Any], dict[str, Any]]:
     root = tmp_path_factory.mktemp("actual-contributors")
     source = root / "source"
@@ -66,13 +67,14 @@ def real_coverage(
             "-p",
             "ci.local.pytest_report",
             "-n",
-            "2",
+            str(request.param),
             "--dist=load",
             "--max-worker-restart=0",
             "--ci-coverage",
             "--cov=probe",
             "--cov-branch",
             "--cov-context=test",
+            "--cov-append",
             "--cov-report=",
             f"--ci-report={receipt}",
             "-q",
@@ -88,7 +90,7 @@ def real_coverage(
     )
     assert result.returncode == 0, result.stdout + result.stderr
     record = json.loads(receipt.read_text())
-    assert len(record["coverage_contributors"]) == 2
+    assert len(record["coverage_contributors"]) == request.param
     coverage = CoverageData(basename=str(data))
     coverage.read()
     assert 10 in (coverage.lines("probe.py") or [])

@@ -223,6 +223,7 @@ def test_realistic_level_two_change_executes_new_tests_and_targeted_coverage(
             "--cov-branch",
             "--cov-fail-under=0",
             "--cov-context=test",
+            "--cov-append",
             "--ci-coverage",
             "--cov-report=",
             f"--ci-report={receipt_file}",
