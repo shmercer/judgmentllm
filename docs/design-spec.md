@@ -2,6 +2,23 @@
 
 **Design:** 0.5 (2026-11-02). **Implementation status:** Milestone 1 provides schema-version-1 contracts, synthetic normalization, structural planning, input/output, and offline prompt tools. Milestone 2 has durable persistence, generation configuration, and complete provider-free immutable source preparation with indexed access and independent-process reopening. Subphase 4 adds grouped outcomes, retry/cancellation and immutable exports; Subphase 5 exposes the shared public Python lifecycle and versioned CLI. Subphase 6 is merged in PR #11; its final implementation head `db198aeb0a6387e6a3030c584c34bdd0b41e890f` has retained local and hosted qualification evidence, with the historical six-configuration scope described below. Historical V1/V2 execution remains limited to the deterministic mock provider. Phase5A adds production OpenAI execution through explicit V3 configurations and independently identified production manifests, with offline acceptance separate from authorized live acceptance. Phase 5B adds independently versioned Anthropic Messages execution. The sections below describe the full approved direction; [data contracts](data-contracts.md) and [Python API](python-api.md) describe the implemented subset.
 
+## Issue #61: native Decisions planning extension (2026-11-15)
+
+The approved M4 scope now includes OpenAI Decisions, TypeSafe AI Jev and native
+Gemini Developer Decisions, in that order, with required multi-judgment requests
+over identical eligible shared input. The [PR A architecture](native-decisions-design.md)
+specifies a strict immutable single/auto grouping control, deterministic caps and
+context/body splitting, named-question identity, physical acknowledgment,
+atomic member outcomes, once-per-physical usage and R provenance. These are
+review proposals, not executable configuration in this PR; historical behavior,
+IDs, stored bytes and generative grouping remain unchanged.
+
+This explicitly supersedes the two-native-adapter M4 direction and the pre-M5
+alpha target. Together/Ollama live completion is deferred in priority, retained
+in scope. First alpha waits for an explicit post-M5 go/no-go on batch/bulk
+readiness and intended all-provider qualification; no milestone automatically
+authorizes publication. See the revised [implementation plan](implementation-plan.md).
+
 ## Phase 5A production implementation
 
 OpenAI Responses and Chat Completions now have additive production adapter
@@ -91,6 +108,8 @@ Implement the following adapters, reusing suitable official SDKs:
 7. Together AI generative models.
 8. Local Ollama models.
 9. TypeSafe AI Jev (`systemone`, typed choice/score).
+10. Gemini Decisions (native Developer v1beta, distinct from `generateContent`
+    and Vertex; added by Issue #61).
 
 `openai` and `vertex` represent provider families with endpoint-specific capabilities. Document all tested endpoint/model combinations. Provider SDK/API behavior and account feature availability have precedence over static catalog claims.
 
@@ -114,7 +133,7 @@ No provider-specific details should leak into normalized assessment interpretati
 - Arbitrary number of distinct ordered category labels for each trait; zero or positive counts of traits only as allowed by input validation (a run must request at least one trait).
 - No continuous scale in v1. String or finite numeric labels converted to stable string identifiers while preserving the original scalar in `source_label`; booleans and structured labels are rejected.
 - Users may define numeric values for ordered levels. Defaults: numeric category labels use their numeric values when unique and strictly increasing; nonnumeric labels use equally spaced 0-based indices. Explicit mappings override defaults and are retained verbatim in the manifest.
-- Native score APIs may restrict to 2-10 categories. A 12-level rubric must fail preflight on these endpoints; do not silently collapse levels.
+- Enforce native score bounds per endpoint: OpenAI Decisions documents 2–10 levels, Jev a maximum of 10, and Gemini Decisions 2–255. A 12-level rubric fails on the first two and can be valid on Gemini; never collapse categories or impose a universal ten-level schema cap. Current implementation versus proposed M4 enforcement is distinguished in the [provider matrix](provider-matrix.md).
 - For providers supplying a discrete probability distribution, compute expected numeric score from all probabilities and the selected numeric category coding; retain raw provider index score, unchanged per-level probabilities, separate provider-selected and probability-derived modal categories, and confidence if supplied. Probability-sum tolerance is documented and configurable.
 - For ordinary generative outputs, record the exact selected category and its coded numeric value, *without labeling it a probability-weighted expectation*.
 - Common fields `primary_score` and `primary_score_kind` allow analysis without concealing the scoring distinction.
@@ -127,7 +146,7 @@ No provider-specific details should leak into normalized assessment interpretati
 - Configurable grouped scoring for generative APIs and structured APIs that can natively accept multiple questions.
 - Grouping plans must be deterministic and recorded in the manifest as ordered trait IDs and groups. Mock execution binds the actual rendered context and exact provider payload separately; capture policy controls retained bytes. Per-request token estimates remain unknown when no verified counter is available.
 - For oversized grouped requests: optionally split into smaller deterministic groups if the user explicitly requested `grouping: auto`; for `grouping: grouped` with a fixed group definition, error rather than alter it. Never split a single trait's exemplars implicitly.
-- For Decisions and Jev: questions grouped according to endpoint question count, content and level constraints; no assumption that calling multiple traits together yields an empirically equivalent assessment to independent scoring.
+- M4 requires native OpenAI/Jev/Gemini multi-question grouping under the [new typed design](native-decisions-design.md), including multi-criterion CJ. Its explicit version boundary supersedes this section's rubric-only grouping direction for future native runs; current V1–V3 independent/grouped/auto semantics remain unchanged. Respect endpoint question/context/body/level constraints; grouping establishes no empirical equivalence to independent scoring.
 - No hard-coded max number of traits in project schema; provider request limits constrain individual calls.
 
 ### 5.3 Comparative judgment
@@ -137,6 +156,7 @@ No provider-specific details should leak into normalized assessment interpretati
 - Repeated judgments are distinct task occurrences. Optional deterministic randomization/reversal schedules; record presented order and original pair orientation to support position-bias audits.
 - Scores-only equivalent for pairwise is winner-only. Optional explanation for compatible generative endpoints; otherwise preflight error.
 - A CJ task may be evaluated through a choice/typed decision endpoint with a separate request adapter and a probability distribution over A/B. Do not pass generative prompt templates to native Decision/Jev APIs.
+- Issue #61 adds several independent criterion choices over one explicit presented-pair occurrence per native request. Preserve every member PairTask/task ID and original/presented probabilities. Different repetitions and reversal orientations are different shared inputs/physical requests; equal pair text or IDs alone cannot authorize merging.
 - Pairwise prompt caching defaults to off where it can be controlled. Provider-imposed implicit caching must be documented.
 
 ## 6. Exemplars and anchors

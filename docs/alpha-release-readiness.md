@@ -1,18 +1,23 @@
 # First PyPI alpha release: readiness and user experience plan
 
-**Status:** Planned; not a claim of feature completion, live qualification, PyPI-name ownership, or
-publication. This is a separate release-readiness workstream linked from the [implementation
-plan](implementation-plan.md). Implementation may begin alongside the remaining adapters;
-**publication is gated on completion and live qualification of all intended provider/endpoint families
-in Milestones 3 and 4**. A development version such as the current `0.1.0a3` is not itself a published
-or accepted alpha.
+**Status — Issue #61, 2026-11-15:** Planned and deferred to an explicit
+**post-Milestone-5 go/no-go**. This supersedes the earlier M3/M4-only publication
+target and the statement that batch/bulk readiness cannot block alpha.
+Release-readiness preparation may continue alongside adapters. Finishing M3,
+M4 or M5 does not authorize publication. The intended all-provider qualification
+criterion remains until that review explicitly retains or revises it; prioritizing
+native Decisions does not silently remove Together/Ollama. A development version
+such as `0.1.0a3` is not a published or accepted alpha. See the
+[implementation plan](implementation-plan.md) and [PR A design](native-decisions-design.md).
 
 **Release boundary:** First public, installable **Python library and command-line application** for
 actual live rubric scoring and comparative judgments. This is an explicitly early **PEP 440 alpha**:
-document unstable APIs/limits and do not advertise unimplemented features. Milestone 5 (native batch
-and managed bulk-live), Milestone 6 (automated model catalog and thin R package), and Milestone 7
-(FastAPI) remain committed *later* deliverables, **not alpha blockers**. Existing R-compatible exports
-and required interoperability tests remain alpha blockers.
+document unstable APIs/limits and do not advertise unimplemented features. The
+post-M5 review must explicitly decide the native-batch/managed bulk-live threshold
+for the advertised endpoints, including managed bulk-live for Decisions/Jev.
+M6's automated catalog/thin R package and M7's local FastAPI remain committed
+later deliverables; this change does not add them as prerequisites. Existing
+R-compatible exports and required interoperability tests remain alpha blockers.
 
 Development acceptance follows the [risk decision table](ci-optimization.md).
 Publication is Level 4: comprehensive supported-platform/Python verification,
@@ -28,7 +33,9 @@ it must never be relabeled as passed.
 - [ ]  Complete the applicable Milestone 3 live-adapter, evidence/export, diagnosis, and qualification
       acceptance for **OpenAI Responses and Chat, Anthropic Messages, Gemini Developer, Vertex Gemini,
       Together, and Ollama**; complete Milestone 4 acceptance for **OpenAI Decisions and TypeSafe
-      Jev**. Account/region/model access and SDK releases may differ; record the precise successfully
+      Jev and Gemini Decisions**, including shared-input multi-judgment requests.
+      Together/Ollama live completion is lower priority, not waived.
+      Account/region/model access and SDK releases may differ; record the precise successfully
       qualified combinations rather than implying universal model support.
 - [ ]  Maintain a *human-readable, dated* alpha support matrix: provider, endpoint family,
       authentication mode, installation extra, tested model/version/region (where relevant), rubric
@@ -47,22 +54,33 @@ it must never be relabeled as passed.
       SDK mock proves live model support. All paid/manual smoke tests require explicit authorization,
       synthetic inputs, bounded requests/output, nonsecret evidence, date/version, observed results,
       and reported/unknown costs.
-- [ ]  Treat live **single-run** execution as the alpha user experience. Identify native batch,
-      managed bulk-live, caching modes, auto-discovery/catalog automation, R wrapper, and HTTP/API as
-      *not yet included* unless independently implemented and qualified before publication. Do not
-      make them hidden requirements, and do not list optional extras as functional integrations merely
-      because their SDKs install.
+- [ ]  Record the post-M5 review's explicit supported modes and batch/bulk
+      prerequisites per endpoint. Distinguish shared-input question packing from
+      asynchronous batch; Gemini Decisions supports no native Batch, cache, Flex
+      or Priority. Identify other unimplemented/unqualified caching, catalog,
+      R-wrapper and HTTP features honestly. Optional SDK installation does not
+      establish functional integration or mode parity.
 - [ ]  Preserve existing frozen source/payload identities, versioned contracts, historical-store
       compatibility, audit exports, conservative retries/recovery, and mandatory R gates. Any
       incompatible public change needs an explicit version/compatibility note rather than an invisible
       migration.
 
-**Go/no-go:** Every intended live provider family has evidence for the **advertised** minimum real
+**Go/no-go — explicitly after M5:** Record batch/bulk readiness and the intended
+supported alpha scope, including whether the retained all-provider criterion
+(Together/Ollama included) is kept or explicitly revised. Until that decision,
+every intended live provider family needs evidence for the **advertised** minimum real
 scoring and comparison workflow, all mandatory offline/hosted/local gates pass at the release commit,
 a novice can follow the first-run guide from an isolated install, and release artifacts pass
 independent installation and provenance checks. If a required family is not live-qualified, defer the
 alpha; changing this all-provider criterion needs a recorded, explicit scope decision, not a silent
 downgrade.
+
+Required review record: exact source and mode/support matrix; M5 native-batch
+versus managed bulk-live evidence for applicable endpoints; the explicit
+all-provider scope decision; unresolved model/SDK/account/price limitations;
+offline/local/hosted and independently authorized live results; artifact and
+documentation readiness; named human go/no-go and separate publication approval.
+Neither the review nor this plan silently grants billable calls or upload authority.
 
 ### Phase 5C alpha support update (2026-11-10)
 
@@ -250,7 +268,7 @@ test thresholds or replace genuine provider qualification with mocks.
    and endpoint directions, real rubric/pairwise examples, dated capability matrix, sanitized
    troubleshooting and explicit billable manual smoke records. Each guide lands with its provider
    rather than relying on a late documentation-only sweep.
-4.  **Alpha candidate qualification (after all intended live providers qualify):** final independent
+4.  **Alpha candidate qualification (after the explicit post-M5 scope/readiness decision and intended live qualifications):** final independent
    docs walk-through; full local/hosted quality gates and applicable resource/R gates; historical
    store/read compatibility; wheel/sdist/CLI checks on supported OS/Python combinations;
    privacy/security audit; release notes; release artifact freeze.
@@ -260,6 +278,9 @@ test thresholds or replace genuine provider qualification with mocks.
 
 ### Required alpha evidence checklist
 
+- [ ]  An explicit post-M5 go/no-go records native-batch/managed bulk-live
+      prerequisites, the supported alpha scope and the retained or explicitly
+      revised all-provider requirement. M4 completion alone is not release readiness.
 - [ ]  A provider-by-provider **advertised versus actually qualified** matrix exists, with no missing
       mandatory live families.
 - [ ]  Real rubrics and pairwise evaluations complete on representative synthetic input through the

@@ -2,17 +2,53 @@
 
 **Baseline matrix as of 2026-11-02; Milestone 3 design evidence reviewed 2026-11-05.** A design commitment is not the same as a qualified model/endpoint combination. Current per-model/region/account status belongs in generated `model-support.md` with evidence dates.
 
+**Issue #61 update, 2026-11-15:** M4 now requires three native adapters and
+shared-input multi-question requests; Gemini Decisions is separate from Developer
+`generateContent` and Vertex. The [PR A design](native-decisions-design.md)
+records official-doc evidence, proposed contracts, unknowns and review gates.
+All three native rows below are targets, not implemented or live-qualified
+features. Together/Ollama live completion is lower priority, still on the roadmap.
+First alpha waits for an explicit post-M5 scope/batch-readiness go/no-go; this
+does not remove the intended all-provider qualification requirement.
+
 | Adapter | Live | Native provider batch | Managed bulk-live | Rubric | Pairwise | Notes |
 |---|---|---|---|---|---|---|
 | OpenAI Chat Completions | implemented; reviewed live scope accepted | target | later milestone | generative | generative | Phase 5A, SDK 3.42.1; exact-model capability unknown until qualified |
 | OpenAI Responses | implemented; reviewed live scope accepted | target | later milestone | generative | generative | Phase 5A, SDK 3.42.1; exact-model capability unknown until qualified |
-| OpenAI Decisions | target | not available | yes | typed score, 2-10 levels | typed choice | Currently GPT-6 Luna; no generated explanations; 1-400 questions/request; cache policy handled separately |
+| OpenAI Decisions | M4 target, PR C | unsupported in planned adapter | M5 target | typed score, 2–10 levels | typed choice | `/v1/decisions`, current documented `gpt-6-luna`; 1–400 ordered named questions; complete probabilities; OFF requires explicit cache mode without breakpoints |
 | Anthropic Messages | implemented; live acceptance pending | target | later milestone | generative | generative | Phase 5B; SDK 2.3.0 / API 2026-10-21; text JSON and controlled native output_config.format |
 | Gemini Developer | implemented; reviewed four-case live scope accepted | later milestone | later milestone | generative | generative | Phase 5C; google-genai 2.34.0 / v1beta; [exact qualified scope](gemini-live-qualification-acceptance.md); broader mappings remain fixture-only |
+| Gemini Decisions (Developer only) | M4 target, PR E | explicitly unsupported | M5 target | typed score, 2–255 levels | typed choice, 2–255 options | `/v1beta/decisions`, documented `gemini-decision-1`; 1–1,000 named keys; 262,144 total context tokens; no cache/Flex/Priority; SDK>=3.2 compatibility gate |
 | Vertex AI Gemini | target | target (Google Cloud setup required) | yes | generative | generative | `google-genai` SDK; Gemini focus; GCS/BigQuery source and cloud IAM considerations |
-| Together AI | target | target, subject to current API qualification | yes | generative | generative | Use official Together Python SDK v3 (`together>=3,<4`); endpoint/model feature coverage must be tested |
-| Ollama local | target | no native provider batch | yes | generative | generative | Official Ollama SDK, local daemon; local model discovery; optional later cloud support separate |
-| TypeSafe AI Jev | target | not available | yes | typed score; documented maximum 10 levels | typed choice | Official `typesafe-sdk` confirmed; score guide recommends at least two levels; no generated explanations |
+| Together AI | lower-priority live target | target, subject to current API qualification | M5/deferred live target | generative | generative | Use official Together Python SDK v3 (`together>=3,<4`); endpoint/model feature coverage must be tested |
+| Ollama local | lower-priority live target | no native provider batch | M5/deferred live target | generative | generative | Official Ollama SDK, local daemon; local model discovery; optional later cloud support separate |
+| TypeSafe AI Jev | M4 target, PR D | unsupported in planned adapter | M5 target | typed score; documented maximum 10 levels | typed choice | Official `typesafe-sdk` System One named map; question-count hard cap unknown; no generated explanations |
+
+### Native Decisions capability evidence (PR A only)
+
+Official sources checked 2026-11-15: [OpenAI guide](https://developers.openai.com/api/docs/guides/decisions)
+and [SDK reference](https://developers.openai.com/api/reference/python/resources/decisions/methods/create),
+[TypeSafe System One](https://docs.typesafe.ai/api/system-one),
+[Score](https://docs.typesafe.ai/primitives/score) and
+[Choice](https://docs.typesafe.ai/primitives/choice), and
+[Gemini Decisions](https://aistudio.google.com/docs/decisions-api).
+The earlier 2–10-level M4 acceptance language applied to OpenAI/Jev, not the
+neutral category schema or Gemini's distinct range. Jev's unknown question cap
+must not become 400 or 1,000 by analogy; a user maximum and verified context/body
+limits bound grouping. Unknown evidence stays explicit.
+
+All three plans require a one-question baseline and automatic eligible grouping
+of the same essay or explicitly identified pair presentation. No unrelated
+samples, reversal/repetition merging or mixed controls. One physical usage fact
+joins many logical results. Every provider needs its own synthetic SDK/lifecycle
+and strict R fixtures before implementation acceptance; docs establish no live
+access, exact reported model, pricing, or empirical parity.
+
+Google's documented Decisions SDK requirement `>=3.2` conflicts with both current
+`pyproject.toml` Google constraints `>=2.34,<3` and exact 2.34.0 production
+Developer/Vertex authority. PR E must resolve and qualify those existing functions
+before changing dependencies. PR A upgrades nothing. See the
+[compatibility gate](native-decisions-design.md#google-sdk-compatibility-gate-pr-e).
 
 ### Documented score bounds checked in the Milestone 1 hardening pass
 
@@ -54,7 +90,7 @@ acquires runtime support or live qualification from those records.
 - Request/observation usage and optional authorized reasoning evidence stay
   separate from normalized per-trait/judgment results. Live qualification remains
   explicitly opt-in; mandatory fixture and Python/R tests remain credential-free.
-- Native Decisions/Jev assessment integration stays in Milestone 4. Managed
+- Native OpenAI Decisions/Jev/Gemini Decisions integration stays in Milestone 4. Managed
   bulk-live/native batch parity and recovery stay in Milestone 5; the CLI-first
   R wrapper exposes implemented services in Milestone 6.
 

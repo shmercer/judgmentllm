@@ -13,6 +13,35 @@ Subphase 6 adds qualification tooling around these services. Its exact-head
 scale and compatibility evidence remains pending; no new registry, manifest,
 assessment, result, export or control schema version is introduced.
 
+## Issue #61 PR A: proposed grouped native boundary
+
+The [native Decisions design](native-decisions-design.md#4-physical-acknowledgment-atomic-outcomes-and-retries)
+specifies future physical acceptance and member atomicity. PR A changes no SQL,
+receipt, manifest, migration or replay behavior. PR B must freeze an ordered
+named-question/task/presentation crosswalk and complete request hashes before
+intent/forwarding, acknowledge one physical submission once, persist permitted
+response/evidence before interpretation, and atomically commit the full vector
+of complete/unsuccessful member outcomes. Valid siblings survive only under the
+explicit recognizable-envelope policy; duplicates/missing answers never fabricate
+judgments. Physical usage remains submission-owned, including partial failures.
+
+Current `ProviderAcknowledgment` requires a remote ID. The design recommends a
+new explicit acknowledgment version allowing null real remote ID when a
+documented complete synchronous response proves acceptance and is bound to the
+guarded invocation. Local observation identity must stay distinct from provider
+identity. This and the atomicity policy require high-reasoning review before B;
+no historical required field is relaxed here.
+
+Unknown forwarding or accepted-but-lost responses remain unresolved without
+authoritative original evidence/retrieval. Receipts replay locally without new
+calls; retry of failed members needs existing explicit authorization, a fresh
+physical attempt, the original request's ordered subset, parent receipt and prior
+outcome digests. Never combine failures across original requests. Use existing
+ownership, artifact publication and unique result/usage constraints. New
+contracts need independent versions and checked old-store dispatch; no automatic
+migration, historical backfill, inferred remote IDs or exactly-once remote-call
+guarantee. See the [compatibility plan](native-decisions-design.md#7-version-and-compatibility-plan).
+
 ## Registry and transactions
 
 `Repository(store)` opens `store/registry.sqlite3` with foreign keys, WAL,
