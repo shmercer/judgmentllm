@@ -170,9 +170,9 @@ def compare(
                 {
                     "path": filename,
                     "changed_executable_lines": sorted(changed),
-                    "required_branches": sorted(required),
+                    "required_branches": [list(arc) for arc in sorted(required)],
                     "uncovered_changed_lines": missing_lines,
-                    "uncovered_changed_branches": missing_arcs,
+                    "uncovered_changed_branches": [list(arc) for arc in missing_arcs],
                     "excluded_lines": exclusions,
                 }
             )

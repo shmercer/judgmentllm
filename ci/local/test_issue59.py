@@ -274,6 +274,7 @@ def test_realistic_level_two_change_executes_new_tests_and_targeted_coverage(
     )
     assert evaluation["passed"] is not untested, evaluation
     assert evaluation["historical_coverage"] == "not-assessed"
+    assert json.loads(json.dumps(evaluation)) == evaluation
     assert not untested or any(
         item["uncovered_changed_lines"] or item["uncovered_changed_branches"]
         for item in evaluation["files"]
