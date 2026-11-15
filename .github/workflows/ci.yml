@@ -20,14 +20,15 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
+  group: ci-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request_target' }}
 
 env:
   SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
   POLICY_SHA: ${{ github.event.pull_request.base.sha || github.sha }}
   BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before || (github.event_name == 'workflow_dispatch' && 'refs/remotes/origin/main') || github.sha }}
   RUN_ID: ${{ github.run_id }}:${{ github.run_attempt }}
+  PURPOSE: ${{ github.event_name == 'push' && 'main-linux' || 'pr' }}
 
 jobs:
   plan:
@@ -62,7 +63,7 @@ jobs:
         id: plan
         env:
           MINIMUM: ${{ github.event_name == 'schedule' && '4' || inputs.risk || '0' }}
-        run: python policy/ci/acceptance.py plan --source candidate --base "$BASE_REF" --head "$SOURCE_SHA" --risk "$MINIMUM" --output "$RUNNER_TEMP/p/plan.json"
+        run: python policy/ci/acceptance.py plan --source candidate --base "$BASE_REF" --head "$SOURCE_SHA" --risk "$MINIMUM" --purpose "$PURPOSE" --output "$RUNNER_TEMP/p/plan.json"
       - name: Prepare locked environment
         if: steps.plan.outputs.risk != '0'
         run: uv sync --project candidate --locked --all-extras --group dev
@@ -197,7 +198,7 @@ jobs:
           test "$PLAN_RESULT" = success
           test "$VERIFY_RESULT" = success
           python policy/ci/acceptance.py aggregate --plan "$RUNNER_TEMP/p/plan.json" \
-            --source candidate --base "$BASE_REF" --head "$SOURCE_SHA" --risk "$MINIMUM" \
+            --source candidate --base "$BASE_REF" --head "$SOURCE_SHA" --risk "$MINIMUM" --purpose "$PURPOSE" \
             --receipts "$RUNNER_TEMP/receipts" --run-id "$RUN_ID" --output "$RUNNER_TEMP/acceptance.json"
       - name: Preserve acceptance evidence
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9

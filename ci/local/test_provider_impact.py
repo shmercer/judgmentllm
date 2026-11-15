@@ -45,7 +45,7 @@ def test_level_two_schema_changes_select_every_required_parameter(
     path.parent.mkdir(parents=True)
     path.write_text("def project(): return 1\n")
     plan = risk.make_plan(source, base, freeze(source))
-    assert plan["risk"] == 2 and not plan["unknown_dependencies"]
+    assert plan["risk"] == 2 and not plan["unknown_production_dependencies"]
     assert required_modules <= set(plan["impact"])
     items = inventory_items(read(HERE / "test-inventory.json"))
     selected = manifest(
@@ -82,7 +82,7 @@ def test_unreviewed_level_two_source_escalates_to_complete_platforms(
     path.write_text("def project(): return 1\n")
     assert risk.classify(name, None, path.read_text())[0] == 2
     plan = risk.make_plan(source, base, freeze(source))
-    assert plan["risk"] == 3 and name in plan["unknown_dependencies"]
+    assert plan["risk"] == 3 and name in plan["unknown_production_dependencies"]
     assert all(lane["profile"] == "full" for lane in plan["lanes"])
 
 
@@ -110,7 +110,7 @@ def test_known_source_with_missing_closure_also_escalates(
 
     monkeypatch.setattr(risk, "impact", missing)
     plan = risk.make_plan(source, base, freeze(source))
-    assert name in plan["unknown_dependencies"]
+    assert name in plan["unknown_production_dependencies"]
     assert plan["risk"] == 3 and all(
         lane["profile"] == "full" for lane in plan["lanes"]
     )

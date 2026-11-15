@@ -169,19 +169,27 @@ def test_quality_receipt_cannot_cross_execution_scopes(
 def test_missing_required_r_executable_is_not_a_skip(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
+    import local.process
+
     monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
     calls: list[list[str]] = []
 
-    def missing(command: list[str], **kwargs: Any) -> Any:
+    def missing(command: list[str], **kwargs: Any) -> tuple[int, dict[str, Any]]:
         assert kwargs["env"]["JUDGMENTLLM_R_STRICT"] == "1"
         calls.append(command)
         if command[0] == "Rscript":
             raise FileNotFoundError("Synthetic missing required Rscript")
-        return subprocess.CompletedProcess[str](command, 0)
+        return 0, {"cleanup_complete": True}
 
-    monkeypatch.setattr(acceptance.subprocess, "run", missing)
-    with pytest.raises(FileNotFoundError, match="required Rscript"):
-        acceptance.r_gate("exports", tmp_path, tmp_path / "out")
+    monkeypatch.setattr(local.process, "run", missing)
+    source = tmp_path / "source"
+    source.mkdir()
+    assert acceptance.r_gate("exports", source, tmp_path / "out") == 1
+    receipt = json.loads((tmp_path / "out/receipt.json").read_text())
+    assert (
+        receipt["status"] == "failed"
+        and "required Rscript" in receipt["error"]["message"]
+    )
     assert len(calls) == 2
 
 
@@ -311,6 +319,8 @@ def test_pr_planning_does_not_write_bytecode_to_its_policy_copy(
         "risk.py",
         "verification-map.json",
         "selection.py",
+        "additions.py",
+        "environment.py",
         "test-profiles.json",
         "test-inventory.json",
         "suite_evidence.py",
@@ -320,6 +330,7 @@ def test_pr_planning_does_not_write_bytecode_to_its_policy_copy(
         "local/resource_budget.py",
         "local/resource_specs.py",
         "local/telemetry.py",
+        "local/policy.py",
     ):
         destination = source / "ci" / name
         destination.parent.mkdir(parents=True, exist_ok=True)

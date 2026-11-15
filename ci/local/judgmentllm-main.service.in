@@ -1,0 +1,10 @@
+[Unit]
+Description=JudgmentLLM accepted-main local qualification
+
+[Service]
+Type=oneshot
+ExecStart="@PYTHON@" -B "@SCRIPT@" once --state-root "@STATE@"
+Nice=10
+IOSchedulingClass=idle
+KillMode=control-group
+TimeoutStopSec=30s

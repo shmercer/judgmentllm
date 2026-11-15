@@ -36,7 +36,9 @@ def percentages(summary: dict[str, Any]) -> dict[str, float]:
     }
 
 
-def validate_measurement(measured: dict[str, Any], source: Path) -> None:
+def validate_measurement(
+    measured: dict[str, Any], source: Path, *, expected_files: set[str] | None = None
+) -> None:
     """Missing modules, contradictory counts, and non-branch evidence are fatal."""
     if measured["meta"]["branch_coverage"] is not True or not measured["files"]:
         raise ValueError("Complete branch-enabled coverage evidence is required")
@@ -83,8 +85,12 @@ def validate_measurement(measured: dict[str, Any], source: Path) -> None:
     if any(measured["totals"][key] != value for key, value in summed.items()):
         raise ValueError("Coverage totals disagree with file evidence")
     production = source / "src/judgmentllm"
-    if production.is_dir():
-        expected = {p.relative_to(source).as_posix() for p in production.rglob("*.py")}
+    if production.is_dir() or expected_files is not None:
+        expected = (
+            expected_files
+            if expected_files is not None
+            else {p.relative_to(source).as_posix() for p in production.rglob("*.py")}
+        )
         if expected != set(measured["files"]):
             raise ValueError("Coverage omitted or added production modules")
 

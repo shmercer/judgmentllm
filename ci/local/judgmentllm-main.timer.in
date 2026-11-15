@@ -1,0 +1,10 @@
+[Unit]
+Description=Observe accepted JudgmentLLM main commits every five minutes
+
+[Timer]
+OnCalendar=*:0/5
+Persistent=true
+Unit=judgmentllm-main.service
+
+[Install]
+WantedBy=timers.target

@@ -7,8 +7,8 @@ import hashlib
 import json
 import os
 import shutil
-import subprocess
 import sys
+import threading
 import time
 import uuid
 from collections import Counter
@@ -25,8 +25,7 @@ from preflight_provenance import (
 )
 from resource_budget import ResourceLease
 from resource_specs import read_resources
-from selection import digest, manifest, read
-from telemetry import ProcessSampler
+from selection import digest, manifest, read, validate_candidate_metadata
 
 WARNINGS = [
     "-Werror::ResourceWarning",
@@ -173,7 +172,15 @@ def run(
     lane: str = "linux-3.11",
     execution_scope: str = "local",
     grid_partition: str = "all",
+    local_schedule: str = "auto",
+    schedule_certificate: Path | None = None,
+    run_r_gates: bool = False,
+    benchmark_only: bool = False,
 ) -> int:
+    if benchmark_only and (plan is not None or targets == ["tests"]):
+        raise ValueError(
+            "Profiling is bounded and cannot establish planned qualification"
+        )
     if isinstance(workers, bool) or not 0 <= workers <= 32:
         raise ValueError("pytest workers must be an integer from 0 through 32")
     if stage not in {"full", "ordinary", "resource"} or (coverage and stage != "full"):
@@ -199,7 +206,7 @@ def run(
             for item in plan["hosted_tasks"]
         ):
             raise ValueError("Grid partition differs from the trusted plan")
-        if coverage and profile != "full":
+        if coverage and profile != "full" and plan.get("coverage_mode") != "targeted":
             raise ValueError(
                 "Selected coverage cannot establish historical qualification"
             )
@@ -208,7 +215,17 @@ def run(
     if output.is_relative_to(source):
         raise ValueError("Test evidence must be outside the source tree")
     output.mkdir(parents=True, exist_ok=False)
-    environment = dict(os.environ)
+    from environment import clean_environment
+
+    environment = clean_environment()
+    for key in (
+        RUN_ID_ENV,
+        "JUDGMENTLLM_R_STRICT",
+        "GITHUB_ACTIONS",
+        "JUDGMENTLLM_NATIVE_FIXTURES",
+    ):
+        if key in os.environ:
+            environment[key] = os.environ[key]
     for key in (
         "PYTEST_XDIST_WORKER",
         "PYTEST_XDIST_WORKER_COUNT",
@@ -230,6 +247,7 @@ def run(
     started = time.monotonic()
     summary: dict[str, Any] = {
         "schema_version": 1,
+        "qualification": not benchmark_only,
         "workers": workers,
         "distribution": distribution,
         "requested_workers": requested_workers,
@@ -245,6 +263,25 @@ def run(
         "qualification_run_id": qualification_run_id,
     }
     summary["provenance"] = receipt_provenance(summary["source"], qualification_run_id)
+    coverage_mode = (
+        plan.get("coverage_mode", "historical") if plan is not None else "historical"
+    )
+    if (
+        coverage_mode == "targeted"
+        and plan is not None
+        and not plan["coverage_targets"]
+    ):
+        coverage = False
+        summary["coverage_enabled"] = False
+        summary["coverage"] = {
+            "passed": True,
+            "mode": "targeted",
+            "historical_coverage": "not-assessed",
+            "disposition": "no changed production code",
+        }
+    cancel = threading.Event()
+    group_coverages: list[dict[str, Any]] = []
+    group_receipts: dict[str, dict[str, Any]] = {}
     totals: Counter[str] = Counter()
 
     def save() -> None:
@@ -253,12 +290,20 @@ def run(
         )
 
     def execute(label: str, arguments: list[str]) -> tuple[int, dict[str, Any]]:
-        temporary = (
-            output
-            / {"collection": "c", "ordinary": "t", "serial": "s", "resource": "r"}[
-                label
-            ]
-        )
+        temporary = output / {
+            "collection": "c",
+            "ordinary": "t",
+            "serial": "s",
+            "resource": "r",
+        }.get(label, label)
+        group_environment = {
+            **environment,
+            "JUDGMENTLLM_CI_GROUP": f"{qualification_run_id}:{label}",
+        }
+        if coverage and label != "collection":
+            directory = output / "coverage-groups" / label
+            directory.mkdir(parents=True)
+            group_environment["COVERAGE_FILE"] = str(directory / ".coverage")
         command = [
             sys.executable,
             "-P",
@@ -274,23 +319,24 @@ def run(
             f"--ci-report={output / (label + '.json')}",
             f"--basetemp={temporary}",
             "-o",
-            f"cache_dir={output / 'cache'}",
+            f"cache_dir={output / ('cache-' + label)}",
             *WARNINGS,
             *arguments,
         ]
         print("Qualification partition:", label, flush=True)
         with (output / f"{label}.log").open("w", encoding="utf-8") as stream:
-            with ProcessSampler() as sampler:
-                completed = subprocess.run(
-                    command,
-                    cwd=source,
-                    env=environment,
-                    stdout=stream,
-                    stderr=subprocess.STDOUT,
-                    check=False,
-                )
+            from process import run as run_owned
+
+            code, processes = run_owned(
+                command,
+                cwd=source,
+                env=group_environment,
+                stream=stream,
+                evidence=output / (label + "-owner"),
+                cancel=cancel,
+            )
         (output / f"{label}-processes.json").write_text(
-            json.dumps(sampler.report(), indent=2) + "\n", encoding="utf-8"
+            json.dumps(processes, indent=2) + "\n", encoding="utf-8"
         )
         log = (output / f"{label}.log").read_text(encoding="utf-8", errors="replace")
         print(log, flush=True)
@@ -333,13 +379,15 @@ def run(
             (measurements / "manifest.json").write_text(
                 json.dumps(index, indent=2) + "\n", encoding="utf-8"
             )
-        return completed.returncode, receipt
+        return code, receipt
 
     try:
         code, collected = execute("collection", ["--collect-only", "--no-cov", "-q"])
         if code != 0 or not collected.get("collected"):
             raise ValueError("Full-suite collection failed or produced no cases")
         parts = partition(collected["collected"])
+        if plan is not None:
+            validate_candidate_metadata(source, plan, collected["collected"])
         selection_manifest = None
         if profile is not None:
             assert plan is not None
@@ -351,6 +399,11 @@ def run(
                 include_resources=include_resources,
                 platform=sys.platform,
                 partition=grid_partition,
+                policy=plan.get("selection_policy", {}).get("taxonomy"),
+                known=plan.get("selection_policy", {}).get("inventory"),
+                resource_selectors=plan.get("resource_selectors")
+                if execution_scope == "local"
+                else None,
             )
             if selection_manifest["policy_sha256"] != plan["selection_policy_sha256"]:
                 raise ValueError("Selection policy differs from planned trusted policy")
@@ -458,35 +511,185 @@ def run(
                 node for node in parts[label] if node not in already_executed
             ]
         summary["reused_preflight_cases"] = len(already_executed)
-        failed = False
-        for label, nodes in parts.items():
-            if stage != "full" and label != stage:
-                continue
-            if not nodes:
-                continue
+        from orchestrator import Stage, choose
+        from orchestrator import run as run_stages
+        from policy import fingerprint, serial_groups
+        from policy import read as read_local_policy
+        from process import systemd_available
+
+        local_policy = plan.get("local_policy") if plan is not None else None
+        local_policy = local_policy or read_local_policy(
+            Path(__file__).resolve().parents[1]
+        )
+        machine = {
+            key: resources[key]
+            for key in ("logical_cpus", "effective_cpus", "quota_cpus", "memory_bytes")
+        }
+        certificate = (
+            read(schedule_certificate) if schedule_certificate is not None else None
+        )
+        if certificate is not None and local_schedule == "auto":
+            from profile_bundle import verify_certificate
+
+            try:
+                verify_certificate(certificate, source)
+            except (OSError, ValueError, KeyError, TypeError):
+                certificate = None
+        chosen, schedule_reason = choose(
+            local_schedule,
+            certificate=certificate,
+            machine=machine,
+            policy_hash=fingerprint(local_policy),
+        )
+        if execution_scope != "local" or stage != "full":
+            chosen, schedule_reason = (
+                "conservative",
+                "hosted and partial runners retain their existing scheduling",
+            )
+        if chosen == "resource-isolated":
+            chosen, schedule_reason = (
+                "conservative",
+                "Resource VM has no authoritative qualification; exclusive host resources retain original coverage and limits",
+            )
+        if chosen == "concurrent" and not systemd_available():
+            chosen, schedule_reason = (
+                "conservative",
+                "Linux control-group ownership is unavailable; sequential conservative fallback",
+            )
+        logical_parts = {label: list(nodes) for label, nodes in parts.items()}
+        group_kinds = {label: label for label in parts}
+        if chosen == "concurrent":
+            classified = serial_groups(parts.pop("serial"), local_policy, source)
+            for placement, nodes in classified.items():
+                label = {
+                    "concurrency-safe-serial": "serial-safe",
+                    "host-exclusive-serial": "serial-host",
+                    "globally-exclusive-serial": "serial-global",
+                }[placement]
+                parts[label] = nodes
+                group_kinds[label] = "serial"
+            workers = min(
+                workers, local_policy["profiles"]["concurrent"]["ordinary_workers"]
+            )
+            if local_schedule == "auto" and certificate is not None:
+                workers = min(workers, certificate["ordinary_workers"])
+        summary.update(
+            local_schedule=chosen,
+            schedule_reason=schedule_reason,
+            workers=workers,
+            execution_groups={
+                label: {"partition": group_kinds[label], "nodes": list(nodes)}
+                for label, nodes in parts.items()
+                if nodes
+            },
+            serial_placement={
+                node: {
+                    "placement": label,
+                    "reason": next(
+                        (
+                            entry["reason"]
+                            for entry in local_policy["serial"]
+                            if node == entry["selector"] and label == "serial-safe"
+                        ),
+                        "default global isolation or changed dependency; conservative barrier",
+                    ),
+                }
+                for label, nodes in parts.items()
+                if group_kinds[label] == "serial"
+                for node in nodes
+            },
+        )
+        mutex = threading.Lock()
+
+        def functional_comparison() -> None:
+            if not coverage or not group_coverages:
+                return
+            from coverage_data import combine, report
+            from coverage_equivalence import compare
+
+            manifests = list(group_coverages)
+            receipts = dict(group_receipts)
+            combine(
+                manifests,
+                receipts,
+                source,
+                summary["provenance"],
+                output / ".coverage-functional",
+            )
+            report(
+                output / ".coverage-functional",
+                source,
+                output / "functional-coverage.json",
+                plan["coverage_targets"]
+                if plan is not None and coverage_mode == "targeted"
+                else None,
+            )
+            if benchmark_only:
+                result = {
+                    "passed": True,
+                    "mode": "profiling-only",
+                    "historical_coverage": "not-assessed",
+                }
+            elif coverage_mode == "targeted" and plan is not None:
+                from targeted_coverage import compare as compare_targeted
+
+                assert baseline is not None
+                result = compare_targeted(
+                    output / "functional-coverage.json",
+                    source,
+                    plan["base_sha"],
+                    plan["source_sha"],
+                    plan["coverage_targets"],
+                    baseline,
+                )
+            else:
+                result = compare(
+                    output / "functional-coverage.json",
+                    baseline,
+                    source,
+                    reviewed_ref=coverage_ref,
+                )
+            summary["functional_coverage"] = result
+            (output / "functional-coverage-comparison.json").write_text(
+                json.dumps(result, indent=2) + "\n"
+            )
+
+        def partition_job(label: str) -> dict[str, Any]:
+            nodes = parts[label]
+            logical = group_kinds[label]
             selection = output / f"{label}-selection.json"
             selection.write_text(json.dumps(nodes, indent=2) + "\n", encoding="utf-8")
             arguments = ["-ra", f"--ci-selection={selection}"]
-            if label == "ordinary" and workers:
-                arguments.extend(
-                    [
-                        "-n",
-                        str(workers),
-                        f"--dist={distribution}",
-                        "--max-worker-restart=0",
-                    ]
-                )
-            arguments.extend(
-                [
-                    "--cov-append",
-                    f"--cov-report=xml:{output / 'coverage.xml'}",
+            if logical == "ordinary" and workers:
+                arguments += [
+                    "-n",
+                    str(workers),
+                    f"--dist={distribution}",
+                    "--max-worker-restart=0",
+                ]
+            if coverage:
+                arguments += [
+                    "--ci-coverage",
+                    "--cov-context=test",
+                    f"--cov-report=xml:{output / ('coverage-' + label + '.xml')}",
                     "--cov-fail-under=0",
                 ]
-                if coverage
-                else ["--no-cov"]
-            )
+                if coverage_mode == "targeted" and plan is not None:
+                    arguments += [
+                        "--cov-reset",
+                        *(
+                            "--cov="
+                            + path.removeprefix("src/")
+                            .removesuffix(".py")
+                            .replace("/", ".")
+                            for path in plan["coverage_targets"]
+                        ),
+                    ]
+            else:
+                arguments += ["--no-cov"]
             before = time.monotonic()
-            if label == "resource":
+            if logical == "resource":
+                functional_comparison()
                 with ResourceLease(
                     resource_root or output / "resource-budget", resource_slots
                 ) as lease:
@@ -502,20 +705,146 @@ def run(
                     platform=sys.platform,
                     require_r=environment.get("JUDGMENTLLM_R_STRICT") == "1",
                 )
-            totals.update(counts)
-            failed |= code != 0 or bool(counts["failed"] + counts["errors"])
-            summary["partitions"].append(
-                {
-                    "name": label,
+            passed = code == 0 and not (counts["failed"] + counts["errors"])
+            with mutex:
+                totals.update(counts)
+                summary["partitions"].append(
+                    {
+                        "name": label,
+                        "partition": logical,
+                        "exit_code": code,
+                        "cases": len(nodes),
+                        "counts": dict(counts),
+                        "duration_seconds": time.monotonic() - before,
+                    }
+                )
+                if coverage and passed:
+                    from coverage_data import seal
+
+                    group_coverages.append(
+                        seal(
+                            output / "coverage-groups" / label / ".coverage",
+                            receipt,
+                            source,
+                            summary["provenance"],
+                            label,
+                        )
+                    )
+                    group_receipts[label] = receipt
+                save()
+            return {"exit_code": 0 if passed else code or 1}
+
+        from risk import R_GATES
+
+        r_names = (
+            list(plan["r_gates"] if plan is not None else R_GATES)
+            if run_r_gates and execution_scope == "local"
+            else []
+        )
+        summary["r_gates"] = {}
+
+        def r_job(name: str) -> dict[str, Any]:
+            from acceptance import r_gate
+
+            directory = output / "r-gates" / name
+            code = r_gate(name, source, directory, cancel=cancel)
+            with mutex:
+                summary["r_gates"][name] = {
                     "exit_code": code,
-                    "cases": len(nodes),
-                    "counts": dict(counts),
-                    "duration_seconds": time.monotonic() - before,
+                    "receipt": str(directory / "receipt.json"),
                 }
+                save()
+            return {"exit_code": code}
+
+        scheduled: list[Stage] = []
+        previous: tuple[str, ...] = ()
+        ordinary_names = [
+            label
+            for label in parts
+            if parts[label] and group_kinds[label] == "ordinary"
+        ]
+        safe_names = [
+            label for label in parts if parts[label] and label == "serial-safe"
+        ]
+        concurrent_names = [
+            *ordinary_names,
+            *safe_names,
+            *("r-" + name for name in r_names),
+        ]
+        available = (
+            resources["available_memory_bytes"]
+            or resources["memory_bytes"]
+            or 16 * 1024**3
+        )
+        memory_budget = max(
+            512 * 1024**2, available - min(16 * 1024**3, available // 4)
+        )
+        for label, nodes in parts.items():
+            if not nodes or stage != "full" and label != stage:
+                continue
+            dependencies = (
+                previous
+                if chosen == "conservative"
+                else tuple(name for name in concurrent_names if name != label)
+                if group_kinds[label] == "serial" and label != "serial-safe"
+                else ()
             )
-            save()
+            if (
+                chosen == "concurrent"
+                and label == "serial-global"
+                and parts.get("serial-host")
+            ):
+                dependencies += ("serial-host",)
+            if chosen == "concurrent" and group_kinds[label] == "resource":
+                dependencies = tuple(
+                    [
+                        name
+                        for name, other in parts.items()
+                        if other and group_kinds[name] != "resource"
+                    ]
+                    + ["r-" + name for name in r_names]
+                )
+            scheduled.append(
+                Stage(
+                    label,
+                    lambda label=label: partition_job(label),
+                    dependencies,
+                    cpus=workers if group_kinds[label] == "ordinary" and workers else 1,
+                    memory_bytes=min(memory_budget, 16 * 1024**3)
+                    if chosen == "conservative"
+                    else min(memory_budget // 4, 8 * 1024**3),
+                )
+            )
+            previous = (label,)
+        for name in r_names:
+            dependencies = previous if chosen == "conservative" else ()
+            scheduled.append(
+                Stage(
+                    "r-" + name,
+                    lambda name=name: r_job(name),
+                    dependencies,
+                    memory_bytes=min(memory_budget // 8, 2 * 1024**3),
+                    kind="r",
+                )
+            )
+            if chosen == "conservative":
+                previous = ("r-" + name,)
+        scheduled_names = {item.name for item in scheduled}
+        if any(not set(item.dependencies) <= scheduled_names for item in scheduled):
+            raise ValueError("Incomplete stage graph")
+        execution = run_stages(
+            scheduled,
+            cpus=resources["effective_cpus"],
+            memory_bytes=memory_budget,
+            output=output / "execution.json",
+            cancel=cancel,
+            r_workers=2 if chosen == "concurrent" else 1,
+        )
+        failed = execution["status"] != "passed"
+        if coverage and "functional_coverage" not in summary and not failed:
+            functional_comparison()
         expected_selection = (
-            summary["expected_cases"] if stage == "full" else len(parts[stage])
+            summary["expected_cases"] if stage == "full" else len(logical_parts[stage])
         )
         summary["selection_complete"] = sum(totals.values()) == expected_selection
         summary["manifest_complete"] = (
@@ -530,28 +859,76 @@ def run(
             raise ValueError(
                 "Qualification partitions did not execute the complete suite"
             )
-        if coverage:
-            for arguments in [
-                ["json", "-o", str(output / "coverage.json")],
-                ["xml", "-o", str(output / "coverage.xml")],
-                ["report", "--fail-under=90"],
-            ]:
-                completed = subprocess.run(
-                    [sys.executable, "-m", "coverage", *arguments],
-                    cwd=source,
-                    env=environment,
-                    check=False,
-                )
-                failed |= completed.returncode != 0
+        if coverage and not failed:
+            from coverage_data import combine, report
             from coverage_equivalence import compare
 
-            comparison = compare(
-                output / "coverage.json", baseline, source, reviewed_ref=coverage_ref
+            combined = combine(
+                group_coverages,
+                group_receipts,
+                source,
+                summary["provenance"],
+                output / ".coverage",
             )
+            (output / "coverage-manifest.json").write_text(
+                json.dumps(combined, indent=2) + "\n"
+            )
+            report(
+                output / ".coverage",
+                source,
+                output / "coverage.json",
+                plan["coverage_targets"]
+                if plan is not None and coverage_mode == "targeted"
+                else None,
+            )
+            if benchmark_only:
+                comparison = {
+                    "passed": True,
+                    "mode": "profiling-only",
+                    "historical_coverage": "not-assessed",
+                }
+            elif coverage_mode == "targeted" and plan is not None:
+                from targeted_coverage import compare as compare_targeted
+
+                assert baseline is not None
+                comparison = compare_targeted(
+                    output / "coverage.json",
+                    source,
+                    plan["base_sha"],
+                    plan["source_sha"],
+                    plan["coverage_targets"],
+                    baseline,
+                )
+            else:
+                comparison = compare(
+                    output / "coverage.json",
+                    baseline,
+                    source,
+                    reviewed_ref=coverage_ref,
+                )
             summary["coverage"] = comparison
+            if (
+                not benchmark_only
+                and coverage_mode == "historical"
+                and baseline is not None
+            ):
+                from resource_coverage import assess
+
+                resource_group = output / "coverage-groups/resource/.coverage"
+                assessment = assess(
+                    output / "functional-coverage.json",
+                    baseline,
+                    source,
+                    summary["source"]["commit"],
+                    complete=output / "coverage.json",
+                    resource_data=resource_group if resource_group.is_file() else None,
+                )
+                (output / "resource-coverage-assessment.json").write_text(
+                    json.dumps(assessment, indent=2) + "\n"
+                )
+                summary["resource_coverage_path"] = assessment["path"]
             (output / "coverage-comparison.json").write_text(
-                json.dumps(comparison, indent=2, sort_keys=True) + "\n",
-                encoding="utf-8",
+                json.dumps(comparison, indent=2, sort_keys=True) + "\n"
             )
             failed |= not comparison["passed"]
             if "combined_percent" in comparison:
@@ -601,6 +978,13 @@ def main() -> int:
     parser.add_argument("--source", type=Path, default=Path.cwd())
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--workers", type=int, default=2)
+    parser.add_argument(
+        "--local-schedule",
+        choices=("auto", "conservative", "concurrent", "resource-isolated"),
+        default="auto",
+    )
+    parser.add_argument("--schedule-certificate", type=Path)
+    parser.add_argument("--run-r-gates", action="store_true")
     parser.add_argument(
         "--distribution", choices=("loadfile", "worksteal"), default="worksteal"
     )
@@ -736,6 +1120,9 @@ def main() -> int:
         lane=options.lane,
         execution_scope=options.execution_scope,
         grid_partition=options.grid_partition,
+        local_schedule=options.local_schedule,
+        schedule_certificate=options.schedule_certificate,
+        run_r_gates=options.run_r_gates,
     )
 
 

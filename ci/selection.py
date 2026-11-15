@@ -8,8 +8,11 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 from typing import Any
+
+from additions import loads
 
 HERE = Path(__file__).resolve().parent
 ISOLATION = {"serial", "resource", "r_interop", "smoke"}
@@ -184,6 +187,7 @@ def manifest(
     partition: str = "all",
     policy: dict[str, Any] | None = None,
     known: dict[str, Any] | None = None,
+    resource_selectors: list[str] | None = None,
 ) -> dict[str, Any]:
     if profile not in PROFILES:
         raise ValueError("Unknown lane test profile")
@@ -250,6 +254,22 @@ def manifest(
             else "ordinary"
         )
         disposition = "required" if selected else "not-required-for-this-lane"
+        if (
+            "resource" in markers
+            and include_resources
+            and resource_selectors is not None
+        ):
+            selected = (
+                node not in prior
+                or any(matches(node, selector) for selector in resource_selectors)
+                or module in impacted
+            )
+            disposition = "required" if selected else "not-required-for-this-lane"
+            reason = (
+                "affected or new resource workload"
+                if selected
+                else "unaffected resource workload"
+            )
         if selected and partition != "all" and stage != partition:
             disposition, reason = (
                 "covered-by-grid-partition",
@@ -287,6 +307,11 @@ def manifest(
         "platform": platform,
         "grid_partition": partition,
         "impacted": sorted(impacted),
+        **(
+            {"resource_selectors": resource_selectors}
+            if resource_selectors is not None
+            else {}
+        ),
         "inventory_sha256": digest(actual),
         "policy_sha256": digest({"taxonomy": policy, "inventory": known}),
         "cases": records,
@@ -308,6 +333,29 @@ def impact(paths: list[str], policy: dict[str, Any]) -> tuple[list[str], list[st
             selected.update(policy["providers"][provider])
             reasons.append(f"{path}: reviewed source-to-{provider} test closure")
     return sorted(selected), reasons
+
+
+def validate_candidate_metadata(
+    source: Path, plan: dict[str, Any], items: list[dict[str, Any]]
+) -> None:
+    """Check candidate data against actual collection without selecting from it."""
+    expected = plan.get("candidate_metadata_sha256", {})
+    if not expected:
+        return
+    if set(expected) != {"ci/test-inventory.json", "ci/test-profiles.json"}:
+        raise ValueError("Candidate taxonomy and inventory must both survive")
+    documents: dict[str, Any] = {}
+    for path, checksum in expected.items():
+        raw = subprocess.check_output(
+            ["git", "show", f"{plan['source_sha']}:{path}"], cwd=source
+        )
+        if hashlib.sha256(raw).hexdigest() != checksum:
+            raise ValueError("Candidate metadata differs from its source-bound plan")
+        documents[path] = loads(raw.decode("utf-8"))
+    known = documents["ci/test-inventory.json"]
+    validate_registry(documents["ci/test-profiles.json"], known)
+    if inventory(items) != known:
+        raise ValueError("Candidate metadata does not match complete collection")
 
 
 def main() -> int:

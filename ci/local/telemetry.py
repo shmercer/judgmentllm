@@ -28,13 +28,24 @@ class ProcessSampler(AbstractContextManager["ProcessSampler"]):
     """
 
     def __init__(
-        self, *, interval: float = 0.25, wall_clock: Callable[[], float] = time.time
+        self,
+        *,
+        interval: float = 0.25,
+        wall_clock: Callable[[], float] = time.time,
+        root_pid: int | None = None,
     ) -> None:
         if not 0.01 <= interval <= 5:
             raise ValueError("Invalid process sampling interval")
         self.interval = interval
         self.wall_clock = wall_clock
-        self.root = psutil.Process(os.getpid()) if psutil is not None else None
+        self.root = None
+        if psutil is not None:
+            try:
+                self.root = psutil.Process(
+                    root_pid if root_pid is not None else os.getpid()
+                )
+            except psutil.Error:
+                pass
         self.stop = threading.Event()
         self.thread: threading.Thread | None = None
         self.initial: dict[tuple[int, float], float] = {}
@@ -49,6 +60,7 @@ class ProcessSampler(AbstractContextManager["ProcessSampler"]):
         self.minimum_visible_available: int | None = None
         self.peak_visible_swap = 0
         self.peak_cgroup_memory = 0
+        self.pressure_avg10: dict[str, float] = {}
         self.started = 0.0
         self.started_wall = 0.0
         self.elapsed = 0.0
@@ -69,6 +81,18 @@ class ProcessSampler(AbstractContextManager["ProcessSampler"]):
     def sample(self, *, initial: bool = False) -> None:
         if psutil is None or self.root is None:
             return
+        for kind in ("cpu", "memory", "io"):
+            path = Path("/proc/pressure") / kind
+            if path.is_file():
+                for line in path.read_text().splitlines():
+                    fields = line.split()
+                    key = kind + ":" + fields[0]
+                    value = float(
+                        dict(item.split("=", 1) for item in fields[1:])["avg10"]
+                    )
+                    self.pressure_avg10[key] = max(
+                        value, self.pressure_avg10.get(key, 0)
+                    )
         memory_state = psutil.virtual_memory()
         self.visible_memory_total = memory_state.total
         self.minimum_visible_available = min(
@@ -189,4 +213,6 @@ class ProcessSampler(AbstractContextManager["ProcessSampler"]):
         }
         if self.children_elapsed is not None:
             result["waited_children_cpu_seconds"] = sum(self.children_elapsed)
+        for key, value in self.pressure_avg10.items():
+            result["peak_os_pressure_avg10_" + key] = value
         return result

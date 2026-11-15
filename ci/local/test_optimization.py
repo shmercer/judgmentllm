@@ -703,7 +703,12 @@ def test_resource(tmp_path):
     assert (result.returncode == 0) == (fault in {"none", "preflight"}), (
         result.stdout + result.stderr
     )
-    if fault in {"worker_crash", "stale_preflight"}:
+    if fault in {"worker_crash", "stale_preflight", "failed"}:
+        if fault == "failed":
+            assert summary["counts"]["failed"] == 1
+            execution = json.loads((output / "execution.json").read_text())
+            assert execution["stages"]["serial"]["status"] == "not-executed"
+            assert execution["stages"]["resource"]["status"] == "not-executed"
         assert summary["status"] == "failed"
         assert summary["manifest_complete"] is False
         if fault == "stale_preflight":

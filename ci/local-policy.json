@@ -1,0 +1,274 @@
+{
+  "auto_default": "conservative",
+  "profiles": {
+    "concurrent": {
+      "ordinary_workers": 12,
+      "r_workers": 2
+    },
+    "conservative": {
+      "ordinary_workers": 12,
+      "r_workers": 1
+    }
+  },
+  "reason": "Concurrency requires same-machine whole-bundle equivalence and benefit evidence; no speculative default promotion",
+  "resource_sources": {
+    "src/judgmentllm/providers/anthropic.py": {
+      "reason": "Actual provider SDK workload and OpenAI single-handoff fixture closure",
+      "selectors": [
+        "tests/test_anthropic_resources.py"
+      ]
+    },
+    "src/judgmentllm/providers/anthropic_response.py": {
+      "reason": "Actual provider SDK workload and OpenAI single-handoff fixture closure",
+      "selectors": [
+        "tests/test_anthropic_resources.py"
+      ]
+    },
+    "src/judgmentllm/providers/anthropic_schema.py": {
+      "reason": "Actual provider SDK workload and OpenAI single-handoff fixture closure",
+      "selectors": [
+        "tests/test_anthropic_resources.py"
+      ]
+    },
+    "src/judgmentllm/providers/gemini.py": {
+      "reason": "No measured workload invokes this provider-specific module; shared execution/preparation changes retain full fallback",
+      "selectors": []
+    },
+    "src/judgmentllm/providers/gemini_response.py": {
+      "reason": "No measured workload invokes this provider-specific module; shared execution/preparation changes retain full fallback",
+      "selectors": []
+    },
+    "src/judgmentllm/providers/google_response.py": {
+      "reason": "No measured workload invokes this provider-specific module; shared execution/preparation changes retain full fallback",
+      "selectors": []
+    },
+    "src/judgmentllm/providers/google_schema.py": {
+      "reason": "No measured workload invokes this provider-specific module; shared execution/preparation changes retain full fallback",
+      "selectors": []
+    },
+    "src/judgmentllm/providers/ollama_schema.py": {
+      "reason": "No measured workload invokes this provider-specific module; shared execution/preparation changes retain full fallback",
+      "selectors": []
+    },
+    "src/judgmentllm/providers/openai.py": {
+      "reason": "Actual provider SDK workload and OpenAI single-handoff fixture closure",
+      "selectors": [
+        "tests/test_openai_resources.py",
+        "tests/test_study_limits.py::test_single_handoff_resource_and_cleanup_bounds"
+      ]
+    },
+    "src/judgmentllm/providers/openai_response.py": {
+      "reason": "Actual provider SDK workload and OpenAI single-handoff fixture closure",
+      "selectors": [
+        "tests/test_openai_resources.py",
+        "tests/test_study_limits.py::test_single_handoff_resource_and_cleanup_bounds"
+      ]
+    },
+    "src/judgmentllm/providers/openai_schema.py": {
+      "reason": "Actual provider SDK workload and OpenAI single-handoff fixture closure",
+      "selectors": [
+        "tests/test_openai_resources.py",
+        "tests/test_study_limits.py::test_single_handoff_resource_and_cleanup_bounds"
+      ]
+    },
+    "src/judgmentllm/providers/together_schema.py": {
+      "reason": "No measured workload invokes this provider-specific module; shared execution/preparation changes retain full fallback",
+      "selectors": []
+    },
+    "src/judgmentllm/providers/vertex.py": {
+      "reason": "No measured workload invokes this provider-specific module; shared execution/preparation changes retain full fallback",
+      "selectors": []
+    },
+    "src/judgmentllm/providers/vertex_response.py": {
+      "reason": "No measured workload invokes this provider-specific module; shared execution/preparation changes retain full fallback",
+      "selectors": []
+    }
+  },
+  "schema_version": 1,
+  "serial": [
+    {
+      "dependencies": {
+        "src/judgmentllm/study/__init__.py": "95472926a6a8d115c7dca8a4f33dbf2c3fe5c633c155e81394bb96bf97b32422",
+        "src/judgmentllm/study/__main__.py": "eb3bbeedc3e547b2dfb2dae84d596e7f0f5bd7a3b49085d33028f9a77f0590cd",
+        "src/judgmentllm/study/admission.py": "5b80321efb048659b281347d78480e34dace0fa71d0dc45db601fa0d2a98c889",
+        "src/judgmentllm/study/budget.py": "ace257cadc494bc6c116209e088113ac4b3fbe193a669c502314a56af647a8be",
+        "src/judgmentllm/study/cli.py": "da7c9d57bdf2e8a4a10b8f10e216686bff114ad97affc3413eaeb98ba90347f9",
+        "src/judgmentllm/study/definitions.py": "26ee0d8919d52a2ede1179dd4d5bb470b0752d270a3d4820553784aa39b32cb5",
+        "src/judgmentllm/study/execution.py": "83f666455c638e0d2290abbf4ea8a28613c2fab9df9f22f7314d6a0a4e034095",
+        "src/judgmentllm/study/plans.py": "beca24bd44d5c185cd38d85f5072e9c879e6cdbb37335afb69384505c74a7200",
+        "src/judgmentllm/study/records.py": "f7e857bf8a6ae9ed1e07a668ccfd0b5d355e193bd0e1f67f34adf2a63ca90b49",
+        "src/judgmentllm/study/sources.py": "07f7552f5792f5baab56667d55fab00d9fb065639166bec676a66edeb928e285",
+        "tests/conftest.py": "588cce7bb07a60ab29a0f837a439944fd516d8f9b91aefbeedfa5d62a76cb6dc",
+        "tests/study_fixture.py": "72c54422eeb482131d67f27446e237dbe9afb7911479a286083e89c43db93a61",
+        "tests/test_study_limits.py": "c773724f2d6fb8f5f8daaa1a6cb67cec491b536d7a8797cc2d7fa22e2a6791f5",
+        "tests/test_study_native.py": "3dfe2cf6e66df9039d81f048bff88097197524c8b3d83e02c9d187a314a2a4f0"
+      },
+      "placement": "concurrency-safe-serial",
+      "reason": "One pytest process; copied private stores, patched per-test campaign lock, synthetic transports; no child deadline. Admission also requires a passing contention calibration.",
+      "selector": "tests/test_study_limits.py::test_one_handoff_resume_and_completion_preserve_all_identities"
+    },
+    {
+      "dependencies": {
+        "src/judgmentllm/study/__init__.py": "95472926a6a8d115c7dca8a4f33dbf2c3fe5c633c155e81394bb96bf97b32422",
+        "src/judgmentllm/study/__main__.py": "eb3bbeedc3e547b2dfb2dae84d596e7f0f5bd7a3b49085d33028f9a77f0590cd",
+        "src/judgmentllm/study/admission.py": "5b80321efb048659b281347d78480e34dace0fa71d0dc45db601fa0d2a98c889",
+        "src/judgmentllm/study/budget.py": "ace257cadc494bc6c116209e088113ac4b3fbe193a669c502314a56af647a8be",
+        "src/judgmentllm/study/cli.py": "da7c9d57bdf2e8a4a10b8f10e216686bff114ad97affc3413eaeb98ba90347f9",
+        "src/judgmentllm/study/definitions.py": "26ee0d8919d52a2ede1179dd4d5bb470b0752d270a3d4820553784aa39b32cb5",
+        "src/judgmentllm/study/execution.py": "83f666455c638e0d2290abbf4ea8a28613c2fab9df9f22f7314d6a0a4e034095",
+        "src/judgmentllm/study/plans.py": "beca24bd44d5c185cd38d85f5072e9c879e6cdbb37335afb69384505c74a7200",
+        "src/judgmentllm/study/records.py": "f7e857bf8a6ae9ed1e07a668ccfd0b5d355e193bd0e1f67f34adf2a63ca90b49",
+        "src/judgmentllm/study/sources.py": "07f7552f5792f5baab56667d55fab00d9fb065639166bec676a66edeb928e285",
+        "tests/conftest.py": "588cce7bb07a60ab29a0f837a439944fd516d8f9b91aefbeedfa5d62a76cb6dc",
+        "tests/study_fixture.py": "72c54422eeb482131d67f27446e237dbe9afb7911479a286083e89c43db93a61",
+        "tests/test_study_native.py": "3dfe2cf6e66df9039d81f048bff88097197524c8b3d83e02c9d187a314a2a4f0",
+        "tests/test_study_workflow.py": "ec1fead07bdfc3091b0944a8708fb3a7936f2b2261e8ebc6c4c06923e4e925bb"
+      },
+      "placement": "concurrency-safe-serial",
+      "reason": "One pytest process; copied private stores, patched per-test campaign lock, synthetic transports; no child deadline. Admission also requires a passing contention calibration.",
+      "selector": "tests/test_study_workflow.py::test_complete_synthetic_pilot_recovery_never_forwards_again"
+    }
+  ],
+  "serial_shared_dependencies": {
+    "src/judgmentllm/__init__.py": "87547433c9232266bc3a0d237c5d2a22051e5b28617d7c2e4b4dd42063f98915",
+    "src/judgmentllm/_auth.py": "2d2767b268d2fb2c42286494cebeaedf64da938ccf410f3018a0f2b6418dc912",
+    "src/judgmentllm/_lifecycle_store.py": "6fcd934c0bff4bf776c7a2ee96b34eebed34159f870ed45a06941c3d7223c7dc",
+    "src/judgmentllm/_verification.py": "e519638709eb7e85f0879a0b211da24f09c9956fa3ed30382353ac55191280b8",
+    "src/judgmentllm/anthropic_assessment.py": "d719ac3261958c7878157cb0fa1bc2330edc1d1ea062bc0dbc40782043c200aa",
+    "src/judgmentllm/anthropic_diagnostics.py": "f1c2a6e161b9fa6420a6c3d4abcd6b30e44a06a1cd58931d8b5c86a71b296af0",
+    "src/judgmentllm/anthropic_prompts.py": "7effb5461911902db16f9f91bf8c97b88afa0263a84dfdc0cc164e7805d41df0",
+    "src/judgmentllm/anthropic_qualification.py": "1b9ed9bf6de43b42e773a0282d5d114571b3e489a04f2ff75c97c49ec0318ae8",
+    "src/judgmentllm/anthropic_registry.py": "3b730ce56698119fcccd7c1b826b4174a0b5a80668eb7f534e264299aca98633",
+    "src/judgmentllm/anthropic_transport.py": "cb1fd88e8800097203b21a98dc7f566920910f7c325fd60e251c2e090444fac7",
+    "src/judgmentllm/assessment_diagnostics.py": "08a5197f175d093fd9ec116480d300285992f5572940abba87f2abce8b81704b",
+    "src/judgmentllm/assessment_errors.py": "112422919321e32347db51de253a05a9dded3ad7fe58bc741bd938e5c25b8a80",
+    "src/judgmentllm/assessment_inspection.py": "f6f5b78306128527eb8a4858506fe7a3397cfbd20b7237571aff3a9a7a7057b8",
+    "src/judgmentllm/auth.py": "754a386b3cdbad255359d2df55da530efa20613acfa6c85c1c1e64061e9473c2",
+    "src/judgmentllm/cache_policy.py": "b135a37e424aa5abd9ad95370f1d4b9556033f1b46b735672319b42658d45d33",
+    "src/judgmentllm/cli.py": "c1e5ca72bd902619d12363d2cd81ad5f057df7d4f41acc5902fee0cf57e87eff",
+    "src/judgmentllm/cli_controls.py": "0793c90e37cec71945a95d60aadd262fe1552999ea872a325561438f418b5b79",
+    "src/judgmentllm/config.py": "a3358ce9b5da23f59f4858ef257911b07c1f2f9106daf7fb405cc34a22cad65e",
+    "src/judgmentllm/evidence/__init__.py": "ea948f439bc6e2d1c3784684325d9959835c347b22f8e1833eadd13cddd886b8",
+    "src/judgmentllm/evidence/_base.py": "66eb1d81dc373c60eaf4827a26be5736957da25be0bedd677cfb0f9e422f2824",
+    "src/judgmentllm/evidence/assessment.py": "8d88a822c9caff2f3ecf6e7ab22d48a144bd566dca5f93313d5f61b058fbb59b",
+    "src/judgmentllm/evidence/order.py": "d4dd2086fe1e818583ddfe7e00a4826d8008fc400b3369e28dfbd6a0943c4d4a",
+    "src/judgmentllm/evidence/reasoning.py": "a271fe404c23706fdee7ec2b2b5cd30696de8b597e630c68289e803aa695dca6",
+    "src/judgmentllm/evidence/scope.py": "71935c0a5203cd5a9543625d3dea56bc8013f2e8eafc89e1c341860ec5df4cea",
+    "src/judgmentllm/evidence/usage.py": "4483522e6610c2f824135db2748b86a5733330f924cda1264ad7b3374c7b47a3",
+    "src/judgmentllm/execution/__init__.py": "25ef807aa6926ff50f6a2c704f81bb23334824a53a47326b0ea78f683dffa046",
+    "src/judgmentllm/execution/cancellation.py": "75bede4bee9a23eef334faa867a2d1d4a1fbed76ddd91c3b8dab93efb4e2a465",
+    "src/judgmentllm/execution/core.py": "09feaa2df538217aea3c026b997b68ba1722ee6cfd0d5cf3f91897747ff4c568",
+    "src/judgmentllm/execution/durable_evidence.py": "a84cc245d530c67c8f51405d798fb91846011cbad490d5f6921c0ffb0a1b313d",
+    "src/judgmentllm/execution/evidence.py": "bd7968daf973b53d75bfcbf9320eadfd970ed6970bdd71a8a232b97eb938e6a1",
+    "src/judgmentllm/execution/exports.py": "b67ee8e4ff4758da8296d64d803ee2a2a2ad1ed7ede664d9a914ccee672bb738",
+    "src/judgmentllm/execution/processing.py": "5285732afb16470fe3f219dd04961119750349e50a6f8decd32a85b5d90b3d32",
+    "src/judgmentllm/execution/retry.py": "fff74097e86a4a2b6059b53cd094927358b9834b25facaa3944bcc4804e5a644",
+    "src/judgmentllm/execution/session.py": "786828b4ffc3bb0c1cbb0052fd5ad8272f1b307b01d1c1041a04b8cfd0104b52",
+    "src/judgmentllm/gemini_assessment.py": "25d3b3bc75a5eea66ac4097a57c5051a830aa3b246a37205b7c0946ec7914191",
+    "src/judgmentllm/gemini_diagnostics.py": "7c1d90e1ac598abbc6e1330eee82a6be1edccd9829164a6bdca153123e102a44",
+    "src/judgmentllm/gemini_prompts.py": "5f6f1f879b04e7343effc898f84a83dc50a590fdea28b6d70abb9e72b972a885",
+    "src/judgmentllm/gemini_qualification.py": "61af0e1690338a4766ec1a1602194edcb6b5689fce00574ba42a680a67f9428b",
+    "src/judgmentllm/gemini_qualification_execution.py": "85faa13b36b2ddd0788f3b6636dd4785fcc0e19855ca4e2c1bb54ea7bd1f8206",
+    "src/judgmentllm/gemini_registry.py": "7ed53376771b7ee3f73303a169e8309a57b4c166785a3222ee4ca7e9c0d8c209",
+    "src/judgmentllm/gemini_transport.py": "f6bb4d913a3766a0d54c209e9c648bb1ab2c5ebeabc5b2ad91ffbb02c0a95c59",
+    "src/judgmentllm/gemini_types.py": "90295fdeb09e3f4f6d18eee913fa6982a152c91ecf0386766ed7b7a2d2dee8c8",
+    "src/judgmentllm/gemini_usage.py": "3560651f82e3c583347dc4d83b45d773199ab034701a1e5cf4d023e3ba8986a0",
+    "src/judgmentllm/generation.py": "0e966b9aedc8010166a70d6c6dd50ca3b11f32d2f1e2109f6157e295c84d5694",
+    "src/judgmentllm/io.py": "29bab64ccdc0b4a116ce0624227d4299d5ef1e531e898a7f3a91c3fc4eb2cf80",
+    "src/judgmentllm/keyring.py": "ab000234450204920d7d748434da18c7cb6088470aa7a7d0c91ed2121dec3f61",
+    "src/judgmentllm/lifecycle.py": "de915095bde30651a7753b0fa1d4983d7d8271fee991591d2b3f59ed1903964d",
+    "src/judgmentllm/lifecycle_models.py": "7a98895ad42c04f89ea7ab5ba79c3a21fd1dfc2191cd8cb3e61cba8ebe3800c2",
+    "src/judgmentllm/models.py": "756764e6ccaf4021abda5f4871988288b3c304a68bfff7b6fa5a3f32c75aae5b",
+    "src/judgmentllm/native_prompts.py": "95666e798c4c94f187ef490ae1e5080f80dfd0551d7952d5b0d05df9f81fcf71",
+    "src/judgmentllm/native_schema.py": "b75da41177fa6e4cfb714735cd7bffa3ea65c3465150e4615ea3037155b51ef4",
+    "src/judgmentllm/native_schema_v2.py": "b6a4df9019928f943e73604306814c4bb39ed593c75d72e9c37bed013061d169",
+    "src/judgmentllm/native_selection.py": "45c74bb4dc5e930e5463e17c1a605297eaa4f2ab94da8eb3b5b7c620c920c579",
+    "src/judgmentllm/native_selection_v2.py": "d1b5fefc46d2c4e86a9d9d504ee0bca7f31c70ff1feea87146dbc5f32a91d645",
+    "src/judgmentllm/openai_diagnostics.py": "79b084e17a8aae3749cb940f50b6cda6d150690d44996176e02420cede18ec53",
+    "src/judgmentllm/output_commitments.py": "6391e6f04ccc2770eb1823cb2d033b5d439df57a38b94c27cb30f14322f54cf8",
+    "src/judgmentllm/output_contracts.py": "d0719e8b92f0aa730da0f7a43094cf7235bce8571599a8ae3b7cf7194b83ddbd",
+    "src/judgmentllm/persistence/__init__.py": "fef7ac7144c3d2ff0afb73bd01cd7c81c0af6072155eb808af749bedd36d01ce",
+    "src/judgmentllm/persistence/artifacts.py": "b5fe99454aab742d3d284fefd393413f06297145fac6f692979d46dafbae612e",
+    "src/judgmentllm/persistence/evidence.py": "114e44fba2a8ab45739c841f77b9bfc00553e1e6ad1143a983c32d1673425bed",
+    "src/judgmentllm/persistence/generation.py": "bedb396907099c335bee20e75c84aad601942045a4272a36d661535af20a5a32",
+    "src/judgmentllm/persistence/hashing.py": "0b44d2323eebccd5273d8e2bf299f8cee5d5fb7d03e0fbcd27ce5421b8cd56f4",
+    "src/judgmentllm/persistence/models.py": "4efc63164e85f9e208311658cc22564e2b442aec626a511c598c39a646f7f0b0",
+    "src/judgmentllm/persistence/ownership.py": "2017993071a0a45c604d60e11eab8decfef745ad14a0e794ac54d0f5e14faf10",
+    "src/judgmentllm/persistence/receipts.py": "d310b4e65b998b5fa1b7cb058f08a3976573f542561084bcff0578c58d6ae7c5",
+    "src/judgmentllm/persistence/repository.py": "9d134ba23e1c9dee4a5d2db7c5937f2e066c6bb5d2a5d5f89f87099ad808dcc7",
+    "src/judgmentllm/persistence/schema.py": "dc7b20c3d4c10d2d47903ad503e439daccb994957a4b2066367a1cc86e6f4f66",
+    "src/judgmentllm/persistence/sources.py": "d549c3809f594e87449acdce24bf7def099e22fdb670d3959f0006b64b09969c",
+    "src/judgmentllm/persistence/transport_receipts.py": "76cec6d4498f6cfb40becacbe3c51f439f09371e76b27e1c468f91af498c28f2",
+    "src/judgmentllm/planning.py": "88e947a9efa57abf5ae88fe54de29a1ba50d8dc6a62557843545ad23d9cf0660",
+    "src/judgmentllm/preparation/__init__.py": "c63492520d2711beaee40681e5296de269adc45176c5e192bfefae659b2ca9e3",
+    "src/judgmentllm/preparation/capture.py": "a938b543ddea2d4ea9335457eac6526b6fbc30650f5651d7a8fa288127df7633",
+    "src/judgmentllm/preparation/freezing.py": "108a655a14ae755f0535c1392cfc043e480f39d87ce800186c2c6412c80c5c13",
+    "src/judgmentllm/preparation/index.py": "14f36a35c1fd6850bb7676e6c015c83dab97447e894b06779eee30480ac41eb2",
+    "src/judgmentllm/preparation/manifest.py": "f884dd5d88161c4049d470b50d7d5a7e0141bdc486ef2be95288ca6aa3a3863a",
+    "src/judgmentllm/preparation/native.py": "d5166ced969403018c71d9e17ac9d4490c63755745a7d2032159caa1b48fe1a7",
+    "src/judgmentllm/preparation/records.py": "7d44674162dad8ac445187cc1a7530f0a601ed0c3122ede66d7c47318b94201a",
+    "src/judgmentllm/preparation/session.py": "00bafc2aa31d66b6932dbb8c18bbb2d5e1ae56c475ada8cd94c91e7d9bd3256e",
+    "src/judgmentllm/presentation.py": "e59cf4a40cce82602a2e34c0a889e4e7a87ee6faeb79c66071d9dcab9272f641",
+    "src/judgmentllm/presentation_blocks.py": "be90a1f52e4e780a1bc961be3d3279b08f906a2b8fc57122575a14805d320eab",
+    "src/judgmentllm/preview.py": "493c9aa319fc7026e30c1d41de6965c00b4c2a0abb6514bc34d00557a45a07ba",
+    "src/judgmentllm/production_prompts.py": "35a93704f600f5c3fdb07800b71d0e05424e7b107e2a5086cbfc3a3bf9bda42a",
+    "src/judgmentllm/production_registry.py": "eebd4736692e667905ea4850ae32fab545d47ad6ebd1010678eb7a235d66e6db",
+    "src/judgmentllm/production_transport.py": "d79d435e7b876ed85ada9f2ef0324908fe25eb0c27d506cf13bd3da31b1fa350",
+    "src/judgmentllm/prompts.py": "d40f8833b2f4fb57cf277b9d3b0ab0525baf6a3a3be77cdf094c9dc0d6f0f8fd",
+    "src/judgmentllm/provider_diagnostics.py": "5a45f682c2b712233655553752aebc64b559860ff6b0f3ddc935daf73a73b8b5",
+    "src/judgmentllm/providers/__init__.py": "3384fc2228b125aae0680964ee3a3fcece1a8569f82954314eae5fb6ed9e103b",
+    "src/judgmentllm/providers/_assessment_schema.py": "0db809847e87eec204de556fbdbd630776f8765a5ce13ee8c8f2dd2ad7a56378",
+    "src/judgmentllm/providers/anthropic.py": "42e5b7527c4e6dceef554c98ad23fde2b633d90c4d7420358ed767ab0de0b53f",
+    "src/judgmentllm/providers/anthropic_cli.py": "d77037bf41e61c33d7eb315952bfb413e5b0a20ea7b3718d41e356688d960ea1",
+    "src/judgmentllm/providers/anthropic_response.py": "5050200161ca0bae934dd486d7af8a419ece5218c9cba4dba6ecefb1f780dd56",
+    "src/judgmentllm/providers/anthropic_schema.py": "baf49802a6574057f35cad53517a42d0c1f843feafc311e60c035748db281333",
+    "src/judgmentllm/providers/evidence.py": "2f01249870b9438e54637f4631e85faaa2f5320cfed0a1c653a82a226dd2d720",
+    "src/judgmentllm/providers/gemini.py": "5b3d65e06a67cddf87c8f0091e8d0a9ebab5376829407853ee5e991b7796185a",
+    "src/judgmentllm/providers/gemini_cli.py": "f60981eb98ca6e520186c9c553950caaceccc3fd95797562b227734ef6ee8ec1",
+    "src/judgmentllm/providers/gemini_response.py": "efd5ab07f222f3fffcfe5b40ed05d67d08b32fa0cb8c16ea6ed65e588a620ca5",
+    "src/judgmentllm/providers/google_response.py": "e2eb2ff16e941346c08ef8fbe84bbf0ac5085d4b1cd7e29c74b1426290f38c7f",
+    "src/judgmentllm/providers/google_schema.py": "ceeacfee133ac513ac29de43fcb15d2b9517df045baba934012d9675e8d9fd2f",
+    "src/judgmentllm/providers/ledger.py": "b8ffa9e4e206262a99e8bb11cac19d25744d32fb8acde0f1718371c98c93df8e",
+    "src/judgmentllm/providers/mock.py": "c2e82992e0659c26b0e7caab63e2cadb001d10ef1a066218fd9d5c9a9e2258da",
+    "src/judgmentllm/providers/ollama_schema.py": "a51ee7d813fe529f384bf0d58eb7edf414775c2945c64317dbd3cdb1cb4906e2",
+    "src/judgmentllm/providers/openai.py": "4ee79f2d67d1e341009693220f51eabe27b5f4d7fe323b703d921814e9b6486c",
+    "src/judgmentllm/providers/openai_cli.py": "a31e5f50dfe62b8af5316ce85983afc4f7f7da2faf614626ac6b970c736df36c",
+    "src/judgmentllm/providers/openai_response.py": "a3abc34262ce49ae966002fdc5f7fd7e4b2d5eda8448e556f39e6373fe8e6f6a",
+    "src/judgmentllm/providers/openai_schema.py": "3a78e0c2090d362c6c0d982b39d114e7117807c3e3dff43bfe20588cd18f1d31",
+    "src/judgmentllm/providers/protocol.py": "6daa1c3c0ef241bb91190bc784b9c7cca54f13a263843541f30ae6e963d62c15",
+    "src/judgmentllm/providers/reasoning.py": "e3f02d1577f24bb410c5ba118d70ccb500299b418c0fc9c6a4cec5aeaafe384d",
+    "src/judgmentllm/providers/together_schema.py": "3f86a85d79b3fa4f9ab458652ae3fba217d800f885a04040060e46ac8855f5f5",
+    "src/judgmentllm/providers/vertex.py": "2f5861d24f6296c5008451220b3630a5321c38bb7ac4c9d1e18c7b3dcd972d9f",
+    "src/judgmentllm/providers/vertex_cli.py": "88d67a9c8fd76fee50648e3b1dae1c223a9cc8b43f053dc11c51461a4e223911",
+    "src/judgmentllm/providers/vertex_response.py": "ac15a5e979f9493778f2d76c91e280eb9482dc0f6374089be97c6afe45a09177",
+    "src/judgmentllm/qualification.py": "b642577e516c16e33210a3a6d925306338be2901c830bb0d8a9a62531a6b6475",
+    "src/judgmentllm/r_exports.py": "220c6b076a549d542ec52d4fae6a2176ed12ce961cfa0b6eb51554b7e023b7aa",
+    "src/judgmentllm/reasoning.py": "e759a8cd912d5ef28c484f3cc74e1fa5a64b4a3a79e55096d34b07a4ad568199",
+    "src/judgmentllm/request_rendering.py": "72c45733d60babb8495afee8469880078990e4520e7b87542651b2b18f8a7c75",
+    "src/judgmentllm/results.py": "8295219df11f47d33de3671ce90956ae906e1f70fa608e4a34a7637cce64197a",
+    "src/judgmentllm/service_tiers.py": "d2f37240ec978439dd57111c3c2bf3a86c798ff2a04d5e07ee2fb2aad5ead8a7",
+    "src/judgmentllm/study/__init__.py": "95472926a6a8d115c7dca8a4f33dbf2c3fe5c633c155e81394bb96bf97b32422",
+    "src/judgmentllm/study/__main__.py": "eb3bbeedc3e547b2dfb2dae84d596e7f0f5bd7a3b49085d33028f9a77f0590cd",
+    "src/judgmentllm/study/admission.py": "5b80321efb048659b281347d78480e34dace0fa71d0dc45db601fa0d2a98c889",
+    "src/judgmentllm/study/budget.py": "ace257cadc494bc6c116209e088113ac4b3fbe193a669c502314a56af647a8be",
+    "src/judgmentllm/study/cli.py": "da7c9d57bdf2e8a4a10b8f10e216686bff114ad97affc3413eaeb98ba90347f9",
+    "src/judgmentllm/study/definitions.py": "26ee0d8919d52a2ede1179dd4d5bb470b0752d270a3d4820553784aa39b32cb5",
+    "src/judgmentllm/study/execution.py": "83f666455c638e0d2290abbf4ea8a28613c2fab9df9f22f7314d6a0a4e034095",
+    "src/judgmentllm/study/plans.py": "beca24bd44d5c185cd38d85f5072e9c879e6cdbb37335afb69384505c74a7200",
+    "src/judgmentllm/study/records.py": "f7e857bf8a6ae9ed1e07a668ccfd0b5d355e193bd0e1f67f34adf2a63ca90b49",
+    "src/judgmentllm/study/sources.py": "07f7552f5792f5baab56667d55fab00d9fb065639166bec676a66edeb928e285",
+    "src/judgmentllm/transport.py": "ae15d0d9db2a018e977f2a651f5b0f35aebeaac9973a484e4788474b83bcf36e",
+    "src/judgmentllm/transport_dispatch.py": "9ca4f448ecc941ad956e3e5c522d9996d17238f4c8555c51ca44d8e97c1a8dc2",
+    "src/judgmentllm/vertex_assessment.py": "7a4ccd6d1038e990f9cb0d805c547c352c5e8394109a74dd58036b0f0c6e654a",
+    "src/judgmentllm/vertex_config.py": "6aa18a09d7a1beefa4b0b9eeadaa52ea75b00be321514ad3e122a6147adbe843",
+    "src/judgmentllm/vertex_diagnostics.py": "981dec654c3f0e10559b31020f5ba00a49844ebac523ee8c91549eb36fac8f08",
+    "src/judgmentllm/vertex_prompts.py": "f4b95642accd73c972af5c14c1a9386e439d14a7b01f2f3b94a2ab78ca92a33e",
+    "src/judgmentllm/vertex_qualification.py": "de6a6a86eed4771db9dde3f08572109d5721a4884d6f7235fa9865cf55c0e77c",
+    "src/judgmentllm/vertex_qualification_execution.py": "e7bcd9f9dc6ca44c294fd0ffdf84552187f3cea45655e8e5428f0010804ac1a2",
+    "src/judgmentllm/vertex_qualification_sdk.py": "90f73d2202fa59d155f4f4b566fdf5348649a1034f85ba8ec52d39fe251bfb9b",
+    "src/judgmentllm/vertex_registry.py": "0fe9107d5afdc8c0dd164833546fb60e3c9b181a518bbc2419d1b77648e98b64",
+    "src/judgmentllm/vertex_transport.py": "869d1eb1dba953448b35f5ece8c8c1fdad69d332392fe2108a254774eda7dd1f",
+    "src/judgmentllm/vertex_types.py": "896ddde85c126e6215e261010ce3c3215bd2291a0d81023cafd9ea12f78fb8a8",
+    "src/judgmentllm/vertex_usage.py": "f0aa1220d0462d4767ac31c0cb84f6a9778b344734277dfc9091dc8264a1b1f3"
+  }
+}

@@ -29,7 +29,15 @@ def test_workflow_is_base_owned_and_only_aggregator_can_write_statuses() -> None
     assert "pull_request_target" in data["on"] and "pull_request" not in data["on"]
     assert data["on"]["schedule"] == [{"cron": "17 8 * * 1"}]
     assert data["permissions"] == {"contents": "read"}
-    assert data["concurrency"]["cancel-in-progress"] == "true"
+    assert (
+        data["concurrency"]["cancel-in-progress"]
+        == "${{ github.event_name == 'pull_request_target' }}"
+    )
+    assert "github.run_id" in data["concurrency"]["group"]
+    assert (
+        data["env"]["PURPOSE"]
+        == "${{ github.event_name == 'push' && 'main-linux' || 'pr' }}"
+    )
     assert (
         data["env"]["SOURCE_SHA"]
         == "${{ github.event.pull_request.head.sha || github.sha }}"

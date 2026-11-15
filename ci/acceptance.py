@@ -4,15 +4,18 @@ from __future__ import annotations
 
 import argparse
 import glob
+import hashlib
 import json
 import os
 import platform
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 from typing import Any
 
+from environment import clean_environment
 from risk import R_GATES, admit, git, lane_profile, make_plan, required_steps
 from selection import read
 from suite_evidence import validate_suite
@@ -24,39 +27,6 @@ def save(path: Path, value: dict[str, Any]) -> None:
     path.write_text(
         json.dumps(value, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
-
-
-def clean_environment() -> dict[str, str]:
-    keys = (
-        "PATH",
-        "HOME",
-        "LANG",
-        "LC_ALL",
-        "SystemRoot",
-        "WINDIR",
-        "TEMP",
-        "TMP",
-        "TMPDIR",
-        "R_LIBS",
-        "R_LIBS_USER",
-        "UV_CACHE_DIR",
-        "UV_PYTHON_INSTALL_DIR",
-    )
-    result = {key: os.environ[key] for key in keys if key in os.environ}
-    result.update(
-        PATH=str(Path(sys.executable).parent) + os.pathsep + result.get("PATH", ""),
-        PYTHONDONTWRITEBYTECODE="1",
-        PYTHONUTF8="1",
-        UV_OFFLINE="1",
-        UV_PYTHON_DOWNLOADS="never",
-        NO_COLOR="1",
-        PYRIGHT_PYTHON_USE_BUNDLED_PYRIGHT="1",
-        PYRIGHT_PYTHON_NODEJS_WHEEL="1",
-        PYRIGHT_PYTHON_GLOBAL_NODE="0",
-        PYRIGHT_PYTHON_IGNORE_WARNINGS="1",
-        JUDGMENTLLM_REQUIRE_NATIVE_SDK_PROBES="1",
-    )
-    return result
 
 
 def run_lane(
@@ -71,6 +41,8 @@ def run_lane(
     quality_receipt: Path | None = None,
     execution_scope: str = "hosted",
     partition: str = "all",
+    local_schedule: str = "auto",
+    schedule_certificate: Path | None = None,
 ) -> int:
     if execution_scope not in {"local", "hosted"}:
         raise ValueError("Execution scope must be local or hosted")
@@ -111,6 +83,7 @@ def run_lane(
     )
     report: dict[str, Any] = {
         "source_sha": plan["source_sha"],
+        "purpose": plan.get("purpose", "pr"),
         "plan_sha256": plan["plan_sha256"],
         "lane": lane,
         "partition": partition,
@@ -290,7 +263,10 @@ def run_lane(
                 "--workers",
                 str(workers),
                 "--distribution",
-                expected["distribution"],
+                "worksteal"
+                if execution_scope == "local"
+                and lane_profile(plan, lane, execution_scope) == "full"
+                else expected["distribution"],
                 "--bound-workers",
                 "--contract",
                 str(HERE / "test-contract.json"),
@@ -316,6 +292,10 @@ def run_lane(
                 command.append("--skip-resources")
             if execution_scope == "hosted":
                 command.append("--skip-r")
+            else:
+                command += ["--local-schedule", local_schedule, "--run-r-gates"]
+                if schedule_certificate is not None:
+                    command += ["--schedule-certificate", str(schedule_certificate)]
             save(output / "executed-plan.json", plan)
             command += ["tests"]
             step("tests", command)
@@ -337,9 +317,21 @@ def run_lane(
             if execution_scope == "local" and suite.get("deferred_r_cases"):
                 raise ValueError("Required local R cases were deferred")
             validate_suite(
-                plan, lane, output, run_id, scope=execution_scope, partition=partition
+                plan,
+                lane,
+                output,
+                run_id,
+                scope=execution_scope,
+                partition=partition,
+                source=source,
             )
             report["selection_sha256"] = suite["selection_sha256"]
+            for name, result in suite.get("r_gates", {}).items():
+                if result["exit_code"] != 0:
+                    raise ValueError("A required named R gate failed")
+                report["steps"].append(
+                    {"name": "r-" + name, "exit_code": 0, "evidence": result["receipt"]}
+                )
             for alias in ("coverage", "resources"):
                 if alias in needed:
                     if (
@@ -359,7 +351,9 @@ def run_lane(
         # Each named gate has a single receipt. All persist/export/assertion
         # subprocesses must finish successfully to produce it.
         for name in R_GATES:
-            if f"r-{name}" not in needed:
+            if f"r-{name}" not in needed or any(
+                item["name"] == f"r-{name}" for item in report["steps"]
+            ):
                 continue
             step(
                 f"r-{name}",
@@ -388,52 +382,66 @@ def run_lane(
     return int(report["status"] != "passed")
 
 
-def r_gate(name: str, source: Path, output: Path) -> int:
+def r_gate(
+    name: str, source: Path, output: Path, *, cancel: threading.Event | None = None
+) -> int:
     if os.environ.get("GITHUB_ACTIONS") == "true":
         raise ValueError("R interoperability gates run locally, not in GitHub Actions")
-    fixtures = {
-        "exports": ("examples/export_r.py", "examples/r_interoperability.R"),
-        "persistence": (
-            "scripts/persistence_r_fixture.py",
-            "examples/persistence_interoperability.R",
-        ),
-        "generation": (
-            "scripts/generation_r_fixture.py",
-            "examples/generation_interoperability.R",
-        ),
-        "source-preparation": (
-            "scripts/source_preparation_r_fixture.py",
-            "examples/source_preparation_interoperability.R",
-        ),
-        "execution": (
-            "scripts/execution_r_fixture.py",
-            "examples/execution_interoperability.R",
-        ),
-        "grouped-lifecycle": (
-            "scripts/grouped_lifecycle_r_fixture.py",
-            "examples/grouped_lifecycle_interoperability.R",
-        ),
-    }
+    from local.r_evidence import commands as r_commands
+
     environment = clean_environment()
     environment["JUDGMENTLLM_R_STRICT"] = "1"
-    if name == "cli-lifecycle":
-        commands = [
-            [sys.executable, "scripts/cli_lifecycle_r_gate.py", "--output", str(output)]
-        ]
-    else:
-        fixture, assertions = fixtures[name]
-        commands = [
-            [sys.executable, fixture, "--output", str(output), *phase]
-            for phase in (
-                [[]]
-                if name == "exports"
-                else [["--phase", "persist"], ["--phase", "export"]]
+    commands = r_commands(name, sys.executable, output.resolve())
+    from local.preflight_provenance import RUN_ID_ENV, receipt_provenance, source_record
+    from local.process import run as run_owned
+
+    source, output = source.resolve(), output.resolve()
+    if output.is_relative_to(source):
+        raise ValueError("R evidence must be outside the source")
+    output.mkdir(parents=True, exist_ok=False)
+    before = source_record(source)
+    identity = receipt_provenance(before, os.environ.get(RUN_ID_ENV))
+    report: dict[str, Any] = {
+        "schema_version": 2,
+        "gate": name,
+        "status": "failed",
+        "provenance": identity,
+        "steps": [],
+        "phase": "incomplete",
+    }
+    started = time.monotonic()
+    try:
+        for index, command in enumerate(commands):
+            with (output / f"phase-{index}.log").open("w") as stream:
+                code, processes = run_owned(
+                    command,
+                    cwd=source,
+                    env=environment,
+                    stream=stream,
+                    evidence=output / f"phase-{index}-owner",
+                    cancel=cancel,
+                )
+            report["steps"].append(
+                {"command": command, "exit_code": code, "processes": processes}
             )
-        ]
-        commands.append(["Rscript", "--vanilla", assertions, str(output)])
-    for command in commands:
-        subprocess.run(command, cwd=source, env=environment, check=True)
-    return 0
+            if code:
+                raise ValueError(f"R gate {name} phase {index} failed with exit {code}")
+        if source_record(source) != before:
+            raise ValueError("R gate source/environment changed")
+        report.update(status="passed", phase="complete", source_verified=True)
+    except (OSError, ValueError, subprocess.SubprocessError) as error:
+        report["error"] = {"type": type(error).__name__, "message": str(error)}
+    finally:
+        report["seconds"] = time.monotonic() - started
+        report["artifacts"] = {
+            path.relative_to(output).as_posix(): hashlib.sha256(
+                path.read_bytes()
+            ).hexdigest()
+            for path in sorted(output.rglob("*"))
+            if path.is_file() and path.name != "receipt.json"
+        }
+        save(output / "receipt.json", report)
+    return int(report["status"] != "passed")
 
 
 def main() -> int:
@@ -443,12 +451,21 @@ def main() -> int:
     parser.add_argument("--base")
     parser.add_argument("--head")
     parser.add_argument("--risk", type=int, choices=range(5), default=0)
+    parser.add_argument(
+        "--purpose", choices=("pr", "main-linux", "main-local"), default="pr"
+    )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--plan", type=Path)
     parser.add_argument("--lane", default="linux-3.11")
     parser.add_argument("--run-id", default="local")
     parser.add_argument("--receipts", type=Path)
     parser.add_argument("--workers", type=int)
+    parser.add_argument(
+        "--local-schedule",
+        choices=("auto", "conservative", "concurrent", "resource-isolated"),
+        default="auto",
+    )
+    parser.add_argument("--schedule-certificate", type=Path)
     parser.add_argument(
         "--partition", choices=("all", "ordinary", "serial"), default="all"
     )
@@ -464,7 +481,9 @@ def main() -> int:
         # before classification; never compare a feature branch to itself.
         args.base = git(args.source, "rev-parse", args.base)
     if args.operation == "plan":
-        plan = make_plan(args.source, args.base, args.head, minimum=args.risk)
+        plan = make_plan(
+            args.source, args.base, args.head, minimum=args.risk, purpose=args.purpose
+        )
         args.output.parent.mkdir(parents=True, exist_ok=True)
         save(args.output, plan)
         print(json.dumps(plan, indent=2))
@@ -499,10 +518,14 @@ def main() -> int:
             quality_receipt=args.quality_receipt,
             execution_scope=args.execution_scope,
             partition=args.partition,
+            local_schedule=args.local_schedule,
+            schedule_certificate=args.schedule_certificate,
         )
     if not args.base or not args.head:
         parser.error("aggregation requires independently supplied --base and --head")
-    expected_plan = make_plan(args.source, args.base, args.head, minimum=args.risk)
+    expected_plan = make_plan(
+        args.source, args.base, args.head, minimum=args.risk, purpose=args.purpose
+    )
     if json.dumps(plan, sort_keys=True) != json.dumps(expected_plan, sort_keys=True):
         raise ValueError("Plan artifact differs from protected-base classification")
     paths = list(args.receipts.rglob("receipt.json"))
@@ -519,6 +542,7 @@ def main() -> int:
                 path.parent,
                 args.run_id,
                 partition=receipt.get("partition", "all"),
+                source=args.source,
             )
             if suite["selection_sha256"] != receipt.get("selection_sha256"):
                 raise ValueError("Lane receipt does not bind its exact selection")

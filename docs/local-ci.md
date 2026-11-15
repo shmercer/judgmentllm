@@ -2,8 +2,8 @@
 
 For adding tests, taxonomy/parameter maintenance and troubleshooting, use the
 single [contributor testing guide](testing-guide.md). Level 2/3 hosted platforms
-now use exact smoke/extended selections; complete primary historical coverage
-and all applicable local R/resource gates remain required. Every hosted lane
+use exact smoke/extended selections. Level 2 uses targeted changed-code coverage;
+Levels 3/4 retain complete primary historical coverage. Applicable local R/resource gates remain required. Every hosted lane
 first validates full collection and emits executed/deferred/not-required case
 accounting. Level 4 below still runs complete supported suites.
 
@@ -16,8 +16,9 @@ passed. Complete acceptance needs applicable local evidence and hosted functiona
 evidence at the same source. The GitHub status covers only its hosted scope.
 
 Coverage, all actual R checks and resource measurement workloads execute locally
-only. `ci/check.py --profile pr` retains the combined 90% floor, strict historical
-comparison, all applicable R/jsonlite gates and affected resource measurements in
+only. `ci/check.py --profile pr` retains the combined 90% floor and strict historical
+comparison at Levels 3/4, targeted changed-code admission at Level 2,
+all applicable R/jsonlite gates and affected resource measurements in
 its local primary lane; missing required R dependencies fail. Native comprehensive
 and release checks retain all existing workloads and bounds. GitHub Actions
 defers those local checks even for comprehensive runs, while keeping cold SDK byte

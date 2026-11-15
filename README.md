@@ -185,10 +185,10 @@ uv run --offline --no-sync python scripts/smoke_install.py dist/*.tar.gz
 
 Contributors should follow the [testing guide](docs/testing-guide.md) for focused
 feedback, automatic PR plans and source-bound local/hosted qualification. A
-selected test pass is preliminary; complete coverage/R/resource requirements and
+focused development pass is preliminary; risk-appropriate coverage/R/resource requirements and
 the protected-base hosted status remain separate acceptance evidence.
 
-Use a writable `UV_CACHE_DIR` when the default cache is read-only. Tests are synthetic and offline. The coverage gate remains 90%; statement and branch coverage are reported. The installation helper creates clean environments and may download locked core dependencies; installed import, template, and preview checks run offline. Provider SDKs must be absent from these core installations.
+Use a writable `UV_CACHE_DIR` when the default cache is read-only. Tests are synthetic and offline. Levels 3/4 retain the 90% historical coverage floor; Level 2 requires complete coverage of changed executable lines and relevant branch outcomes. Statement and branch coverage are reported. The installation helper creates clean environments and may download locked core dependencies; installed import, template, and preview checks run offline. Provider SDKs must be absent from these core installations.
 
 The [risk-based verification policy](https://github.com/shmercer/judgmentllm/blob/main/docs/ci-optimization.md) selects checks by affected
 behavior. Linux/Python 3.11 is the primary suite/coverage lane; comprehensive
