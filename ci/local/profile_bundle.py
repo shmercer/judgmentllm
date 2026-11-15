@@ -109,6 +109,16 @@ def inspect_trial(
     receipts: dict[str, dict[str, Any]] = {}
     executed: set[str] = set()
     cpu, peak_ram, swap = 0.0, 0, 0
+    memory_available: list[int] = []
+    pressure: dict[str, float] = {}
+    latency: dict[str, float] = {}
+
+    def observe(telemetry: dict[str, Any]) -> None:
+        memory_available.append(telemetry["minimum_visible_memory_available_bytes"])
+        for key, value in telemetry.items():
+            if key.startswith("peak_os_pressure_avg10_"):
+                pressure[key] = max(value, pressure.get(key, 0))
+
     for part in summary["partitions"]:
         name = part["name"]
         receipt = json.loads((directory / (name + ".json")).read_text())
@@ -125,10 +135,14 @@ def inspect_trial(
             raise ValueError("Failed, duplicate or foreign profiling cases")
         executed.update(selected)
         receipts[name] = receipt
+        for item in receipt["reports"]:
+            if item["phase"] == "call":
+                latency[item["nodeid"]] = item["seconds"]
         processes = json.loads((directory / (name + "-processes.json")).read_text())
         if processes.get("cleanup_complete") is not True:
             raise ValueError("Profiling process ownership did not complete")
         telemetry = processes.get("telemetry", {})
+        observe(telemetry)
         cpu += telemetry.get(
             "waited_children_cpu_seconds", telemetry.get("sampled_cpu_seconds", 0)
         )
@@ -147,8 +161,10 @@ def inspect_trial(
         gate = directory / "r-gates" / name
         record = json.loads((gate / "receipt.json").read_text())
         validate_r(name, gate, record, identity)
-        for step in record["steps"]:
+        for index, step in enumerate(record["steps"]):
             telemetry = step["processes"].get("telemetry", {})
+            observe(telemetry)
+            latency[f"r:{name}:{index}"] = step["processes"]["seconds"]
             cpu += telemetry.get(
                 "waited_children_cpu_seconds", telemetry.get("sampled_cpu_seconds", 0)
             )
@@ -162,10 +178,57 @@ def inspect_trial(
         "aggregate_process_cpu_seconds": cpu,
         "largest_stage_tree_rss_bytes": peak_ram,
         "peak_visible_swap_used_bytes": swap,
+        "minimum_available_memory_bytes": min(memory_available),
+        "pressure": pressure,
+        "latency_seconds": latency,
         "summary": str(directory / "summary.json"),
         "summary_sha256": checksum(directory / "summary.json"),
         "coverage_signature": signature(directory / "coverage.json"),
     }
+
+
+def validate_health(trials: list[dict[str, Any]], workers: int) -> None:
+    """Preserve the host reserve and reject regressions beyond control noise."""
+    controls = [item for item in trials if item["profile"] == "conservative"]
+    candidates = [
+        item
+        for item in trials
+        if item["profile"] == "concurrent" and item["workers"] == workers
+    ]
+    if len(controls) < 2 or len(candidates) < 2:
+        raise ValueError(
+            "Resource-health comparison needs repeated complete strategies"
+        )
+
+    def ceiling(values: list[float], *, latency: bool = False) -> float:
+        # Ten percent plus observed spread guards deadline risk; one second
+        # accommodates process-start jitter for short cases without retuning tests.
+        return (
+            max(values)
+            + max(values)
+            - min(values)
+            + (max(1, 0.1 * max(values)) if latency else 0)
+        )
+
+    for trial in candidates:
+        if (
+            trial["minimum_available_memory_bytes"] < 16 * 1024**3
+            or trial["peak_visible_swap_used_bytes"]
+            > ceiling([item["peak_visible_swap_used_bytes"] for item in controls])
+            or set(trial["pressure"]) != set(controls[0]["pressure"])
+            or set(trial["latency_seconds"]) != set(controls[0]["latency_seconds"])
+        ):
+            raise ValueError(
+                "Concurrent execution lost memory reserve, swapped, or lacks health evidence"
+            )
+        for key, value in trial["pressure"].items():
+            if value > ceiling([item["pressure"][key] for item in controls]):
+                raise ValueError(f"Concurrent execution increased OS pressure: {key}")
+        for key, value in trial["latency_seconds"].items():
+            if value > ceiling(
+                [item["latency_seconds"][key] for item in controls], latency=True
+            ):
+                raise ValueError(f"Concurrent execution increased timeout risk: {key}")
 
 
 def verify_certificate(certificate: dict[str, Any], source: Path) -> None:
@@ -208,6 +271,7 @@ def verify_certificate(certificate: dict[str, Any], source: Path) -> None:
         for trial in certificate["trials"]
     ):
         raise ValueError("Whole-run strategies have different coverage")
+    validate_health(certificate["trials"], certificate["ordinary_workers"])
 
 
 def main() -> int:

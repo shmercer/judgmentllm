@@ -253,6 +253,26 @@ receipts explicitly do not establish PR qualification. Final local/hosted eviden
 must use the exact final source and protected-base admission; candidate-policy
 workflow results remain a separate check.
 
+Automatic promotion also preserves at least 16 GiB of available host memory and
+rejects swap or OS pressure above the repeated controls' maximum plus observed
+spread. Each test and R phase must remain within that control envelope plus 10%
+(or one second for short-process startup noise). This conservative latency margin
+guards timeout risk without changing any test deadline. A faster but contended
+profile remains an explicit diagnostic option and does not become the default.
+
+The committed implementation's real Gemini response scenario (synthetic source
+`aa6ef9fb437140d6370c08aa4562541cf6d513b8`, implementation base `40b3dcf`)
+passed independent Level 2 local admission: 1,955 selected cases, zero skips or
+failures, exports/execution R gates, and complete changed-line/branch coverage.
+Functional/R execution took 89.75s; quality checks also included 561 infrastructure
+cases in 141.77s. Its full collection retained the historical inventory and added
+two independent tests. Historical coverage was explicitly not assessed. This is
+one bounded scenario, not a full-suite speedup benchmark or final-PR acceptance.
+
+Four isolated transient systemd candidate executions validated unit syntax,
+duplicate public-main polling, durable restart recovery and foreground priority.
+The production timer was absent and remains unactivated before review and merge.
+
 Local admission can be replayed without rerunning tests using
 `ci/acceptance.py verify-local` with independently supplied `--base`, `--head`,
 `--run-id`, the saved `--plan`, `--receipts` primary directory and external

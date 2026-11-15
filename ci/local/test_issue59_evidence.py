@@ -696,6 +696,43 @@ def test_unqualified_or_noisy_scheduling_evidence_never_promotes_default() -> No
         )
 
 
+@pytest.mark.parametrize(
+    "fault", [None, "memory", "swap", "pressure", "latency", "missing"]
+)
+def test_scheduler_health_requires_unchanged_reserves_and_deadline_margin(
+    fault: str | None,
+) -> None:
+    from profile_bundle import validate_health
+
+    trials: list[dict[str, Any]] = [
+        {
+            "profile": profile,
+            "workers": 10 if profile == "concurrent" else 12,
+            "minimum_available_memory_bytes": 32 * 1024**3,
+            "peak_visible_swap_used_bytes": 0,
+            "pressure": {"peak_os_pressure_avg10_cpu:some": 0.1},
+            "latency_seconds": {"test::case": 10.0, "r:exports:0": 0.2},
+        }
+        for profile in ("conservative", "concurrent", "concurrent", "conservative")
+    ]
+    candidate = trials[1]
+    if fault == "memory":
+        candidate["minimum_available_memory_bytes"] = 8 * 1024**3
+    elif fault == "swap":
+        candidate["peak_visible_swap_used_bytes"] = 1
+    elif fault == "pressure":
+        candidate["pressure"]["peak_os_pressure_avg10_cpu:some"] = 1
+    elif fault == "latency":
+        candidate["latency_seconds"]["test::case"] = 12
+    elif fault == "missing":
+        candidate["latency_seconds"] = {}
+    if fault is None:
+        validate_health(trials, 10)
+    else:
+        with pytest.raises(ValueError):
+            validate_health(trials, 10)
+
+
 def test_empty_passing_group_cannot_supply_or_conceal_required_coverage(
     real_coverage: tuple[Path, Path, dict[str, Any], dict[str, Any]], tmp_path: Path
 ) -> None:
