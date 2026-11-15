@@ -17,8 +17,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import risk
 from additions import additive_tests, independent_module, metadata_additions
-from coverage_data import combine, seal
+from coverage_data import combine, prepare_config, seal
 from orchestrator import Stage, choose, run
+from preflight_provenance import receipt_provenance, source_record
 from selection import inventory, manifest
 from targeted_coverage import compare
 from test_risk import freeze
@@ -159,6 +160,7 @@ def test_realistic_level_two_change_executes_new_tests_and_targeted_coverage(
         "PYTHONDONTWRITEBYTECODE": "1",
         "JUDGMENTLLM_CI_RUN_ID": "moderate-realistic",
         "JUDGMENTLLM_CI_GROUP": "ordinary",
+        "JUDGMENTLLM_CI_ATTEMPT_ID": str(tmp_path),
     }
     collection = tmp_path / "collection.json"
     common = [
@@ -211,6 +213,16 @@ def test_realistic_level_two_change_executes_new_tests_and_targeted_coverage(
     receipt_file = tmp_path / "tests.json"
     data = tmp_path / ".coverage"
     env["COVERAGE_FILE"] = str(data)
+    config = prepare_config(
+        source,
+        tmp_path,
+        receipt_provenance(
+            source_record(source),
+            env["JUDGMENTLLM_CI_RUN_ID"],
+            env["JUDGMENTLLM_CI_ATTEMPT_ID"],
+        ),
+        "ordinary",
+    )
     result = subprocess.run(
         [
             *common,
@@ -224,6 +236,7 @@ def test_realistic_level_two_change_executes_new_tests_and_targeted_coverage(
             "--cov-fail-under=0",
             "--cov-context=test",
             "--cov-append",
+            f"--cov-config={config}",
             "--ci-coverage",
             "--cov-report=",
             f"--ci-report={receipt_file}",

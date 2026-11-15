@@ -412,6 +412,7 @@ def passing_receipts(plan: dict[str, Any]) -> list[dict[str, Any]]:
             "source_sha": plan["source_sha"],
             "plan_sha256": plan["plan_sha256"],
             "run_id": "run:1",
+            "attempt_id": f"synthetic:{lane['id']}:{lane['partition']}",
             "source_verified": True,
             "status": "passed",
             "phase": "complete",

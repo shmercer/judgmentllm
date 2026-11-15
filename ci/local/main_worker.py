@@ -242,12 +242,18 @@ def once(root: Path, *, strict: bool, quiet_seconds: float) -> int:
                 )
                 output = root / "runs" / sha / attempt
                 output.mkdir(parents=True, exist_ok=False)
-                cancel, stop_monitor = threading.Event(), threading.Event()
+                cancel, stop_monitor, foreground_seen = (
+                    threading.Event(),
+                    threading.Event(),
+                    threading.Event(),
+                )
 
                 def prioritize_foreground() -> None:
                     while not stop_monitor.wait(0.25):
                         if foreground_pending(allocation.root):
-                            cancel.set()
+                            foreground_seen.set()
+                            if not stop_monitor.wait(5):
+                                cancel.set()
                             return
 
                 monitor = threading.Thread(target=prioritize_foreground, daemon=True)
@@ -282,6 +288,7 @@ def once(root: Path, *, strict: bool, quiet_seconds: float) -> int:
                     from acceptance import clean_environment
 
                     environment = {**clean_environment(), **allocation.environment()}
+                    environment["JUDGMENTLLM_BACKGROUND_RUN"] = "1"
                     environment["UV_OFFLINE"] = "0"
                     commands = [
                         (
@@ -335,6 +342,46 @@ def once(root: Path, *, strict: bool, quiet_seconds: float) -> int:
                             break
                     if code == 0 and not cancel.is_set():
                         verify_local(output, sha)
+                        plan = json.loads(
+                            (output / "qualification/plan.json").read_text()
+                        )
+                        with (output / "admission.log").open("w") as stream:
+                            code, processes = run_owned(
+                                [
+                                    str(source / ".venv/bin/python"),
+                                    "-B",
+                                    "ci/acceptance.py",
+                                    "verify-local",
+                                    "--source",
+                                    str(source),
+                                    "--plan",
+                                    str(output / "qualification/plan.json"),
+                                    "--base",
+                                    plan["base_sha"],
+                                    "--head",
+                                    sha,
+                                    "--purpose",
+                                    "main-local",
+                                    "--receipts",
+                                    str(output / "qualification/primary"),
+                                    "--output",
+                                    str(output / "admission.json"),
+                                    "--run-id",
+                                    "local",
+                                ],
+                                cwd=source,
+                                env=environment,
+                                stream=stream,
+                                evidence=output / "admission-owner",
+                                cancel=cancel,
+                                identity={
+                                    "source_sha": sha,
+                                    "attempt": attempt,
+                                    "phase": "admission",
+                                },
+                            )
+                        if processes.get("cleanup_complete") is not True:
+                            code = code or 1
                 except Exception as error:
                     (output / "worker-error.json").write_text(
                         json.dumps(
@@ -346,17 +393,19 @@ def once(root: Path, *, strict: bool, quiet_seconds: float) -> int:
                 finally:
                     stop_monitor.set()
                     monitor.join(timeout=2)
+                if foreground_pending(allocation.root):
+                    foreground_seen.set()
                 queue.finish(
                     sha,
                     "interrupted"
-                    if cancel.is_set()
+                    if foreground_seen.is_set()
                     else "passed"
                     if code == 0
                     else "failed",
                     output=str(output),
                     exit_code=code,
                 )
-                return 125 if cancel.is_set() else int(code != 0)
+                return 125 if foreground_seen.is_set() else int(code != 0)
         except (BlockingIOError, TimeoutError) as error:
             if queue.data["commits"][sha]["state"] == "running":
                 queue.finish(sha, "failed", reason=str(error))
@@ -371,10 +420,16 @@ def install(unit_dir: Path, root: Path) -> None:
     script = Path(__file__).resolve()
     for kind in ("service", "timer"):
         text = script.with_name(f"judgmentllm-main.{kind}.in").read_text()
+
+        def escaped(value: str) -> str:
+            if any(ord(character) < 32 or ord(character) == 127 for character in value):
+                raise ValueError("Invalid control character in unit configuration")
+            return value.replace("\\", "\\\\").replace('"', '\\"').replace("%", "%%")
+
         text = (
-            text.replace("@PYTHON@", sys.executable)
-            .replace("@SCRIPT@", str(script))
-            .replace("@STATE@", str(root.resolve()))
+            text.replace("@PYTHON@", escaped(sys.executable))
+            .replace("@SCRIPT@", escaped(str(script)))
+            .replace("@STATE@", escaped(str(root.resolve())))
         )
         (unit_dir / f"judgmentllm-main.{kind}").write_text(text)
 
@@ -416,8 +471,10 @@ def main() -> int:
     if args.operation == "activate":
         root = Path(__file__).resolve().parents[2]
         subprocess.run(["git", "fetch", "origin", "main"], cwd=root, check=True)
-        for path in [*root.glob("ci/**/*.py"), root / "ci/local-policy.json"]:
-            relative = path.relative_to(root).as_posix()
+        for relative in subprocess.check_output(
+            ["git", "ls-files", "ci", ".github/workflows/ci.yml"], cwd=root, text=True
+        ).splitlines():
+            path = root / relative
             if (
                 subprocess.check_output(
                     ["git", "show", f"origin/main:{relative}"], cwd=root
@@ -427,6 +484,9 @@ def main() -> int:
                 raise ValueError(
                     "Production activation requires the reviewed merged CI source"
                 )
+        if args.unit_dir.resolve() != (Path.home() / ".config/systemd/user").resolve():
+            raise ValueError("Production activation requires the user unit directory")
+        install(args.unit_dir, args.state_root)
         subprocess.run(["systemctl", "--user", "daemon-reload"], check=True)
         subprocess.run(
             ["systemctl", "--user", "enable", "--now", "judgmentllm-main.timer"],
@@ -452,7 +512,7 @@ def main() -> int:
             strict=args.strict_per_commit,
             quiet_seconds=args.quiet_seconds,
         )
-        if args.operation == "recover":
+        if args.operation in {"recover", "status"}:
             queue.recover()
         elif args.operation == "retry":
             tip = queue.data["tip"]

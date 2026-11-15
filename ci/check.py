@@ -203,8 +203,7 @@ def main() -> int:
     parser.add_argument(
         "--workers",
         type=int,
-        default=4,
-        help="Explicit fast/local PR worker count (workstation standalone recommendation: 12)",
+        help="Local PR/main defaults to 12, fast to 4; hosted limits remain independent",
     )
     parser.add_argument(
         "--local-schedule",
@@ -238,6 +237,8 @@ def main() -> int:
         help="External output for offline release compatibility and source/scale checklist",
     )
     options = parser.parse_args()
+    if options.workers is None:
+        options.workers = 12 if options.profile in {"pr", "main"} else 4
     if not 1 <= options.workers <= 32:
         parser.error("--workers must be 1 through 32")
     if options.profile == "fast":

@@ -21,8 +21,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from acceptance import clean_environment
 from allocation import QualificationLease, foreground_pending
-from coverage_data import combine, seal
+from coverage_data import combine, context_name, prepare_config, seal
 from main_worker import Queue, install
+from preflight_provenance import receipt_provenance, source_record
 from process import run as owned_run
 from test_risk import freeze
 
@@ -39,7 +40,7 @@ def real_coverage(
         "def first(value):\n    if value:\n        return 11\n    return 12\ndef second(value):\n    if value:\n        return 21\n    return 22\ndef child():\n    return 31\n"
     )
     (source / "test_probe.py").write_text(
-        "import subprocess, sys\nfrom probe import first, second\ndef test_first_true(): assert first(True) == 11\ndef test_first_false(): assert first(False) == 12\ndef test_second_true(): assert second(True) == 21\ndef test_second_false(): assert second(False) == 22\ndef test_child():\n    subprocess.run([sys.executable, '-m', 'coverage', 'run', '--parallel-mode', '--branch', '--source=probe', '--context=test_probe.py::test_child|subprocess', 'child.py'], check=True)\n"
+        "import subprocess, sys, os\nfrom probe import first, second\ndef test_first_true(): assert first(True) == 11\ndef test_first_false(): assert first(False) == 12\ndef test_second_true(): assert second(True) == 21\ndef test_second_false(): assert second(False) == 22\ndef test_child():\n    subprocess.run([sys.executable, '-m', 'coverage', 'run', '--parallel-mode', '--branch', '--source=probe', '--context=' + os.environ['JUDGMENTLLM_COVERAGE_CONTEXT'] + '|test_probe.py::test_child|subprocess', 'child.py'], check=True)\n"
     )
     (source / "pyproject.toml").write_text(
         '[tool.pytest.ini_options]\naddopts=""\n[tool.coverage.run]\nsource=["probe"]\nbranch=true\nrelative_files=true\n'
@@ -49,6 +50,10 @@ def real_coverage(
     freeze(source)
     data = root / ".coverage"
     receipt = root / "cases.json"
+    identity = receipt_provenance(
+        source_record(source), "real-worker-contributions", str(root)
+    )
+    config = prepare_config(source, root, identity, "ordinary")
     env = {
         **clean_environment(),
         "PYTHONPATH": os.pathsep.join(
@@ -57,6 +62,9 @@ def real_coverage(
         "COVERAGE_FILE": str(data),
         "JUDGMENTLLM_CI_RUN_ID": "real-worker-contributions",
         "JUDGMENTLLM_CI_GROUP": "ordinary",
+        "JUDGMENTLLM_CI_ATTEMPT_ID": str(root),
+        "COVERAGE_RCFILE": str(config),
+        "JUDGMENTLLM_COVERAGE_CONTEXT": context_name(identity, "ordinary"),
     }
     result = subprocess.run(
         [
@@ -75,6 +83,7 @@ def real_coverage(
             "--cov-branch",
             "--cov-context=test",
             "--cov-append",
+            f"--cov-config={config}",
             "--cov-report=",
             f"--ci-report={receipt}",
             "-q",
@@ -141,6 +150,9 @@ def test_real_coverage_rejects_incomplete_and_foreign_contributions(
     receipt, group = copy.deepcopy(original_receipt), copy.deepcopy(original_group)
     data = tmp_path / ".coverage"
     data.write_bytes(original.read_bytes())
+    data.with_name("pyproject.toml").write_bytes(
+        original.with_name("pyproject.toml").read_bytes()
+    )
     group = seal(data, receipt, source, original_receipt["provenance"], "ordinary")
     if fault == "missing-worker":
         receipt["coverage_contributors"] = []
@@ -586,6 +598,8 @@ def test_concurrent_r_gates_cannot_borrow_success(
     from orchestrator import Stage, run
     from r_evidence import validate
 
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+
     source = tmp_path / "source"
     (source / "examples").mkdir(parents=True)
     (source / "scripts").mkdir()
@@ -680,3 +694,200 @@ def test_unqualified_or_noisy_scheduling_evidence_never_promotes_default() -> No
             choose("auto", certificate=bad, machine={"cpu": 16}, policy_hash="p")[0]
             == "conservative"
         )
+
+
+def test_empty_passing_group_cannot_supply_or_conceal_required_coverage(
+    real_coverage: tuple[Path, Path, dict[str, Any], dict[str, Any]], tmp_path: Path
+) -> None:
+    source, original, record, group = real_coverage
+    empty = tmp_path / "empty"
+    data = CoverageData(basename=str(empty))
+    assert data.measured_contexts() == set()
+    data.write()
+    receipt = copy.deepcopy(record)
+    receipt["execution_group"] = "resource"
+    prepare_config(source, tmp_path, record["provenance"], "resource")
+    for contributor in receipt["coverage_contributors"]:
+        contributor["contexts"] = []
+        contributor["static_context"] = context_name(record["provenance"], "resource")
+    zero = seal(empty, receipt, source, record["provenance"], "resource")
+    assert zero["no_production_hits"] is True and zero["sources"] == {}
+    combine(
+        [group, zero],
+        {"ordinary": record, "resource": receipt},
+        source,
+        record["provenance"],
+        tmp_path / "combined",
+    )
+    combined = CoverageData(basename=str(tmp_path / "combined"))
+    combined.read()
+    actual = CoverageData(basename=str(original))
+    actual.read()
+    assert combined.arcs("probe.py") == actual.arcs("probe.py")
+    with pytest.raises(ValueError):
+        seal(empty, record, source, record["provenance"], "ordinary")
+
+
+def test_background_scheduler_yields_without_suspending_active_tests(
+    tmp_path: Path,
+) -> None:
+    from orchestrator import Stage, run
+
+    requested = threading.Event()
+    events: list[str] = []
+
+    def first() -> dict[str, Any]:
+        events.append("first-complete")
+        requested.set()
+        return {"exit_code": 0}
+
+    result = run(
+        [
+            Stage("first", first),
+            Stage(
+                "second",
+                lambda: events.append("forbidden") or {"exit_code": 0},
+                ("first",),
+            ),
+        ],
+        cpus=1,
+        memory_bytes=0,
+        output=tmp_path / "execution.json",
+        cancel=threading.Event(),
+        yield_at_boundary=requested.is_set,
+    )
+    assert result["status"] == "interrupted"
+    assert result["stages"]["first"]["status"] == "passed"
+    assert result["stages"]["second"]["status"] == "not-executed"
+    assert events == ["first-complete"]
+
+
+def test_performance_equivalence_does_not_reuse_verification_across_code_changes(
+    tmp_path: Path,
+) -> None:
+    from profile_bundle import operational_fingerprint
+
+    source = tmp_path / "source"
+    (source / "src").mkdir(parents=True)
+    (source / "README.md").write_text("Initial narrative\n")
+    (source / "src/code.py").write_text("value = 1\n")
+    subprocess.run(["git", "init", "-q", str(source)], check=True)
+    base = freeze(source)
+    original = operational_fingerprint(source, base)
+    (source / "README.md").write_text("Measured runtime narrative\n")
+    prose = freeze(source)
+    assert prose != base and operational_fingerprint(source, prose) == original
+    (source / "src/code.py").write_text("value = 2\n")
+    changed = freeze(source)
+    assert operational_fingerprint(source, changed) != original
+    with pytest.raises(ValueError):
+        operational_fingerprint(source, "--help")
+
+
+@pytest.mark.parametrize(
+    "fault",
+    ["none", "missing-report", "malformed-report", "changed-report", "failed-group"],
+)
+def test_independent_admission_rebuilds_exact_authorized_data(
+    real_coverage: tuple[Path, Path, dict[str, Any], dict[str, Any]],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    fault: str,
+) -> None:
+    import coverage_equivalence
+    from coverage_data import checksum, report, validate_suite_coverage
+
+    source, original, receipt, _ = real_coverage
+    monkeypatch.chdir(source)
+    root = tmp_path / "suite"
+    directory = root / "coverage-groups/ordinary"
+    directory.mkdir(parents=True)
+    data = directory / ".coverage"
+    data.write_bytes(original.read_bytes())
+    data.with_name("pyproject.toml").write_bytes(
+        original.with_name("pyproject.toml").read_bytes()
+    )
+    group = seal(data, receipt, source, receipt["provenance"], "ordinary")
+    manifest = combine(
+        [group],
+        {"ordinary": receipt},
+        source,
+        receipt["provenance"],
+        root / ".coverage",
+    )
+    (root / "ordinary.json").write_text(json.dumps(receipt))
+    report(root / ".coverage", source, root / "coverage.json")
+    reference = json.loads((root / "coverage.json").read_text())
+
+    def historical_comparison(
+        current: Path, baseline: Path, source: Path, *, reviewed_ref: str
+    ) -> dict[str, Any]:
+        # The historical comparator has separate regression tests; this boundary checks the actual rebuilt data.
+        measured = json.loads(current.read_text())
+        assert (
+            measured["files"] == reference["files"]
+            and reviewed_ref == receipt["provenance"]["source"]["commit"]
+        )
+        return {"passed": True}
+
+    monkeypatch.setattr(coverage_equivalence, "compare", historical_comparison)
+    (root / "coverage-comparison.json").write_text('{"passed": true}')
+    manifest["reports"] = {
+        name: checksum(root / name)
+        for name in ("coverage.json", "coverage.xml", "coverage-comparison.json")
+    }
+    (root / "coverage-manifest.json").write_text(json.dumps(manifest))
+    plan = {
+        "coverage_mode": "historical",
+        "source_sha": receipt["provenance"]["source"]["commit"],
+    }
+    if fault == "missing-report":
+        (root / "coverage.json").unlink()
+    elif fault == "malformed-report":
+        (root / "coverage.json").write_text("{broken")
+    elif fault == "changed-report":
+        changed = copy.deepcopy(reference)
+        changed["files"]["probe.py"]["executed_lines"] = []
+        (root / "coverage.json").write_text(json.dumps(changed))
+        manifest["reports"]["coverage.json"] = checksum(root / "coverage.json")
+        (root / "coverage-manifest.json").write_text(json.dumps(manifest))
+    elif fault == "failed-group":
+        changed = copy.deepcopy(receipt)
+        changed["exit_code"] = 1
+        (root / "ordinary.json").write_text(json.dumps(changed))
+    if fault == "none":
+        assert validate_suite_coverage(
+            root, source, plan, receipt["provenance"], {"ordinary"}
+        ) == {"passed": True}
+    else:
+        with pytest.raises((ValueError, OSError)):
+            validate_suite_coverage(
+                root, source, plan, receipt["provenance"], {"ordinary"}
+            )
+
+
+@pytest.mark.parametrize("field", ["attempt", "run", "source", "guest"])
+def test_data_namespace_rejects_foreign_binary_even_with_rewritten_receipt(
+    real_coverage: tuple[Path, Path, dict[str, Any], dict[str, Any]],
+    tmp_path: Path,
+    field: str,
+) -> None:
+    source, original, receipt, _ = real_coverage
+    identity = copy.deepcopy(receipt["provenance"])
+    if field == "attempt":
+        identity["attempt_id"] = "another-attempt"
+    elif field == "run":
+        identity["qualification_run_id"] = "another-run"
+    elif field == "source":
+        identity["source"]["commit"] = "a" * 40
+    else:
+        identity["interpreter"]["prefix"] = "/guest/environment"
+    declared = copy.deepcopy(receipt)
+    declared["provenance"] = identity
+    for contributor in declared["coverage_contributors"]:
+        contributor["static_context"] = context_name(identity, "ordinary")
+    data = tmp_path / ".coverage"
+    data.write_bytes(original.read_bytes())
+    prepare_config(source, tmp_path, identity, "ordinary")
+    with pytest.raises(ValueError, match="Foreign source, run, group or attempt"):
+        seal(data, declared, source, identity, "ordinary")

@@ -71,8 +71,13 @@ new-test selection on all three OS profiles, and covered/uncovered admission.
 engine. `conservative` preserves ordinary → serial → resources → named R ordering.
 `concurrent` permits ordinary workers, one reviewed safe serial group and at most
 two R gates; exclusive serial groups and host resource work have barriers.
-`auto` requires a current same-source, same-policy, same-machine whole-bundle
-certificate before selecting concurrency, otherwise uses the conservative fallback.
+`auto` requires a current same-policy, same-machine whole-bundle certificate
+before selecting concurrency, otherwise uses the conservative fallback. Certificates
+bind every operational Git object, dependency version, CPU affinity and host/kernel
+fingerprint. Documentation-only source correspondence may preserve a performance
+hint; its original measured SHA remains explicit and every acceptance gate runs
+fresh at the current exact head. Performance evidence never becomes qualification
+evidence for another commit.
 `resource-isolated` falls back to authoritative exclusive host resources unless
 an independently qualified VM backend exists. Hosted worker caps remain separate.
 Recommended standalone local ordinary allocation is 12, bounded by actual CPUs,
@@ -108,6 +113,10 @@ No similar output from another gate can replace a missing receipt. Logs, exit co
 source identity and all artifacts are independently checked.
 
 Coverage uses normal pytest-cov xdist combination inside each execution group.
+Each invocation has a fresh attempt identity. A private copy of the unchanged
+coverage configuration adds a supported static context hashing source, environment,
+run, attempt and execution group. Admission verifies that configuration and rejects
+foreign namespaces inside the data itself, including instrumented subprocesses.
 The reporter records contributor completion/context metadata through public hooks;
 it does not snapshot worker data or use pytest-cov internals. A group is sealed
 only after passing and normal combination. The pinned pytest-cov startup erase race is prevented with supported `--cov-append`
@@ -179,7 +188,8 @@ explicit; a newer result is never attributed to an earlier SHA.
 
 `ci/local/allocation.py` coordinates foreground PR acceptance, the existing native
 grid and background main work. Foreground requests reserve priority before waiting
-for the shared allocation. Background work refuses admission and interrupts its
+for the shared allocation. Background schedulers stop admitting stages at safe
+boundaries; a five-second grace period then interrupts owned work if necessary. Background work refuses admission and interrupts its
 owned attempt when foreground capacity is needed; it never suspends/resumes a timed
 case as a pass. Native guest locks and ResourceLease remain additional safeguards.
 Restart recovery marks abandoned attempts interrupted, preserves logs and queues
@@ -242,3 +252,10 @@ A negligible or unreliable result leaves the conservative default. Profiling
 receipts explicitly do not establish PR qualification. Final local/hosted evidence
 must use the exact final source and protected-base admission; candidate-policy
 workflow results remain a separate check.
+
+Local admission can be replayed without rerunning tests using
+`ci/acceptance.py verify-local` with independently supplied `--base`, `--head`,
+`--run-id`, the saved `--plan`, `--receipts` primary directory and external
+`--output`. It reconstructs the plan, validates every case/R/ownership receipt,
+rebuilds the exact coverage union and repeats the applicable coverage comparison.
+Missing reports, foreign attempt namespaces and partial stages fail admission.

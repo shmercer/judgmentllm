@@ -3,22 +3,53 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
+import re
+import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
 
-from allocation import QualificationLease
+from allocation import QualificationLease, state_root
 from coverage_data import checksum, combine
 from policy import fingerprint
 from policy import read as read_policy
 from preflight_provenance import source_record
 from r_evidence import validate as validate_r
-from resource_specs import read_resources
+from resource_specs import machine_fingerprint
 from suite import outcomes, run
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def default_certificate() -> Path:
+    return state_root().parent / "schedules/certificate.json"
+
+
+def operational_fingerprint(source: Path, ref: str) -> str:
+    if re.fullmatch(r"[0-9a-f]{40}", ref) is None:
+        raise ValueError("Performance evidence requires a complete Git commit")
+    try:
+        entries = subprocess.check_output(
+            ["git", "ls-tree", "-rz", "--full-tree", ref],
+            cwd=source,
+            stderr=subprocess.PIPE,
+        ).split(b"\0")
+    except subprocess.CalledProcessError as error:
+        raise ValueError("Performance comparison history is unavailable") from error
+    selected = [
+        entry
+        for entry in entries
+        if entry
+        and not (
+            entry.split(b"\t", 1)[1].startswith(b"docs/")
+            and entry.endswith(b".md")
+            or entry.split(b"\t", 1)[1] == b"README.md"
+        )
+    ]
+    return hashlib.sha256(b"\0".join(selected)).hexdigest()
 
 
 def signature(path: Path) -> dict[str, Any]:
@@ -38,13 +69,18 @@ def signature(path: Path) -> dict[str, Any]:
     }
 
 
-def inspect_trial(directory: Path, targets: list[str], source: Path) -> dict[str, Any]:
+def inspect_trial(
+    directory: Path,
+    targets: list[str],
+    source: Path,
+    expected_source: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     summary = json.loads((directory / "summary.json").read_text())
     if (
         summary.get("qualification") is not False
         or summary.get("status") != "passed"
         or summary.get("selection_complete") is not True
-        or summary["source"] != source_record(source)
+        or summary["source"] != (expected_source or source_record(source))
     ):
         raise ValueError(
             "Profiling trial is incomplete or from another source/environment"
@@ -134,9 +170,23 @@ def inspect_trial(directory: Path, targets: list[str], source: Path) -> dict[str
 
 def verify_certificate(certificate: dict[str, Any], source: Path) -> None:
     specification = json.loads((ROOT / "ci/profile-bundle.json").read_text())
+    current = source_record(source)
+    qualified = certificate.get("source", {})
+    if (
+        current.get("dirty") is not False
+        or qualified.get("dirty") is not False
+        or {key: value for key, value in current.items() if key != "commit"}
+        != {key: value for key, value in qualified.items() if key != "commit"}
+        or certificate.get("operational_sha256")
+        != operational_fingerprint(source, current["commit"])
+        or certificate["operational_sha256"]
+        != operational_fingerprint(source, qualified["commit"])
+    ):
+        raise ValueError(
+            "Scheduling certificate differs in operational code, dependencies or environment"
+        )
     if (
         certificate.get("bundle_sha256") != checksum(ROOT / "ci/profile-bundle.json")
-        or certificate.get("source") != source_record(source)
         or not 4 <= len(certificate["trials"]) <= specification["maximum_trials"]
     ):
         raise ValueError("Stale or incomplete scheduling certificate")
@@ -150,7 +200,7 @@ def verify_certificate(certificate: dict[str, Any], source: Path) -> None:
         ):
             raise ValueError("Duplicate or untrusted profiling artifact location")
         locations.add(path)
-        actual = inspect_trial(path.parent, specification["targets"], source)
+        actual = inspect_trial(path.parent, specification["targets"], source, qualified)
         if actual != trial:
             raise ValueError("Scheduling evidence changed")
     if any(
@@ -170,16 +220,15 @@ def main() -> int:
         parser.error("Profiling requires clean committed source and external evidence")
     output.mkdir(parents=True, exist_ok=False)
     specification = json.loads((ROOT / "ci/profile-bundle.json").read_text())
-    resources = read_resources()
     certificate: dict[str, Any] = {
         "schema_version": 1,
         "source": source_record(source),
+        "operational_sha256": operational_fingerprint(
+            source, source_record(source)["commit"]
+        ),
         "bundle_sha256": checksum(ROOT / "ci/profile-bundle.json"),
         "policy_sha256": fingerprint(read_policy(ROOT / "ci")),
-        "machine": {
-            key: resources[key]
-            for key in ("logical_cpus", "effective_cpus", "quota_cpus", "memory_bytes")
-        },
+        "machine": machine_fingerprint(),
         "equivalent": False,
         "cleanup_passed": False,
         "trials": [],
@@ -226,14 +275,22 @@ def main() -> int:
             if code:
                 certificate["failure"] = {"trial": str(trial), "exit_code": code}
                 break
-            certificate["trials"].append(
-                inspect_trial(trial, specification["targets"], source)
-            )
+            try:
+                certificate["trials"].append(
+                    inspect_trial(trial, specification["targets"], source)
+                )
+            except Exception as error:
+                certificate["failure"] = {
+                    "trial": str(trial),
+                    "phase": "independent inspection",
+                    "reason": str(error),
+                }
+                break
         try:
             verify_certificate(certificate, source)
             certificate.update(equivalent=True, cleanup_passed=True)
         except (OSError, ValueError, KeyError, TypeError) as error:
-            certificate["failure"] = {"reason": str(error)}
+            certificate.setdefault("failure", {"reason": str(error)})
     from orchestrator import choose
 
     decision, reason = choose(
@@ -244,6 +301,12 @@ def main() -> int:
     )
     certificate.update(decision=decision, reason=reason)
     (output / "certificate.json").write_text(json.dumps(certificate, indent=2) + "\n")
+    if decision == "concurrent":
+        from main_worker import atomic
+
+        destination = default_certificate()
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        atomic(destination, certificate)
     print(f"Measured scheduler decision: {decision}: {reason}")
     return int(not certificate["equivalent"])
 

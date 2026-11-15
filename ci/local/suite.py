@@ -18,13 +18,14 @@ from typing import Any, cast
 # The policy checkout owns selection even when tests execute in a candidate.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from preflight_provenance import (
+    ATTEMPT_ENV,
     RUN_ID_ENV,
     receipt_provenance,
     source_record,
     verify_preflight_provenance,
 )
 from resource_budget import ResourceLease
-from resource_specs import read_resources
+from resource_specs import machine_fingerprint, read_resources
 from selection import digest, manifest, read, validate_candidate_metadata
 
 WARNINGS = [
@@ -240,6 +241,7 @@ def run(
     ).rstrip(os.pathsep)
     environment["PYTHONDONTWRITEBYTECODE"] = "1"
     qualification_run_id = environment.setdefault(RUN_ID_ENV, uuid.uuid4().hex)
+    attempt_id = environment.setdefault(ATTEMPT_ENV, uuid.uuid4().hex)
     resources = read_resources()
     requested_workers = workers
     if bound_workers:
@@ -262,7 +264,9 @@ def run(
         "source": source_record(source),
         "qualification_run_id": qualification_run_id,
     }
-    summary["provenance"] = receipt_provenance(summary["source"], qualification_run_id)
+    summary["provenance"] = receipt_provenance(
+        summary["source"], qualification_run_id, attempt_id
+    )
     coverage_mode = (
         plan.get("coverage_mode", "historical") if plan is not None else "historical"
     )
@@ -301,9 +305,17 @@ def run(
             "JUDGMENTLLM_CI_GROUP": label,
         }
         if coverage and label != "collection":
+            from coverage_data import context_name, prepare_config
+
             directory = output / "coverage-groups" / label
             directory.mkdir(parents=True)
             group_environment["COVERAGE_FILE"] = str(directory / ".coverage")
+            config = prepare_config(source, directory, summary["provenance"], label)
+            group_environment["COVERAGE_RCFILE"] = str(config)
+            group_environment["JUDGMENTLLM_COVERAGE_CONTEXT"] = context_name(
+                summary["provenance"], label
+            )
+            arguments = [*arguments, f"--cov-config={config}"]
         command = [
             sys.executable,
             "-P",
@@ -333,6 +345,7 @@ def run(
                 env=group_environment,
                 stream=stream,
                 evidence=output / (label + "-owner"),
+                identity={"provenance": summary["provenance"], "group": label},
                 cancel=cancel,
             )
         (output / f"{label}-processes.json").write_text(
@@ -511,6 +524,7 @@ def run(
                 node for node in parts[label] if node not in already_executed
             ]
         summary["reused_preflight_cases"] = len(already_executed)
+        from allocation import foreground_pending
         from orchestrator import Stage, choose
         from orchestrator import run as run_stages
         from policy import fingerprint, serial_groups
@@ -521,19 +535,19 @@ def run(
         local_policy = local_policy or read_local_policy(
             Path(__file__).resolve().parents[1]
         )
-        machine = {
-            key: resources[key]
-            for key in ("logical_cpus", "effective_cpus", "quota_cpus", "memory_bytes")
-        }
-        certificate = (
-            read(schedule_certificate) if schedule_certificate is not None else None
-        )
-        if certificate is not None and local_schedule == "auto":
-            from profile_bundle import verify_certificate
+        machine = machine_fingerprint()
+        certificate = None
+        if local_schedule == "auto" and execution_scope == "local" and stage == "full":
+            from profile_bundle import default_certificate, verify_certificate
 
             try:
+                certificate = read(schedule_certificate or default_certificate())
                 verify_certificate(certificate, source)
-            except (OSError, ValueError, KeyError, TypeError):
+            except Exception as error:
+                summary["schedule_certificate_error"] = {
+                    "type": type(error).__name__,
+                    "message": str(error),
+                }
                 certificate = None
         chosen, schedule_reason = choose(
             local_schedule,
@@ -575,6 +589,13 @@ def run(
                 workers = min(workers, certificate["ordinary_workers"])
         summary.update(
             local_schedule=chosen,
+            schedule_evidence={
+                "measured_source_sha": certificate["source"]["commit"],
+                "operational_sha256": certificate["operational_sha256"],
+                "qualification_reused": False,
+            }
+            if certificate is not None
+            else None,
             schedule_reason=schedule_reason,
             workers=workers,
             execution_groups={
@@ -748,7 +769,14 @@ def run(
             from acceptance import r_gate
 
             directory = output / "r-gates" / name
-            code = r_gate(name, source, directory, cancel=cancel)
+            code = r_gate(
+                name,
+                source,
+                directory,
+                cancel=cancel,
+                run_id=qualification_run_id,
+                attempt_id=attempt_id,
+            )
             with mutex:
                 summary["r_gates"][name] = {
                     "exit_code": code,
@@ -841,6 +869,14 @@ def run(
             output=output / "execution.json",
             cancel=cancel,
             r_workers=2 if chosen == "concurrent" else 1,
+            identity=summary["provenance"],
+            yield_at_boundary=(
+                lambda: foreground_pending(
+                    Path(environment["JUDGMENTLLM_ALLOCATION_ROOT"])
+                )
+            )
+            if environment.get("JUDGMENTLLM_BACKGROUND_RUN") == "1"
+            else None,
         )
         failed = execution["status"] != "passed"
         if coverage and "functional_coverage" not in summary and not failed:
@@ -932,6 +968,19 @@ def run(
             (output / "coverage-comparison.json").write_text(
                 json.dumps(comparison, indent=2, sort_keys=True) + "\n"
             )
+            from coverage_data import checksum
+
+            combined["reports"] = {
+                name: checksum(output / name)
+                for name in (
+                    "coverage.json",
+                    "coverage.xml",
+                    "coverage-comparison.json",
+                )
+            }
+            (output / "coverage-manifest.json").write_text(
+                json.dumps(combined, indent=2) + "\n"
+            )
             failed |= not comparison["passed"]
             if "combined_percent" in comparison:
                 print(
@@ -954,7 +1003,13 @@ def run(
             summary["accounting_sha256"] = digest(accounting)
         if source_record(source) != summary["source"]:
             raise ValueError("Source/environment changed during suite execution")
-    except (OSError, ValueError, KeyError, TypeError) as error:
+    except KeyboardInterrupt:
+        cancel.set()
+        summary.update(
+            status="interrupted",
+            error={"type": "KeyboardInterrupt", "message": "qualification interrupted"},
+        )
+    except Exception as error:
         summary.update(
             status="failed", error={"type": type(error).__name__, "message": str(error)}
         )

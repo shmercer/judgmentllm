@@ -29,9 +29,20 @@ def independent_test(node: ast.stmt, occupied: set[str]) -> bool:
         return False
     # Calls in defaults, annotations or decorators execute during collection.
     expressions = [*node.args.defaults, *node.args.kw_defaults, node.returns]
+    try:
+        for default in (*node.args.defaults, *node.args.kw_defaults):
+            if default is not None:
+                ast.literal_eval(default)
+    except (ValueError, TypeError, SyntaxError):
+        return False
     expressions.extend(
         arg.annotation
         for arg in (*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs)
+    )
+    expressions.extend(
+        argument.annotation
+        for argument in (node.args.vararg, node.args.kwarg)
+        if argument is not None
     )
     if any(
         isinstance(part, (ast.Call, ast.NamedExpr, ast.Lambda))
@@ -52,6 +63,15 @@ def independent_test(node: ast.stmt, occupied: set[str]) -> bool:
             for part in ast.walk(expr)
         ):
             return False
+        try:
+            for value in [
+                *decorator.args,
+                *(keyword.value for keyword in decorator.keywords),
+            ]:
+                if isinstance(ast.literal_eval(value), set):
+                    return False
+        except (ValueError, TypeError, SyntaxError):
+            return False
     if any(
         isinstance(part, (ast.Global, ast.Nonlocal))
         or isinstance(part, ast.Name)
@@ -70,6 +90,12 @@ def additive_tests(before: str, after: str) -> bool:
             ast.parse(before, type_comments=True),
             ast.parse(after, type_comments=True),
         )
+        if any(
+            isinstance(part, ast.ImportFrom)
+            and any(alias.name == "*" for alias in part.names)
+            for part in ast.walk(old)
+        ):
+            return False
         occupied = {part.id for part in ast.walk(old) if isinstance(part, ast.Name)}
         occupied.update(
             part.name

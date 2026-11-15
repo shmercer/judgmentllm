@@ -108,6 +108,7 @@ def pytest_runtestloop(session: pytest.Session) -> Generator[None, Any, Any]:
         _coverage_metadata.update(
             worker=worker,
             branch=_coverage.get_option("run:branch"),
+            static_context=_coverage.get_option("run:context"),
             contexts=sorted(_coverage.get_data().measured_contexts()),
         )
     return result

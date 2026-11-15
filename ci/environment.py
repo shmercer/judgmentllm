@@ -24,6 +24,8 @@ def clean_environment() -> dict[str, str]:
         "UV_PYTHON_INSTALL_DIR",
         "JUDGMENTLLM_ALLOCATION_ROOT",
         "JUDGMENTLLM_ALLOCATION_TOKEN",
+        "JUDGMENTLLM_BACKGROUND_RUN",
+        "JUDGMENTLLM_CI_ATTEMPT_ID",
     )
     result = {key: os.environ[key] for key in keys if key in os.environ}
     result.update(

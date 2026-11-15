@@ -35,6 +35,7 @@ def write_suite(
     )
     version = next(item["python"] for item in plan["lanes"] if item["id"] == lane)
     provenance = {
+        "attempt_id": f"synthetic:{lane}:{partition}",
         "source": {"commit": plan["source_sha"], "dirty": False},
         "qualification_run_id": f"run:1:{lane}"
         + (f":{partition}" if partition != "all" else ""),

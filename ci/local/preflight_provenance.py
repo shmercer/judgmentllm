@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import Any, cast
 
 RUN_ID_ENV = "JUDGMENTLLM_CI_RUN_ID"
+ATTEMPT_ENV = "JUDGMENTLLM_CI_ATTEMPT_ID"
 
 
 def source_record(source: Path) -> dict[str, Any]:
@@ -76,7 +77,9 @@ def source_record(source: Path) -> dict[str, Any]:
 
 
 def receipt_provenance(
-    source: dict[str, Any], qualification_run_id: str | None
+    source: dict[str, Any],
+    qualification_run_id: str | None,
+    attempt_id: str | None = None,
 ) -> dict[str, Any]:
     """Bind results to their actual source/environment and one launcher run."""
     return {
@@ -94,6 +97,9 @@ def receipt_provenance(
             "dependencies": source["dependencies"],
         },
         "qualification_run_id": qualification_run_id,
+        "attempt_id": attempt_id
+        if attempt_id is not None
+        else os.environ.get(ATTEMPT_ENV),
     }
 
 

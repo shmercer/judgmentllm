@@ -36,6 +36,19 @@ def read(root: Path) -> dict[str, Any]:
     ):
         raise ValueError("Invalid local process budget")
     seen: set[str] = set()
+    shared = policy.get("serial_shared_dependencies", {})
+    if any(
+        not (
+            path.startswith(
+                ("src/", "tests/", "scripts/", "examples/", "benchmarks/", "ci/")
+            )
+            or path in {"pyproject.toml", "uv.lock", ".gitattributes"}
+        )
+        or ".." in Path(path).parts
+        or len(value) != 64
+        for path, value in shared.items()
+    ):
+        raise ValueError("Invalid shared serial dependency manifest")
     for item in policy["serial"]:
         if (
             item["selector"] in seen
@@ -92,6 +105,7 @@ def serial_groups(
             item = matching[0]
             if all(
                 (source / path).is_file()
+                and (source / path).resolve().is_relative_to(source.resolve())
                 and hashlib.sha256((source / path).read_bytes()).hexdigest() == expected
                 for path, expected in {
                     **policy.get("serial_shared_dependencies", {}),
@@ -116,11 +130,7 @@ def resource_scope(
         if entry is not None:
             selected.update(entry["selectors"])
             reasons.append(f"{path}: {entry['reason']}")
-        elif (
-            path.startswith("src/")
-            or path.startswith(("scripts/", "benchmarks/"))
-            and sensitive
-        ):
+        elif path.startswith(("src/", "scripts/", "benchmarks/")):
             return None, [f"{path}: resource dependency unresolved; complete fallback"]
     if sensitive:
         return None, ["measurement/orchestration boundary: complete resource fallback"]

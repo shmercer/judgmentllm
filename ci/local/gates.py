@@ -24,7 +24,7 @@ from datetime import UTC, datetime
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, cast
 
-from preflight_provenance import RUN_ID_ENV
+from preflight_provenance import ATTEMPT_ENV, RUN_ID_ENV
 from telemetry import ProcessSampler
 
 MANIFEST = ".judgmentllm-source.json"
@@ -237,6 +237,7 @@ class Runner:
         self.environment = {
             **os.environ,
             RUN_ID_ENV: secrets.token_hex(16),
+            ATTEMPT_ENV: secrets.token_hex(16),
             "UV_OFFLINE": "1" if options.mode == "check" else "0",
             "UV_PYTHON_DOWNLOADS": "never",
             "UV_PROJECT_ENVIRONMENT": str(self.source / ".venv"),

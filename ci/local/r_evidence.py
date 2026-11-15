@@ -78,6 +78,12 @@ def validate(
         for step, command in zip(steps, expected, strict=True)
     ):
         raise ValueError("Missing, duplicated or failed R phases")
+    if any(
+        step["processes"].get("identity")
+        != {"provenance": identity, "gate": name, "phase": index}
+        for index, step in enumerate(steps)
+    ):
+        raise ValueError("Foreign R subprocess attribution")
     raw_artifacts = receipt.get("artifacts")
     if not isinstance(raw_artifacts, dict) or not raw_artifacts:
         raise ValueError("Missing actual R artifacts")

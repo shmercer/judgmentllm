@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import ctypes
 import functools
+import hashlib
 import json
 import os
 import signal
@@ -43,6 +44,17 @@ def _children() -> list[psutil.Process]:
     return psutil.Process().children(recursive=True)
 
 
+def _living() -> list[psutil.Process]:
+    result: list[psutil.Process] = []
+    for process in _children():
+        try:
+            if process.status() != psutil.STATUS_ZOMBIE:
+                result.append(process)
+        except psutil.NoSuchProcess:
+            pass
+    return result
+
+
 def _stop(processes: list[psutil.Process], *, force: bool = False) -> None:
     for process in processes:
         try:
@@ -56,6 +68,7 @@ def worker(request: Path) -> int:
     from telemetry import ProcessSampler
 
     settings = json.loads(request.read_text())
+    request_sha256 = hashlib.sha256(request.read_bytes()).hexdigest()
     stopping = threading.Event()
 
     def stop(signum: int, frame: FrameType | None) -> None:
@@ -78,13 +91,17 @@ def worker(request: Path) -> int:
         raise ValueError("Launcher identity changed before stage admission")
     started = time.monotonic()
     process = subprocess.Popen(settings["command"], cwd=settings["cwd"])
+    try:
+        child_birth = psutil.Process(process.pid).create_time()
+    except psutil.NoSuchProcess:
+        child_birth = None
     request.with_name("started.json").write_text(
         json.dumps(
             {
                 "worker_pid": os.getpid(),
                 "worker_birth": psutil.Process().create_time(),
                 "child_pid": process.pid,
-                "child_birth": psutil.Process(process.pid).create_time(),
+                "child_birth": child_birth,
             }
         )
         + "\n"
@@ -109,7 +126,7 @@ def worker(request: Path) -> int:
             _stop(living, force=True)
         code = process.wait()
         # A successful parent with living descendants is incomplete execution.
-        remaining = [p for p in _children() if p.status() != psutil.STATUS_ZOMBIE]
+        remaining = _living()
         leaked = bool(remaining)
         _stop(remaining)
         _, living = psutil.wait_procs(remaining, timeout=5)
@@ -124,6 +141,8 @@ def worker(request: Path) -> int:
         clean = not _children()
     result = {
         "schema_version": 1,
+        "identity": settings.get("identity"),
+        "request_sha256": request_sha256,
         "owner_pid": settings["owner_pid"],
         "owner_birth": settings["owner_birth"],
         "containment": "systemd-control-group"
@@ -154,6 +173,7 @@ def run(
     stream: TextIO,
     evidence: Path,
     cancel: threading.Event | None = None,
+    identity: dict[str, Any] | None = None,
 ) -> tuple[int, dict[str, Any]]:
     if sys.platform != "linux":
         result = subprocess.run(
@@ -173,6 +193,8 @@ def run(
     result_path = evidence / "result.json"
     unit = "judgmentllm-ci-" + uuid.uuid4().hex if systemd_available() else None
     settings = {
+        "identity": identity,
+        "unit": unit,
         "command": command,
         "cwd": str(cwd),
         "owner_pid": os.getpid(),
@@ -181,6 +203,7 @@ def run(
         "systemd": unit is not None,
     }
     request.write_text(json.dumps(settings) + "\n")
+    request_sha256 = hashlib.sha256(request.read_bytes()).hexdigest()
     launch = [
         sys.executable,
         "-B",
@@ -260,6 +283,8 @@ def run(
     result = json.loads(result_path.read_text())
     if (
         result.get("owner_pid") != settings["owner_pid"]
+        or result.get("identity") != identity
+        or result.get("request_sha256") != request_sha256
         or result.get("owner_birth") != settings["owner_birth"]
         or result.get("cleanup_complete") is not True
     ):

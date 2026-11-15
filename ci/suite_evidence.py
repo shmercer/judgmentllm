@@ -24,6 +24,7 @@ def validate_suite(
     scope: str = "hosted",
     partition: str = "all",
     source: Path | None = None,
+    attempt_id: str | None = None,
 ) -> dict[str, Any]:
     """Recompute the exact scope and require one terminal report per planned case."""
     root = output / "suite"
@@ -88,6 +89,13 @@ def validate_suite(
     ):
         raise ValueError("Suite scheduling differs from the hosted plan")
     provenance = summary["provenance"]
+    if plan.get("schema_version", 1) >= 2 and (
+        not isinstance(provenance.get("attempt_id"), str)
+        or not provenance["attempt_id"]
+        or attempt_id is not None
+        and provenance["attempt_id"] != attempt_id
+    ):
+        raise ValueError("Missing or foreign qualification attempt")
     interpreter = provenance["interpreter"]
     execution_id = f"{run_id}:{lane}" + (f":{partition}" if partition != "all" else "")
     expected_locks = {plan["lockfile_sha256"]}
@@ -195,8 +203,11 @@ def validate_suite(
         from local.orchestrator import validate_execution
 
         logical = {part["name"]: part.get("partition", part["name"]) for part in parts}
+        execution = read(root / "execution.json")
+        if execution.get("provenance") != provenance:
+            raise ValueError("Foreign scheduler source/run/attempt manifest")
         validate_execution(
-            read(root / "execution.json"),
+            execution,
             logical,
             plan["r_gates"],
             summary["local_schedule"],
@@ -205,6 +216,8 @@ def validate_suite(
             processes = read(root / (name + "-processes.json"))
             if (
                 processes.get("cleanup_complete") is not True
+                or processes.get("identity")
+                != {"provenance": provenance, "group": name}
                 or processes.get("cancelled") is not False
                 or processes.get("leaked_descendants") is not False
                 or processes.get("command_exit_code") != 0

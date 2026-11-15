@@ -8,6 +8,7 @@ import time
 from collections.abc import Callable
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +31,8 @@ def run(
     output: Path,
     cancel: threading.Event,
     r_workers: int = 2,
+    yield_at_boundary: Callable[[], bool] | None = None,
+    identity: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     names = {stage.name for stage in stages}
     if (
@@ -52,6 +55,7 @@ def run(
     active: dict[Future[dict[str, Any]], tuple[Stage, float]] = {}
     results: dict[str, Any] = {}
     started = time.monotonic()
+    started_at = datetime.now(UTC).isoformat()
     status = "passed"
     output.parent.mkdir(parents=True, exist_ok=True)
 
@@ -60,7 +64,11 @@ def run(
             json.dumps(
                 {
                     "schema_version": 1,
-                    "status": status,
+                    "provenance": identity,
+                    "started_at": started_at,
+                    "status": "running"
+                    if status == "passed" and (pending or active)
+                    else status,
                     "cpus": cpus,
                     "memory_bytes": memory_bytes,
                     "r_workers": r_workers,
@@ -79,6 +87,12 @@ def run(
         try:
             while pending or active:
                 if cancel.is_set() and status == "passed":
+                    status = "interrupted"
+                if (
+                    status == "passed"
+                    and yield_at_boundary is not None
+                    and yield_at_boundary()
+                ):
                     status = "interrupted"
                 if status == "passed":
                     for stage in list(pending):
@@ -106,6 +120,7 @@ def run(
                         results[stage.name] = {
                             "status": "running",
                             "start_seconds": before - started,
+                            "started_at": datetime.now(UTC).isoformat(),
                             "waiting_seconds": before - started,
                             "cpus": stage.cpus,
                             "memory_bytes": stage.memory_bytes,
@@ -137,6 +152,7 @@ def run(
                     results[stage.name].update(
                         status="passed" if passed else "failed",
                         stop_seconds=time.monotonic() - started,
+                        finished_at=datetime.now(UTC).isoformat(),
                         seconds=time.monotonic() - before,
                         result=result,
                     )

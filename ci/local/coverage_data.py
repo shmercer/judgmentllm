@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import tempfile
+import tomllib
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,34 @@ def canonical(value: Any) -> str:
     return hashlib.sha256(
         json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
+
+
+def context_name(identity: dict[str, Any], group: str) -> str:
+    if not isinstance(identity.get("attempt_id"), str) or not identity["attempt_id"]:
+        raise ValueError("Coverage requires a unique execution attempt")
+    return "ci:" + canonical({"provenance": identity, "group": group})
+
+
+def prepare_config(
+    source: Path, directory: Path, identity: dict[str, Any], group: str
+) -> Path:
+    text = (source / "pyproject.toml").read_text()
+    settings = tomllib.loads(text)
+    if (
+        "context" in settings["tool"]["coverage"]["run"]
+        or text.count("[tool.coverage.run]") != 1
+    ):
+        raise ValueError("Static coverage context requires a reviewed configuration")
+    context = context_name(identity, group)
+    path = directory / "pyproject.toml"
+    path.write_text(
+        text.replace(
+            "[tool.coverage.run]",
+            "[tool.coverage.run]\ncontext = " + json.dumps(context),
+            1,
+        )
+    )
+    return path
 
 
 def measured_paths(data: CoverageData, source: Path) -> dict[str, str]:
@@ -71,7 +100,17 @@ def seal(
         raise ValueError("Incomplete coverage stage execution")
     data = CoverageData(basename=str(data_file))
     data.read()
-    if not data.has_arcs() or not data.measured_files():
+    context = context_name(identity, group)
+    config = data_file.parent / "pyproject.toml"
+    original = tomllib.loads((source / "pyproject.toml").read_text())
+    configured = tomllib.loads(config.read_text())
+    if (
+        configured["tool"]["coverage"]["run"].pop("context", None) != context
+        or configured != original
+    ):
+        raise ValueError("Coverage group configuration changed protected settings")
+    no_hits = not data.measured_files()
+    if not data.has_arcs() and not no_hits:
         raise ValueError("Complete branch-enabled coverage data is required")
     contributors = receipt.get("coverage_contributors", [])
     identifiers = [item.get("worker") for item in contributors]
@@ -83,13 +122,20 @@ def seal(
     ):
         raise ValueError("Missing or duplicate coverage contributors")
     contexts = data.measured_contexts()
+    if any(
+        value != context and not value.startswith(context + "|") for value in contexts
+    ):
+        raise ValueError("Foreign source, run, group or attempt coverage context")
     for contributor in contributors:
         if (
             contributor.get("complete") is not True
             or contributor.get("branch") is not True
+            or contributor.get("static_context") != context
             or not set(contributor.get("contexts", [])) <= contexts
         ):
             raise ValueError("Missing coverage from an active contributor")
+    if no_hits and any(contributor.get("contexts") for contributor in contributors):
+        raise ValueError("Empty dataset lost active production contributions")
     result = {
         "schema_version": 1,
         "group": group,
@@ -99,6 +145,9 @@ def seal(
         "receipt_sha256": canonical(receipt),
         "sources": measured_paths(data, source),
         "contributors": contributors,
+        "no_production_hits": no_hits,
+        "configuration_sha256": checksum(config),
+        "context": context,
     }
     result["manifest_sha256"] = canonical(result)
     return result
@@ -164,8 +213,16 @@ def validate_suite_coverage(
 ) -> dict[str, Any]:
     """Independently rebuild from passing, explicitly authorized group artifacts."""
     from coverage_equivalence import compare
+    from selection import read
 
-    manifest = json.loads((root / "coverage-manifest.json").read_text())
+    manifest = read(root / "coverage-manifest.json")
+    declared = read(root / "coverage.json")
+    declared_comparison = read(root / "coverage-comparison.json")
+    if manifest.get("reports") != {
+        name: checksum(root / name)
+        for name in ("coverage.json", "coverage.xml", "coverage-comparison.json")
+    }:
+        raise ValueError("Missing, corrupt or stale coverage reports")
     groups = manifest["groups"]
     if manifest.get("provenance") != identity or {g["group"] for g in groups} != names:
         raise ValueError("Coverage execution groups differ from required partitions")
@@ -197,8 +254,14 @@ def validate_suite_coverage(
             or actual.measured_contexts() != rebuilt.measured_contexts()
             or any(
                 set(actual.arcs(filename) or []) != set(rebuilt.arcs(filename) or [])
-                or actual.contexts_by_lineno(filename)
-                != rebuilt.contexts_by_lineno(filename)
+                or {
+                    line: set(values)
+                    for line, values in actual.contexts_by_lineno(filename).items()
+                }
+                != {
+                    line: set(values)
+                    for line, values in rebuilt.contexts_by_lineno(filename).items()
+                }
                 for filename in rebuilt.measured_files()
             )
         ):
@@ -210,6 +273,15 @@ def validate_suite_coverage(
             plan["coverage_targets"] if plan["coverage_mode"] == "targeted" else None
         )
         report(data, source, output, targets)
+        rebuilt_json = read(output)
+        if (
+            any(
+                declared.get(key) != rebuilt_json.get(key)
+                for key in ("files", "totals")
+            )
+            or declared.get("meta", {}).get("branch_coverage") is not True
+        ):
+            raise ValueError("Missing, incomplete or malformed final coverage report")
         baseline = Path(__file__).resolve().parents[1] / "coverage-floor.json"
         if targets is not None:
             from targeted_coverage import compare as targeted
@@ -222,5 +294,9 @@ def validate_suite_coverage(
         if result.get("passed") is not True:
             raise ValueError(
                 f"Independently rebuilt coverage fails admission: {result}"
+            )
+        if declared_comparison != result:
+            raise ValueError(
+                "Stored coverage comparison differs from independent admission"
             )
         return result

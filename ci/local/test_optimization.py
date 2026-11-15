@@ -606,8 +606,9 @@ def test_preflight_cannot_credit_matching_unknown_or_dirty_identity(
     + [(fault, "worksteal") for fault in ("none", "failed")],
 )
 def test_real_distributed_runner_accounts_for_every_partition(
-    tmp_path: Path, fault: str, distribution: str
+    tmp_path: Path, fault: str, distribution: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setenv("JUDGMENTLLM_CI_ATTEMPT_ID", str(tmp_path))
     source = tmp_path / "source"
     source.mkdir()
     (source / "pyproject.toml").write_text(

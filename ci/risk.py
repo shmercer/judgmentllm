@@ -349,6 +349,7 @@ def classify(filename: str, before: str | None, after: str | None) -> tuple[int,
             "docs/implementation-plan.md",
             "docs/testing-guide.md",
             "docs/ci-tiered-verification.md",
+            "docs/ci-issue59.md",
         }
     ):
         return 3, "verification, dependency, selection or acceptance controls"
@@ -502,6 +503,14 @@ def make_plan(
         or any(token in name for token in ("resource", "memory", "concurrency"))
         or name in {"pyproject.toml", "uv.lock"}
         or name in SHARED_PROVIDER_FILES
+        or name
+        in {
+            "AGENTS.md",
+            "docs/ci-optimization.md",
+            "docs/local-ci.md",
+            "docs/testing-guide.md",
+            "docs/ci-issue59.md",
+        }
         for name in names
         if not any(
             change["path"] == name and change["level"] == 2 and name.startswith("ci/")
@@ -622,6 +631,8 @@ def make_plan(
         for name in ("ci/test-inventory.json", "ci/test-profiles.json")
         if metadata_checks and (content := blob(source, head, name)) is not None
     }
+    new_tests: list[str] = []
+    new_modules: list[str] = []
     # Candidate data is checked for integrity, never used to narrow trusted selection.
     for name in metadata_hashes:
         candidate = loads(blob(source, head, name) or "")
@@ -630,6 +641,14 @@ def make_plan(
 
             inventory_items(candidate)
             old_items = {item["nodeid"] for item in inventory_items(case_inventory)}
+            new_tests = sorted(
+                item["nodeid"]
+                for item in inventory_items(candidate)
+                if item["nodeid"] not in old_items
+            )
+            new_modules = sorted(
+                set(candidate["modules"]) - set(case_inventory["modules"])
+            )
             new_resources = sorted(
                 {
                     item["nodeid"]
@@ -677,6 +696,19 @@ def make_plan(
         "selection_reasons": impact_reasons,
         "unknown_production_dependencies": unknown,
         "new_or_unclassified_tests": unknown_tests,
+        "new_tests": new_tests,
+        "new_modules": new_modules,
+        "verified_additive_tests": [
+            change["path"]
+            for change in changes
+            if change["level"] <= 2 and change["path"].startswith("tests/")
+        ],
+        "verified_additive_metadata": [
+            change["path"]
+            for change in changes
+            if change["level"] == 2
+            and change["path"] in {"ci/test-inventory.json", "ci/test-profiles.json"}
+        ],
         "risk_reasons": [item for item in changes if item["level"] == level]
         + (
             [{"level": minimum, "reason": "requested minimum"}]
@@ -810,6 +842,10 @@ def admit(
             continue
         if (
             receipt.get("source_sha") != plan["source_sha"]
+            or plan.get("schema_version", 1) >= 2
+            and not (
+                isinstance(receipt.get("attempt_id"), str) and receipt["attempt_id"]
+            )
             or receipt.get("plan_sha256") != plan["plan_sha256"]
             or receipt.get("run_id") != run_id
             or receipt.get("status") != "passed"

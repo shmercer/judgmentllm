@@ -721,6 +721,7 @@ def test_planned_runner_executes_real_disjoint_partitions_and_propagates_failure
         "local/process.py",
         "local/orchestrator.py",
         "local/policy.py",
+        "local/allocation.py",
     ):
         path = policy / name
         path.parent.mkdir(parents=True, exist_ok=True)

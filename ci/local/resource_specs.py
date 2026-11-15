@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
 import os
+import platform
 import subprocess
 import sys
 from pathlib import Path
@@ -93,4 +95,36 @@ def read_resources() -> Resources:
         "quota_cpus": quota,
         "memory_bytes": memory,
         "available_memory_bytes": available,
+    }
+
+
+def machine_fingerprint() -> dict[str, object]:
+    resources = read_resources()
+    identifier = Path("/etc/machine-id")
+    cpu = Path("/proc/cpuinfo")
+    model = (
+        next(
+            (
+                line.split(":", 1)[1].strip()
+                for line in cpu.read_text().splitlines()
+                if line.startswith("model name")
+            ),
+            platform.processor(),
+        )
+        if cpu.is_file()
+        else platform.processor()
+    )
+    return {
+        **{
+            key: resources[key]
+            for key in ("logical_cpus", "effective_cpus", "quota_cpus", "memory_bytes")
+        },
+        "host_identity_sha256": hashlib.sha256(identifier.read_bytes()).hexdigest()
+        if identifier.is_file()
+        else None,
+        "cpu_model": model,
+        "kernel": platform.platform(),
+        "affinity": sorted(os.sched_getaffinity(0))
+        if sys.platform == "linux"
+        else None,
     }
