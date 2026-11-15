@@ -1,5 +1,8 @@
 # Verification policy and CI profiles
 
+[Issue #59 implementation and operations](ci-issue59.md) defines targeted Level 2
+coverage, bounded local scheduling, resource coverage separation and main qualification.
+
 This is the authoritative development/PR decision table. It supersedes earlier
 universal seven-local/five-hosted requirements, including historical milestone
 records. Select the highest affected boundary; few changed lines never lower
@@ -9,7 +12,7 @@ risk. Unknowns and ambiguity escalate. Deferred checks are **not passed checks**
 |---|---|---|
 | 0 — Documentation | Non-executable prose | Relevant offline links and example syntax checks |
 | 1 — Low | Designated prompt-instruction wording or template prose with unchanged schema, selection, sandbox and control flow | Affected Ruff/format/Pyright, focused unit/regression and prompt/serialization contracts; no comprehensive coverage, platform, resource, R or package campaign |
-| 2 — Moderate | Known independent adapter or response handling | Complete local Linux/Python 3.11 historical coverage and affected strict R/resource checks; hosted impacted Linux regression plus essential contracts, actual Windows/macOS smoke and affected components; OS-sensitive changes strengthen platform depth; affected packaging |
+| 2 — Moderate | Known independent adapter/response handling or structurally verified additive tests/metadata | Targeted local Linux/Python 3.11 changed-line/branch coverage, all new tests, essential contracts, mandatory smoke and affected strict R/resource checks; hosted impacted Linux regression plus essential contracts, actual Windows/macOS smoke and affected components; OS-sensitive changes strengthen platform depth; affected packaging |
 | 3 — High | Execution, persistence/recovery, schemas/exports, authentication/privacy, CI/selection/coverage controls | Complete local primary suite/coverage, all seven strict R gates and affected resources; hosted complete Linux 3.11 and extended OS-sensitive/affected Windows 3.12 and macOS 3.11 regression, including serial correctness and genuine SDK probes; relevant package checks |
 | 4 — Release/comprehensive | Publication, compatibility milestone, weekly/manual complete check | Supported platform/version union; all strict R gates, primary coverage and resource workloads locally; hosted functional matrix, wheel/sdist metadata and isolated installs; releases additionally require compatibility, scale/reproducibility and alpha-readiness evidence |
 
@@ -39,7 +42,7 @@ it supplements the historical replacement/skip contract. Every planned test lane
 collects the complete `tests` universe first, regardless of its selected depth.
 Historical case removal, renamed parameters, marker/isolation drift, duplicate
 classification or stale selectors fail. New cases are mandatory on every lane;
-unknown test/source dependencies request full platform fallback. Candidate
+unknown production dependencies request full platform fallback; new/unclassified tests remain mandatory without forcing that fallback. Candidate
 metadata cannot reduce its own protected-base requirements.
 
 | Profile | Exact scope |
@@ -50,8 +53,9 @@ metadata cannot reduce its own protected-base requirements.
 | `platform-extended` | Smoke plus reviewed OS-sensitive/high-consequence modules and explicit per-function overrides, plus affected components |
 | `full` | Every collected required case; complete Level 3 primary and every Level 4 lane |
 
-Local primary Level 2/3 coverage always strengthens selection to `full`.
-Partial coverage never qualifies. Hosted profiles explicitly defer actual R and
+Local Level 2 uses the impacted profile and strict targeted changed-code coverage.
+Levels 3/4 strengthen primary selection to `full` and retain complete historical coverage.
+Partial coverage never satisfies the historical floor. Hosted profiles explicitly defer actual R and
 resource measurements while preserving cold pinned-SDK byte-identity correctness.
 Each source-bound `selection-manifest.json` records exact nodes, partitions,
 domains, costs, platform relevance, reasons and its selection digest. Final
@@ -202,6 +206,19 @@ and macOS 3.11/3.12/3.15: the union of former local/hosted scopes. This includes
 complete Windows 3.11 troubleshooting without a lightweight success status.
 
 Static checks and CI selftests execute once, before scheduling expensive lanes.
+On an eligible Ubuntu workstation, `--local-schedule auto` uses the approved
+10-worker concurrent profile, one reviewed safe serial process and at most two
+named R gates. CPU/memory admission and systemd ownership are mandatory; unavailable
+capabilities retain conservative ordering with a diagnostic. Explicit
+`--local-schedule conservative` retains 12 ordinary workers bounded by effective
+CPUs and sequential R gates. Omitted worker counts resolve from the selected local
+policy; hosted worker caps remain independent. A supplied performance certificate
+is diagnostic and cannot change that allocation or authorize qualification reuse.
+The maintainer adopts the retained **23.64% bounded-workload** improvement without
+another scheduler campaign. Individual latency outliers do not veto concurrency
+unless an original deadline or a material safety requirement fails. See the
+[decision and retained measurements](ci-issue59.md#local-scheduling-and-evidence).
+
 When packaging is affected, build/metadata/install smokes precede the full suite.
 Prepare locked core/build dependencies in the separate environment preparation
 stage. For lanes that install distributions, export the locked core requirements
@@ -261,8 +278,7 @@ CLI routes are Level 3. Credential/privacy/authority/recovery edits inside an ad
 also escalate, including predicate-only edits to a sensitive helper. Unknown provider
 modules escalate; a directory name never downgrades a shared boundary. Touching
 shared execution raises the whole change to Level 3. Path/process/OS-sensitive moderate code adds
-representative platform regression depth. All CI, risk-map, coverage, dependency, selection and
-exclusion controls are Level 3, regardless of their size. Level 3 runs all seven
+representative platform regression depth. Executable CI, risk-map, coverage, dependency, selection and exclusion controls are Level 3. Strictly additive inventory/module metadata may be Level 2 after AST and actual collection validation; protected-base requirements remain authoritative. Level 3 runs all seven
 R gates locally on Linux; Level 2 runs relevant local export/execution gates for provider output
 changes. Unknown R-facing modules escalate to Level 3. Packaging is conditional;
 CI/package/dependency changes exercise it. Resource-sensitive execution,

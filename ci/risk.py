@@ -15,6 +15,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from additions import additive_tests, independent_module, loads, metadata_additions
 from selection import HERE as SELECTION_ROOT
 from selection import digest, impact, read, validate_registry
 
@@ -320,6 +321,14 @@ def conditional_wording_only(before: str, after: str) -> bool:
 
 def classify(filename: str, before: str | None, after: str | None) -> tuple[int, str]:
     """Boundary rules precede convenience rules; unknowns are always high risk."""
+    if filename in {
+        "ci/test-inventory.json",
+        "ci/test-profiles.json",
+    } and metadata_additions(filename, before, after):
+        return (
+            2,
+            "strictly additive test metadata; complete collection validation required",
+        )
     if (
         filename.startswith(("ci/", ".github/", ".agents/", ".codex/"))
         or filename
@@ -340,6 +349,7 @@ def classify(filename: str, before: str | None, after: str | None) -> tuple[int,
             "docs/implementation-plan.md",
             "docs/testing-guide.md",
             "docs/ci-tiered-verification.md",
+            "docs/ci-issue59.md",
         }
     ):
         return 3, "verification, dependency, selection or acceptance controls"
@@ -395,16 +405,23 @@ def classify(filename: str, before: str | None, after: str | None) -> tuple[int,
         if filename in PROMPT_TESTS and additive_prompt_tests(before or "", after):
             return 1, "additive prompt regressions; existing tests unchanged"
         if (
+            filename.startswith("tests/test_")
+            and filename.endswith(".py")
+            and before is not None
+            and additive_tests(before, after)
+        ):
+            return (
+                2,
+                "independent additive regressions; original module AST and order unchanged",
+            )
+        if (
             before is None
             and filename.startswith("tests/test_")
             and filename.endswith(".py")
         ):
             # New independent modules cannot remove existing case assertions.
             # Collection hooks and suite-wide overrides are selection controls.
-            if not re.search(
-                r"\b(?:pytest_plugins|pytestmark|pytest_[a-z_]*(?:collect|configure|session)[a-z_]*)\b",
-                after,
-            ):
+            if independent_module(after):
                 return 2, "new independent test module"
         return 3, "test assertions, collection or historical evidence changed"
     if filename.startswith("src/judgmentllm/providers/") and filename.endswith(".py"):
@@ -413,6 +430,12 @@ def classify(filename: str, before: str | None, after: str | None) -> tuple[int,
                 3,
                 "shared provider protocol, durable evidence, schema or authentication CLI",
             )
+        from source_lines import correspondence
+
+        try:
+            correspondence(before or "", after)
+        except (SyntaxError, ValueError) as error:
+            return 3, "Targeted coverage cannot be assessed reliably: " + str(error)
         if sensitive_provider_edit(before, after):
             return 3, "provider credential, privacy, authority or recovery behavior"
         if any(
@@ -434,9 +457,14 @@ def make_plan(
     head: str,
     *,
     minimum: int = 0,
+    purpose: str = "pr",
 ) -> dict[str, Any]:
     if type(minimum) is not int or not 0 <= minimum <= 4:
         raise ValueError("Minimum risk must be 0 through 4")
+    if purpose not in {"pr", "main-linux", "main-local"}:
+        raise ValueError("Unknown verification purpose")
+    if purpose != "pr":
+        minimum = max(minimum, 3)
     for ref in (base, head):
         if (
             re.fullmatch(r"[0-9a-f]{40}", ref) is None
@@ -481,22 +509,52 @@ def make_plan(
         or any(token in name for token in ("resource", "memory", "concurrency"))
         or name in {"pyproject.toml", "uv.lock"}
         or name in SHARED_PROVIDER_FILES
+        or name
+        in {
+            "AGENTS.md",
+            "docs/ci-optimization.md",
+            "docs/local-ci.md",
+            "docs/testing-guide.md",
+            "docs/ci-issue59.md",
+        }
         for name in names
+        if not any(
+            change["path"] == name and change["level"] == 2 and name.startswith("ci/")
+            for change in changes
+        )
     )
-    taxonomy = read(SELECTION_ROOT / "test-profiles.json")
-    case_inventory = read(SELECTION_ROOT / "test-inventory.json")
+
+    def protected_data(name: str) -> dict[str, Any]:
+        if SELECTION_ROOT.parent.resolve() == source.resolve():
+            content = blob(source, base, "ci/" + name)
+            if content is not None:
+                return loads(content)
+        return read(SELECTION_ROOT / name)
+
+    taxonomy = protected_data("test-profiles.json")
+    case_inventory = protected_data("test-inventory.json")
     validate_registry(taxonomy, case_inventory)
     impacted, impact_reasons = impact(names, taxonomy)
     heavy_impact = any(
         taxonomy["modules"][module]["cost"] == "heavy" for module in impacted
     )
-    unknown = [
+    unknown_tests = sorted(
         name
         for name in names
         if name.startswith("tests/test_")
         and name.endswith(".py")
-        and name not in taxonomy["modules"]
-        or name.startswith("src/")
+        and (
+            name not in taxonomy["modules"]
+            or blob(source, base, name) is None
+            or any(
+                change["path"] == name and change["level"] <= 2 for change in changes
+            )
+        )
+    )
+    unknown = [
+        name
+        for name in names
+        if name.startswith("src/")
         and name not in taxonomy["shared_sources"]
         and not any(
             change["path"] == name and change["level"] == 2 for change in changes
@@ -514,8 +572,10 @@ def make_plan(
     )
     if unknown:
         level = max(level, 3)
-        impact_reasons.append("Unknown test/source dependency: full platform fallback")
+        impact_reasons.append("Unknown production dependency: full platform fallback")
     reach = COMPREHENSIVE if level == 4 else REPRESENTATIVE if level >= 2 else [PRIMARY]
+    if purpose == "main-linux":
+        reach = [PRIMARY]
     lanes = [
         {
             **lane,
@@ -551,9 +611,69 @@ def make_plan(
         name in {"pyproject.toml", "uv.lock"}
         or name.startswith(("ci/", ".github/", "scripts/smoke_install"))
         for name in names
+        if not any(
+            change["path"] == name and change["level"] == 2 and name.startswith("ci/")
+            for change in changes
+        )
     )
+    from local.policy import fingerprint, resource_scope
+    from local.policy import read as read_local_policy
+
+    local_policy = read_local_policy(SELECTION_ROOT)
+    resource_selectors, resource_reasons = resource_scope(
+        names,
+        local_policy,
+        full=level == 4 or purpose == "main-local",
+        sensitive=resource_sensitive,
+    )
+    resource_required = resource_selectors is None or bool(resource_selectors)
+    metadata_checks = any(
+        name.startswith("tests/")
+        or name in {"ci/test-inventory.json", "ci/test-profiles.json"}
+        for name in names
+    )
+    metadata_hashes = {
+        name: hashlib.sha256(content.encode()).hexdigest()
+        for name in ("ci/test-inventory.json", "ci/test-profiles.json")
+        if metadata_checks and (content := blob(source, head, name)) is not None
+    }
+    new_tests: list[str] = []
+    new_modules: list[str] = []
+    # Candidate data is checked for integrity, never used to narrow trusted selection.
+    for name in metadata_hashes:
+        candidate = loads(blob(source, head, name) or "")
+        if name.endswith("test-inventory.json"):
+            from selection import inventory_items
+
+            inventory_items(candidate)
+            old_items = {item["nodeid"] for item in inventory_items(case_inventory)}
+            new_tests = sorted(
+                item["nodeid"]
+                for item in inventory_items(candidate)
+                if item["nodeid"] not in old_items
+            )
+            new_modules = sorted(
+                set(candidate["modules"]) - set(case_inventory["modules"])
+            )
+            new_resources = sorted(
+                {
+                    item["nodeid"]
+                    for item in inventory_items(candidate)
+                    if item["nodeid"] not in old_items and "resource" in item["markers"]
+                }
+            )
+            if new_resources:
+                if resource_selectors is not None:
+                    resource_selectors = sorted(
+                        set(resource_selectors) | set(new_resources)
+                    )
+                resource_required = True
+                resource_reasons.append(
+                    "All newly collected resource cases are mandatory"
+                )
     plan: dict[str, Any] = {
-        "schema_version": 1,
+        "schema_version": 2,
+        "purpose": purpose,
         "base_sha": base,
         "source_sha": head,
         "lockfile_sha256": hashlib.sha256(lock.encode()).hexdigest()
@@ -580,28 +700,64 @@ def make_plan(
         "targets": PROMPT_TESTS if level == 1 else ["tests"],
         "impact": sorted(set(impacted + (PROMPT_TESTS if level == 1 else []))),
         "selection_reasons": impact_reasons,
-        "unknown_dependencies": unknown,
+        "unknown_production_dependencies": unknown,
+        "new_or_unclassified_tests": unknown_tests,
+        "new_tests": new_tests,
+        "new_modules": new_modules,
+        "verified_additive_tests": [
+            change["path"]
+            for change in changes
+            if change["level"] <= 2 and change["path"].startswith("tests/")
+        ],
+        "verified_additive_metadata": [
+            change["path"]
+            for change in changes
+            if change["level"] == 2
+            and change["path"] in {"ci/test-inventory.json", "ci/test-profiles.json"}
+        ],
+        "risk_reasons": [item for item in changes if item["level"] == level]
+        + (
+            [{"level": minimum, "reason": "requested minimum"}]
+            if minimum == level and minimum
+            else []
+        ),
+        "fallback_reasons": [
+            f"{name}: unreviewed production dependency; full platform fallback"
+            for name in unknown
+        ],
+        "metadata_validation": metadata_checks,
+        "candidate_metadata_sha256": metadata_hashes,
+        "coverage_mode": "historical"
+        if level >= 3
+        else "targeted"
+        if level == 2
+        else "none",
+        "coverage_targets": sorted(
+            name
+            for name in names
+            if level == 2 and name.startswith("src/") and name.endswith(".py")
+        ),
         "platform_sensitive": platform_sensitive,
         "selection_policy_sha256": digest(
             {"taxonomy": taxonomy, "inventory": case_inventory}
         ),
+        "selection_policy": {"taxonomy": taxonomy, "inventory": case_inventory},
+        "local_policy": local_policy,
+        "local_policy_sha256": fingerprint(local_policy),
         "policy_code_sha256": digest(
             {
                 name: hashlib.sha256((SELECTION_ROOT / name).read_bytes()).hexdigest()
-                for name in (
-                    "risk.py",
-                    "acceptance.py",
-                    "selection.py",
-                    "suite_evidence.py",
-                    "local/suite.py",
-                    "local/pytest_report.py",
-                    "local/preflight_provenance.py",
+                for name in sorted(
+                    path.relative_to(SELECTION_ROOT).as_posix()
+                    for path in SELECTION_ROOT.rglob("*.py")
                 )
             }
         ),
         "r_gates": r_gates,
         "r_execution": "local",
-        "resources": level == 4 or level >= 2 and resource_sensitive,
+        "resources": level >= 2 and resource_required,
+        "resource_selectors": resource_selectors,
+        "resource_reasons": resource_reasons,
         "resource_execution": "local",
         "packaging": packaging,
         "coverage": level >= 2,
@@ -611,9 +767,7 @@ def make_plan(
         ).hexdigest(),
         "deferred": {
             "comprehensive_matrix": level < 4,
-            "unrelated_resources": not (
-                level == 4 or level >= 2 and resource_sensitive
-            ),
+            "unrelated_resources": not (level >= 2 and resource_required),
             "packaging": not packaging,
         },
     }
@@ -625,7 +779,12 @@ def make_plan(
 
 def lane_profile(plan: dict[str, Any], lane: str, scope: str) -> str:
     expected = next(item for item in plan["lanes"] if item["id"] == lane)
-    if scope == "local" and lane == "linux-3.11" and plan["coverage"]:
+    if (
+        scope == "local"
+        and lane == "linux-3.11"
+        and plan.get("coverage_mode", "historical" if plan["coverage"] else "none")
+        == "historical"
+    ):
         return "full"
     return expected["profile"]
 
@@ -658,7 +817,7 @@ def required_steps(
         names.add("tests")
     if execution_scope == "local" and plan["risk"] >= 2 and primary:
         names.add("coverage")
-    if plan["risk"] >= 3 and primary:
+    if (plan["risk"] >= 3 or plan.get("metadata_validation")) and primary:
         names.add("infrastructure")
     if (
         execution_scope == "local"
@@ -689,6 +848,10 @@ def admit(
             continue
         if (
             receipt.get("source_sha") != plan["source_sha"]
+            or plan.get("schema_version", 1) >= 2
+            and not (
+                isinstance(receipt.get("attempt_id"), str) and receipt["attempt_id"]
+            )
             or receipt.get("plan_sha256") != plan["plan_sha256"]
             or receipt.get("run_id") != run_id
             or receipt.get("status") != "passed"

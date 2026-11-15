@@ -209,6 +209,8 @@ def test_r_deferral_retains_serial_correctness_and_required_case_collection(
             str(output),
             "--workers",
             "0",
+            "--local-schedule",
+            "conservative",
             "--no-coverage",
             "--contract",
             str(contract),
@@ -606,8 +608,9 @@ def test_preflight_cannot_credit_matching_unknown_or_dirty_identity(
     + [(fault, "worksteal") for fault in ("none", "failed")],
 )
 def test_real_distributed_runner_accounts_for_every_partition(
-    tmp_path: Path, fault: str, distribution: str
+    tmp_path: Path, fault: str, distribution: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setenv("JUDGMENTLLM_CI_ATTEMPT_ID", str(tmp_path))
     source = tmp_path / "source"
     source.mkdir()
     (source / "pyproject.toml").write_text(
@@ -683,6 +686,8 @@ def test_resource(tmp_path):
             "2",
             "--distribution",
             distribution,
+            "--local-schedule",
+            "conservative",
             "--no-coverage",
             *preflights,
             "test_contract.py",
@@ -703,7 +708,12 @@ def test_resource(tmp_path):
     assert (result.returncode == 0) == (fault in {"none", "preflight"}), (
         result.stdout + result.stderr
     )
-    if fault in {"worker_crash", "stale_preflight"}:
+    if fault in {"worker_crash", "stale_preflight", "failed"}:
+        if fault == "failed":
+            assert summary["counts"]["failed"] == 1
+            execution = json.loads((output / "execution.json").read_text())
+            assert execution["stages"]["serial"]["status"] == "not-executed"
+            assert execution["stages"]["resource"]["status"] == "not-executed"
         assert summary["status"] == "failed"
         assert summary["manifest_complete"] is False
         if fault == "stale_preflight":

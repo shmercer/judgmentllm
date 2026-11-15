@@ -2,8 +2,8 @@
 
 For adding tests, taxonomy/parameter maintenance and troubleshooting, use the
 single [contributor testing guide](testing-guide.md). Level 2/3 hosted platforms
-now use exact smoke/extended selections; complete primary historical coverage
-and all applicable local R/resource gates remain required. Every hosted lane
+use exact smoke/extended selections. Level 2 uses targeted changed-code coverage;
+Levels 3/4 retain complete primary historical coverage. Applicable local R/resource gates remain required. Every hosted lane
 first validates full collection and emits executed/deferred/not-required case
 accounting. Level 4 below still runs complete supported suites.
 
@@ -16,14 +16,34 @@ passed. Complete acceptance needs applicable local evidence and hosted functiona
 evidence at the same source. The GitHub status covers only its hosted scope.
 
 Coverage, all actual R checks and resource measurement workloads execute locally
-only. `ci/check.py --profile pr` retains the combined 90% floor, strict historical
-comparison, all applicable R/jsonlite gates and affected resource measurements in
+only. `ci/check.py --profile pr` retains the combined 90% floor and strict historical
+comparison at Levels 3/4, targeted changed-code admission at Level 2,
+all applicable R/jsonlite gates and affected resource measurements in
 its local primary lane; missing required R dependencies fail. Native comprehensive
 and release checks retain all existing workloads and bounds. GitHub Actions
 defers those local checks even for comprehensive runs, while keeping cold SDK byte
 identity, ordinary tests and serial correctness. Actual R pytest consumers are
 marked `r_interop` and excluded explicitly rather than relying on missing R. Local
 receipts never count as hosted acceptance evidence.
+
+Local Ubuntu qualification uses `--local-schedule auto`: 10 ordinary pytest
+workers, one reviewed safe serial process and up to two named R gates. Exclusive
+serial work and host resource measurements retain their barriers. Omitted worker
+counts use the selected policy, with effective CPU limits; concurrency requires
+capacity for the workers, one serial process and two R processes, plus 36 GiB
+available RAM (20 GiB stage allocation and the unchanged 16 GiB host reserve).
+Ubuntu and Ubuntu-derived workstation systems require user-systemd control-group
+ownership. Unsupported systems or unavailable safeguards diagnose conservative
+fallback; `--local-schedule conservative` explicitly selects it.
+
+The maintainer's decision uses the retained 23.64% improvement for the fixed
+254-case/seven-R comparison. No new certificate or benchmark is required to use
+this default. This does not claim a measured 23.64% improvement for all 8,611 cases.
+Individual latency outliers remain diagnostics unless actual deadlines or material
+safety requirements fail. Fresh qualification still checks the exact committed
+source and policy, all required cases, historical coverage, R receipts, resources
+and owned cleanup. The [resource VM rejection](ci-issue59.md#resources-and-vm-decision)
+stands; resource execution remains exclusive on the host.
 
 The native grid remains an explicit complete-qualification option. The details
 below apply **when this grid is requested**, not to every PR. It runs Ubuntu

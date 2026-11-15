@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(Path(__file__).resolve().parent / "local"))
 
 
 def fast(changed_since: str, output: Path, focused: list[str], workers: int) -> int:
@@ -121,6 +122,7 @@ def fast(changed_since: str, output: Path, focused: list[str], workers: int) -> 
             "TEMP",
             "TMP",
             "TMPDIR",
+            "GITHUB_ACTIONS",
         )
         if key in os.environ
     }
@@ -135,19 +137,28 @@ def fast(changed_since: str, output: Path, focused: list[str], workers: int) -> 
     )
     records: list[dict[str, object]] = []
     started = time.monotonic()
-    for index, command in enumerate(commands):
-        with (output / f"{index + 1}.log").open("w", encoding="utf-8") as stream:
-            code = subprocess.run(
-                command,
-                cwd=ROOT,
-                env=environment,
-                stdout=stream,
-                stderr=subprocess.STDOUT,
-                check=False,
-            ).returncode
-        records.append({"command": command, "exit_code": code})
-        if code:
-            break
+    from local.allocation import QualificationLease
+    from local.process import run as run_owned
+
+    with QualificationLease() as allocation:
+        environment.update(allocation.environment())
+        for index, command in enumerate(commands):
+            with (output / f"{index + 1}.log").open("w", encoding="utf-8") as stream:
+                code, processes = run_owned(
+                    command,
+                    cwd=ROOT,
+                    env=environment,
+                    stream=stream,
+                    evidence=output / f"stage-{index + 1}-owner",
+                    identity={"profile": "fast", "stage": index + 1},
+                )
+            if processes.get("cleanup_complete") is not True:
+                code = code or 1
+            records.append(
+                {"command": command, "exit_code": code, "processes": processes}
+            )
+            if code:
+                break
     report = {
         "schema_version": 1,
         "profile": "fast",
@@ -179,7 +190,9 @@ def fast(changed_since: str, output: Path, focused: list[str], workers: int) -> 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--profile", choices=("fast", "pr", "comprehensive", "release"), default="fast"
+        "--profile",
+        choices=("fast", "pr", "main", "comprehensive", "release"),
+        default="fast",
     )
     parser.add_argument(
         "--risk",
@@ -199,7 +212,19 @@ def main() -> int:
         help="Explicit fast-profile pytest target, repeatable; short core regressions remain",
     )
     parser.add_argument(
-        "--workers", type=int, default=4, help="Explicit fast-profile worker count"
+        "--workers",
+        type=int,
+        help="Local PR/main uses the selected policy (10 concurrent, 12 conservative); fast defaults to 4; hosted limits remain independent",
+    )
+    parser.add_argument(
+        "--local-schedule",
+        choices=("auto", "conservative", "concurrent", "resource-isolated"),
+        default="auto",
+    )
+    parser.add_argument(
+        "--schedule-certificate",
+        type=Path,
+        help="Optional performance diagnostics; not required for auto",
     )
     parser.add_argument("--ref")
     parser.add_argument("--mode", choices=("prepare", "check"), default="check")
@@ -227,22 +252,39 @@ def main() -> int:
         help="External output for offline release compatibility and source/scale checklist",
     )
     options = parser.parse_args()
-    if not 1 <= options.workers <= 32:
+    if options.workers is None and options.profile not in {"pr", "main"}:
+        options.workers = 4
+    if options.workers is not None and not 1 <= options.workers <= 32:
         parser.error("--workers must be 1 through 32")
     if options.profile == "fast":
         output = options.output or Path(tempfile.gettempdir()) / (
             "judgmentllm-fast-" + datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
         )
-        return fast(options.changed_since, output, options.test, options.workers)
-    if options.profile == "pr":
+        return fast(
+            options.changed_since,
+            output,
+            options.test,
+            options.workers if options.workers is not None else 4,
+        )
+    if options.profile in {"pr", "main"}:
         # Planning can read an immutable policy copy: imports must not add pyc files.
         sys.dont_write_bytecode = True
         from acceptance import save
         from risk import git, make_plan
 
         head = options.ref or git(ROOT, "rev-parse", "HEAD")
-        base = git(ROOT, "rev-parse", options.changed_since)
-        plan = make_plan(ROOT, base, head, minimum=options.risk)
+        base = git(
+            ROOT,
+            "rev-parse",
+            head + "^" if options.profile == "main" else options.changed_since,
+        )
+        plan = make_plan(
+            ROOT,
+            base,
+            head,
+            minimum=options.risk,
+            purpose="main-local" if options.profile == "main" else "pr",
+        )
         output = options.output or Path(tempfile.gettempdir()) / (
             "judgmentllm-pr-" + datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
         )
@@ -251,6 +293,16 @@ def main() -> int:
         output.mkdir(parents=True, exist_ok=False)
         save(output / "plan.json", plan)
         print(f"Risk {plan['risk']}; plan: {output / 'plan.json'}", flush=True)
+        for change in plan["changes"]:
+            print(
+                f"  L{change['level']} {change['path']}: {change['reason']}", flush=True
+            )
+        for reason in plan["fallback_reasons"]:
+            print(f"  FALLBACK: {reason}", flush=True)
+        print(
+            f"Coverage: {plan['coverage_mode']}; changed targets: {plan['coverage_targets']}; new tests: {plan['new_or_unclassified_tests']}; impact: {plan['impact']}",
+            flush=True,
+        )
         for lane in plan["lanes"]:
             print(
                 f"  {lane['id']}: {lane['profile']} ({lane['workers']} workers, {lane['distribution']})",
@@ -265,28 +317,42 @@ def main() -> int:
         python = (
             ROOT / ".venv" / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
         )
-        code = subprocess.run(
-            [
-                str(python) if python.is_file() else sys.executable,
-                "-B",
-                str(ROOT / "ci/acceptance.py"),
-                "lane",
-                "--source",
-                str(ROOT),
-                "--plan",
-                str(output / "plan.json"),
-                "--output",
-                str(output / "primary"),
-                "--workers",
-                str(options.workers),
-                "--run-id",
-                "local",
-                "--execution-scope",
-                "local",
-            ],
-            cwd=ROOT,
-            check=False,
-        ).returncode
+        from local.allocation import QualificationLease
+
+        with QualificationLease() as allocation:
+            code = subprocess.run(
+                [
+                    str(python) if python.is_file() else sys.executable,
+                    "-B",
+                    str(ROOT / "ci/acceptance.py"),
+                    "lane",
+                    "--source",
+                    str(ROOT),
+                    "--plan",
+                    str(output / "plan.json"),
+                    "--output",
+                    str(output / "primary"),
+                    *(
+                        ["--workers", str(options.workers)]
+                        if options.workers is not None
+                        else []
+                    ),
+                    "--local-schedule",
+                    options.local_schedule,
+                    *(
+                        ["--schedule-certificate", str(options.schedule_certificate)]
+                        if options.schedule_certificate is not None
+                        else []
+                    ),
+                    "--run-id",
+                    "local",
+                    "--execution-scope",
+                    "local",
+                ],
+                cwd=ROOT,
+                env={**os.environ, **allocation.environment()},
+                check=False,
+            ).returncode
         pending = [item["id"] for item in plan["lanes"] if item["id"] != "linux-3.11"]
         print(
             f"Primary result: {code}; pending hosted lanes: {pending}. "

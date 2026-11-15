@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from collections.abc import Generator
 from pathlib import Path
 from typing import Any, cast
 
@@ -15,6 +16,9 @@ _items: list[dict[str, object]] = []
 _reports: list[dict[str, object]] = []
 _provenance: pytest.StashKey[dict[str, Any]] = pytest.StashKey()
 _WINDOWS_COMPACT_TEMP = os.name == "nt"
+_coverage: Any = None
+_contributors: dict[str, dict[str, Any]] = {}
+_coverage_metadata: dict[str, Any] = {}
 
 
 @pytest.fixture
@@ -28,15 +32,93 @@ def tmp_path(tmp_path: Path, tmp_path_factory: pytest.TempPathFactory) -> Path:
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption("--ci-report", help="Write the complete case receipt here")
     parser.addoption("--ci-selection", help="Exact node IDs assigned to this partition")
+    parser.addoption(
+        "--ci-coverage",
+        action="store_true",
+        help="Require normal pytest-cov contributor completion",
+    )
 
 
 def pytest_configure(config: pytest.Config) -> None:
+    global _coverage
     _items.clear()
     _reports.clear()
+    _contributors.clear()
+    _coverage_metadata.clear()
+    _coverage = None
     if config.getoption("--ci-report") and not hasattr(config, "workerinput"):
         config.stash[_provenance] = receipt_provenance(
             source_record(config.rootpath), os.environ.get(RUN_ID_ENV)
         )
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_sessionstart(session: pytest.Session) -> None:
+    global _coverage
+    if not session.config.getoption("--ci-coverage"):
+        return
+    from coverage import Coverage
+
+    _coverage = Coverage.current()
+    distributed = bool(getattr(session.config.option, "numprocesses", None))
+    if distributed and not hasattr(session.config, "workerinput"):
+        _coverage = None
+        return
+    if _coverage is None and (
+        not distributed or hasattr(session.config, "workerinput")
+    ):
+        raise pytest.UsageError("Required coverage instrumentation is absent")
+    if _coverage is not None:
+        if _coverage.get_option("run:branch") is not True:
+            raise pytest.UsageError("Required branch instrumentation is absent")
+        worker = getattr(session.config, "workerinput", {}).get(
+            "workerid", "controller"
+        )
+        _coverage.switch_context(
+            f"ci:{os.environ.get('JUDGMENTLLM_CI_GROUP', '')}:{worker}:startup"
+        )
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_configure_node(node: Any) -> None:
+    if node.config.getoption("--ci-coverage"):
+        _contributors[node.gateway.id] = {"worker": node.gateway.id, "complete": False}
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_testnodedown(node: Any, error: Any) -> None:
+    if node.config.getoption("--ci-coverage"):
+        item = getattr(node, "workeroutput", {}).get("judgmentllm_coverage")
+        if (
+            error is None
+            and isinstance(item, dict)
+            and cast(dict[str, Any], item).get("worker") == node.gateway.id
+        ):
+            _contributors[node.gateway.id] = cast(dict[str, Any], item)
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_setup(item: pytest.Item) -> None:
+    if item.config.getoption("--ci-coverage") and _coverage is not None:
+        # Phase switches can open coverage SQLite while security fixtures forbid it.
+        _coverage.switch_context(item.nodeid)
+
+
+@pytest.hookimpl(wrapper=True, trylast=True)
+def pytest_runtestloop(session: pytest.Session) -> Generator[None, Any, Any]:
+    result: Any = yield
+    if session.config.getoption("--ci-coverage") and _coverage is not None:
+        # Metadata only; pytest-cov retains ownership of saving and combination.
+        worker = getattr(session.config, "workerinput", {}).get(
+            "workerid", "controller"
+        )
+        _coverage_metadata.update(
+            worker=worker,
+            branch=_coverage.get_option("run:branch"),
+            static_context=_coverage.get_option("run:context"),
+            contexts=sorted(_coverage.get_data().measured_contexts()),
+        )
+    return result
 
 
 @pytest.hookimpl(trylast=True)
@@ -100,6 +182,15 @@ def pytest_runtest_logreport(report: pytest.TestReport) -> None:
 
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
+    if session.config.getoption("--ci-coverage") and _coverage is not None:
+        worker = getattr(session.config, "workerinput", {}).get(
+            "workerid", "controller"
+        )
+        item = {**_coverage_metadata, "complete": int(exitstatus) == 0}
+        if hasattr(session.config, "workerinput"):
+            getattr(session.config, "workeroutput", {})["judgmentllm_coverage"] = item
+        else:
+            _contributors[worker] = item
     if hasattr(session.config, "workerinput"):
         return
     destination = cast(str | None, session.config.getoption("--ci-report"))
@@ -113,6 +204,26 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
             {
                 "schema_version": 1,
                 "provenance": session.config.stash[_provenance],
+                "execution_group": os.environ.get("JUDGMENTLLM_CI_GROUP"),
+                **(
+                    {
+                        "coverage_expected_contributors": [
+                            f"gw{index}"
+                            for index in range(
+                                int(
+                                    getattr(session.config.option, "numprocesses", 0)
+                                    or 0
+                                )
+                            )
+                        ]
+                        or ["controller"],
+                        "coverage_contributors": [
+                            value for _, value in sorted(_contributors.items())
+                        ],
+                    }
+                    if session.config.getoption("--ci-coverage")
+                    else {}
+                ),
                 "exit_code": int(exitstatus),
                 "collected": _items,
                 "reports": _reports,

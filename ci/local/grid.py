@@ -637,4 +637,8 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    from allocation import QualificationLease
+
+    with QualificationLease() as allocation:
+        os.environ.update(allocation.environment())
+        sys.exit(main())

@@ -388,7 +388,9 @@ def test_depth_and_platform_reach_are_independent(repository: Any, level: int) -
     plan = make_plan(source, base, freeze(source), minimum=level)
     assert len(plan["lanes"]) == (8 if level == 4 else 3 if level >= 2 else 1)
     assert plan["coverage"] == (level >= 2)
-    if level >= 2:
+    if level == 2:
+        assert lane_profile(plan, "linux-3.11", "local") == "impacted"
+    if level >= 3:
         assert lane_profile(plan, "linux-3.11", "local") == "full"
     if level == 4:
         assert all(lane["profile"] == "full" for lane in plan["lanes"])
@@ -412,7 +414,7 @@ def test_changed_neutral_module_gets_affected_platform_cases(repository: Any) ->
 @pytest.mark.parametrize(
     "path", ["tests/test_unknown.py", "src/judgmentllm/new_shared.py"]
 )
-def test_unknown_dependency_escalates_to_complete_platform_verification(
+def test_test_novelty_is_separate_from_unknown_production_dependencies(
     repository: Any, path: str
 ) -> None:
     source, base = repository
@@ -420,8 +422,17 @@ def test_unknown_dependency_escalates_to_complete_platform_verification(
     file.parent.mkdir(parents=True)
     file.write_text("def test_new(): assert True\n")
     plan = make_plan(source, base, freeze(source))
-    assert plan["risk"] == 3 and plan["unknown_dependencies"] == [path]
-    assert all(lane["profile"] == "full" for lane in plan["lanes"])
+    if path.startswith("src/"):
+        assert plan["risk"] == 3 and plan["unknown_production_dependencies"] == [path]
+        assert all(lane["profile"] == "full" for lane in plan["lanes"])
+    else:
+        assert plan["risk"] == 2 and plan["unknown_production_dependencies"] == []
+        assert plan["new_or_unclassified_tests"] == [path]
+        assert [lane["profile"] for lane in plan["lanes"]] == [
+            "impacted",
+            "platform-smoke",
+            "platform-smoke",
+        ]
 
 
 @pytest.mark.parametrize(
@@ -697,6 +708,9 @@ def test_planned_runner_executes_real_disjoint_partitions_and_propagates_failure
     policy = source / "ci"
     for name in (
         "selection.py",
+        "additions.py",
+        "source_lines.py",
+        "environment.py",
         "risk.py",
         "verification-map.json",
         "local/suite.py",
@@ -705,6 +719,10 @@ def test_planned_runner_executes_real_disjoint_partitions_and_propagates_failure
         "local/resource_budget.py",
         "local/resource_specs.py",
         "local/telemetry.py",
+        "local/process.py",
+        "local/orchestrator.py",
+        "local/policy.py",
+        "local/allocation.py",
     ):
         path = policy / name
         path.parent.mkdir(parents=True, exist_ok=True)

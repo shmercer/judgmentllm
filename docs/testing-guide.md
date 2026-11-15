@@ -185,7 +185,9 @@ python3 ci/check.py --profile fast
 python3 ci/check.py --profile fast --test tests/test_openai_sdk_adapter.py
 python3 ci/check.py --profile fast --test ci/local
 python3 ci/check.py --profile pr --plan-only --changed-since origin/main
-python3 ci/check.py --profile pr --changed-since origin/main --workers 12
+python3 ci/check.py --profile pr --changed-since origin/main
+# Explicit conservative ordering remains available:
+python3 ci/check.py --profile pr --changed-since origin/main --local-schedule conservative
 ```
 
 For a parse-only edit to an already reviewed provider response module, a Level 2
@@ -200,19 +202,19 @@ Local requirements: coverage=True, R=['exports', 'execution'], resources=False
 ```
 
 Linux runs the affected closure plus essential contracts; the other platforms
-retain their genuine smoke checks. Local primary acceptance still requires full
-historical coverage and the applicable R gates. A Level 3 plan after editing CI
-metadata, assertions or shared behavior is expected. For an unexpected escalation,
-read `changes[].reason`, `unknown_dependencies`, `selection_reasons` and `impact`
+retain their genuine smoke checks. Local Level 2 acceptance requires strict changed-code coverage and the applicable R gates. A Level 3 plan after editing executable CI policy, existing assertions or shared behavior is expected. For an unexpected escalation,
+read `changes[].reason`, `unknown_production_dependencies`, `new_or_unclassified_tests`, `fallback_reasons`, `selection_reasons` and `impact`
 in the saved plan. Check for an unreviewed source path or a sensitive boundary;
 resolve the classification with evidence. Diff size and a lower `--risk` argument
 cannot lower the automatic plan.
 
-`--workers 12` is the measured workstation choice, not a hosted default. The
+Omitting `--workers` selects 10 ordinary workers for approved Ubuntu concurrency
+or 12 for conservative ordering, bounded by effective CPUs. Explicit worker caps
+remain available; concurrent workers never exceed the reviewed allocation. The
 plan prints each hosted profile, worker cap, distribution, reasons and local
-requirements. Fast outputs are always nonqualifying. Local Level 2/3 acceptance
-uses the complete Linux/Python 3.11 suite and historical branch coverage;
-selected coverage cannot substitute. Hosted Level 2 Linux is impacted regression
+requirements. Fast outputs are always nonqualifying. Local Level 2 acceptance uses impacted Linux tests and strict changed-code coverage.
+Levels 3/4 use the complete Linux/Python 3.11 suite and historical branch coverage;
+partial coverage cannot substitute. Hosted Level 2 Linux is impacted regression
 plus shared essential contracts; Windows/macOS run smoke and affected components.
 OS-sensitive changes strengthen those lanes to extended. Level 3 uses complete
 primary and extended Windows/macOS regression. Level 4 uses full suites everywhere.
@@ -325,3 +327,25 @@ Every test PR should include classification/impact updates, complete case
 accounting, focused feedback, the automatic plan, exact-source local/hosted
 evidence, and separate passed/failed/deferred results. CI metadata, fixture and
 collection changes also require the selector/inventory selftests.
+
+## Independent additions and local concurrency
+
+For Level 2 additive tests, preserve the complete existing module AST, including
+assertions, decorators, fixtures, markers and parameter IDs. Add a unique test
+function with literal parametrization; put any newly needed imports inside that
+function. New modules may have ordinary imports, a docstring and independent
+tests. Adding fixtures, helper implementations or collection hooks requires Level 3.
+Reconcile collection and use strictly additive inventory/module metadata. New
+metadata never narrows protected-base requirements.
+
+See [Issue #59 operations](ci-issue59.md) for targeted coverage diagnostics, the
+reviewed serial dependency hashes, resource applicability and scheduler evidence.
+`--local-schedule auto` prefers the approved concurrent Ubuntu profile when
+systemd ownership and CPU/RAM safeguards are available, otherwise diagnoses the
+conservative fallback. No performance certificate is required. The retained
+23.64% improvement applies to the 254-case/seven-R workload; it is not a measured
+improvement for the entire 8,611-test suite. Latency observations remain recorded
+and diagnostic; real deadline failures and all correctness, coverage, R, resource
+and isolation requirements remain blocking. Shared
+foreground allocation covers native grids and background main work; no permanent
+main timer may be activated before independent review and merge.

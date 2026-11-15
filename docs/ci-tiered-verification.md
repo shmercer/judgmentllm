@@ -1,5 +1,8 @@
 # Issue #54 implementation and verification record
 
+This retains historical measurements and decisions. [Issue #59](ci-issue59.md)
+supersedes the earlier full-history Level 2 and sequential-local policies.
+
 Issue: [complete CI optimization](https://github.com/shmercer/judgmentllm/issues/54).
 Base: `07a6d73410395ebe21bc67bc5194e14ca5917c0c`.
 Branch: `feat/54-ci-tiered-verification`. The final PR and external receipts
@@ -46,7 +49,7 @@ failed Windows and aggregate acceptance; its failure remains failed evidence.
 |---|---|---|---|
 | 0 | Documentation | Documentation | None |
 | 1 | Focused preliminary contracts | Focused contracts | None |
-| 2 | Complete suite and historical coverage, affected R/resources | Impacted plus essential contracts | Real smoke plus affected components; extended if OS-sensitive |
+| 2 | Targeted changed-code coverage, impacted/new/essential tests, affected R/resources | Impacted plus essential contracts | Real smoke plus affected components; extended if OS-sensitive |
 | 3 | Complete suite/history, seven R gates, affected resources/packages | Complete functional suite | Extended OS-sensitive/high-consequence and affected cases |
 | 4 | Existing comprehensive requirements | Complete supported versions | Complete supported versions |
 

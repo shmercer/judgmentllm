@@ -30,9 +30,10 @@ the authoritative [verification policy](docs/ci-optimization.md) and
 ## Validation workflow
 
 - Follow the single authoritative [risk decision table](docs/ci-optimization.md). Use `ci/check.py --profile fast` for development, `--profile pr --plan-only` to inspect selection, required local PR acceptance and the protected-base hosted functional workflow. Complete PR acceptance requires both applicable local and hosted evidence at the same source. CI, classification, test-selection and coverage-control changes are high risk. Unknown or ambiguous changes escalate; diff size never reduces risk.
-- Local Linux/Python 3.11 is the primary coverage environment. Keep the 90% combined floor and the change-aware historical comparison locally. All actual R/jsonlite checks and resource measurements run locally only, including comprehensive verification. Missing required local R dependencies fail acceptance; hosted deferrals are not passed local gates. GitHub retains ordinary and serial correctness tests without coverage instrumentation or R execution. Full local/hosted matrices, repeated R campaigns and package/resource checks are required only where the risk policy calls for them.
+- Local Linux/Python 3.11 is the primary coverage environment. Keep the 90% combined floor and change-aware historical comparison locally at Levels 3/4. Level 2 requires impacted tests, all new cases, essential contracts and strict changed-code coverage; partial execution never satisfies the historical floor. All actual R/jsonlite checks and resource measurements run locally only, including comprehensive verification. Missing required local R dependencies fail acceptance; hosted deferrals are not passed local gates. GitHub retains ordinary and serial correctness tests without coverage instrumentation or R execution. Full local/hosted matrices, repeated R campaigns and package/resource checks are required only where the risk policy calls for them.
 - Do not duplicate hosted verification with a seven-lane local campaign. Complete qualification remains available with `--profile comprehensive`; releases also require the independent release-readiness, compatibility, scale and live-capability safeguards. No ordinary verification command authorizes provider calls or publication.
 - For native VM work, follow `docs/local-ci.md`: preserve locks, isolated state, graceful shutdown, exact-source evidence, resource thresholds and the 180-second fixture deadline. Benchmark-only stages never establish qualification. Preserve historical failures accurately.
+- Local Ubuntu qualification defaults to approved bounded concurrency: 10 ordinary workers, one reviewed safe serial process and up to two named R gates, with exclusive serial/resource barriers. Respect effective CPU/RAM limits and require systemd ownership; unsupported environments fall back conservatively with a diagnostic. Explicit `--local-schedule conservative` remains available. No new performance certificate is required: the retained comparison improved the 254-case/seven-R workload by 23.64%, not the entire 8,611-case suite. Individual latency observations are diagnostic unless an original deadline or a material safety requirement fails. Preserve all correctness, coverage, R, cleanup, memory and pressure gates and the rejected resource VM decision.
 
 ## Adding or modifying tests
 
@@ -53,7 +54,7 @@ the authoritative [verification policy](docs/ci-optimization.md) and
 - Run targeted fast checks, inspect
   `ci/check.py --profile pr --plan-only --changed-since origin/main`, then complete
   the source-bound local and hosted requirements. Focused feedback is preliminary;
-  Level 2/3 still require complete local historical coverage. Unknown dependencies
+  Level 2 uses strict targeted changed-line/branch coverage; Levels 3/4 retain complete local historical coverage. Unknown production dependencies
   escalate. Run `ci/local` selector/inventory selftests for metadata, case IDs,
   collection hooks, fixtures or CI-policy changes.
 - Preserve independent assertions and historical fixtures/coverage. No blanket
