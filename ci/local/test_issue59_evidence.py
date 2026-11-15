@@ -258,17 +258,92 @@ def test_strict_queue_qualifies_each_commit_and_never_borrows_newer_success(
     assert queue.ready(2) == b and queue.data["commits"][b]["state"] == "pending"
 
 
+def test_strict_mode_survives_status_recovery_and_requires_explicit_latest_switch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import main_worker
+
+    a, b = "a" * 40, "b" * 40
+    queue = Queue(tmp_path, strict=True, quiet_seconds=0)
+    queue.observe([a, b], 1)
+    queue.start(a, {"pid": 999999999, "birth": 0})
+    recovered = Queue(tmp_path, quiet_seconds=0)
+    recovered.recover()
+    assert recovered.strict is True
+    assert recovered.ready(2) == a
+    assert recovered.data["commits"][a]["state"] == "pending"
+    assert recovered.data["commits"][a]["attempts"][-1]["status"] == "interrupted"
+    monkeypatch.setattr(
+        sys, "argv", ["main_worker", "status", "--state-root", str(tmp_path)]
+    )
+    assert main_worker.main() == 0
+    assert json.loads(recovered.path.read_text())["strict_per_commit"] is True
+    latest = Queue(tmp_path, strict=False, quiet_seconds=0)
+    latest.observe([a, b], 3)
+    assert latest.ready(3) == b and latest.data["commits"][a]["state"] == "superseded"
+    malformed = latest.data
+    malformed["strict_per_commit"] = "false"
+    latest.path.write_text(json.dumps(malformed))
+    with pytest.raises(ValueError, match="persisted"):
+        Queue(tmp_path)
+
+
+@pytest.mark.parametrize("seconds", [-1.0, 3601.0, float("nan")])
+def test_invalid_quiet_period_never_writes_service_definitions(
+    tmp_path: Path, seconds: float
+) -> None:
+    with pytest.raises(ValueError, match="Quiet period"):
+        Queue(tmp_path / "queue", quiet_seconds=seconds)
+    with pytest.raises(ValueError, match="Quiet period"):
+        install(tmp_path / "units", tmp_path / "state", quiet_seconds=seconds)
+    assert not (tmp_path / "units").exists()
+
+
+@pytest.mark.parametrize("strict", [None, True, False])
 def test_service_installation_creates_definitions_without_activation(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, strict: bool | None
 ) -> None:
     def forbidden(*args: Any, **kwargs: Any) -> None:
         raise AssertionError("Installation must not execute systemctl")
 
     monkeypatch.setattr(subprocess, "run", forbidden)
-    install(tmp_path / "units", tmp_path / "state")
+    install(tmp_path / "units", tmp_path / "state", strict=strict, quiet_seconds=300)
     service = (tmp_path / "units/judgmentllm-main.service").read_text()
     assert "KillMode=control-group" in service and " once --state-root " in service
+    assert "--quiet-seconds 300" in service and "@MODE@" not in service
+    assert ("--strict-per-commit" in service) is (strict is True)
+    assert ("--latest-tip" in service) is (strict is False)
     assert "Persistent=true" in (tmp_path / "units/judgmentllm-main.timer").read_text()
+
+
+def test_activation_rerender_preserves_installed_mode_and_quiet_period(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import main_worker
+
+    units, state = tmp_path / "units", tmp_path / "state"
+    command = [
+        "main_worker",
+        "install",
+        "--unit-dir",
+        str(units),
+        "--state-root",
+        str(state),
+    ]
+    monkeypatch.setattr(
+        sys, "argv", [*command, "--strict-per-commit", "--quiet-seconds", "45"]
+    )
+    assert main_worker.main() == 0
+    original = (units / "judgmentllm-main.service").read_text()
+    monkeypatch.setattr(sys, "argv", command)
+    assert main_worker.main() == 0
+    assert (units / "judgmentllm-main.service").read_text() == original
+    assert json.loads((state / "service-config.json").read_text()) == {
+        "strict_per_commit": True,
+        "quiet_seconds": 45.0,
+    }
 
 
 def test_foreground_requests_preempt_background_and_release_capacity(

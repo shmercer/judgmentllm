@@ -14,7 +14,7 @@ import uuid
 from collections.abc import Generator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from allocation import QualificationLease, alive, foreground_pending
 from resource_budget import ResourceLease
@@ -43,7 +43,7 @@ class Queue:
     """One locked writer; every source keeps its own honest outcome/attempts."""
 
     def __init__(
-        self, root: Path, *, strict: bool = False, quiet_seconds: float = 120
+        self, root: Path, *, strict: bool | None = None, quiet_seconds: float = 120
     ) -> None:
         if not 0 <= quiet_seconds <= 3600:
             raise ValueError(
@@ -52,7 +52,6 @@ class Queue:
         self.root = root
         root.mkdir(parents=True, exist_ok=True)
         self.path = root / "queue.json"
-        self.strict = strict
         self.quiet_seconds = quiet_seconds
         self.data: dict[str, Any] = (
             json.loads(self.path.read_text())
@@ -69,6 +68,11 @@ class Queue:
             item.get("state") not in STATES for item in self.data["commits"].values()
         ):
             raise ValueError("Invalid main qualification queue")
+        stored = self.data.get("strict_per_commit", False)
+        if type(stored) is not bool:
+            raise ValueError("Invalid persisted main qualification mode")
+        self.strict = stored if strict is None else strict
+        self.data["strict_per_commit"] = self.strict
 
     def save(self) -> None:
         atomic(self.path, self.data)
@@ -275,7 +279,7 @@ def verify_local(output: Path, sha: str) -> None:
         )
 
 
-def once(root: Path, *, strict: bool, quiet_seconds: float) -> int:
+def once(root: Path, *, strict: bool | None, quiet_seconds: float) -> int:
     import psutil
     from process import run as run_owned
 
@@ -472,7 +476,32 @@ def once(root: Path, *, strict: bool, quiet_seconds: float) -> int:
             return 2
 
 
-def install(unit_dir: Path, root: Path) -> None:
+def install(
+    unit_dir: Path,
+    root: Path,
+    *,
+    strict: bool | None = None,
+    quiet_seconds: float | None = None,
+) -> None:
+    configuration = root / "service-config.json"
+    if configuration.is_symlink():
+        raise ValueError("Service configuration must be a regular private file")
+    raw: object = (
+        json.loads(configuration.read_text()) if configuration.exists() else {}
+    )
+    if not isinstance(raw, dict):
+        raise ValueError("Invalid installed service configuration")
+    previous = cast(dict[str, Any], raw)
+    strict = previous.get("strict_per_commit") if strict is None else strict
+    quiet_seconds = (
+        previous.get("quiet_seconds", 120) if quiet_seconds is None else quiet_seconds
+    )
+    if strict is not None and type(strict) is not bool:
+        raise ValueError("Invalid installed main qualification mode")
+    if not isinstance(quiet_seconds, (int, float)) or isinstance(quiet_seconds, bool):
+        raise ValueError("Invalid installed quiet period")
+    if not 0 <= quiet_seconds <= 3600:
+        raise ValueError("Quiet period must be finite and between 0 and 3600 seconds")
     unit_dir.mkdir(parents=True, exist_ok=True)
     script = Path(__file__).resolve()
     for kind in ("service", "timer"):
@@ -488,8 +517,19 @@ def install(unit_dir: Path, root: Path) -> None:
             .replace("@PATH@", escaped(os.environ.get("PATH", os.defpath)))
             .replace("@SCRIPT@", escaped(str(script)))
             .replace("@STATE@", escaped(str(root.resolve())))
+            .replace("@QUIET@", str(quiet_seconds))
+            .replace(
+                "@MODE@",
+                " --strict-per-commit"
+                if strict is True
+                else " --latest-tip"
+                if strict is False
+                else "",
+            )
         )
         (unit_dir / f"judgmentllm-main.{kind}").write_text(text)
+    root.mkdir(parents=True, exist_ok=True, mode=0o700)
+    atomic(configuration, {"strict_per_commit": strict, "quiet_seconds": quiet_seconds})
 
 
 def main() -> int:
@@ -517,13 +557,22 @@ def main() -> int:
     parser.add_argument(
         "--unit-dir", type=Path, default=Path.home() / ".config/systemd/user"
     )
-    parser.add_argument("--strict-per-commit", action="store_true")
-    parser.add_argument("--quiet-seconds", type=float, default=120)
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--strict-per-commit", action="store_true", default=None)
+    modes.add_argument(
+        "--latest-tip", action="store_false", dest="strict_per_commit", default=None
+    )
+    parser.add_argument("--quiet-seconds", type=float)
     args = parser.parse_args()
     if args.operation == "install":
-        install(args.unit_dir, args.state_root)
+        install(
+            args.unit_dir,
+            args.state_root,
+            strict=args.strict_per_commit,
+            quiet_seconds=args.quiet_seconds,
+        )
         print(
-            "Installed definitions only; production activation requires independent review and merge."
+            "Installed definitions and private configuration; production activation requires independent review and merge."
         )
         return 0
     if args.operation == "activate":
@@ -544,7 +593,12 @@ def main() -> int:
                 )
         if args.unit_dir.resolve() != (Path.home() / ".config/systemd/user").resolve():
             raise ValueError("Production activation requires the user unit directory")
-        install(args.unit_dir, args.state_root)
+        install(
+            args.unit_dir,
+            args.state_root,
+            strict=args.strict_per_commit,
+            quiet_seconds=args.quiet_seconds,
+        )
         subprocess.run(["systemctl", "--user", "daemon-reload"], check=True)
         subprocess.run(
             ["systemctl", "--user", "enable", "--now", "judgmentllm-main.timer"],
@@ -562,13 +616,13 @@ def main() -> int:
         return once(
             args.state_root,
             strict=args.strict_per_commit,
-            quiet_seconds=args.quiet_seconds,
+            quiet_seconds=120 if args.quiet_seconds is None else args.quiet_seconds,
         )
     with ResourceLease(args.state_root / "worker-lock", 1, timeout=0):
         queue = Queue(
             args.state_root,
             strict=args.strict_per_commit,
-            quiet_seconds=args.quiet_seconds,
+            quiet_seconds=120 if args.quiet_seconds is None else args.quiet_seconds,
         )
         if args.operation in {"recover", "status"}:
             queue.recover()

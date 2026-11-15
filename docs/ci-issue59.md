@@ -185,6 +185,9 @@ records every observed first-parent commit and waits for a configurable quiet
 period (120 seconds by default). Expensive local historical coverage, seven R gates
 and full resources prioritize the latest unverified tip. Earlier pending tips
 become `superseded`, never `passed`. `--strict-per-commit` retains each queued source.
+The selected queue mode survives restart, status and recovery commands. Switching
+back requires explicit `--latest-tip`. Installation retains an explicitly supplied
+mode and `--quiet-seconds` in the service definition.
 Statuses `pending`, `running`, `passed`, `failed`, `superseded`, `unavailable` are
 separate. Interrupted attempts retain logs and require fresh execution. A failed
 tip remains visible until corrective latest-source qualification passes. Retry is
@@ -222,7 +225,8 @@ journalctl --user -u judgmentllm-main.service
 .venv/bin/python -B ci/local/main_worker.py retry
 ```
 
-`install` writes definitions only. `activate` verifies reviewed merged CI files
+`install` writes definitions and private configuration without activation.
+`activate` preserves that configuration and verifies reviewed merged CI files
 before enabling the production timer. Never activate before merge. For rollback:
 
 ```bash
