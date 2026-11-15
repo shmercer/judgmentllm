@@ -8,6 +8,7 @@ import functools
 import hashlib
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -20,15 +21,25 @@ from typing import Any, TextIO
 
 import psutil
 
+SYSTEMCTL = shutil.which("systemctl", path=os.defpath)
+SYSTEMD_RUN = shutil.which("systemd-run", path=os.defpath)
+SYSTEM_ENV = shutil.which("env", path=os.defpath)
+
 
 @functools.lru_cache(maxsize=1)
 def systemd_available() -> bool:
-    if sys.platform != "linux" or os.environ.get("GITHUB_ACTIONS") == "true":
+    if (
+        sys.platform != "linux"
+        or os.environ.get("GITHUB_ACTIONS") == "true"
+        or SYSTEMCTL is None
+        or SYSTEMD_RUN is None
+        or SYSTEM_ENV is None
+    ):
         return False
     try:
         return (
             subprocess.run(
-                ["systemctl", "--user", "is-active", "--quiet", "default.target"],
+                [SYSTEMCTL, "--user", "is-active", "--quiet", "default.target"],
                 env={"PATH": os.defpath, "XDG_RUNTIME_DIR": f"/run/user/{os.getuid()}"},
                 capture_output=True,
                 timeout=5,
@@ -213,9 +224,11 @@ def run(
     ]
     launcher_env = env
     if unit is not None:
+        assert SYSTEMD_RUN is not None
+        assert SYSTEM_ENV is not None
         # Clear the user manager's environment before entering test code.
         launch = [
-            "systemd-run",
+            SYSTEMD_RUN,
             "--user",
             "--quiet",
             "--wait",
@@ -225,7 +238,7 @@ def run(
             f"--unit={unit}",
             "--property=KillMode=control-group",
             "--property=TimeoutStopSec=15s",
-            "env",
+            SYSTEM_ENV,
             "-i",
             *(f"{key}={value}" for key, value in sorted(env.items())),
             *launch,
@@ -245,9 +258,10 @@ def run(
 
     def terminate() -> None:
         if unit is not None:
+            assert SYSTEMCTL is not None
             subprocess.run(
                 [
-                    "systemctl",
+                    SYSTEMCTL,
                     "--user",
                     "kill",
                     "--kill-whom=main",
