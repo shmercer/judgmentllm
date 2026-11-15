@@ -291,6 +291,71 @@ def test_foreground_requests_preempt_background_and_release_capacity(
     assert json.loads((tmp_path / "owner.json").read_text())["active"] is False
 
 
+def test_background_poll_never_starts_while_foreground_owns_host(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import main_worker
+
+    allocation = tmp_path / "allocation"
+    monkeypatch.setenv("JUDGMENTLLM_ALLOCATION_ROOT", str(allocation))
+
+    def forbidden(*args: Any, **kwargs: Any) -> list[str]:
+        pytest.fail("Foreground qualification must also exclude Git polling")
+
+    monkeypatch.setattr(main_worker, "fetch", forbidden)
+    with QualificationLease(allocation):
+        assert main_worker.once(tmp_path / "state", strict=False, quiet_seconds=0) == 2
+    queue = json.loads((tmp_path / "state/queue.json").read_text())
+    assert queue["last_poll"]["status"] == "unavailable" and queue["commits"] == {}
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="Linux background worker ownership")
+def test_foreground_arrival_cancels_real_owned_git_poll(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from main_worker import background_execution, fetch
+
+    root = tmp_path / "state"
+    root.mkdir()
+    tools = tmp_path / "bin"
+    tools.mkdir()
+    marker = tmp_path / "fetch-started"
+    script = tools / "git"
+    script.write_text(
+        "#!/usr/bin/python3\nimport os,sys,time,pathlib\n"
+        f"if 'fetch' in sys.argv:\n    pathlib.Path({str(marker)!r}).write_text('running')\n    time.sleep(60)\n"
+        "else:\n    os.execv('/usr/bin/git', ['git', *sys.argv[1:]])\n"
+    )
+    script.chmod(0o700)
+    allocation = tmp_path / "allocation"
+    monkeypatch.setenv("JUDGMENTLLM_ALLOCATION_ROOT", str(allocation))
+    monkeypatch.setenv("PATH", str(tools) + os.pathsep + os.defpath)
+    acquired: list[bool] = []
+
+    def foreground() -> None:
+        deadline = time.monotonic() + 15
+        while not marker.exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        assert marker.exists()
+        with QualificationLease(allocation, timeout=15):
+            acquired.append(True)
+
+    with background_execution() as (_, cancel, seen):
+        request = threading.Thread(target=foreground)
+        request.start()
+        with pytest.raises(InterruptedError):
+            fetch(root, None, cancel=cancel)
+        assert seen.is_set()
+    request.join(timeout=16)
+    assert not request.is_alive() and acquired == [True]
+    receipt = json.loads(next((root / "polls").glob("*/receipt.json")).read_text())
+    assert receipt["qualification"] is False
+    assert receipt["exit_code"] != 0
+    assert receipt["processes"]["cancelled"] is True
+    assert receipt["processes"]["cleanup_complete"] is True
+    assert json.loads((allocation / "owner.json").read_text())["active"] is False
+
+
 @pytest.mark.parametrize("cancelled", [False, True])
 def test_owned_stage_accounts_for_real_children_and_cancellation(
     tmp_path: Path, cancelled: bool

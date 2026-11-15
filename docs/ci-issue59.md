@@ -196,6 +196,11 @@ Restart recovery marks abandoned attempts interrupted, preserves logs and queues
 the correct source again. The worker's nonzero service status, durable queue and
 journal expose failures; production activation is required for these local checks
 to run automatically. No self-hosted runner or automatic post-merge R pass is assumed.
+Public Git polling also takes the background host allocation and yields through
+owned cancellation. Clone, checkout, dependency preparation and admission retain
+separate process receipts. A blocked poll records unavailable state and cannot
+contend with foreground resource measurements. Unit installation captures the
+installer's executable search path so user-installed `uv` remains available.
 
 After independent review and merge, prepare a dedicated checkout/locked environment,
 R/jsonlite and offline assets with adequate free capacity. Then:
@@ -272,6 +277,15 @@ one bounded scenario, not a full-suite speedup benchmark or final-PR acceptance.
 Four isolated transient systemd candidate executions validated unit syntax,
 duplicate public-main polling, durable restart recovery and foreground priority.
 The production timer was absent and remains unactivated before review and merge.
+
+Historical diff reclassification remains conservative. PR #55's CI/shared-code
+diff (`07a6d73` → `9e1e65d`) is Level 3 with six tasks: Linux full and extended
+Windows/macOS. That comparison uses the current taxonomy because #55 introduced
+the taxonomy; it is a counterfactual diagnostic, never retrospective admission.
+PR #58 (`34dd83f` → `4e62e25`) remains Level 3 with six full-platform tasks because
+its protected-base map does not classify the added `cache_policy.py`. The new
+additive-test exceptions do not reduce either PR's required risk. Their original
+passed, failed and interrupted qualification records remain historical.
 
 Local admission can be replayed without rerunning tests using
 `ci/acceptance.py verify-local` with independently supplied `--base`, `--head`,

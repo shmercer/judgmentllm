@@ -11,6 +11,8 @@ import sys
 import threading
 import time
 import uuid
+from collections.abc import Generator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -149,7 +151,37 @@ class Queue:
         self.save()
 
 
-def fetch(root: Path, previous: str | None) -> list[str]:
+@contextmanager
+def background_execution() -> Generator[
+    tuple[QualificationLease, threading.Event, threading.Event], None, None
+]:
+    with QualificationLease(background=True) as allocation:
+        cancel, stop, foreground_seen = (
+            threading.Event(),
+            threading.Event(),
+            threading.Event(),
+        )
+
+        def prioritize_foreground() -> None:
+            while not stop.wait(0.25):
+                if foreground_pending(allocation.root):
+                    foreground_seen.set()
+                    if not stop.wait(5):
+                        cancel.set()
+                    return
+
+        monitor = threading.Thread(target=prioritize_foreground, daemon=True)
+        monitor.start()
+        try:
+            yield allocation, cancel, foreground_seen
+        finally:
+            stop.set()
+            monitor.join(timeout=2)
+
+
+def fetch(
+    root: Path, previous: str | None, *, cancel: threading.Event | None = None
+) -> list[str]:
     mirror = root / "mirror.git"
     env = {
         "PATH": os.environ.get("PATH", os.defpath),
@@ -161,20 +193,39 @@ def fetch(root: Path, previous: str | None) -> list[str]:
         subprocess.run(
             ["git", "init", "--bare", "-q", str(mirror)], env=env, check=True
         )
-    subprocess.run(
-        [
-            "git",
-            "-C",
-            str(mirror),
-            "fetch",
-            "--no-tags",
-            PUBLIC_REPOSITORY,
-            "refs/heads/main:refs/remotes/origin/main",
-        ],
-        env=env,
-        check=True,
-        capture_output=True,
+    command = [
+        "git",
+        "-C",
+        str(mirror),
+        "fetch",
+        "--no-tags",
+        PUBLIC_REPOSITORY,
+        "refs/heads/main:refs/remotes/origin/main",
+    ]
+    from process import run as run_owned
+
+    poll = root / "polls" / uuid.uuid4().hex
+    poll.mkdir(parents=True)
+    with (poll / "fetch.log").open("w") as stream:
+        code, processes = run_owned(
+            command,
+            cwd=root,
+            env=env,
+            stream=stream,
+            evidence=poll / "owner",
+            cancel=cancel,
+            identity={"phase": "public-main-poll", "poll": poll.name},
+        )
+    atomic(
+        poll / "receipt.json",
+        {"exit_code": code, "processes": processes, "qualification": False},
     )
+    if code or processes.get("cleanup_complete") is not True:
+        raise (
+            InterruptedError("Main polling interrupted")
+            if cancel is not None and cancel.is_set()
+            else RuntimeError(f"Main fetch failed: {poll}")
+        )
     tip = subprocess.check_output(
         ["git", "-C", str(mirror), "rev-parse", "refs/remotes/origin/main"],
         env=env,
@@ -231,59 +282,40 @@ def once(root: Path, *, strict: bool, quiet_seconds: float) -> int:
     with ResourceLease(root / "worker-lock", 1, timeout=0):
         queue = Queue(root, strict=strict, quiet_seconds=quiet_seconds)
         queue.recover()
-        queue.observe(fetch(root, queue.data["tip"]), time.time())
+        try:
+            with background_execution() as (_, poll_cancel, _):
+                queue.observe(
+                    fetch(root, queue.data["tip"], cancel=poll_cancel), time.time()
+                )
+        except (BlockingIOError, TimeoutError, InterruptedError) as error:
+            queue.data["last_poll"] = {
+                "status": "unavailable",
+                "reason": str(error),
+                "at": time.time(),
+            }
+            tip = queue.data["tip"]
+            if tip is not None and queue.data["commits"][tip]["state"] in {
+                "pending",
+                "unavailable",
+            }:
+                queue.data["commits"][tip].update(
+                    state="unavailable", reason=str(error)
+                )
+            queue.save()
+            return 2
         sha = queue.ready(time.time())
         if sha is None:
             return 1 if queue.data["latest_failure"] else 0
         try:
-            with QualificationLease(background=True) as allocation:
+            with background_execution() as (allocation, cancel, foreground_seen):
                 attempt = queue.start(
                     sha, {"pid": os.getpid(), "birth": psutil.Process().create_time()}
                 )
                 output = root / "runs" / sha / attempt
                 output.mkdir(parents=True, exist_ok=False)
-                cancel, stop_monitor, foreground_seen = (
-                    threading.Event(),
-                    threading.Event(),
-                    threading.Event(),
-                )
-
-                def prioritize_foreground() -> None:
-                    while not stop_monitor.wait(0.25):
-                        if foreground_pending(allocation.root):
-                            foreground_seen.set()
-                            if not stop_monitor.wait(5):
-                                cancel.set()
-                            return
-
-                monitor = threading.Thread(target=prioritize_foreground, daemon=True)
-                monitor.start()
                 code = 1
                 try:
                     source = output / "source"
-                    subprocess.run(
-                        [
-                            "git",
-                            "clone",
-                            "--shared",
-                            "--quiet",
-                            str(root / "mirror.git"),
-                            str(source),
-                        ],
-                        check=True,
-                    )
-                    subprocess.run(
-                        [
-                            "git",
-                            "-C",
-                            str(source),
-                            "checkout",
-                            "--detach",
-                            "--quiet",
-                            sha,
-                        ],
-                        check=True,
-                    )
                     sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
                     from acceptance import clean_environment
 
@@ -291,6 +323,29 @@ def once(root: Path, *, strict: bool, quiet_seconds: float) -> int:
                     environment["JUDGMENTLLM_BACKGROUND_RUN"] = "1"
                     environment["UV_OFFLINE"] = "0"
                     commands = [
+                        (
+                            "clone",
+                            [
+                                "git",
+                                "clone",
+                                "--shared",
+                                "--quiet",
+                                str(root / "mirror.git"),
+                                str(source),
+                            ],
+                        ),
+                        (
+                            "checkout",
+                            [
+                                "git",
+                                "-C",
+                                str(source),
+                                "checkout",
+                                "--detach",
+                                "--quiet",
+                                sha,
+                            ],
+                        ),
                         (
                             "prepare",
                             [
@@ -331,11 +386,16 @@ def once(root: Path, *, strict: bool, quiet_seconds: float) -> int:
                         with (output / (phase + ".log")).open("w") as stream:
                             code, processes = run_owned(
                                 command,
-                                cwd=source,
+                                cwd=root if phase in {"clone", "checkout"} else source,
                                 env=environment,
                                 stream=stream,
                                 evidence=output / (phase + "-owner"),
                                 cancel=cancel,
+                                identity={
+                                    "source_sha": sha,
+                                    "attempt": attempt,
+                                    "phase": phase,
+                                },
                             )
                         if code or processes.get("cleanup_complete") is not True:
                             code = code or 1
@@ -390,9 +450,6 @@ def once(root: Path, *, strict: bool, quiet_seconds: float) -> int:
                         + "\n"
                     )
                     code = 1
-                finally:
-                    stop_monitor.set()
-                    monitor.join(timeout=2)
                 if foreground_pending(allocation.root):
                     foreground_seen.set()
                 queue.finish(
@@ -428,6 +485,7 @@ def install(unit_dir: Path, root: Path) -> None:
 
         text = (
             text.replace("@PYTHON@", escaped(sys.executable))
+            .replace("@PATH@", escaped(os.environ.get("PATH", os.defpath)))
             .replace("@SCRIPT@", escaped(str(script)))
             .replace("@STATE@", escaped(str(root.resolve())))
         )
