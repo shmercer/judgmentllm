@@ -1184,4 +1184,10 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    if sys.platform == "linux" and os.environ.get("GITHUB_ACTIONS") != "true":
+        from allocation import QualificationLease
+
+        with QualificationLease() as allocation:
+            os.environ.update(allocation.environment())
+            raise SystemExit(main())
     raise SystemExit(main())

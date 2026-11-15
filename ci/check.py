@@ -121,6 +121,7 @@ def fast(changed_since: str, output: Path, focused: list[str], workers: int) -> 
             "TEMP",
             "TMP",
             "TMPDIR",
+            "GITHUB_ACTIONS",
         )
         if key in os.environ
     }
@@ -135,19 +136,28 @@ def fast(changed_since: str, output: Path, focused: list[str], workers: int) -> 
     )
     records: list[dict[str, object]] = []
     started = time.monotonic()
-    for index, command in enumerate(commands):
-        with (output / f"{index + 1}.log").open("w", encoding="utf-8") as stream:
-            code = subprocess.run(
-                command,
-                cwd=ROOT,
-                env=environment,
-                stdout=stream,
-                stderr=subprocess.STDOUT,
-                check=False,
-            ).returncode
-        records.append({"command": command, "exit_code": code})
-        if code:
-            break
+    from local.allocation import QualificationLease
+    from local.process import run as run_owned
+
+    with QualificationLease() as allocation:
+        environment.update(allocation.environment())
+        for index, command in enumerate(commands):
+            with (output / f"{index + 1}.log").open("w", encoding="utf-8") as stream:
+                code, processes = run_owned(
+                    command,
+                    cwd=ROOT,
+                    env=environment,
+                    stream=stream,
+                    evidence=output / f"stage-{index + 1}-owner",
+                    identity={"profile": "fast", "stage": index + 1},
+                )
+            if processes.get("cleanup_complete") is not True:
+                code = code or 1
+            records.append(
+                {"command": command, "exit_code": code, "processes": processes}
+            )
+            if code:
+                break
     report = {
         "schema_version": 1,
         "profile": "fast",

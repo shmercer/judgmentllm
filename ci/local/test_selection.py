@@ -709,6 +709,7 @@ def test_planned_runner_executes_real_disjoint_partitions_and_propagates_failure
     for name in (
         "selection.py",
         "additions.py",
+        "source_lines.py",
         "environment.py",
         "risk.py",
         "verification-map.json",

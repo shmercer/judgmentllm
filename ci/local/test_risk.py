@@ -106,6 +106,36 @@ def freeze(source: Path) -> str:
     ).strip()
 
 
+@pytest.mark.parametrize(
+    "after",
+    [
+        "def parse(:\n    return 1\n",
+        "def parse():\n    return 1\ndef parse():\n    return 2\n",
+        "def parse():\n    return 1  # pragma: no cover\n",
+        "def parse():\n    return eval('1')\n",
+    ],
+)
+def test_unassessable_changed_source_escalates_without_unknown_dependency(
+    repository: Any, after: str
+) -> None:
+    source, _ = repository
+    path = source / "src/judgmentllm/providers/gemini_response.py"
+    path.parent.mkdir(parents=True)
+    path.write_text("def parse():\n    return 1\n")
+    base = freeze(source)
+    path.write_text(after)
+    head = freeze(source)
+    plan = make_plan(source, base, head)
+    assert plan["risk"] == 3
+    assert plan["unknown_production_dependencies"] == []
+    assert "cannot be assessed reliably" in plan["changes"][0]["reason"]
+    assert [lane["profile"] for lane in plan["lanes"]] == [
+        "full",
+        "platform-extended",
+        "platform-extended",
+    ]
+
+
 def test_mixed_adapter_and_shared_execution_use_higher_level(repository: Any) -> None:
     source, base = repository
     for name in (

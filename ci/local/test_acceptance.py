@@ -320,6 +320,7 @@ def test_pr_planning_does_not_write_bytecode_to_its_policy_copy(
         "verification-map.json",
         "selection.py",
         "additions.py",
+        "source_lines.py",
         "environment.py",
         "test-profiles.json",
         "test-inventory.json",

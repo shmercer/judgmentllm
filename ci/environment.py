@@ -18,6 +18,7 @@ def clean_environment() -> dict[str, str]:
         "TEMP",
         "TMP",
         "TMPDIR",
+        "GITHUB_ACTIONS",
         "R_LIBS",
         "R_LIBS_USER",
         "UV_CACHE_DIR",

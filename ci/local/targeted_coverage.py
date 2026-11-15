@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import ast
-import difflib
 import json
 import subprocess
 import tempfile
@@ -13,6 +12,7 @@ from typing import Any
 
 from coverage import Coverage
 from coverage_equivalence import validate_measurement
+from source_lines import correspondence
 
 
 def base_analysis(raw: bytes, config: Path) -> dict[str, Any]:
@@ -103,16 +103,7 @@ def compare(
                     "excluded_lines": [],
                 }
             )
-            mapping: dict[int, int] = {}
-            for a, b, size in difflib.SequenceMatcher(
-                None,
-                old.decode().splitlines(),
-                raw.decode().splitlines(),
-                autojunk=False,
-            ).get_matching_blocks():
-                mapping.update(
-                    {a + offset + 1: b + offset + 1 for offset in range(size)}
-                )
+            mapping = correspondence(old.decode(), raw.decode())
             actual = measured["files"][filename]
             executable = set(actual["executed_lines"] + actual["missing_lines"])
             changed = executable - set(mapping.values())

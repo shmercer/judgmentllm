@@ -94,8 +94,15 @@ def test_metadata_exception_cannot_replace_parameters_or_markers() -> None:
     "defensive", [False, True], ids=["adapter-positive", "defensive-negative"]
 )
 @pytest.mark.parametrize("untested", [False, True], ids=["covered", "uncovered"])
+@pytest.mark.parametrize(
+    "relocated", [False, True], ids=["same-function", "new-function"]
+)
 def test_realistic_level_two_change_executes_new_tests_and_targeted_coverage(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, defensive: bool, untested: bool
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    defensive: bool,
+    untested: bool,
+    relocated: bool,
 ) -> None:
     source = tmp_path / "source"
     source.mkdir()
@@ -107,7 +114,11 @@ def test_realistic_level_two_change_executes_new_tests_and_targeted_coverage(
     path.parent.mkdir(parents=True)
     for package in (source / "src/judgmentllm", path.parent):
         (package / "__init__.py").write_text("")
-    path.write_text('def parse(payload):\n    return payload["score"]\n')
+    path.write_text(
+        'def _value(payload):\n    return payload["score"]\ndef parse(payload):\n    return _value(payload)\n'
+        if relocated
+        else 'def parse(payload):\n    return payload["score"]\n'
+    )
     tests = source / "tests/test_gemini_response.py"
     tests.parent.mkdir()
     old_tests = 'import pytest\nfrom judgmentllm.providers.gemini_response import parse\ndef test_old():\n    assert parse({"score": 1}) == 1\n'
@@ -143,16 +154,26 @@ def test_realistic_level_two_change_executes_new_tests_and_targeted_coverage(
     ):
         (policy_root / name).write_text(json.dumps(value))
     base = freeze(source)
-    body = "def parse(payload):\n"
+    body = (
+        'def decode_score(payload):\n    return payload["score"]\ndef _read(payload):\n    return payload["score"]\n'
+        if relocated
+        else ""
+    ) + ("def parse(payload: dict):\n" if relocated else "def parse(payload):\n")
     if defensive:
         body += '    if not isinstance(payload.get("score"), int):\n        raise ValueError("invalid score")\n'
-    if untested:
+    if untested and not relocated:
         body += '    if payload.get("unreachable_in_tests"):\n        raise ValueError("not tested")\n'
-    body += '    return int(payload["score"])\n'
+    body += (
+        "    return _read(payload)\n"
+        if relocated
+        else '    return int(payload["score"])\n'
+    )
     path.write_text(body)
     added = 'def test_added():\n    assert parse({"score": 2}) == 2\n'
     if defensive:
         added += '@pytest.mark.parametrize("bad", [None, "bad"])\ndef test_invalid(bad):\n    with pytest.raises(ValueError, match="invalid score"):\n        parse({"score": bad})\n'
+    if relocated and not untested:
+        added += 'def test_new_decoder():\n    from judgmentllm.providers.gemini_response import decode_score\n    assert decode_score({"score": 3}) == 3\n'
     tests.write_text(old_tests + added)
     env = {
         **os.environ,
@@ -273,6 +294,8 @@ def test_realistic_level_two_change_executes_new_tests_and_targeted_coverage(
         output, source, base, head, [module], root / "ci/coverage-floor.json"
     )
     assert evaluation["passed"] is not untested, evaluation
+    if relocated and untested:
+        assert evaluation["files"][0]["uncovered_changed_lines"] == [2]
     assert evaluation["historical_coverage"] == "not-assessed"
     assert json.loads(json.dumps(evaluation)) == evaluation
     assert not untested or any(

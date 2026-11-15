@@ -430,6 +430,12 @@ def classify(filename: str, before: str | None, after: str | None) -> tuple[int,
                 3,
                 "shared provider protocol, durable evidence, schema or authentication CLI",
             )
+        from source_lines import correspondence
+
+        try:
+            correspondence(before or "", after)
+        except (SyntaxError, ValueError) as error:
+            return 3, "Targeted coverage cannot be assessed reliably: " + str(error)
         if sensitive_provider_edit(before, after):
             return 3, "provider credential, privacy, authority or recovery behavior"
         if any(

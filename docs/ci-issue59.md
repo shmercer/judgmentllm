@@ -64,6 +64,10 @@ Do not regenerate `ci/coverage-floor.json` or choose an easier threshold.
 The realistic adapter and defensive-parser integration cases in
 `ci/local/test_issue59.py` exercise real Git history, collection, two xdist workers,
 new-test selection on all three OS profiles, and covered/uncovered admission.
+`ci/source_lines.py` restricts source correspondence to the same named
+function/class scope. Moving identical code into a new function does not exempt
+its untested body. Ambiguous repeated scopes, malformed Python and changed
+coverage pragmas escalate to Level 3 during planning, with an explicit reason.
 
 ## Local scheduling and evidence
 
@@ -201,6 +205,8 @@ owned cancellation. Clone, checkout, dependency preparation and admission retain
 separate process receipts. A blocked poll records unavailable state and cannot
 contend with foreground resource measurements. Unit installation captures the
 installer's executable search path so user-installed `uv` remains available.
+Fast foreground checks and standalone local suite commands share that allocation;
+fast stages use the same owned-process cleanup and cannot pass with leaked children.
 
 After independent review and merge, prepare a dedicated checkout/locked environment,
 R/jsonlite and offline assets with adequate free capacity. Then:
@@ -253,8 +259,11 @@ ordinary/serial/resource/all-seven-R workload. It alternates conservative and
 concurrent trials, records coverage/results, process CPU, memory/swap, allocations,
 startup/teardown and cleanup. Only equivalent, reliable whole-run improvement beyond
 observed variability and a 5% materiality margin permits automatic promotion.
-A negligible or unreliable result leaves the conservative default. Profiling
-receipts explicitly do not establish PR qualification. Final local/hosted evidence
+A negligible or unreliable result leaves the conservative default.
+`--workers N` repeats two complete controls and two complete concurrent trials
+when earlier bounded exploration has selected a count; it never qualifies an
+isolated partition or reuses another source's test results.
+Profiling receipts explicitly do not establish PR qualification. Final local/hosted evidence
 must use the exact final source and protected-base admission; candidate-policy
 workflow results remain a separate check.
 
@@ -277,6 +286,27 @@ one bounded scenario, not a full-suite speedup benchmark or final-PR acceptance.
 Four isolated transient systemd candidate executions validated unit syntax,
 duplicate public-main polling, durable restart recovery and foreground priority.
 The production timer was absent and remains unactivated before review and merge.
+
+At implementation source `b463e04`, the complete fixed 254-case/seven-R bundle
+took 539.63s and 550.34s with conservative ordering. Concurrent trials took
+408.95s (8 workers), 403.97s (10), 411.99s (12), and 411.85s (10 repeated).
+The selected 10-worker mean improved elapsed time by approximately 25% over the
+controls, with identical coverage signatures and passing ownership/health checks.
+This is a bounded-workload result, not a forecast for the complete historical suite.
+The selected count is requalified at the updated execution source before use.
+
+The six-vCPU, 20-GiB Ubuntu VM prototype completed that same bounded workload in
+296.04s with physically separated host/guest cores and verified shutdown before
+global serial work. Original resource assertions passed both alone and during
+overlap. The matched controls observed zero CPU/memory pressure; the prototype
+observed 0.2% CPU pressure and 0.92% memory pressure (10-second averages). Those
+observations exceed the conservative health envelope, so this configuration is
+**not adopted** as an authoritative environment. This does not establish that the
+VM caused the pressure. Resource execution remains exclusive on the host with its
+original coverage, workloads and thresholds; `resource-isolated` uses that fallback.
+The inspected, provisioned VM is stopped, its security services remain enabled,
+and its images, configuration, keys and experimental receipts remain outside Git.
+No VM measurement contributes functional coverage or PR admission.
 
 Historical diff reclassification remains conservative. PR #55's CI/shared-code
 diff (`07a6d73` → `9e1e65d`) is Level 3 with six tasks: Linux full and extended

@@ -144,12 +144,14 @@ def test_reviewed_closures_cover_direct_test_imports_and_real_source_paths() -> 
 @pytest.mark.parametrize(
     "module,required_modules", [*SCHEMAS[:3], ("gemini_future", set[str]())]
 )
+@pytest.mark.parametrize("cleanup", [True, False], ids=["clean", "leaked-child"])
 def test_fast_feedback_uses_exact_closure_or_expands(
     repository: Any,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     module: str,
     required_modules: set[str],
+    cleanup: bool,
 ) -> None:
     source, base = repository
     python = (
@@ -168,22 +170,36 @@ def test_fast_feedback_uses_exact_closure_or_expands(
     path.write_text("def project(): return 1\n")
     calls: list[list[str]] = []
     original = subprocess.run
+    allocation = tmp_path / "allocation"
+    monkeypatch.setenv("JUDGMENTLLM_ALLOCATION_ROOT", str(allocation))
 
     def execute(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         if command[0] == "git":
             return cast(subprocess.CompletedProcess[str], original(command, **kwargs))
-        calls.append(command)
         return subprocess.CompletedProcess(command, 0)
+
+    def owned(command: list[str], **kwargs: Any) -> tuple[int, dict[str, Any]]:
+        from local.allocation import foreground_pending
+
+        assert foreground_pending(allocation)
+        assert kwargs["env"]["JUDGMENTLLM_ALLOCATION_TOKEN"]
+        calls.append(command)
+        return 0, {"cleanup_complete": cleanup}
 
     monkeypatch.setattr(check, "ROOT", source)
     monkeypatch.setattr(check.subprocess, "run", execute)
+    monkeypatch.setattr("local.process.run", owned)
     output = tmp_path / "fast"
-    assert check.fast(base, output, [], 2) == 0
+    assert check.fast(base, output, [], 2) == int(not cleanup)
     report = read(output / "summary.json")
     assert report["qualification"] is False
+    assert report["passed"] is cleanup
+    assert read(allocation / "owner.json")["active"] is False
     assert report["expanded_selection"] is (not required_modules)
     if required_modules:
-        assert required_modules <= set(calls[-1])
+        assert required_modules <= set(report["targets"])
+        if cleanup:
+            assert required_modules <= set(calls[-1])
     else:
         assert report["targets"] == ["tests", "ci/local"]
 

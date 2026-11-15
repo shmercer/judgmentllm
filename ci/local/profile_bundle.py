@@ -278,6 +278,12 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, default=ROOT)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--workers",
+        type=int,
+        choices=range(1, 13),
+        help="Qualify an already selected worker count with two complete controls and two concurrent trials",
+    )
     args = parser.parse_args()
     source, output = args.source.resolve(), args.output.resolve()
     if output.is_relative_to(source) or source_record(source)["dirty"] is not False:
@@ -300,14 +306,27 @@ def main() -> int:
     with QualificationLease() as allocation:
         os.environ.update(allocation.environment())
         os.environ["JUDGMENTLLM_R_STRICT"] = "1"
-        configurations = [
-            ("conservative", 12),
-            *(
-                ("concurrent", workers)
-                for workers in specification["worker_candidates"]
-            ),
-        ]
-        for index in range(specification["maximum_trials"]):
+        if args.workers is None:
+            configurations = [
+                ("conservative", 12),
+                *(
+                    ("concurrent", workers)
+                    for workers in specification["worker_candidates"]
+                ),
+            ]
+        else:
+            certificate["ordinary_workers"] = min(
+                args.workers, certificate["machine"]["effective_cpus"]
+            )
+            configurations = [
+                ("conservative", 12),
+                ("concurrent", args.workers),
+                ("concurrent", args.workers),
+                ("conservative", 12),
+            ]
+        for index in range(
+            specification["maximum_trials"] if args.workers is None else 4
+        ):
             if index == 4:
                 best = min(
                     (
