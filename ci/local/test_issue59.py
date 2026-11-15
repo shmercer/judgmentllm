@@ -255,7 +255,6 @@ def test_realistic_level_two_change_executes_new_tests_and_targeted_coverage(
             "--cov=judgmentllm.providers.gemini_response",
             "--cov-branch",
             "--cov-fail-under=0",
-            "--cov-context=test",
             "--cov-append",
             f"--cov-config={config}",
             "--ci-coverage",

@@ -97,6 +97,13 @@ def pytest_testnodedown(node: Any, error: Any) -> None:
             _contributors[node.gateway.id] = cast(dict[str, Any], item)
 
 
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_setup(item: pytest.Item) -> None:
+    if item.config.getoption("--ci-coverage") and _coverage is not None:
+        # Phase switches can open coverage SQLite while security fixtures forbid it.
+        _coverage.switch_context(item.nodeid)
+
+
 @pytest.hookimpl(wrapper=True, trylast=True)
 def pytest_runtestloop(session: pytest.Session) -> Generator[None, Any, Any]:
     result: Any = yield

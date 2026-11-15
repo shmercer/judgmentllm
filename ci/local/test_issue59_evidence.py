@@ -40,7 +40,8 @@ def real_coverage(
         "def first(value):\n    if value:\n        return 11\n    return 12\ndef second(value):\n    if value:\n        return 21\n    return 22\ndef child():\n    return 31\n"
     )
     (source / "test_probe.py").write_text(
-        "import subprocess, sys, os\nfrom probe import first, second\ndef test_first_true(): assert first(True) == 11\ndef test_first_false(): assert first(False) == 12\ndef test_second_true(): assert second(True) == 21\ndef test_second_false(): assert second(False) == 22\ndef test_child():\n    subprocess.run([sys.executable, '-m', 'coverage', 'run', '--parallel-mode', '--branch', '--source=probe', '--context=' + os.environ['JUDGMENTLLM_COVERAGE_CONTEXT'] + '|test_probe.py::test_child|subprocess', 'child.py'], check=True)\n"
+        "import subprocess, sys, os, sqlite3, pytest\nfrom probe import first, second\ndef test_first_true(): assert first(True) == 11\ndef test_first_false(): assert first(False) == 12\ndef test_second_true(): assert second(True) == 21\ndef test_second_false(): assert second(False) == 22\ndef test_child():\n    subprocess.run([sys.executable, '-m', 'coverage', 'run', '--parallel-mode', '--branch', '--source=probe', '--context=' + os.environ['JUDGMENTLLM_COVERAGE_CONTEXT'] + '|test_probe.py::test_child|subprocess', 'child.py'], check=True)\n"
+        "@pytest.fixture\ndef forbid_sqlite(monkeypatch):\n    def forbidden(*args, **kwargs):\n        raise AssertionError('SQLite guard remains active')\n    monkeypatch.setattr(sqlite3, 'connect', forbidden)\n    yield\ndef test_guarded_sqlite_fixture(forbid_sqlite):\n    with pytest.raises(AssertionError, match='SQLite guard remains active'):\n        sqlite3.connect(':memory:')\n    assert first(True) == 11\ndef test_guarded_sqlite_body(monkeypatch):\n    def forbidden(*args, **kwargs):\n        raise AssertionError('SQLite guard remains active')\n    monkeypatch.setattr(sqlite3, 'connect', forbidden)\n    with pytest.raises(AssertionError, match='SQLite guard remains active'):\n        sqlite3.connect(':memory:')\n    assert second(False) == 22\n"
     )
     (source / "pyproject.toml").write_text(
         '[tool.pytest.ini_options]\naddopts=""\n[tool.coverage.run]\nsource=["probe"]\nbranch=true\nrelative_files=true\n'
@@ -81,7 +82,6 @@ def real_coverage(
             "--ci-coverage",
             "--cov=probe",
             "--cov-branch",
-            "--cov-context=test",
             "--cov-append",
             f"--cov-config={config}",
             "--cov-report=",
@@ -123,6 +123,18 @@ def test_supported_worker_and_subprocess_combination_is_complete(
     data.read()
     assert {(2, 3), (2, 4), (6, 7), (6, 8)} <= set(data.arcs("probe.py") or [])
     assert 10 in (data.lines("probe.py") or [])
+    assert {
+        "test_probe.py::test_guarded_sqlite_fixture",
+        "test_probe.py::test_guarded_sqlite_body",
+    } <= {item["nodeid"] for item in receipt["collected"]}
+    for line, node in (
+        (3, "test_probe.py::test_guarded_sqlite_fixture"),
+        (8, "test_probe.py::test_guarded_sqlite_body"),
+    ):
+        assert any(
+            context.endswith("|" + node)
+            for context in data.contexts_by_lineno("probe.py")[line]
+        )
 
 
 @pytest.mark.parametrize(

@@ -692,7 +692,6 @@ def run(
                 arguments += [
                     "--ci-coverage",
                     "--cov-append",
-                    "--cov-context=test",
                     f"--cov-report=xml:{output / ('coverage-' + label + '.xml')}",
                     "--cov-fail-under=0",
                 ]

@@ -134,6 +134,13 @@ is used across concurrent groups. Tests cover unique lines/arcs on separate work
 explicitly instrumented subprocesses, missing data, corruption, stale identities,
 failed stages and duplicate groups. The project's existing child instrumentation
 settings remain unchanged; group isolation does not invent child coverage.
+Per-case labels use public `Coverage.switch_context` at the beginning of pytest
+setup, before fixtures install security guards. The attempted pytest-cov
+`--cov-context=test` phase switches opened coverage SQLite while historical tests
+deliberately forbade SQLite access, causing teardown and subsequent setup failures.
+Real two- and twelve-worker regressions preserve those guards and verify both
+fixture-installed and test-installed guards with complete case/branch attribution.
+This label hook neither snapshots worker data nor changes normal pytest-cov saving.
 
 ## Resources and VM decision
 
@@ -298,6 +305,16 @@ The selected 10-worker mean improved elapsed time by approximately 25% over the
 controls, with identical coverage signatures and passing ownership/health checks.
 This is a bounded-workload result, not a forecast for the complete historical suite.
 The selected count is requalified at the updated execution source before use.
+
+Requalification at `9cf71ba` passed the same 254 cases and all seven R gates in
+each of four trials, with identical coverage signatures. Controls took 533.80s
+and 535.74s; concurrent 10-worker repeats took 407.04s and 409.64s. Despite the
+23.64% elapsed improvement, one credential-echo safety case took 1.7282s against
+the controls' 0.0252–0.0256s and a 1.0260s latency ceiling. That rejects automatic
+promotion without changing a test deadline. The conservative default remains:
+12 ordinary workers, isolated serial/resources and sequential named R gates.
+Later operational changes also invalidate earlier performance certificates;
+none of these profiling receipts substitutes for final-source qualification.
 
 The six-vCPU, 20-GiB Ubuntu VM prototype completed that same bounded workload in
 296.04s with physically separated host/guest cores and verified shutdown before
