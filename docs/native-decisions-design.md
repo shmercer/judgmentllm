@@ -443,8 +443,11 @@ missing model identity or unknown prices limits what can qualify. No historical
 performance campaign, universal Level 4 or duplicate local grid is automatic.
 
 Follow the post-PR60 [risk policy](ci-optimization.md) and
-[testing guide](testing-guide.md): A is Level 0 non-executable prose; B's shared
-schema/persistence work is Level 3. C–E use their highest touched boundary
+[testing guide](testing-guide.md): A contains only non-executable prose, but the
+automatic plan selects **Level 3** because `docs/implementation-plan.md` is a
+protected acceptance-control path. Honor that stronger plan; do not override it
+with the generic Level 0 documentation category. B's shared schema/persistence
+work is Level 3. C–E use their highest touched boundary
 (shared/schema/authentication/dependency work is Level 3, regardless of adapter
 size); F follows its actual integration/release scope. Inspect the automatic
 plan before qualification. Applicable strict R executes locally; hosted
