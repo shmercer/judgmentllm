@@ -206,6 +206,19 @@ and macOS 3.11/3.12/3.15: the union of former local/hosted scopes. This includes
 complete Windows 3.11 troubleshooting without a lightweight success status.
 
 Static checks and CI selftests execute once, before scheduling expensive lanes.
+On an eligible Ubuntu workstation, `--local-schedule auto` uses the approved
+10-worker concurrent profile, one reviewed safe serial process and at most two
+named R gates. CPU/memory admission and systemd ownership are mandatory; unavailable
+capabilities retain conservative ordering with a diagnostic. Explicit
+`--local-schedule conservative` retains 12 ordinary workers bounded by effective
+CPUs and sequential R gates. Omitted worker counts resolve from the selected local
+policy; hosted worker caps remain independent. A supplied performance certificate
+is diagnostic and cannot change that allocation or authorize qualification reuse.
+The maintainer adopts the retained **23.64% bounded-workload** improvement without
+another scheduler campaign. Individual latency outliers do not veto concurrency
+unless an original deadline or a material safety requirement fails. See the
+[decision and retained measurements](ci-issue59.md#local-scheduling-and-evidence).
+
 When packaging is affected, build/metadata/install smokes precede the full suite.
 Prepare locked core/build dependencies in the separate environment preparation
 stage. For lanes that install distributions, export the locked core requirements

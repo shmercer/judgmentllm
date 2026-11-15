@@ -24,9 +24,9 @@ def read(root: Path) -> dict[str, Any]:
     if (
         type(policy.get("schema_version")) is not int
         or policy["schema_version"] != 1
-        or policy.get("auto_default") != "conservative"
+        or policy.get("auto_default") not in {"conservative", "concurrent"}
     ):
-        raise ValueError("Unsupported local policy or unqualified default promotion")
+        raise ValueError("Unsupported local policy or default")
     if set(policy["profiles"]) != {"conservative", "concurrent"} or any(
         type(p.get("ordinary_workers")) is not int
         or not 1 <= p["ordinary_workers"] <= 12

@@ -332,7 +332,7 @@ def test_scheduler_overlaps_independent_jobs_and_enforces_barrier(
     assert result["status"] == "passed"
 
 
-def test_scheduler_failure_and_unqualified_default_are_honest(tmp_path: Path) -> None:
+def test_scheduler_failure_and_unsupported_default_are_honest(tmp_path: Path) -> None:
     cancel = threading.Event()
     result = run(
         [
@@ -347,7 +347,34 @@ def test_scheduler_failure_and_unqualified_default_are_honest(tmp_path: Path) ->
     assert result["status"] == "failed"
     assert result["stages"]["never"]["status"] == "not-executed"
     assert (
-        choose("auto", certificate=None, machine={}, policy_hash="x")[0]
+        choose(
+            "auto",
+            policy={"auto_default": "concurrent"},
+            resources={},
+            ubuntu=False,
+            process_ownership=False,
+        )[0]
         == "conservative"
     )
     assert time.monotonic() > 0
+
+
+def test_check_cli_bootstraps_its_local_allocation_imports() -> None:
+    root = Path(__file__).resolve().parents[2]
+    environment = {
+        key: value for key, value in os.environ.items() if key != "PYTHONPATH"
+    }
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-B",
+            "-c",
+            "import sys; sys.path.insert(0, 'ci'); import check; from local.allocation import QualificationLease; from local.process import run",
+        ],
+        cwd=root,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=15,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr

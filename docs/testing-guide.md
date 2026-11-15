@@ -185,7 +185,9 @@ python3 ci/check.py --profile fast
 python3 ci/check.py --profile fast --test tests/test_openai_sdk_adapter.py
 python3 ci/check.py --profile fast --test ci/local
 python3 ci/check.py --profile pr --plan-only --changed-since origin/main
-python3 ci/check.py --profile pr --changed-since origin/main --workers 12
+python3 ci/check.py --profile pr --changed-since origin/main
+# Explicit conservative ordering remains available:
+python3 ci/check.py --profile pr --changed-since origin/main --local-schedule conservative
 ```
 
 For a parse-only edit to an already reviewed provider response module, a Level 2
@@ -206,7 +208,9 @@ in the saved plan. Check for an unreviewed source path or a sensitive boundary;
 resolve the classification with evidence. Diff size and a lower `--risk` argument
 cannot lower the automatic plan.
 
-`--workers 12` is the measured workstation choice, not a hosted default. The
+Omitting `--workers` selects 10 ordinary workers for approved Ubuntu concurrency
+or 12 for conservative ordering, bounded by effective CPUs. Explicit worker caps
+remain available; concurrent workers never exceed the reviewed allocation. The
 plan prints each hosted profile, worker cap, distribution, reasons and local
 requirements. Fast outputs are always nonqualifying. Local Level 2 acceptance uses impacted Linux tests and strict changed-code coverage.
 Levels 3/4 use the complete Linux/Python 3.11 suite and historical branch coverage;
@@ -336,7 +340,12 @@ metadata never narrows protected-base requirements.
 
 See [Issue #59 operations](ci-issue59.md) for targeted coverage diagnostics, the
 reviewed serial dependency hashes, resource applicability and scheduler evidence.
-`--local-schedule auto` uses a qualified whole-run certificate or conservative
-ordering. Explicit concurrent runs retain every gate and original timeout. Shared
+`--local-schedule auto` prefers the approved concurrent Ubuntu profile when
+systemd ownership and CPU/RAM safeguards are available, otherwise diagnoses the
+conservative fallback. No performance certificate is required. The retained
+23.64% improvement applies to the 254-case/seven-R workload; it is not a measured
+improvement for the entire 8,611-test suite. Latency observations remain recorded
+and diagnostic; real deadline failures and all correctness, coverage, R, resource
+and isolation requirements remain blocking. Shared
 foreground allocation covers native grids and background main work; no permanent
 main timer may be activated before independent review and merge.

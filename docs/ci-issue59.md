@@ -75,18 +75,27 @@ coverage pragmas escalate to Level 3 during planning, with an explicit reason.
 engine. `conservative` preserves ordinary → serial → resources → named R ordering.
 `concurrent` permits ordinary workers, one reviewed safe serial group and at most
 two R gates; exclusive serial groups and host resource work have barriers.
-`auto` requires a current same-policy, same-machine whole-bundle certificate
-before selecting concurrency, otherwise uses the conservative fallback. Certificates
-bind every operational Git object, dependency version, CPU affinity and host/kernel
-fingerprint. Documentation-only source correspondence may preserve a performance
-hint; its original measured SHA remains explicit and every acceptance gate runs
-fresh at the current exact head. Performance evidence never becomes qualification
-evidence for another commit.
+`auto` selects the maintainer-approved concurrent profile on Ubuntu and
+Ubuntu-derived workstations with systemd control-group ownership, at least 13
+effective CPUs and 36 GiB available RAM. This admits 10 ordinary workers, one
+reviewed safe serial process and two R gates while retaining 16 GiB host reserve.
+Unsupported systems or unavailable safeguards diagnose conservative fallback.
+Explicit `--local-schedule conservative` remains available. No newly generated
+performance certificate is required for this reviewed default. Omitted worker
+counts resolve from the selected policy (10 concurrent, 12 conservative), bounded
+by effective CPUs; an explicit lower worker cap is retained. Stale certificates
+cannot change these allocations.
+
+Optional certificates still bind every operational Git object, policy, dependency
+version, CPU affinity and host/kernel fingerprint. Their original measured SHA
+remains explicit. Every acceptance gate runs fresh at the current exact head;
+performance evidence never becomes qualification evidence for another commit.
+`--schedule-certificate` validates and reports supplied performance diagnostics
+without controlling scheduling. Invalid/stale evidence is reported, never reused.
 `resource-isolated` falls back to authoritative exclusive host resources unless
 an independently qualified VM backend exists. Hosted worker caps remain separate.
-Recommended standalone local ordinary allocation is 12, bounded by actual CPUs,
-with `worksteal` for full Linux suites. Concurrent allocations are measured as a
-whole workload, rather than selected from isolated ordinary timing.
+Full Linux suites retain `worksteal`. The approved allocation comes from the
+retained controlled whole-workload comparison, not isolated ordinary timing.
 
 `ci/local-policy.json` holds reviewed serial placements with explanations and
 source/fixture hashes. Unreviewed or invalidated entries are globally exclusive.
@@ -265,12 +274,13 @@ comparison and VM decision are recorded externally and summarized in the final P
 savings come from avoiding unrelated historical execution; concurrency/VM savings
 are measured separately and never promised from isolated stage timings.
 
-Use `ci/local/profile_bundle.py --output EXTERNAL_PATH` for the fixed bounded
+Optional future profiling can use `ci/local/profile_bundle.py --output EXTERNAL_PATH` for the fixed bounded
 ordinary/serial/resource/all-seven-R workload. It alternates conservative and
 concurrent trials, records coverage/results, process CPU, memory/swap, allocations,
-startup/teardown and cleanup. Only equivalent, reliable whole-run improvement beyond
-observed variability and a 5% materiality margin permits automatic promotion.
-A negligible or unreliable result leaves the conservative default.
+startup/teardown and cleanup. Its performance result requires equivalent whole-run
+improvement beyond observed variability and a 5% materiality margin. This optional
+comparison neither enables nor vetoes the approved automatic default. PR #60's
+revision requires no new benchmark, worker sweep or four-trial certification.
 `--workers N` repeats two complete controls and two complete concurrent trials
 when earlier bounded exploration has selected a count; it never qualifies an
 isolated partition or reuses another source's test results.
@@ -278,12 +288,18 @@ Profiling receipts explicitly do not establish PR qualification. Final local/hos
 must use the exact final source and protected-base admission; candidate-policy
 workflow results remain a separate check.
 
-Automatic promotion also preserves at least 16 GiB of available host memory and
+Correctness and safety remain mandatory: test failures, expired original deadlines,
+invalid coverage, failed R gates, missing receipts, failed cleanup and violated
+serial/resource isolation fail qualification. The retained resource-health comparison
+also preserves at least 16 GiB of available host memory and
 rejects swap or OS pressure above the repeated controls' maximum plus observed
-spread. Each test and R phase must remain within that control envelope plus 10%
-(or one second for short-process startup noise). This conservative latency margin
-guards timeout risk without changing any test deadline. A faster but contended
-profile remains an explicit diagnostic option and does not become the default.
+spread. Missing health evidence fails that comparison. These requirements are
+independent of overall runtime benefit, which the retained evidence establishes.
+Per-test and R-phase latencies remain recorded. Durations above the former
+control maximum plus spread and 10% (or one second) appear in
+`latency_observations` as diagnostics; they no longer disqualify concurrency.
+Only an actual original deadline violation or a reproducible material safety
+problem makes latency blocking. No test assertion, workload or timeout is changed.
 
 The committed implementation's real Gemini response scenario (synthetic source
 `aa6ef9fb437140d6370c08aa4562541cf6d513b8`, implementation base `40b3dcf`)
@@ -304,17 +320,28 @@ took 539.63s and 550.34s with conservative ordering. Concurrent trials took
 The selected 10-worker mean improved elapsed time by approximately 25% over the
 controls, with identical coverage signatures and passing ownership/health checks.
 This is a bounded-workload result, not a forecast for the complete historical suite.
-The selected count is requalified at the updated execution source before use.
+These measurements remain historical evidence with their original source identity.
 
 Requalification at `9cf71ba` passed the same 254 cases and all seven R gates in
 each of four trials, with identical coverage signatures. Controls took 533.80s
-and 535.74s; concurrent 10-worker repeats took 407.04s and 409.64s. Despite the
-23.64% elapsed improvement, one credential-echo safety case took 1.7282s against
-the controls' 0.0252–0.0256s and a 1.0260s latency ceiling. That rejects automatic
-promotion without changing a test deadline. The conservative default remains:
-12 ordinary workers, isolated serial/resources and sequential named R gates.
-Later operational changes also invalidate earlier performance certificates;
-none of these profiling receipts substitutes for final-source qualification.
+and 535.74s (mean 534.77s); concurrent 10-worker repeats took 407.04s and 409.64s
+(mean 408.34s), a **23.64% elapsed improvement** with approximately 3% more
+aggregate process CPU time. Coverage requirements/signatures, process ownership
+and cleanup, memory reserve, swap and pressure requirements passed all four trials.
+
+The original automatic-promotion rejection used a supplementary latency heuristic:
+one credential-redaction case took 1.7282s against a 1.0260s artificial ceiling,
+and an R persistence phase took 14.270s against a 14.017s ceiling. Neither failed
+behavioral assertions or an original deadline; the credential case has no explicit
+timing deadline. **The maintainer explicitly overrules that heuristic and adopts
+concurrent Ubuntu qualification as the preferred default.** The original raw
+certificate, rejection and complete measurements remain unchanged. Later source
+changes invalidate those exact-source performance certificates but do not erase
+their support for this policy decision. Fresh exact-source Level 3 local and
+candidate-policy/protected-base hosted acceptance remain required at the revised
+final commit. This is correctness qualification, not another performance comparison.
+The 23.64% applies only to the fixed 254-case/seven-R workload, not a measured
+23.64% improvement for the entire 8,611-test suite.
 
 The six-vCPU, 20-GiB Ubuntu VM prototype completed that same bounded workload in
 296.04s with physically separated host/guest cores and verified shutdown before

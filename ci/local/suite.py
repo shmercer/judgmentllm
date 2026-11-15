@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import json
 import os
+import platform
 import shutil
 import sys
 import threading
@@ -25,7 +26,7 @@ from preflight_provenance import (
     verify_preflight_provenance,
 )
 from resource_budget import ResourceLease
-from resource_specs import machine_fingerprint, read_resources
+from resource_specs import read_resources
 from selection import digest, manifest, read, validate_candidate_metadata
 
 WARNINGS = [
@@ -156,7 +157,7 @@ def run(
     source: Path,
     output: Path,
     targets: list[str],
-    workers: int,
+    workers: int | None,
     coverage: bool,
     resource_root: Path | None = None,
     resource_slots: int = 1,
@@ -182,7 +183,7 @@ def run(
         raise ValueError(
             "Profiling is bounded and cannot establish planned qualification"
         )
-    if isinstance(workers, bool) or not 0 <= workers <= 32:
+    if workers is not None and (type(workers) is not int or not 0 <= workers <= 32):
         raise ValueError("pytest workers must be an integer from 0 through 32")
     if stage not in {"full", "ordinary", "resource"} or (coverage and stage != "full"):
         raise ValueError("Coverage qualification requires the complete suite")
@@ -244,7 +245,7 @@ def run(
     attempt_id = environment.setdefault(ATTEMPT_ENV, uuid.uuid4().hex)
     resources = read_resources()
     requested_workers = workers
-    if bound_workers:
+    if bound_workers and workers is not None:
         workers = min(workers, resources["effective_cpus"])
     started = time.monotonic()
     summary: dict[str, Any] = {
@@ -527,21 +528,20 @@ def run(
         from allocation import foreground_pending
         from orchestrator import Stage, choose
         from orchestrator import run as run_stages
-        from policy import fingerprint, serial_groups
         from policy import read as read_local_policy
+        from policy import serial_groups
         from process import systemd_available
 
         local_policy = plan.get("local_policy") if plan is not None else None
         local_policy = local_policy or read_local_policy(
             Path(__file__).resolve().parents[1]
         )
-        machine = machine_fingerprint()
         certificate = None
-        if local_schedule == "auto" and execution_scope == "local" and stage == "full":
-            from profile_bundle import default_certificate, verify_certificate
+        if schedule_certificate is not None:
+            from profile_bundle import verify_certificate
 
             try:
-                certificate = read(schedule_certificate or default_certificate())
+                certificate = read(schedule_certificate)
                 verify_certificate(certificate, source)
             except Exception as error:
                 summary["schedule_certificate_error"] = {
@@ -549,11 +549,18 @@ def run(
                     "message": str(error),
                 }
                 certificate = None
+        release = {}
+        if sys.platform == "linux":
+            try:
+                release = platform.freedesktop_os_release()
+            except OSError:
+                pass  # Unknown systems retain conservative scheduling.
         chosen, schedule_reason = choose(
             local_schedule,
-            certificate=certificate,
-            machine=machine,
-            policy_hash=fingerprint(local_policy),
+            policy=local_policy,
+            resources=dict(resources),
+            ubuntu="ubuntu" in [release.get("ID"), *release.get("ID_LIKE", "").split()],
+            process_ownership=systemd_available(),
         )
         if execution_scope != "local" or stage != "full":
             chosen, schedule_reason = (
@@ -565,11 +572,14 @@ def run(
                 "conservative",
                 "Resource VM has no authoritative qualification; exclusive host resources retain original coverage and limits",
             )
-        if chosen == "concurrent" and not systemd_available():
-            chosen, schedule_reason = (
-                "conservative",
-                "Linux control-group ownership is unavailable; sequential conservative fallback",
+        if workers is None:
+            workers = (
+                cast(int, local_policy["profiles"][chosen]["ordinary_workers"])
+                if execution_scope == "local" and stage == "full"
+                else 2
             )
+        if bound_workers or execution_scope == "local":
+            workers = min(workers, resources["effective_cpus"])
         logical_parts = {label: list(nodes) for label, nodes in parts.items()}
         group_kinds = {label: label for label in parts}
         if chosen == "concurrent":
@@ -585,8 +595,6 @@ def run(
             workers = min(
                 workers, local_policy["profiles"]["concurrent"]["ordinary_workers"]
             )
-            if local_schedule == "auto" and certificate is not None:
-                workers = min(workers, certificate["ordinary_workers"])
         summary.update(
             local_schedule=chosen,
             schedule_evidence={
@@ -619,6 +627,10 @@ def run(
                 if group_kinds[label] == "serial"
                 for node in nodes
             },
+        )
+        print(
+            f"Local schedule: {chosen}; {workers} ordinary workers; {schedule_reason}",
+            flush=True,
         )
         mutex = threading.Lock()
 
@@ -867,7 +879,7 @@ def run(
             memory_bytes=memory_budget,
             output=output / "execution.json",
             cancel=cancel,
-            r_workers=2 if chosen == "concurrent" else 1,
+            r_workers=local_policy["profiles"][chosen]["r_workers"],
             identity=summary["provenance"],
             yield_at_boundary=(
                 lambda: foreground_pending(
@@ -1033,13 +1045,21 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source", type=Path, default=Path.cwd())
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--workers", type=int, default=2)
+    parser.add_argument(
+        "--workers",
+        type=int,
+        help="Default: selected local policy allocation (10 concurrent, 12 conservative); partial runs use 2",
+    )
     parser.add_argument(
         "--local-schedule",
         choices=("auto", "conservative", "concurrent", "resource-isolated"),
         default="auto",
     )
-    parser.add_argument("--schedule-certificate", type=Path)
+    parser.add_argument(
+        "--schedule-certificate",
+        type=Path,
+        help="Optional performance diagnostics; never controls scheduling or workers",
+    )
     parser.add_argument("--run-r-gates", action="store_true")
     parser.add_argument(
         "--distribution", choices=("loadfile", "worksteal"), default="worksteal"

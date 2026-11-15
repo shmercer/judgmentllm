@@ -37,7 +37,7 @@ def run_lane(
     lane: str,
     run_id: str,
     *,
-    workers: int = 4,
+    workers: int | None = None,
     quality_only: bool = False,
     quality_receipt: Path | None = None,
     execution_scope: str = "hosted",
@@ -53,6 +53,8 @@ def run_lane(
     if output.is_relative_to(source):
         raise ValueError("Evidence must be outside the checkout")
     expected = next(item for item in plan["lanes"] if item["id"] == lane)
+    if workers is None and execution_scope == "hosted":
+        workers = 1 if partition == "serial" else expected["workers"]
     if execution_scope == "local" and partition != "all":
         raise ValueError("Local qualification requires all partitions")
     if (
@@ -263,8 +265,7 @@ def run_lane(
                 str(source),
                 "--output",
                 str(output / "suite"),
-                "--workers",
-                str(workers),
+                *(["--workers", str(workers)] if workers is not None else []),
                 "--distribution",
                 "worksteal"
                 if execution_scope == "local"
@@ -490,7 +491,11 @@ def main() -> int:
         choices=("auto", "conservative", "concurrent", "resource-isolated"),
         default="auto",
     )
-    parser.add_argument("--schedule-certificate", type=Path)
+    parser.add_argument(
+        "--schedule-certificate",
+        type=Path,
+        help="Optional performance diagnostics; not required for auto",
+    )
     parser.add_argument(
         "--partition", choices=("all", "ordinary", "serial"), default="all"
     )
@@ -532,13 +537,7 @@ def main() -> int:
             args.output,
             args.lane,
             args.run_id,
-            workers=args.workers
-            if args.workers is not None
-            else 1
-            if args.partition == "serial"
-            else next(
-                item["workers"] for item in plan["lanes"] if item["id"] == args.lane
-            ),
+            workers=args.workers,
             quality_only=args.quality_only,
             quality_receipt=args.quality_receipt,
             execution_scope=args.execution_scope,

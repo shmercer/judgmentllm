@@ -26,6 +26,25 @@ identity, ordinary tests and serial correctness. Actual R pytest consumers are
 marked `r_interop` and excluded explicitly rather than relying on missing R. Local
 receipts never count as hosted acceptance evidence.
 
+Local Ubuntu qualification uses `--local-schedule auto`: 10 ordinary pytest
+workers, one reviewed safe serial process and up to two named R gates. Exclusive
+serial work and host resource measurements retain their barriers. Omitted worker
+counts use the selected policy, with effective CPU limits; concurrency requires
+capacity for the workers, one serial process and two R processes, plus 36 GiB
+available RAM (20 GiB stage allocation and the unchanged 16 GiB host reserve).
+Ubuntu and Ubuntu-derived workstation systems require user-systemd control-group
+ownership. Unsupported systems or unavailable safeguards diagnose conservative
+fallback; `--local-schedule conservative` explicitly selects it.
+
+The maintainer's decision uses the retained 23.64% improvement for the fixed
+254-case/seven-R comparison. No new certificate or benchmark is required to use
+this default. This does not claim a measured 23.64% improvement for all 8,611 cases.
+Individual latency outliers remain diagnostics unless actual deadlines or material
+safety requirements fail. Fresh qualification still checks the exact committed
+source and policy, all required cases, historical coverage, R receipts, resources
+and owned cleanup. The [resource VM rejection](ci-issue59.md#resources-and-vm-decision)
+stands; resource execution remains exclusive on the host.
+
 The native grid remains an explicit complete-qualification option. The details
 below apply **when this grid is requested**, not to every PR. It runs Ubuntu
 CPython 3.11.18/3.12.16/3.15.2 and Windows/macOS 3.11.18/3.12.16, including all

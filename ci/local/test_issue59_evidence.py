@@ -810,48 +810,53 @@ def test_concurrent_r_gates_cannot_borrow_success(
                 )
 
 
-def test_unqualified_or_noisy_scheduling_evidence_never_promotes_default() -> None:
+@pytest.mark.parametrize(
+    "requested", ["auto", "concurrent", "conservative", "resource-isolated"]
+)
+@pytest.mark.parametrize(
+    "fault", [None, "systemd", "platform", "cpus", "memory", "unknown-memory", "policy"]
+)
+def test_approved_default_requires_safeguards_without_performance_certificate(
+    requested: str,
+    fault: str | None,
+) -> None:
     from orchestrator import choose
+    from policy import read
 
-    certificate: dict[str, Any] = {
-        "schema_version": 1,
-        "policy_sha256": "p",
-        "machine": {"cpu": 16},
-        "equivalent": True,
-        "cleanup_passed": True,
-        "ordinary_workers": 10,
-        "trials": [
-            {"profile": profile, "seconds": seconds, "workers": workers, "passed": True}
-            for profile, seconds, workers in (
-                ("conservative", 100, 12),
-                ("conservative", 102, 12),
-                ("concurrent", 70, 10),
-                ("concurrent", 71, 10),
-            )
-        ],
-    }
-    assert (
-        choose("auto", certificate=certificate, machine={"cpu": 16}, policy_hash="p")[0]
-        == "concurrent"
+    policy = read(Path(__file__).resolve().parents[1])
+    assert policy["auto_default"] == "concurrent"
+    assert policy["profiles"]["concurrent"] == {"ordinary_workers": 10, "r_workers": 2}
+    resources = {"effective_cpus": 32, "available_memory_bytes": 64 * 1024**3}
+    if fault == "cpus":
+        resources["effective_cpus"] = 12
+    elif fault == "memory":
+        resources["available_memory_bytes"] = 35 * 1024**3
+    elif fault == "unknown-memory":
+        resources.pop("available_memory_bytes")
+    elif fault == "policy":
+        policy["auto_default"] = "conservative"
+    chosen, reason = choose(
+        requested,
+        policy=policy,
+        resources=resources,
+        ubuntu=fault != "platform",
+        process_ownership=fault != "systemd",
     )
-    noisy = copy.deepcopy(certificate)
-    noisy["trials"][-1]["seconds"] = 101
-    assert (
-        choose("auto", certificate=noisy, machine={"cpu": 16}, policy_hash="p")[0]
-        == "conservative"
+    expected = (
+        requested
+        if requested not in {"auto", "concurrent"}
+        else "concurrent"
+        if fault is None or fault == "policy" and requested == "concurrent"
+        else "conservative"
     )
-    for key in ("equivalent", "cleanup_passed"):
-        bad = {**certificate, key: False}
-        assert (
-            choose("auto", certificate=bad, machine={"cpu": 16}, policy_hash="p")[0]
-            == "conservative"
-        )
+    assert chosen == expected
+    assert reason
 
 
 @pytest.mark.parametrize(
     "fault", [None, "memory", "swap", "pressure", "latency", "missing"]
 )
-def test_scheduler_health_requires_unchanged_reserves_and_deadline_margin(
+def test_scheduler_health_requires_reserves_but_latency_outliers_are_diagnostic(
     fault: str | None,
 ) -> None:
     from profile_bundle import validate_health
@@ -878,11 +883,87 @@ def test_scheduler_health_requires_unchanged_reserves_and_deadline_margin(
         candidate["latency_seconds"]["test::case"] = 12
     elif fault == "missing":
         candidate["latency_seconds"] = {}
-    if fault is None:
-        validate_health(trials, 10)
+    if fault is None or fault == "latency":
+        observations = validate_health(trials, 10)
+        assert bool(observations) == (fault == "latency")
+        assert candidate["latency_seconds"]["test::case"] == (
+            12 if fault == "latency" else 10
+        )
     else:
         with pytest.raises(ValueError):
             validate_health(trials, 10)
+
+
+@pytest.mark.parametrize(
+    "requested,workers,deadline",
+    [
+        ("auto", None, False),
+        ("auto", 4, False),
+        ("conservative", None, False),
+        ("auto", None, True),
+    ],
+)
+def test_suite_resolves_policy_workers_and_preserves_real_deadline_failures(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    requested: str,
+    workers: int | None,
+    deadline: bool,
+) -> None:
+    import orchestrator
+    import suite
+
+    source = tmp_path / "source"
+    source.mkdir()
+    (source / "pyproject.toml").write_text('[tool.pytest.ini_options]\naddopts=""\n')
+    expected = (
+        workers if workers is not None else 12 if requested == "conservative" else 10
+    )
+    (source / "test_probe.py").write_text(
+        f"import os, subprocess, sys\ndef test_workers():\n    assert os.environ['PYTEST_XDIST_WORKER_COUNT'] == '{expected}'\n"
+        + (
+            "def test_original_deadline():\n    subprocess.run([sys.executable, '-c', 'import time; time.sleep(30)'], timeout=.05, check=True)\n"
+            if deadline
+            else ""
+        )
+    )
+    choose = orchestrator.choose
+
+    # Simulate admission capacity; real subprocess ownership and pytest still run.
+    def admitted(requested: str, **kwargs: Any) -> tuple[str, str]:
+        return choose(
+            requested,
+            policy=kwargs["policy"],
+            ubuntu=True,
+            process_ownership=True,
+            resources={
+                "effective_cpus": 32,
+                "available_memory_bytes": 64 * 1024**3,
+            },
+        )
+
+    monkeypatch.setattr(orchestrator, "choose", admitted)
+    certificate = tmp_path / "stale-certificate.json"
+    certificate.write_text('{"ordinary_workers":1}')
+    output = tmp_path / "run"
+    assert suite.run(
+        source=source,
+        output=output,
+        targets=["test_probe.py"],
+        workers=workers,
+        coverage=False,
+        local_schedule=requested,
+        schedule_certificate=certificate,
+    ) == int(deadline)
+    summary = json.loads((output / "summary.json").read_text())
+    assert summary["workers"] == expected
+    assert summary["requested_workers"] == workers
+    assert summary["local_schedule"] == (
+        "conservative" if requested == "conservative" else "concurrent"
+    )
+    assert summary["counts"]["failed"] == int(deadline)
+    assert summary["status"] == ("failed" if deadline else "passed")
+    assert "schedule_certificate_error" in summary
 
 
 def test_empty_passing_group_cannot_supply_or_conceal_required_coverage(

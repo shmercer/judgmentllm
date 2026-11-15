@@ -178,52 +178,46 @@ def run(
 def choose(
     requested: str,
     *,
-    certificate: dict[str, Any] | None,
-    machine: dict[str, Any],
-    policy_hash: str,
+    policy: dict[str, Any],
+    resources: dict[str, Any],
+    ubuntu: bool,
+    process_ownership: bool,
 ) -> tuple[str, str]:
     if requested not in {"auto", "conservative", "concurrent", "resource-isolated"}:
         raise ValueError("Unknown local schedule")
-    if requested != "auto":
+    if requested not in {"auto", "concurrent"}:
         return (
             requested,
             "explicit execution profile; all verification obligations retained",
         )
-    if (
-        certificate is not None
-        and certificate.get("schema_version") == 1
-        and certificate.get("policy_sha256") == policy_hash
-        and certificate.get("machine") == machine
-        and certificate.get("equivalent") is True
-        and certificate.get("cleanup_passed") is True
+    if requested == "auto" and policy["auto_default"] != "concurrent":
+        return "conservative", "local policy retains conservative execution"
+    if not ubuntu:
+        return "conservative", "concurrency requires a supported Ubuntu workstation"
+    if not process_ownership:
+        return (
+            "conservative",
+            "systemd control-group ownership is unavailable; conservative fallback",
+        )
+    profile = policy["profiles"].get("concurrent")
+    if profile is None:
+        return "conservative", "no reviewed concurrent allocation in local policy"
+    if resources.get("effective_cpus", 0) < (
+        profile["ordinary_workers"] + 1 + profile["r_workers"]
     ):
-        trials = certificate.get("trials", [])
-        baseline = [
-            item["seconds"] for item in trials if item["profile"] == "conservative"
-        ]
-        concurrent = [
-            item["seconds"]
-            for item in trials
-            if item["profile"] == "concurrent"
-            and item.get("workers") == certificate.get("ordinary_workers")
-        ]
-        if (
-            len(baseline) >= 2
-            and len(concurrent) >= 2
-            and all(item.get("passed") is True for item in trials)
-        ):
-            variability = max(
-                max(baseline) - min(baseline), max(concurrent) - min(concurrent)
-            )
-            gain = sum(baseline) / len(baseline) - sum(concurrent) / len(concurrent)
-            if gain > max(variability, 0.05 * sum(baseline) / len(baseline)):
-                return (
-                    "concurrent",
-                    "same-machine whole-bundle benefit exceeds observed variability",
-                )
+        return "conservative", "insufficient effective CPUs for concurrent allocation"
+    available = resources.get("available_memory_bytes")
+    if (
+        available is None
+        or available < (16 + 8 + 8 + 2 * profile["r_workers"]) * 1024**3
+    ):
+        return (
+            "conservative",
+            "insufficient available memory for concurrency and the 16 GiB reserve",
+        )
     return (
-        "conservative",
-        "no current equivalent, reliable whole-bundle speedup certificate",
+        "concurrent",
+        "maintainer-approved Ubuntu concurrency; retained bounded-workload benefit 23.64%; no performance certificate required",
     )
 
 

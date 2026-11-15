@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(Path(__file__).resolve().parent / "local"))
 
 
 def fast(changed_since: str, output: Path, focused: list[str], workers: int) -> int:
@@ -213,14 +214,18 @@ def main() -> int:
     parser.add_argument(
         "--workers",
         type=int,
-        help="Local PR/main defaults to 12, fast to 4; hosted limits remain independent",
+        help="Local PR/main uses the selected policy (10 concurrent, 12 conservative); fast defaults to 4; hosted limits remain independent",
     )
     parser.add_argument(
         "--local-schedule",
         choices=("auto", "conservative", "concurrent", "resource-isolated"),
         default="auto",
     )
-    parser.add_argument("--schedule-certificate", type=Path)
+    parser.add_argument(
+        "--schedule-certificate",
+        type=Path,
+        help="Optional performance diagnostics; not required for auto",
+    )
     parser.add_argument("--ref")
     parser.add_argument("--mode", choices=("prepare", "check"), default="check")
     parser.add_argument(
@@ -247,15 +252,20 @@ def main() -> int:
         help="External output for offline release compatibility and source/scale checklist",
     )
     options = parser.parse_args()
-    if options.workers is None:
-        options.workers = 12 if options.profile in {"pr", "main"} else 4
-    if not 1 <= options.workers <= 32:
+    if options.workers is None and options.profile not in {"pr", "main"}:
+        options.workers = 4
+    if options.workers is not None and not 1 <= options.workers <= 32:
         parser.error("--workers must be 1 through 32")
     if options.profile == "fast":
         output = options.output or Path(tempfile.gettempdir()) / (
             "judgmentllm-fast-" + datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
         )
-        return fast(options.changed_since, output, options.test, options.workers)
+        return fast(
+            options.changed_since,
+            output,
+            options.test,
+            options.workers if options.workers is not None else 4,
+        )
     if options.profile in {"pr", "main"}:
         # Planning can read an immutable policy copy: imports must not add pyc files.
         sys.dont_write_bytecode = True
@@ -322,8 +332,11 @@ def main() -> int:
                     str(output / "plan.json"),
                     "--output",
                     str(output / "primary"),
-                    "--workers",
-                    str(options.workers),
+                    *(
+                        ["--workers", str(options.workers)]
+                        if options.workers is not None
+                        else []
+                    ),
                     "--local-schedule",
                     options.local_schedule,
                     *(

@@ -1,4 +1,4 @@
-"""Measure one fixed bounded workload; certify whole-run benefit or keep fallback."""
+"""Optional bounded performance comparison, independent of default scheduling."""
 
 from __future__ import annotations
 
@@ -187,8 +187,8 @@ def inspect_trial(
     }
 
 
-def validate_health(trials: list[dict[str, Any]], workers: int) -> None:
-    """Preserve the host reserve and reject regressions beyond control noise."""
+def validate_health(trials: list[dict[str, Any]], workers: int) -> list[dict[str, Any]]:
+    """Require resource safety; retain supplementary latency outliers as diagnostics."""
     controls = [item for item in trials if item["profile"] == "conservative"]
     candidates = [
         item
@@ -200,16 +200,10 @@ def validate_health(trials: list[dict[str, Any]], workers: int) -> None:
             "Resource-health comparison needs repeated complete strategies"
         )
 
-    def ceiling(values: list[float], *, latency: bool = False) -> float:
-        # Ten percent plus observed spread guards deadline risk; one second
-        # accommodates process-start jitter for short cases without retuning tests.
-        return (
-            max(values)
-            + max(values)
-            - min(values)
-            + (max(1, 0.1 * max(values)) if latency else 0)
-        )
+    def ceiling(values: list[float]) -> float:
+        return max(values) + max(values) - min(values)
 
+    observations: list[dict[str, Any]] = []
     for trial in candidates:
         if (
             trial["minimum_available_memory_bytes"] < 16 * 1024**3
@@ -225,18 +219,29 @@ def validate_health(trials: list[dict[str, Any]], workers: int) -> None:
             if value > ceiling([item["pressure"][key] for item in controls]):
                 raise ValueError(f"Concurrent execution increased OS pressure: {key}")
         for key, value in trial["latency_seconds"].items():
-            if value > ceiling(
-                [item["latency_seconds"][key] for item in controls], latency=True
-            ):
-                raise ValueError(f"Concurrent execution increased timeout risk: {key}")
+            values = [item["latency_seconds"][key] for item in controls]
+            diagnostic_ceiling = ceiling(values) + max(1, 0.1 * max(values))
+            if value > diagnostic_ceiling:
+                observations.append(
+                    {
+                        "case_or_phase": key,
+                        "seconds": value,
+                        "diagnostic_ceiling_seconds": diagnostic_ceiling,
+                    }
+                )
+    return observations
 
 
-def verify_certificate(certificate: dict[str, Any], source: Path) -> None:
+def verify_certificate(
+    certificate: dict[str, Any], source: Path
+) -> list[dict[str, Any]]:
     specification = json.loads((ROOT / "ci/profile-bundle.json").read_text())
     current = source_record(source)
     qualified = certificate.get("source", {})
     if (
-        current.get("dirty") is not False
+        certificate.get("policy_sha256") != fingerprint(read_policy(ROOT / "ci"))
+        or certificate.get("machine") != machine_fingerprint()
+        or current.get("dirty") is not False
         or qualified.get("dirty") is not False
         or {key: value for key, value in current.items() if key != "commit"}
         != {key: value for key, value in qualified.items() if key != "commit"}
@@ -271,7 +276,27 @@ def verify_certificate(certificate: dict[str, Any], source: Path) -> None:
         for trial in certificate["trials"]
     ):
         raise ValueError("Whole-run strategies have different coverage")
-    validate_health(certificate["trials"], certificate["ordinary_workers"])
+    observations = validate_health(
+        certificate["trials"], certificate["ordinary_workers"]
+    )
+    baseline = [
+        item["seconds"]
+        for item in certificate["trials"]
+        if item["profile"] == "conservative"
+    ]
+    concurrent = [
+        item["seconds"]
+        for item in certificate["trials"]
+        if item["profile"] == "concurrent"
+        and item["workers"] == certificate["ordinary_workers"]
+    ]
+    variability = max(max(baseline) - min(baseline), max(concurrent) - min(concurrent))
+    gain = sum(baseline) / len(baseline) - sum(concurrent) / len(concurrent)
+    if gain <= max(variability, 0.05 * sum(baseline) / len(baseline)):
+        raise ValueError(
+            "Whole-bundle benefit does not exceed variability and 5% materiality"
+        )
+    return observations
 
 
 def main() -> int:
@@ -370,17 +395,17 @@ def main() -> int:
                 }
                 break
         try:
-            verify_certificate(certificate, source)
+            certificate["latency_observations"] = verify_certificate(
+                certificate, source
+            )
             certificate.update(equivalent=True, cleanup_passed=True)
         except (OSError, ValueError, KeyError, TypeError) as error:
             certificate.setdefault("failure", {"reason": str(error)})
-    from orchestrator import choose
-
-    decision, reason = choose(
-        "auto",
-        certificate=certificate,
-        machine=certificate["machine"],
-        policy_hash=certificate["policy_sha256"],
+    decision = "concurrent" if certificate["equivalent"] else "conservative"
+    reason = (
+        "optional performance comparison passed"
+        if certificate["equivalent"]
+        else str(certificate["failure"])
     )
     certificate.update(decision=decision, reason=reason)
     (output / "certificate.json").write_text(json.dumps(certificate, indent=2) + "\n")
