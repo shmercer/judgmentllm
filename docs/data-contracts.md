@@ -11,6 +11,42 @@ separate from canonical assessment exports. Milestone 3 Phase 1 adds a separate
 standalone assessment-output contract boundary described below; document and
 normalized-result schemas remain version 1.
 
+## Issue #61 PR A: proposed native grouping contracts
+
+The [native Decisions design](native-decisions-design.md) is the proposed M4
+extension for OpenAI Decisions, Jev and Gemini Decisions. PR A changes no runtime
+schema or public import: `execution.request_grouping` is **not accepted today**.
+The strict frozen `RequestGroupingSpecV1` proposal has `single` (maximum 1) and
+`auto` (required positive strict integer maximum) branches, explicit integer
+version 1, forbidden unknown fields and deep boundary revalidation. Recommend a
+new explicit RunSpec boundary rather than broadening V1–V3 grouping semantics;
+this choice requires independent review before PR B.
+
+The proposed native contract binds ordered logical task -> physical request ->
+named question -> answer membership, question-specific scales/examples, exact
+shared-input/question/body commitments, explicit CJ presentation membership and
+retry ancestry. It preserves separately addressable results, complete probability
+and coding maps, raw expected indices, selected versus modal labels, confidence
+and original/presented CJ orientation. Physical usage/cost is recorded once and
+joined through a versioned crosswalk companion, not copied per result.
+
+PR B owns executable configuration/crosswalk/acknowledgment versions and genuine
+old-store compatibility tests; C–E own independent endpoint wire contracts.
+Existing result/JSONL/CSV/R schema 1 and CLI envelope 1 remain unchanged in A.
+Absent new evidence means historical behavior/unavailable data, never fabricated
+grouping proof or implicit migration. See the
+[version plan](native-decisions-design.md#7-version-and-compatibility-plan).
+
+The proposed [pair presentation input](native-decisions-design.md#pair-presentation-identity)
+owns repetition/reversal expansion and seeded orientation once, before projecting
+criterion-specific tasks. Its explicit versioned source membership retains each
+member's original source `pair_uid`; the crosswalk keeps each projected task's
+`source_pair_uid` alongside the shared `source_presentation_id`. The worked SCHED1
+case defines three criteria, two repetitions and
+reversals with one common schedule. Existing V1–V3 inputs and `prepare_pairs()`
+remain independent; their criterion-specific schedules cannot be combined or
+overwritten to manufacture compatible grouped members.
+
 ## Explicit RunSpec v2
 
 `RunSpec` remains the public version-1 model. `RunSpecV2` opts into the new
@@ -193,7 +229,7 @@ validation never opens files.
 | `capture`, `output_path` | `capture=full` (`full/minimal`); output defaults to `run-data` relative to the run configuration. Internal preparation enforces source retention policy; its runtime store is supplied separately and must be local. |
 | `seed`, `strict_capabilities`, `allow_ties` | Optional integer pairing/presentation seed, distinct from a future generation seed; strict capabilities defaults false; ties default false and are pairwise-only. Tie prompts require a custom template. |
 
-Pairwise preparation uses independent grouping. Fixed groups must partition all
+Implemented V1–V3 pairwise preparation uses independent grouping. Fixed groups must partition all
 rubric traits exactly once without empty groups. Auto grouping requires an
 explicit or supplied capability limit; it never invents context windows or
 splits exemplars. Retry policy is an execution-service control; it is not a RunSpec field. Explicit

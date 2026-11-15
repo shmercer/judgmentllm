@@ -1,5 +1,25 @@
 # Milestone 3 assessment outputs, provider evidence, and authentication
 
+## Issue #61 M4 extension (PR A, proposed)
+
+The [native Decisions design](native-decisions-design.md) adds OpenAI Decisions,
+Jev and Gemini Decisions to the M4 plan, with required independently named
+questions over one essay or explicit presented-pair occurrence. It supersedes
+this document's older Decisions/Jev-only future references, not its implemented
+M3 generative contracts or historical evidence. Native typed score/choice
+questions are not generative output-schema projections or a second explanation
+stage. Their own ordered crosswalk, question-specific rubric/examples and
+provider-specific probability/legend contracts need separate versions.
+
+The review proposal reuses recognizable-member salvage with one atomic outcome
+vector, physical submission-owned usage and existing normalization/R semantics.
+It extends CJ to explicit multi-criterion presentation membership without merging
+reversals or repetitions. Whole-response validity remains separate from member
+success; missing/duplicate/malformed answers do not become valid judgments.
+New configuration, response-bound acknowledgment and compatibility choices wait
+for independent review before PR B. PR A implements none of these contracts;
+the detailed M3 status/history below remains scoped to its original phases.
+
 **Status: Phases 1–3 and 4A/4B implement provider-neutral contracts, offline
 mock execution, credential diagnostics and durable synthetic evidence
 integration. Phase 4C3 completes offline durable native transport integration

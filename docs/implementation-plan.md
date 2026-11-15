@@ -2,7 +2,15 @@
 
 **Rule:** Implement one milestone per small pull request or coherent series of PRs, with the acceptance conditions below. After each milestone, revise `docs/design-spec.md` if evidence requires a change. Do not quietly scope out accepted features; record deferrals explicitly. Milestone 7 (FastAPI) is a **committed, late-stage deliverable** after Milestones 0-6. The FastAPI dependency remains optional for users; early library/CLI prereleases do not need to wait for the HTTP interface.
 
-**First public PyPI alpha:** Treat [alpha-release readiness](alpha-release-readiness.md) as a **parallel, independently gated workstream**. Start user-facing documentation, package usability and secure release preparation now, but **do not publish until all intended Milestone 3 generative and Milestone 4 native live provider/endpoint families are implemented and specifically live-qualified**. Milestones 5 (batch/bulk-live), 6 (generated catalog/thin R wrapper) and 7 (FastAPI) are later commitments, not prerequisites for the first Python library/CLI alpha. Existing R/export, safety and regression gates continue to apply.
+**First public PyPI alpha — superseded schedule, Issue #61 (2026-11-15):**
+Continue [release-readiness work](alpha-release-readiness.md) in parallel, but
+defer publication until an **explicit post-Milestone-5 go/no-go** reviews batch
+and managed bulk-live readiness, intended supported providers and release evidence.
+This replaces the earlier permission to publish after M3/M4 without M5; finishing
+M5 does not automatically authorize alpha. The existing intended all-provider
+live-qualification requirement, including Together/Ollama, is retained for that
+review rather than silently removed. M6's catalog/thin R wrapper and M7's local
+FastAPI remain committed later work; existing R/export and safety gates remain.
 
 ## Development acceptance and release qualification
 
@@ -306,27 +314,60 @@ conduct paid calls as part of this design task.
 
 ## Milestone 4 - Native decision/score adapters
 
-- Implement OpenAI Decisions and TypeSafe Jev with separate typed-question request builders. Reuse the Milestone 3 secure credential resolver, sanitized diagnostics and request/observation evidence infrastructure; generative output layouts and winner-only JSON must not be imposed on native endpoints without verifying their contracts.
-- Map probability-weighted zero-based score indices to user numeric category coding, preserve the entire distribution and raw index, support pairwise choices.
-- For both native endpoints, verify complete ordinal and choice distributions through Python normalization and R import, using differing and nonuniform numeric mappings. Preserve provider-selected categories when explicitly supplied, distribution-derived modes, mapped means, raw provider expected indices, and original/presented pairwise probability orientation as distinct evidence.
-- Reject explanation generation, unsupported level counts and unsupported batch operations before sending.
-- Explicitly validate generation applicability for each native score/decision endpoint and reject every inapplicable requested control before submission rather than dropping it or routing through a generative endpoint.
+**Approved scope change:** [Issue #61](https://github.com/shmercer/judgmentllm/issues/61)
+supersedes the earlier OpenAI/Jev-only milestone and universal 2–10-level
+acceptance wording. Implement **OpenAI Decisions, TypeSafe AI Jev, then Gemini
+Decisions**, with required shared-input multi-judgment requests. Prioritize this
+work after accepted PR #60; Together/Ollama generative live-runner completion
+remains committed but moves to a lower-priority workstream. Historical M3
+implementation/qualification records are unchanged.
 
-**Acceptance:** Synthetic fixtures confirm correct 2-10 level mapping and explicit errors for >=11 categories under independently verified endpoint limits; no arithmetic or semantics confusion between index score and rubric score; explanation request fails locally. Required offline Python-to-R fixtures cover OpenAI Decisions and TypeSafe Jev separately, retaining every probability and nonuniform code, raw provider index, selected category when available, mode, expected value, and score kind. Pairwise fixtures verify both original and presented probability orientation after reversal, without inferring an observed winner. Limits are taken from each endpoint's verified contract rather than assumed identical; the neutral assessment schema remains unrestricted by provider bounds.
+The [native Decisions design](native-decisions-design.md) defines the typed
+immutable grouping proposal, single-question baseline, eligibility/splitting,
+logical/physical/named-question crosswalk, atomic partial outcomes, physical
+accounting, recovery/retry ancestry, version compatibility and exact acceptance
+fixture cases. PR A documents proposals; it activates no configuration or adapter.
+Material recommendations D1–D4 require independent high-reasoning review before B.
 
-Endpoint-specific offline tests prove inapplicable generative settings fail
-locally and are never silently ignored.
+| PR | Independently reviewable deliverable |
+|---|---|
+| A | Architecture/contracts, typed grouping design, decision ledger, provider evidence, Google SDK compatibility plan and alpha deferral. No executable schema or dependency change. |
+| B | Provider-neutral preparation, explicit pair-presentation membership, deterministic grouping/splitting, durable named-member outcomes, acknowledgment/crosswalk versions, once-per-physical usage, retry/crash recovery and shared synthetic/R fixtures. |
+| C | Official OpenAI Decisions SDK mapping, 1–400 question cap, score/choice semantics, exact model/cache controls and independent offline SDK/lifecycle/R acceptance. |
+| D | Official `typesafe-sdk` System One mapping and distributions; no invented hard question cap; independently verify context/body/cache constraints and offline SDK/lifecycle/R acceptance. |
+| E | Native Gemini Developer v1beta Decisions, 1–1,000 keys, endpoint-specific levels/context/unsupported modes; resolve `google-genai>=3.2` versus current `>=2.34,<3` with Developer/Vertex compatibility gates before migration/integration. |
+| F | Cross-provider installed Python/CLI/R parity, partial/error/restart/orientation and bounded-resource evidence; prepare separate small synthetic-data live proposals for later explicit authorization. No implicit live calls or alpha. |
+
+Each native builder keeps shared essay/presented-pair evidence separate from
+complete question-specific rubrics/criteria/examples. Preserve all logical IDs,
+probability vectors, nonuniform mapped means, raw zero-based expected indices,
+actual selected labels, derived modes, confidence and original/presented CJ
+orientation. Distinct reversals/repetitions never combine. Record physical usage
+and cost once, preserve null/unknown evidence, and reject inapplicable generation,
+explanation, tier/cache and batch intents before credentials/submission.
+
+**Acceptance:** The design's fixture table requires 1/2/12-trait/13-criterion,
+vendor cap/cap+1 and user-maximum splits, context/body boundaries, incompatible
+controls, malformed/missing/duplicate answers, complete probability/legend maps,
+stable keys/order/commitments, partial-member atomicity, fresh-process crash/retry
+recovery and actual R round-trip for **each of the three providers**. OpenAI/Jev
+11-level rejection is separate from Gemini's documented 2–255-level range; the
+neutral category schema keeps no universal ten-level cap. Synthetic parity and
+request/byte reductions establish no empirical scoring equivalence or live
+support. Preserve historical stores/receipts with explicit version dispatch.
+Use the current automatic risk plan, local strict R where applicable and separate
+protected-base hosted evidence; no automatic Level4/full local grid campaign.
 
 ## First PyPI alpha - parallel release-readiness workstream
 
-**Sequence and scope:** Track the full checklist in the
-[alpha-release readiness plan](alpha-release-readiness.md). Work may begin in
-small documentation, UX and publishing-infrastructure PRs now. **Publication
-follows** exact-head acceptance of Milestones 3 and 4 for all intended live
-provider/endpoint families, plus independent alpha gates; it need not await
-the batch, R-wrapper/catalog or HTTP milestones. An existing `0.1.0aN`
-development version or passing offline fixture is not evidence of a
-publicly usable alpha.
+**Sequence and scope:** The earlier pre-M5 release target is superseded by Issue
+#61. Track the full [alpha checklist](alpha-release-readiness.md), with preparation
+allowed now and publication deferred to an explicit **post-M5 go/no-go**. That
+review must record the required native-batch/managed bulk-live threshold and
+whether to retain or explicitly revise the intended all-provider qualification
+criterion, including Together/Ollama and the new Gemini Decisions family. Until
+then the criterion remains; no M3/M4/M5 completion automatically publishes.
+An existing `0.1.0aN` version or passing fixture is not an accepted public alpha.
 
 - **Understandable entry points:** Reorganize the README/PyPI long description
   around what can actually be done; include a "Start here" hub, no-cost
@@ -365,10 +406,10 @@ and release go/no-go evidence are in
 
 ## Milestone 5 - Native batches, managed bulk-live and caching
 
-- Add native batch adapters for supported providers: OpenAI generative, Anthropic, Gemini Developer, Vertex Gemini, Together (subject to live qualification).
+- Add native batch adapters only for supported endpoints: OpenAI generative, Anthropic, Gemini Developer `generateContent`, Vertex Gemini and Together (subject to live qualification). Gemini Decisions is a separate Developer endpoint with no native Batch support; do not inherit the generative route's capability.
 - Implement deterministic splitting, upload, durable submission ID registry, cancel/status/collect, partial outputs, reordered results and safe resumption.
-- Deliver managed bulk-live mode for every live provider, including Ollama, Decisions and Jev.
-- Implement `off`/`auto`/`explicit` cache policies and provider-specific availability checks, with true usage accounting where reported.
+- Deliver managed bulk-live for every implemented live provider, including OpenAI Decisions, Jev and Gemini Decisions; retain Ollama/Together completion in their deferred workstream. Multi-question packing is orthogonal to asynchronous batching and does not imply batch prices/latency.
+- Preserve Issue #56's default `off`, historical-only `auto` and separately gated `explicit` cache intent with exact endpoint availability and reported usage. Gemini Decisions supports no context caching, Flex or Priority; no generic generative control transfer.
 - Extend applicable authentication, generated output contracts, optional reasoning, request-level usage and qualification provenance to managed bulk-live and native batch. Preserve observation identities and all attempts, handle reordered/multiple observations without double counting usage, and retain journaled intent/reconciliation before retry. Never infer live feature support establishes native-batch support.
 - Preserve generation parameter parity across live, managed bulk-live and native batch. Use the same validated run configuration and adapter mappings; report unsupported mode-specific combinations before submission and retain requested values in manifests, prepared payloads and recovery checks.
 - Verify R-driven CLI submission/status/resumption/collection/export across separate processes using offline native-batch and managed bulk-live mocks. Retain durable IDs and artifacts across restarts, including partial collections, reordered outputs, repeated attempts, errors, and provider provenance.
@@ -380,10 +421,10 @@ and omission semantics, including after recovery and collection.
 
 ## Milestone 6 - Catalog, R bridge, docs and prerelease qualification
 
-This milestone **extends** the beginner documentation, live qualifications
-and publishing foundation already required for the first Python/CLI alpha.
-It must not delay the earlier alpha solely for the generated catalog, thin
-`rubricLLM` wrapper, native-batch documentation or FastAPI.
+This milestone **extends** beginner documentation, live qualifications and the
+publishing foundation. Issue #61 defers the first alpha to a post-M5 go/no-go;
+M6's generated catalog/thin `rubricLLM` wrapper and M7's FastAPI are not silently
+added as release prerequisites. The go/no-go records the actual supported scope.
 See [alpha-release readiness](alpha-release-readiness.md).
 
 - Implement generated `models.json` and `docs/model-support.md` with dated sources/qualifications; GitHub Action opens reviewable PR for catalog changes.
@@ -395,7 +436,7 @@ See [alpha-release readiness](alpha-release-readiness.md).
 - Evaluate `reticulate` as an optional secondary enhancement, implementing it only when justified by a demonstrated need; CLI/`processx` operation must not depend on `reticulate`, a resident Python process, or HTTP.
 - Maintain and extend alpha install/authentication/cost/privacy/resumption/exemplar/score documentation to new batch, R wrapper and catalog workflows, with the same beginner/technical separation.
 - Extend recorded Milestone 3/4 single-run live qualification to new batch and R-facing features using authorized, limited-budget fixtures and an exact-scope verification record.
-- Maintain and improve the earlier PyPI Trusted Publishing, distribution checks, PEP 440 version/tag and release maintenance process; do not defer the first Python alpha to this milestone.
+- Maintain PyPI Trusted Publishing preparation, distribution checks, PEP 440 version/tag and release maintenance; publication remains a separate explicit post-M5 decision, not a side effect of this milestone.
 
 **Acceptance:** Users can install the thin `rubricLLM` package and complete documented first-run validation, preview, rubric, pairwise, status/resume, batch, and export workflows through `processx` against installed JudgmentLLM and offline mocks, without writing custom templates. Executable/environment discovery and documented control JSON/stdout/stderr/exit behavior are tested. Actual `pairwiseLLM` integration is installed, version-recorded, and exercised end to end in required R CI; ties, failures, repeated judgments, multiple attempts, leading-zero IDs, score kinds, full probabilities, and generated-versus-original provenance remain explicit. The published catalog distinguishes discovered/implemented/fixture-tested/live-qualified; Python, CLI and R workflows produce compatible normalized synthetic results; all CI passes; live qualifications remain separately opt-in and report exact version/date and costs.
 

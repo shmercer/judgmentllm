@@ -1,5 +1,35 @@
 # R interoperability: explicit audit and analysis views
 
+## Issue #61 PR A: native multi-question acceptance plan
+
+The [proposed native contracts](native-decisions-design.md#5-accounting-results-and-r)
+preserve canonical JSONL, lossless CSV and R all-attempt audit schema 1. PR A
+changes no exporter, R script, fixture or executed gate. PRs B–F must verify at
+least one actual Python/SDK-generated multi-trait rubric request and one explicit
+multi-criterion CJ presentation **for each of OpenAI Decisions, Jev and Gemini
+Decisions**, using synthetic intercepted HTTP and separate persist/reopen/export
+processes followed by real strict R/jsonlite consumption.
+
+The versioned grouped crosswalk companion must retain task/question/order,
+request/attempt/submission/observation, nullable real remote/model identity,
+presentation/reversal/repetition and retry-parent links. Keep IDs as character
+(including `001`, `01`), complete per-level/choice probabilities and nonuniform
+coding, mapped expectation versus native zero-based index, actually supplied
+selected labels versus derived modes, confidence, failed/missing/unknown fields
+and explicit analysis-attempt selection. A reversed presented pair must retain
+both original and presented probabilities and the observed winner; no inferred
+winner/tie or automatic orientation collapse.
+
+R aggregates one selected usage/cost revision per physical submission before
+joining its many question rows. Failed observations and no-result/uncertain
+submissions remain accountable; retries add their own physical fact and replay
+adds none. Never sum duplicated joined counters, infer missing costs as zero or
+silently allocate the complete shared-input usage to every criterion. The
+[fixture table](native-decisions-design.md#8-acceptance-fixture-specification-and-pr-ownership)
+specifies exact score/orientation/retry assertions. Existing seven local strict
+gates remain required when selected by the risk plan; actual R stays local and
+hosted deferral is not a local pass. These are future tests, not live qualification.
+
 Issue #56 extends the existing execution gate's four diagnostic observations with
 reported OpenAI cache-write counts under usage semantics 2: full capture reports
 zero and minimal reports seven. R consumes reopened SDK-produced evidence and

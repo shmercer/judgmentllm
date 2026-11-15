@@ -1,5 +1,36 @@
 # Recorded design decisions
 
+## Issue #61 PR A: native Decisions architecture and release sequence
+
+**2026-11-15 — approved issue scope; detailed architecture proposed for review.**
+M4 now implements OpenAI Decisions, TypeSafe Jev and Gemini Decisions in that
+order, with required shared-input multi-question rubric/CJ requests. This
+supersedes the 2026-11-02 provider list's omission of Gemini Decisions and older
+rubric-only grouping/M4 two-provider wording. Together/Ollama live completion
+moves to lower priority without being removed. First alpha is deferred to an
+explicit post-M5 go/no-go; the intended all-provider qualification criterion
+remains for that review. Earlier milestone and qualification records stay intact.
+
+The [architecture and concise decision ledger](native-decisions-design.md#9-decision-ledger-and-handoff-gate)
+make D1–D4 explicit: a new immutable grouping/configuration boundary, atomic
+member salvage, explicit CJ presentation membership and response-bound physical
+acknowledgment with nullable real remote IDs. These are recommendations requiring
+high-reasoning independent review before PR B, not silently accepted project-wide
+choices. D5 recommends a reviewed Google SDK3.x migration only after existing
+Developer/Vertex compatibility evidence, with review before PR E changes pins.
+
+The [PR #62 architecture review](https://github.com/shmercer/judgmentllm/pull/62#issuecomment-6901792039)
+recommends D1/D2, supports D3 conditional on presentation-level scheduling,
+accepts D4's direction with authoritative/uncertain-response adapter tests and
+prefers D5 without approving dependency changes. The D3 clarification specifies
+one source-presentation schedule before criterion projection, a versioned input
+example and SCHED1's seeded repetitions/reversals. The revised head still needs
+independent acceptance and merge before PR B; this PR remains open and unmerged.
+
+PR A adds no executable schema, adapter, migration, test fixture, dependency or
+qualification. PRs B–F own implementation and exact-source acceptance. No
+credentials, live requests, merge or alpha publication is authorized here.
+
 ## Issue #56: cache policy revision 2
 
 New runs default to OFF for both assessment kinds; user-selectable auto is
