@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO, Literal
 
-from judgmentllm import gemini_types, vertex_types
+from judgmentllm import decisions_types, gemini_types, vertex_types
 from judgmentllm._verification import ExactToken, exact_token
 from judgmentllm.config import (
     RunSpecification,
@@ -73,10 +73,6 @@ if TYPE_CHECKING:
         AnthropicProductionContext,
         PreparedRequestV5,
         TransportCommitmentV3,
-    )
-    from judgmentllm.decisions.transport import (
-        DecisionsCommitmentV1,
-        PreparedDecisionsRequestV1,
     )
     from judgmentllm.native_prompts import RenderedPromptV3
     from judgmentllm.production_prompts import RenderedProductionPromptV1
@@ -536,7 +532,7 @@ class PreparedRun:
         | TransportCommitmentV3
         | vertex_types.TransportCommitmentV5
         | gemini_types.TransportCommitmentV4
-        | DecisionsCommitmentV1
+        | decisions_types.DecisionsCommitmentV1
     ):
         return self._historical_transport_for_attempt(attempt_id)
 
@@ -550,14 +546,14 @@ class PreparedRun:
         | TransportCommitmentV3
         | vertex_types.TransportCommitmentV5
         | gemini_types.TransportCommitmentV4
-        | DecisionsCommitmentV1
+        | decisions_types.DecisionsCommitmentV1
         | None = None,
         parent: TransportCommitmentV1
         | TransportCommitmentV2
         | TransportCommitmentV3
         | vertex_types.TransportCommitmentV5
         | gemini_types.TransportCommitmentV4
-        | DecisionsCommitmentV1
+        | decisions_types.DecisionsCommitmentV1
         | None = None,
     ) -> (
         PreparedRequestV3
@@ -565,7 +561,7 @@ class PreparedRun:
         | PreparedRequestV5
         | vertex_types.PreparedRequestV7
         | gemini_types.PreparedRequestV6
-        | PreparedDecisionsRequestV1
+        | decisions_types.PreparedDecisionsRequestV1
     ):
         from judgmentllm.decisions.transport import DecisionsCommitmentV1
 

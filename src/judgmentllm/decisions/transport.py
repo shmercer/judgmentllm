@@ -408,8 +408,7 @@ def plan_source(
                     f"oversized Decisions member {q.task_id}: body/context ceiling"
                 )
         buffer.append(q)
-    if buffer:
-        yield dependency(buffer)
+    yield dependency(buffer)
 
 
 def prepare_request(

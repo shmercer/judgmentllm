@@ -3,22 +3,20 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import TYPE_CHECKING, cast
+from typing import cast
 
 from pydantic import JsonValue
 
 from judgmentllm.config import RunSpecV4, parse_json
 from judgmentllm.decisions.records import DecisionQuestionV1
 from judgmentllm.decisions.responses import ParsedDecisionsResponseV1
+from judgmentllm.decisions.transport import (
+    DecisionsContextV1,
+    PreparedDecisionsRequestV1,
+)
 from judgmentllm.persistence.hashing import bytes_digest, canonical_bytes
 from judgmentllm.persistence.models import IntegrityError
-
-if TYPE_CHECKING:
-    from judgmentllm.decisions.transport import (
-        DecisionsContextV1,
-        PreparedDecisionsRequestV1,
-    )
-    from judgmentllm.providers.protocol import ProviderResponse
+from judgmentllm.providers.protocol import ProviderResponse
 
 
 def serialize_synthetic_decisions(

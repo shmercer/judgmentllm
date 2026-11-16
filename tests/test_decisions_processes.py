@@ -214,6 +214,49 @@ def test_provenance_process_death_and_repeated_publication(
     assert len((store / "receiver.jsonl").read_text().splitlines()) == 1
 
 
+@pytest.mark.parametrize("capture", ["full", "minimal"])
+@pytest.mark.parametrize(
+    "stage",
+    [
+        "after_provenance_artifact",
+        "during_provenance_registration",
+        "before_provenance_reference",
+        "after_provenance_reference",
+    ],
+)
+def test_empty_companion_publication_survives_process_death_without_source_upgrade(
+    tmp_path: Path, capture: str, stage: str
+) -> None:
+    from judgmentllm.persistence.hashing import bytes_digest
+
+    spec = native_spec(tmp_path, sources=0, capture=capture)
+    config = tmp_path / "config.json"
+    config.write_text(spec.model_dump_json(), encoding="utf-8")
+    store = tmp_path / "store"
+    with prepare_run(config, store=store, run_id="001") as prepared:
+        original = prepared.repository.get_artifact("001", bytes_digest(b""))
+    completed = run_child(store, config)
+    assert completed.returncode == 0, completed.stderr
+    death = run_child(store, config, stage, "export")
+    assert death.returncode == 73, death.stderr
+    references = list((store / "runs").glob("*/decisions-provenance/*.json"))
+    assert len(references) == int(stage == "after_provenance_reference")
+    first, second = (
+        run_child(store, config, mode="export"),
+        run_child(store, config, mode="export"),
+    )
+    assert first.returncode == second.returncode == 0, (first.stderr, second.stderr)
+    assert first.stdout == second.stdout
+    with Repository(store) as repository:
+        assert repository.get_artifact("001", original.sha256) == original
+        assert repository.summary("001").results == 0
+        assert (
+            repository.connection.execute("SELECT count(*) FROM exports").fetchone()[0]
+            == 0
+        )
+    assert not (store / "receiver.jsonl").exists()
+
+
 @pytest.mark.parametrize("seed", [41, 42])
 def test_sched1_preparation_reopens_in_a_fresh_process(
     tmp_path: Path, seed: int

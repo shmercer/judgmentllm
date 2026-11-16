@@ -14,6 +14,7 @@ from judgmentllm.evidence import ReportedUsageInput
 from judgmentllm.execution import execute_run, recover_run
 from judgmentllm.execution.exports import export_run
 from judgmentllm.execution.retry import authorize_subset_retry
+from judgmentllm.persistence.hashing import bytes_digest
 from judgmentllm.persistence.repository import Repository
 from judgmentllm.preparation.decisions import prepare_decisions_run
 from judgmentllm.providers.decisions_mock import (
@@ -32,6 +33,8 @@ RUNS = tuple(
             ("pairwise", "minimal"),
             ("unknown", "full"),
             ("unknown", "minimal"),
+            ("empty", "full"),
+            ("empty", "minimal"),
         ),
         1,
     )
@@ -129,6 +132,8 @@ def source(root: Path, kind: str, capture: str) -> Path:
                 '{"item_id":"001","text":"Synthetic unknown usage."}\n',
                 encoding="utf-8",
             )
+        elif kind == "empty":
+            (root / "responses.jsonl").write_bytes(b"")
     path = root / "config.json"
     path.write_text(json.dumps(spec, ensure_ascii=False), encoding="utf-8")
     return path
@@ -189,6 +194,12 @@ async def export(root: Path) -> None:
         provider = adapter(root, kind)
         await recover_run(run_id, store=store, adapter=provider)
         assert provider.submit_calls == provider.forward_entries == 0
+        with Repository(store) as repository:
+            empty_source = (
+                repository.get_artifact(run_id, bytes_digest(b""))
+                if kind == "empty"
+                else None
+            )
         bundle = export_decisions_provenance(run_id, store=store)
         assert bundle == export_decisions_provenance(run_id, store=store)
         directory = Path(bundle.manifest_path).parents[1]
@@ -208,6 +219,12 @@ async def export(root: Path) -> None:
         for format_, view, suffix in combinations:
             report = export_run(run_id, store=store, format=format_, view=view)
             shutil.copyfile(report.artifact_path, root / f"{run_id}-results.{suffix}")
+        if empty_source is not None:
+            with Repository(store) as repository:
+                assert (
+                    repository.get_artifact(run_id, empty_source.sha256) == empty_source
+                )
+                assert (empty_source.relative_path is None) == (capture == "minimal")
         rows.append(
             dict(
                 run_id=run_id,

@@ -11,14 +11,13 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from judgmentllm import gemini_types, vertex_types
+from judgmentllm import decisions_types, gemini_types, vertex_types
 from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.hashing import bytes_digest, canonical_bytes
 from judgmentllm.persistence.models import ArtifactIdentity, ArtifactIntegrityError
 
 if TYPE_CHECKING:
     from judgmentllm.anthropic_transport import TransportCommitmentV3
-    from judgmentllm.decisions.transport import DecisionsCommitmentV1
     from judgmentllm.production_transport import TransportCommitmentV2
     from judgmentllm.transport import TransportCommitmentV1
 
@@ -36,7 +35,7 @@ def publish_transport_commitment(
     | TransportCommitmentV3
     | vertex_types.TransportCommitmentV5
     | gemini_types.TransportCommitmentV4
-    | DecisionsCommitmentV1,
+    | decisions_types.DecisionsCommitmentV1,
 ) -> ArtifactIdentity:
     """Publish exact immutable metadata before registry preparation commits."""
 
@@ -62,7 +61,7 @@ def read_transport_commitment(
     | TransportCommitmentV3
     | vertex_types.TransportCommitmentV5
     | gemini_types.TransportCommitmentV4
-    | DecisionsCommitmentV1
+    | decisions_types.DecisionsCommitmentV1
     | None
 ):
     """Read the original receipt; absence is never repaired by reconstruction."""
@@ -105,7 +104,7 @@ def iter_transport_commitments(
     | TransportCommitmentV3
     | vertex_types.TransportCommitmentV5
     | gemini_types.TransportCommitmentV4
-    | DecisionsCommitmentV1
+    | decisions_types.DecisionsCommitmentV1
 ]:
     """Inspect named safe references in bounded memory, including orphan attempts."""
 
@@ -148,7 +147,7 @@ def _parse_transport_commitment(
     | TransportCommitmentV3
     | vertex_types.TransportCommitmentV5
     | gemini_types.TransportCommitmentV4
-    | DecisionsCommitmentV1
+    | decisions_types.DecisionsCommitmentV1
 ):
     from judgmentllm.output_contracts import decode_assessment_output
     from judgmentllm.production_transport import TransportCommitmentV2

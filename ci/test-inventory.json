@@ -342,13 +342,57 @@
       "test_native_grouping_revalidation_and_stable_ids": {"": []},
       "test_whole_envelope_and_named_order_rules": {"[error-map-0-False]": [], "[refusal-map-0-False]": [], "[reverse-map-3-True]": [], "[reverse-ordered_array-0-False]": [], "[unexpected-map-3-False]": []}
     },
+    "tests/test_decisions_persistence_boundaries.py": {
+      "test_csv_presentation_and_shared_template_use_ordinary_preparation": {"[full]": [], "[minimal]": []},
+      "test_duplicate_run_and_mutated_discovery_are_rejected": {"": []},
+      "test_forwarding_fact_cannot_invent_observation_or_acceptance": {"": []},
+      "test_invalid_presentation_csv_never_projects_members": {"[]": [], "[source_presentation_id,pair_id,left_item_id,right_item_id,members\\na,b,c,d\\n]": [], "[wrong\\n]": []},
+      "test_legacy_transport_context_cannot_gain_v4_authority": {"[file]": [], "[python]": []},
+      "test_named_evidence_readers_require_exact_original_bytes": {"[foreign-invocation]": [], "[foreign-outcomes]": [], "[malformed-invocation]": [], "[malformed-outcomes]": [], "[missing-invocation]": [], "[missing-outcomes]": [], "[noncanonical-invocation]": [], "[noncanonical-outcomes]": [], "[unavailable-invocation]": [], "[unavailable-outcomes]": [], "[valid-invocation]": [], "[valid-outcomes]": []},
+      "test_native_manifest_version_authority_and_retention_are_strict": {"[full_retention]": [], "[minimal_retention]": [], "[origin]": [], "[pair_source]": [], "[renderer]": [], "[sources]": [], "[version]": []},
+      "test_native_source_index_rejects_invalid_current_locators_and_membership": {"": []}
+    },
+    "tests/test_decisions_preparation_boundaries.py": {
+      "test_current_catalog_substitution_cannot_change_sealed_native_work": {"[bytes]": [], "[dependency]": [], "[digest]": [], "[empty_presentation]": [], "[identity]": [], "[membership]": [], "[missing_attempt]": [], "[missing_source]": [], "[source_index]": [], "[type]": []},
+      "test_decisions_evidence_version_cannot_claim_a_vendor_scope": {"": []},
+      "test_direct_native_loader_sanitizes_source_open_failures": {"": []},
+      "test_native_and_historical_preparation_interfaces_remain_separate": {"": []},
+      "test_native_reconstruction_checks_content_and_request_start_without_repacking": {"": []},
+      "test_optional_csv_versions_and_exact_source_page_are_independently_prepared": {"": []},
+      "test_ordinary_preparation_reports_controls_safely_and_keeps_legacy_builder_closed": {"": []},
+      "test_original_study_verifier_does_not_adopt_v4_native_configuration": {"": []},
+      "test_presentation_locator_requires_the_frozen_presentation_source": {"[length]": [], "[role]": []},
+      "test_reconstruction_only_admits_original_ordered_subset_and_parent": {"[dependency]": [], "[frozen]": [], "[missing_parent]": [], "[new_retry]": [], "[parent]": []},
+      "test_run_seed_and_legacy_source_builder_cannot_reschedule_native_presentations": {"": []},
+      "test_seal_checks_typed_run_and_retained_specification_authorities": {"[run]": [], "[specification]": [], "[version]": []},
+      "test_source_loader_rechecks_repeated_documents_and_never_forwards": {"": []},
+      "test_unmarked_run_cannot_acquire_native_source_or_seal_authority": {"": []}
+    },
     "tests/test_decisions_processes.py": {
+      "test_empty_companion_publication_survives_process_death_without_source_upgrade": {"[after_provenance_artifact-full]": [], "[after_provenance_artifact-minimal]": [], "[after_provenance_reference-full]": [], "[after_provenance_reference-minimal]": [], "[before_provenance_reference-full]": [], "[before_provenance_reference-minimal]": [], "[during_provenance_registration-full]": [], "[during_provenance_registration-minimal]": []},
       "test_failed_subset_retry_authorization_survives_fresh_process_death": {"": []},
       "test_forwarding_fact_receipt_crash_can_reconcile_without_rewriting_it": {"": []},
       "test_lost_accepted_response_without_reconciliation_stays_held": {"[full]": [], "[minimal]": []},
       "test_provenance_process_death_and_repeated_publication": {"[after_provenance_artifact]": [], "[after_provenance_reference]": [], "[before_provenance_reference]": [], "[during_provenance_registration]": []},
       "test_real_death_reopens_and_commits_a_full_vector_once": {"[after_acknowledgment-full]": [], "[after_acknowledgment-minimal]": [], "[after_acknowledgment_receipt-full]": [], "[after_acknowledgment_receipt-minimal]": [], "[after_decisions_outcome_artifact-full]": [], "[after_decisions_outcome_artifact-minimal]": [], "[after_evidence_artifacts-full]": [], "[after_evidence_artifacts-minimal]": [], "[after_evidence_receipt-full]": [], "[after_evidence_receipt-minimal]": [], "[after_observation-full]": [], "[after_observation-minimal]": [], "[after_receipt-full]": [], "[after_receipt-minimal]": [], "[after_response-full]": [], "[after_response-minimal]": [], "[after_result-full]": [], "[after_result-minimal]": [], "[after_submit-full]": [], "[after_submit-minimal]": [], "[after_submitting-full]": [], "[after_submitting-minimal]": [], "[during_evidence_transaction-full]": [], "[during_evidence_transaction-minimal]": [], "[during_member_validation-full]": [], "[during_member_validation-minimal]": [], "[during_result_transaction-full]": [], "[during_result_transaction-minimal]": [], "[receiver_before_acceptance-full]": [], "[receiver_before_acceptance-minimal]": []},
       "test_sched1_preparation_reopens_in_a_fresh_process": {"[41]": [], "[42]": []}
+    },
+    "tests/test_decisions_provenance_boundaries.py": {
+      "test_bundle_reader_rejects_changed_manifest_or_companion": {"[bad_id]": [], "[file_bytes]": [], "[file_metadata]": [], "[missing]": [], "[noncanonical]": [], "[snapshot]": []},
+      "test_companion_authorizes_derived_empty_bytes_without_upgrading_the_source": {"": []},
+      "test_definitive_nonacceptance_exports_failed_members_without_fabricated_answers": {"": []},
+      "test_derived_publication_rejects_conflicting_registered_byte_length": {"": []},
+      "test_empty_derived_publication_revalidates_manifest_location_metadata_and_bytes": {"[bytes-full]": [], "[bytes-minimal]": [], "[length-full]": [], "[length-minimal]": [], "[media-full]": [], "[media-minimal]": [], "[null_path-full]": [], "[null_path-minimal]": [], "[path-full]": [], "[path-minimal]": [], "[snapshot-full]": [], "[snapshot-minimal]": [], "[unregistered-full]": [], "[unregistered-minimal]": []},
+      "test_empty_publication_directory_is_not_a_published_bundle": {"": []},
+      "test_empty_run_and_in_process_cli_publish_the_narrow_companion": {"[full]": [], "[minimal]": []},
+      "test_export_rejects_changed_current_commitment_and_outcome_snapshot": {"": []},
+      "test_historical_normalized_export_is_not_a_native_companion": {"": []},
+      "test_missing_attribution_cannot_be_backfilled_from_successful_results": {"": []},
+      "test_physical_totals_never_infer_zero_from_missing_evidence": {"[currency]": [], "[empty]": [], "[partial]": [], "[unavailable]": [], "[unknown]": []},
+      "test_status_discovers_only_complete_immutable_bundle_references": {"[entry]": [], "[identity]": [], "[noncanonical]": []},
+      "test_status_revalidates_the_selected_usage_revision": {"[hash]": [], "[identity]": []},
+      "test_status_selects_latest_complete_bundle_independent_of_directory_order": {"": []},
+      "test_uncertain_forwarding_totals_require_registered_bound_evidence": {"[absent]": [], "[identity]": [], "[payload]": [], "[unregistered]": [], "[valid]": []}
     },
     "tests/test_decisions_r.py": {
       "test_actual_decisions_exports_pass_strict_jsonlite": {"": ["r_interop", "serial"]}
@@ -366,6 +410,31 @@
     },
     "tests/test_decisions_resources.py": {
       "test_native_index_queue_and_export_memory_is_bounded": {"[index]": ["resource"], "[lifecycle]": ["resource"]}
+    },
+    "tests/test_decisions_response_boundaries.py": {
+      "test_absent_or_changed_observation_cannot_be_retrieved_as_success": {"": []},
+      "test_cancellation_drains_the_real_receiver_acceptance_transaction": {"": []},
+      "test_complete_bound_envelope_only_salvages_valid_named_members": {"[choice_order]": [], "[expected]": [], "[explicit_selected]": [], "[nameless]": [], "[nonobject]": [], "[refusal_extra]": [], "[selected]": [], "[triplicate]": [], "[type_object]": []},
+      "test_explicit_receiver_rejection_is_counted_once": {"[not_submitted]": [], "[transient_not_submitted]": []},
+      "test_historical_response_guards_remain_active_after_native_dispatch": {"[legacy_parse]": [], "[native_current]": [], "[native_type]": [], "[v2_current]": [], "[v2_type]": []},
+      "test_historical_subset_retry_cannot_gain_native_decisions_transport": {"": []},
+      "test_native_and_historical_acceptance_authorities_are_not_interchangeable": {"": []},
+      "test_neutral_interpreter_checks_binding_without_an_executor_checkpoint": {"": []},
+      "test_received_native_response_keeps_acceptance_but_cannot_fabricate_results": {"[current_wire]": [], "[parser_hash]": [], "[parser_missing]": [], "[parser_type]": [], "[raw]": []},
+      "test_reconciliation_cannot_substitute_a_remote_id_for_complete_evidence": {"[None]": [], "[real]": []},
+      "test_synthetic_boundary_refuses_unimplemented_scopes_and_foreign_wires": {"": []},
+      "test_uncertain_evidence_cannot_replace_a_previous_forwarding_binding": {"": []}
+    },
+    "tests/test_decisions_validation.py": {
+      "test_capabilities_and_preview_are_offline_and_selection_exact": {"": []},
+      "test_complete_acknowledgment_requires_exact_version_and_binding": {"[ack_version]": [], "[binding]": [], "[evidence_version]": []},
+      "test_grouping_version_is_not_coerced": {"[AutoRequestGroupingV1]": [], "[SingleRequestGroupingV1]": []},
+      "test_prepared_members_cannot_claim_independent_schedules": {"[common_schedule]": [], "[duplicate]": [], "[empty]": [], "[presentation]": [], "[source_uid]": []},
+      "test_question_binds_complete_semantics_to_its_task": {"[choice_identity]": [], "[key]": [], "[kind]": [], "[score_identity]": []},
+      "test_rendering_and_frozen_ceiling_fail_without_fallback": {"": []},
+      "test_sealed_crosswalk_and_wire_are_revalidated": {"[mapping]": [], "[membership]": [], "[wire]": [], "[wire_version]": []},
+      "test_source_presentation_identity_is_strict": {"[duplicate_member]": [], "[no_members]": [], "[same_items]": [], "[version]": []},
+      "test_v4_has_one_complete_configuration_authority": {"[advanced-prompt.file]": [], "[duplicate_criterion-duplicate criterion]": [], "[duplicate_exemplar-unique known references]": [], "[exemplar_map-explicitly cover]": [], "[explanations-explanations]": [], "[generation-generation controls]": [], "[mapping_type-dictionary]": [], "[pair_source-exactly one pair source]": [], "[route-Decisions route]": [], "[rubric-only a rubric]": [], "[ties-forced choice]": [], "[unknown_exemplar-unique known references]": [], "[version-integer 4]": []}
     },
     "tests/test_distribution_manifest.py": {
       "test_committed_distribution_manifest_and_isolated_installs": {"": ["serial"]},

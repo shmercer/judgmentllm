@@ -307,6 +307,26 @@
       ],
       "reason": "V4 grouped SQLite/artifact lifecycle, capture, named vectors and local replay"
     },
+    "tests/test_decisions_persistence_boundaries.py": {
+      "cost": "io",
+      "domain": "immutable-evidence",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Real source and evidence files, canonical bytes, indexed locators and original membership"
+    },
+    "tests/test_decisions_preparation_boundaries.py": {
+      "cost": "io",
+      "domain": "native-transport",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Frozen preparation, SQLite authority, historical dispatch and source/presentation binding"
+    },
     "tests/test_decisions_processes.py": {
       "cost": "process",
       "domain": "process-ownership",
@@ -316,6 +336,16 @@
         "darwin"
       ],
       "reason": "Fresh OS-process death at acknowledgment, evidence, full-vector and bundle publication windows"
+    },
+    "tests/test_decisions_provenance_boundaries.py": {
+      "cost": "io",
+      "domain": "immutable-evidence",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Real narrow companion publication, immutable references, accounting and corruption rejection"
     },
     "tests/test_decisions_r.py": {
       "cost": "process",
@@ -338,6 +368,26 @@
       "domain": "resource-stress",
       "platforms": [],
       "reason": "Fresh-process indexed 100001 sources/members and grouped queues/export joins; local measurement only"
+    },
+    "tests/test_decisions_response_boundaries.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Bounded synthetic forwards, accepted SQLite evidence, cancellation and historical response guards"
+    },
+    "tests/test_decisions_validation.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Strict typed native configuration, detached commitments and neutral rendering limits"
     },
     "tests/test_distribution_manifest.py": {
       "cost": "process",
@@ -1727,6 +1777,8 @@
     "src/judgmentllm/decisions/records.py",
     "src/judgmentllm/decisions/responses.py",
     "src/judgmentllm/decisions/transport.py",
+    "src/judgmentllm/decisions_types.py",
+    "src/judgmentllm/decisions_types.pyi",
     "src/judgmentllm/evidence/__init__.py",
     "src/judgmentllm/evidence/_base.py",
     "src/judgmentllm/evidence/assessment.py",

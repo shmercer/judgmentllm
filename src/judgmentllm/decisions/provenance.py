@@ -330,7 +330,7 @@ def decisions_status(
     totals = _Totals()
     artifacts = ArtifactStore(repository.run_directory(manifest.run_id), create=False)
     rows = repository.connection.execute(
-        "SELECT a.attempt_id,a.request_uid,s.submission_id,s.state,s.certainty,"
+        "SELECT a.attempt_id,a.request_uid,a.payload_sha256,s.submission_id,s.state,s.certainty,"
         "o.observation_id,e.receipt_sha256,u.usage_json,u.usage_sha256 "
         "FROM attempts a LEFT JOIN submissions s ON s.run_id=a.run_id AND s.attempt_id=a.attempt_id "
         "LEFT JOIN observations o ON o.run_id=s.run_id AND o.submission_id=s.submission_id "
@@ -362,8 +362,12 @@ def decisions_status(
         if not known and row["state"] == "uncertain":
             fact = read_invocation(artifacts, row["submission_id"])
             if fact is not None:
-                if fact.identity != physical_identity(
-                    manifest.run_id, row["request_uid"], row["attempt_id"]
+                if (
+                    fact.identity
+                    != physical_identity(
+                        manifest.run_id, row["request_uid"], row["attempt_id"]
+                    )
+                    or fact.payload_sha256 != row["payload_sha256"]
                 ):
                     raise IntegrityError("Decisions forwarding identity conflicts")
                 registered = repository.connection.execute(
@@ -534,8 +538,15 @@ def read_decisions_provenance(
         raise IntegrityError("Decisions provenance snapshot identity differs")
     repository.get_artifact(run_id, bytes_digest(raw))
     for file in manifest.files:
-        if repository.get_artifact(run_id, file.artifact.sha256) != file.artifact:
-            raise IntegrityError("Decisions companion is not registered exactly")
+        registered = repository.get_artifact(run_id, file.artifact.sha256)
+        if (
+            registered.byte_length != file.artifact.byte_length
+            or file.artifact.media_type
+            != ("application/x-ndjson" if file.name.endswith(".jsonl") else "text/csv")
+            or file.artifact.relative_path
+            != f"objects/{file.artifact.sha256[:2]}/{file.artifact.sha256}"
+        ):
+            raise IntegrityError("Decisions companion publication metadata differs")
         artifacts.verify(file.artifact)
     return DecisionsProvenanceReportV1(
         run_id=run_id, bundle_id=bundle_id, manifest_path=str(path), manifest=manifest
@@ -668,8 +679,21 @@ def export_decisions_provenance(
         )
         identity = artifacts.put(canonical_bytes(bundle), "application/json")
         with repository.transaction():
-            for artifact in (*[f.artifact for f in bundle.files], identity):
-                repository._register_artifact(run_id, artifact)  # pyright: ignore[reportPrivateUsage]
+            for file in bundle.files:
+                artifact = file.artifact
+                registered = repository.connection.execute(
+                    "SELECT byte_length FROM artifacts WHERE run_id=? AND sha256=?",
+                    (run_id, artifact.sha256),
+                ).fetchone()
+                if registered is None:
+                    repository._register_artifact(run_id, artifact)  # pyright: ignore[reportPrivateUsage]
+                elif registered["byte_length"] != artifact.byte_length:
+                    raise IntegrityError(
+                        "Decisions companion hash has conflicting byte length"
+                    )
+                # As in result exports, the manifest authorizes derived bytes;
+                # an existing source identity keeps its media type and retention.
+            repository._register_artifact(run_id, identity)  # pyright: ignore[reportPrivateUsage]
             checkpoint("during_provenance_registration")
         checkpoint("before_provenance_reference")
         artifacts.publish_reference(identity, _reference(bundle_id))

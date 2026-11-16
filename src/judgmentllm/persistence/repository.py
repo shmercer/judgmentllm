@@ -14,11 +14,9 @@ import tempfile
 from collections.abc import Callable, Generator, Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, TypeVar, cast
+from typing import Literal, TypeVar, cast
 
-if TYPE_CHECKING:
-    from judgmentllm.config import RunSpecV4
-
+from judgmentllm import config as config_types
 from judgmentllm.evidence.usage import ProviderUsage
 from judgmentllm.io import Result, revalidate_result
 from judgmentllm.persistence import evidence as evidence_store
@@ -418,7 +416,7 @@ class Repository:
         run_id: str,
         manifest: ManifestReference,
         *,
-        decisions_spec: RunSpecV4 | None = None,
+        decisions_spec: config_types.RunSpecV4 | None = None,
     ) -> None:
         """Seal once; native runs also bind their exact frozen specification."""
         manifest = _checked(manifest)

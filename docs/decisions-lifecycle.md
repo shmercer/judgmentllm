@@ -149,6 +149,13 @@ Unresolved prior attempts cannot be replaced by a retry.
 
 ## Inspection and companion exports
 
+The companion manifest independently authorizes retained derived bytes, following
+the existing normalized-export pattern. An identical source's registry identity
+keeps its media type and hash-only retention. This includes empty full/minimal
+inputs: their canonical empty JSONL companions retain zero bytes without padding
+or fabricated records. Readers verify registered SHA/length, the manifest's
+derived media type and canonical location, snapshot identity and exact bytes.
+
 Normalized results, canonical/R result writers and CLI envelope **remain schema
 1**. New status/summary/validation detail appears under optional typed
 `decisions` only for verified V4 runs. Historical outputs omit it entirely,

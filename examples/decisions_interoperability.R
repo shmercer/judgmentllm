@@ -19,8 +19,8 @@ check_decisions_exports <- function(root) {
     }
   }
   runs <- records("decisions.jsonl")
-  stopifnot(length(runs) == 6L,
-    identical(vapply(runs, function(x) x$run_id, character(1)), sprintf("%03d", 1:6)))
+  stopifnot(length(runs) == 8L,
+    identical(vapply(runs, function(x) x$run_id, character(1)), sprintf("%03d", 1:8)))
   for (run in runs) {
     prefix <- paste0(run$run_id, "-")
     questions <- records(paste0(prefix, "questions.jsonl"))
@@ -37,6 +37,20 @@ check_decisions_exports <- function(root) {
     stopifnot(length(physical) == totals$known_invocations)
     stopifnot(!anyDuplicated(vapply(physical, function(x) x$identity$submission_id, character(1))))
     stopifnot(all(vapply(physical, function(x) is.null(x$provider_remote_id), logical(1))))
+    if (run$kind == "empty") {
+      stopifnot(length(questions) == 0L, length(physical) == 0L, length(result) == 0L,
+        nrow(canonical) == 0L, nrow(r) == 0L, totals$physical_requests == 0L,
+        totals$known_invocations == 0L, totals$invocation_unknown == 0L,
+        totals$usage_evidence == "not_applicable", totals$cost_evidence == "not_applicable",
+        is.null(totals$input_tokens), is.null(totals$output_tokens), is.null(totals$cost))
+      stopifnot(all(vapply(manifest$files, function(x) x$rows == 0L, logical(1))))
+      for (name in c("questions.jsonl", "physical.jsonl")) {
+        file <- Filter(function(x) x$name == name, manifest$files)[[1L]]
+        stopifnot(file$artifact$byte_length == 0L, !is.null(file$artifact$relative_path),
+          file.info(file.path(root, paste0(prefix, name)))$size == 0L)
+      }
+      next
+    }
     if (run$kind == "unknown") {
       stopifnot(length(questions) == 1L, length(result) == 0L, totals$known_invocations == 1L)
       stopifnot(is.null(totals$input_tokens), is.null(totals$output_tokens), is.null(totals$cost))
