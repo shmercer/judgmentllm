@@ -49,6 +49,32 @@ protected content must survive unchanged. With exemplars, explicitly provide
 Each ordered list selects known IDs; another trait's annotations cannot silently
 become evidence for this question.
 
+`prompt.output_instructions` optionally supplies plain, nonblank UTF-8 text for
+every question. Omission and null serialize identically without this field and
+use the task default. Supplied text replaces that default exactly, preserving
+whitespace, line breaks and Unicode; it is not evaluated as a template, and no
+default instruction is secretly appended. Existing rendering/body/context limits
+still apply, without truncation. The rubric, criterion and selected exemplars
+remain required protected blocks, including their order. Typed score/choice
+validation still forbids ties and generated explanations even if prose asks for them.
+
+New V4 preparations use question renderer revision 2 with these exact defaults:
+
+- Rubric: `Score the shared essay on this trait using the rubric’s ordered levels and their descriptions. Base the assessment on evidence in the essay. Do not generate an explanation.`
+- Pairwise: `Compare the two essays using this criterion. Choose the essay that is stronger on this criterion: essay_01 or essay_02. Do not choose a tie or include an explanation.`
+
+The manifest freezes the question renderer revision. Historical revision-1 V4
+runs retain their previous default bytes and cannot acquire this override.
+V1–V3 defaults and serialized contracts remain unchanged. An override belongs in
+a new run: it changes the specification/configuration, question and payload
+commitments; reopening a sealed run with different instructions fails.
+
+```yaml
+prompt:
+  output_instructions: |-
+    Assess only this criterion using the complete rubric above.
+```
+
 Only one source occurrence or one explicit prepared pair presentation may supply
 a group. Text equality never groups different items. All questions share the
 run's route, model, physical controls, capture and cache policy. Synthetic tier

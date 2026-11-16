@@ -297,6 +297,16 @@
       ],
       "reason": "Indexed V4 preparation, exact commitments, split limits, source membership and SCHED1"
     },
+    "tests/test_decisions_instructions.py": {
+      "cost": "process",
+      "domain": "native-transport",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Exact V4 instruction/default bytes, protected assessment content, historical fixture reconstruction and fresh-process full/minimal recovery"
+    },
     "tests/test_decisions_lifecycle.py": {
       "cost": "io",
       "domain": "durable-execution",

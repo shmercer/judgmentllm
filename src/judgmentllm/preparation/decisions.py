@@ -301,7 +301,11 @@ class DecisionsPreparedRun(PreparedRun):
         assert isinstance(checked, RunSpecV4)
         traits, exemplars = assessment_commitments(checked)
         if (
-            configuration_digest(checked) != self.manifest.configuration_sha256
+            (
+                self.manifest.question_renderer_version == 1
+                and checked.prompt.output_instructions is not None
+            )
+            or configuration_digest(checked) != self.manifest.configuration_sha256
             or assessment_digest(checked) != self.manifest.assessment_sha256
             or self.manifest_sha256 != self._sealed_manifest_sha256
             or bytes_digest(canonical_bytes(self.manifest)) != self.manifest_sha256
@@ -386,9 +390,16 @@ class DecisionsPreparedRun(PreparedRun):
     def source_dependencies(
         self, record: ResponseItem | PairTask | PreparedPairPresentationV1
     ) -> Iterator[DecisionsDependencyV1]:
-        assert isinstance(self.spec, RunSpecV4)
+        assert isinstance(self.spec, RunSpecV4) and isinstance(
+            self.manifest, ExecutableRunManifestV8
+        )
         yield from plan_source(
-            self.spec, record, self.get_response, self.context(), self.template
+            self.spec,
+            record,
+            self.get_response,
+            self.context(),
+            self.template,
+            question_renderer_version=self.manifest.question_renderer_version,
         )
 
     def iter_request_dependencies(
@@ -739,6 +750,7 @@ def prepare_decisions_run(
                 else "unchanged_originals",
                 package_version=__version__,
                 cache_policy_version=2,
+                question_renderer_version=2,
                 service_identity=context.service_identity,
                 limits=context.limits,
                 transport_context_sha256=semantic_digest(

@@ -1,6 +1,6 @@
 # JudgmentLLM
 
-**Milestone 3, Phase 5C — Gemini Developer alongside Anthropic Messages, OpenAI Responses and Chat Completions production adapters. Development version 0.1.0a3; exact-head offline and separately authorized live qualification are recorded separately.**
+**Implemented: durable mock execution, OpenAI Responses/Chat Completions, Anthropic Messages, Gemini Developer and Vertex AI generative adapters, plus the synthetic-only V4 Decisions lifecycle. Development version 0.1.0a3; implementation, offline fixtures and exact-scope live qualification are separate evidence.**
 
 Milestone 2 adds an [internal preparation foundation](https://github.com/shmercer/judgmentllm/blob/main/docs/persistence-contracts.md)
 for SQLite state, immutable source snapshots, indexed input access, complete run
@@ -8,7 +8,9 @@ manifests, generation commitments, and local executor ownership.
 Public Python services and the versioned CLI provide complete validation, planning,
 mock live execution, durable status, conservative recovery, explicit subset retries,
 and immutable all-attempt exports. Production runs require explicit RunSpecV3;
-see the [OpenAI user guide](https://github.com/shmercer/judgmentllm/blob/main/docs/openai.md) and [Anthropic user guide](https://github.com/shmercer/judgmentllm/blob/main/docs/anthropic.md), and [Gemini Developer guide](https://github.com/shmercer/judgmentllm/blob/main/docs/gemini.md). Native serving qualification remains pending.
+see the [OpenAI](docs/openai.md), [Anthropic](docs/anthropic.md),
+[Gemini Developer](docs/gemini.md) and [Vertex](docs/vertex.md) guides. Historical
+live records do not qualify the current presentation revision or every model.
 The [approved Milestone 2 plan](https://github.com/shmercer/judgmentllm/blob/main/docs/milestone-2-execution-plan.md) records the boundaries.
 Subphase 6 adds reproducible complete-run benchmarks, focused resource checks and
 practical examples. The [qualification protocol](https://github.com/shmercer/judgmentllm/blob/main/docs/milestone-2-subphase-6-verification.md)
@@ -16,11 +18,60 @@ identifies the external exact-source ledger that records acceptance, measured
 workloads, exclusions and remaining conditions. Tooling availability alone does
 not establish milestone acceptance.
 
-JudgmentLLM provides typed, provider-independent contracts for ordinal rubric scoring and pairwise judgments. It loads synthetic assessments, validates category coding, prepares deterministic task groups, renders prompts, and normalizes supplied categorical or probability results. Synthetic mock execution, OpenAI, Anthropic and Gemini Developer generative adapters are available; model/feature qualification is scoped separately.
+JudgmentLLM provides typed, provider-independent contracts for ordinal rubric scoring and pairwise judgments. It validates category coding, prepares deterministic task groups, renders prompts, and normalizes categorical or probability results. Bundled assessment inputs and standard verification are synthetic and offline.
 
 Python 3.11+, Linux, Windows, and macOS are supported. The core uses Pydantic 2, PyYAML, Jinja2, and Typer; pandas and PyArrow are not required.
 
 The R architecture is CLI-first: call the standalone installed executable, normally with `processx`, and exchange canonical JSONL or R-compatible CSV files. `pairwiseLLM` consumes these files for statistical analysis in R. A functional thin `rubricLLM` wrapper for the run lifecycle belongs to Milestone 6; `reticulate` is optional and secondary. Ordinary R use requires no HTTP server. See [R interoperability](https://github.com/shmercer/judgmentllm/blob/main/docs/r-interoperability.md) for the approved architecture and current offline examples.
+
+## Providers, endpoints and execution modes
+
+Implemented adapters have offline SDK/lifecycle fixtures; that does not establish
+live acceptance of an arbitrary model, account, control or feature. `live` is the
+single-run execution mode, including deterministic mock runs. Production runs are
+billable network operations and require the provider's explicit V3 configuration.
+
+| Provider / endpoint | Mode / configuration | Current implementation |
+|---|---|---|
+| Mock / `synthetic` | `live`, V1/V2 | Public generative mock; offline execution, recovery and exports; V3 native transport has private fixtures |
+| Mock / `synthetic` | `live`, V4 | Native score/choice questions, grouping and provenance; synthetic protocol only |
+| OpenAI / `responses` | `live`, V3 | Implemented generative adapter; SDK/lifecycle fixtures |
+| OpenAI / `chat.completions` | `live`, V3 | Implemented generative adapter; SDK/lifecycle fixtures |
+| Anthropic / `messages` | `live`, V3 | Implemented generative adapter; SDK/lifecycle fixtures |
+| Gemini Developer / `models.generate_content` | `live`, V3 | Implemented generative adapter; SDK/lifecycle fixtures |
+| Vertex AI Gemini / `models.generate_content` | `live`, V3 | Implemented generative adapter; separate ADC/API-key routing and SDK/lifecycle fixtures |
+| Together / `chat.completions` | Planned live runner | Offline schema-projection/private transport fixtures; no production run/resume adapter |
+| Local Ollama / `chat` | Planned live runner | Offline schema-projection/private transport fixtures; no production run/resume adapter |
+| OpenAI / `decisions` | Planned V4 adapter, PR C | Not executable through production run/resume |
+| TypeSafe Jev / `systemone` | Planned V4 adapter, PR D | Not executable through production run/resume |
+| Gemini Developer / `decisions` | Planned V4 adapter, PR E | Not executable through production run/resume; separate from `generate_content` |
+
+Native provider batch and managed bulk-live are **Milestone 5 targets**, not
+implemented modes in these adapters. Generative JSON Schema (`structured_output:
+native`) and native Decisions score/choice APIs are different interfaces. New
+generative preparations use [presentation revision 2](docs/renderer-revision-2.md):
+its native serving scope is unqualified, so nonstrict `auto` selects text, while
+explicit `native` and strict unknown `auto` fail before forwarding. Text still
+requires valid route/model/cache controls and strict local assessment validation.
+
+Retained live evidence covers only its original sources and contracts:
+
+- OpenAI's [historical acceptance record](docs/provider-matrix.md#phase-5a-openai-production-boundary)
+  reports eight text/native rubric/CJ cases on `gpt-4.1-mini-2025-04-14`;
+  the production native registry remains empty.
+- [Gemini Developer acceptance, 2026-11-10](docs/gemini-live-qualification-acceptance.md)
+  covers four original-contract text/native cases on `gemini-3.1-flash-lite`,
+  google-genai 2.34.0/v1beta, with one-trait scores and forced-choice winners.
+- [Vertex acceptance, 2026-11-11](docs/vertex-live-qualification-acceptance.md)
+  and its [independent public audit](docs/vertex-evidence-verification.json) cover
+  eight original-contract cases across separately bound ADC/API-key private-project
+  routes: `gemini-3.1-flash-lite`, `global`, google-genai 2.34.0/v1beta1,
+  one-trait scores and forced-choice winners. Developer evidence grants no Vertex authority.
+
+Those records confer no qualification on the new presentation, other scopes or
+Decisions endpoints. Anthropic has no reviewed live model profile; Together,
+Ollama and the three production Decisions adapters remain unqualified. See the
+[provider matrix](docs/provider-matrix.md) for implementation and roadmap details.
 
 ## Install and preview
 
@@ -54,8 +105,10 @@ submissions and observations through immutable companion receipts and registry
 schema 2. Full and minimal capture retain safe metadata; reasoning text requires
 an explicit immutable synthetic-fixture grant. Existing result and R exports
 remain unchanged. See the [Python API](https://github.com/shmercer/judgmentllm/blob/main/docs/python-api.md#internal-durable-evidence-inspection-phase-4b)
-for internal inspection and compatibility. OpenAI production transport is additive;
-companion exports remain deferred and live qualification requires separate consent.
+for internal inspection and compatibility. OpenAI production transport is additive.
+Broad generative usage/reasoning companion exports remain deferred; V4's narrow
+question/physical provenance bundle is implemented. Live qualification requires
+separate consent.
 
 ## Offline credential status
 
@@ -80,9 +133,9 @@ operations; neither command qualifies a serving model or runs automatically.
 ## Offline execution lifecycle
 
 `examples/mock-run.yaml` declares the deterministic mock provider. The existing
-OpenAI examples remain valid for offline validation/preview; execution rejects
-unimplemented providers and never substitutes the mock. New production examples
-in the OpenAI guide use V3; older V1/V2 examples do not acquire production execution.
+V1/V2 OpenAI examples remain valid for offline validation/preview and do not
+acquire production execution. The provider guides above use V3 for implemented
+production routes. Unimplemented endpoints fail without substituting the mock.
 
 ```bash
 judgmentllm validate --config examples/mock-run.yaml --json
@@ -127,8 +180,14 @@ print(request.request_uid, request.trait_ids, request.exemplar_ids)
 print(preview_prompt(spec, item_id="essay_001", trait_id="organization").text)
 ```
 
-Independent scoring is the default. Fixed groups preserve their supplied order; auto grouping requires an explicit known trait-count limit. The original `plan_run()` remains structural. `estimate_run()` validates the complete
+For V1–V3 generative preparation, independent scoring is the default. Fixed groups preserve their supplied order; auto grouping requires an explicit known trait-count limit. The original `plan_run()` remains structural. `estimate_run()` validates the complete
 input and gives exact task/request counts with unavailable token/cost estimates explicit.
+
+V4 uses independently versioned single/auto question grouping and one shared
+question template, rendered per criterion. Optional `prompt.output_instructions`
+replaces only that question's default instruction text, verbatim; rubric,
+exemplars and typed score/choice validation stay intact. Omission or null selects
+the task default. See [V4 configuration and exact defaults](docs/decisions-lifecycle.md).
 
 ```python
 from judgmentllm import load_run_spec, prepare_pairs
@@ -204,24 +263,16 @@ optional complete campaign, not a prerequisite for routine PRs.
 
 ## Optional dependencies and later milestones
 
-Extras remain `openai`, `anthropic`, `google`, `together`, `ollama`, `typesafe`, `parquet`, `api`, and `all`. Installing them adds dependencies, not implemented provider operations. Milestone 2 provides mock execution and persistence; live adapters, batching, catalogs, the functional CLI-first `rubricLLM` wrapper in Milestone 6, and the committed optional local FastAPI interface in Milestone 7 follow the [implementation plan](https://github.com/shmercer/judgmentllm/blob/main/docs/implementation-plan.md). R calls will operate on runs/files or sized task groups, not spawn one Python process per judgment. The wrapper, batch operations and real-provider services remain future work.
+Extras remain `openai`, `anthropic`, `google`, `together`, `ollama`, `typesafe`, `parquet`, `api`, and `all`. An installed extra alone establishes neither an executable adapter nor live qualification; use the implemented-route table above. Production Decisions adapters, Together/Ollama live runners, M5 batch/bulk-live, the M6 CLI-first `rubricLLM` wrapper and M7 optional local FastAPI remain later work under the [implementation plan](docs/implementation-plan.md). R calls operate on runs/files or sized task groups, not one Python process per judgment.
 
 The repository is [shmercer/judgmentllm](https://github.com/shmercer/judgmentllm), licensed under [MIT](https://github.com/shmercer/judgmentllm/blob/main/LICENSE), and not yet published to PyPI. The core does not implement Bradley–Terry fitting, adaptive pairing, or rubric calibration; these remain in `pairwiseLLM`.
 
 Design references: [design specification](https://github.com/shmercer/judgmentllm/blob/main/docs/design-spec.md), [decisions](https://github.com/shmercer/judgmentllm/blob/main/docs/decisions.md), [contributor instructions](https://github.com/shmercer/judgmentllm/blob/main/AGENTS.md), and [Milestone 1 verification](https://github.com/shmercer/judgmentllm/blob/main/docs/milestone-1-verification.md).
 
 
-Vertex AI Gemini single-run implementation and offline SDK fixtures are available
-through explicit V3 configurations; see the [Vertex guide](https://github.com/shmercer/judgmentllm/blob/main/docs/vertex.md).
-ADC and a separate explicitly selected Vertex authorization-key source stay
-isolated from Gemini Developer. Vertex has no live-qualified models/native routes;
-the original [deferred proposal](https://github.com/shmercer/judgmentllm/blob/main/docs/vertex-live-qualification-proposal.md) is
-preserved. Separate complete offline candidate plans now support both API-key
-and ADC modes for `gemini-3.1-flash-lite` at `global`, with four cases and zero
-authorized calls per plan. Their read-only verifier requires the exact clean
-source and an independently retained plan digest. No credentials or `gcloud`
-are needed offline; account/key eligibility and live execution remain pending.
-Ordinary auth status, planning and validation stay offline.
+Vertex ADC and separately selected authorization-key sources stay isolated from
+Gemini Developer. Historical proposals and accepted exact-scope evidence remain
+separate records; ordinary auth status, planning and validation stay offline.
 
 New prompt previews and preparations use readable Markdown and positional CJ
 aliases. See the [renderer and compatibility guide](https://github.com/shmercer/judgmentllm/blob/main/docs/renderer-revision-2.md)

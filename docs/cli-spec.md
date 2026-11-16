@@ -9,6 +9,12 @@ Verified V4 status/summary/validation reports carry typed `decisions` detail;
 historical outputs omit that field, including nested listings. CLI envelope 1
 and normalized result schema 1 retain their exact serializers and nulls.
 
+V4 config files may set plain-text `prompt.output_instructions`. Omission/null
+uses the task default; a nonblank string replaces it verbatim in preview and
+preparation. This adds no CLI flag and grants no tie/explanation authority. New
+question renderer 2 and historical renderer 1 are sealed independently; see the
+[exact defaults and compatibility rules](decisions-lifecycle.md).
+
 `judgmentllm results provenance --run RUN_ID --store STORE --json` invokes
 `export_decisions_provenance`, publishing the narrow question/physical JSONL+CSV
 bundle and returning its immutable manifest reference. This is separate from

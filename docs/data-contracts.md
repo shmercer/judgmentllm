@@ -11,6 +11,12 @@ Normalized results and CLI envelope remain version 1, and V1–V3 behavior/bytes
 remain unchanged. The PR A paragraphs below are historical design context;
 D1–D4 were accepted with PR #62's merge, and B execution was independently approved.
 
+V4 `prompt.output_instructions` is optional plain, nonblank UTF-8 text, retained
+verbatim and omitted from serialization when absent/null. New question renderer
+revision 2 freezes the [task defaults or exact replacement](decisions-lifecycle.md);
+revision 1 remains readable with its original defaults. The override never
+changes protected assessment content or the typed no-tie/no-explanation contract.
+
 
 **RunSpec versions 1/2 remain historical; explicit version 3 supports independently dispatched synthetic and production transport boundaries. Document and normalized-result schemas remain version 1.** Assessment models live in
 `judgmentllm.models`, run configuration in `judgmentllm.config`, and normalized

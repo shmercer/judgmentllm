@@ -453,6 +453,10 @@ class Repository:
             if (
                 checked_manifest.run_id != run_id
                 or checked_manifest.run_spec_version != 4
+                or (
+                    checked_manifest.question_renderer_version == 1
+                    and checked_spec.prompt.output_instructions is not None
+                )
                 or checked_manifest.configuration_sha256
                 != configuration_digest(checked_spec)
                 or checked_manifest.assessment_sha256 != assessment_digest(checked_spec)

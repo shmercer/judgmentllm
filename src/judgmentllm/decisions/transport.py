@@ -151,8 +151,23 @@ class PreparedDecisionsRequestV1(PreparedRequest):
         return {"prompt": self.rendered_text.encode("utf-8"), "payload": self.payload}
 
 
-def render_question(spec: RunSpecV4, trait_id: str, template: str | None) -> str:
+def render_question(
+    spec: RunSpecV4,
+    trait_id: str,
+    template: str | None,
+    *,
+    question_renderer_version: Literal[1, 2] = 2,
+) -> str:
     """The shared essay is deliberately absent from the question context."""
+    if type(question_renderer_version) is not int or question_renderer_version not in (
+        1,
+        2,
+    ):
+        raise ValueError("unsupported Decisions question renderer version")
+    if question_renderer_version == 1 and spec.prompt.output_instructions is not None:
+        raise ValueError(
+            "historical question renderer cannot acquire an instructions override"
+        )
     trait = (
         next((t for t in spec.rubric.traits if t.trait_id == trait_id), None)
         if spec.rubric
@@ -180,11 +195,19 @@ def render_question(spec: RunSpecV4, trait_id: str, template: str | None) -> str
             }
         )
         contents.append(("exemplar", identifier, _exemplar_text(example)))
-    instructions = (
-        "Evaluate the shared essay independently against every ordered level of this rubric. Do not generate an explanation."
-        if trait is not None
-        else "Select exactly essay_01 or essay_02 from the shared presented pair against this criterion. Ties and generated explanations are not permitted."
-    )
+    instructions = spec.prompt.output_instructions
+    if question_renderer_version == 1:
+        instructions = (
+            "Evaluate the shared essay independently against every ordered level of this rubric. Do not generate an explanation."
+            if trait is not None
+            else "Select exactly essay_01 or essay_02 from the shared presented pair against this criterion. Ties and generated explanations are not permitted."
+        )
+    elif instructions is None:
+        instructions = (
+            "Score the shared essay on this trait using the rubric’s ordered levels and their descriptions. Base the assessment on evidence in the essay. Do not generate an explanation."
+            if trait is not None
+            else "Compare the two essays using this criterion. Choose the essay that is stronger on this criterion: essay_01 or essay_02. Do not choose a tie or include an explanation."
+        )
     contents.append(("output_instructions", "native", instructions))
     source = (
         template
@@ -262,6 +285,8 @@ def plan_source(
     lookup: Callable[[str], ResponseItem],
     context: DecisionsContextV1,
     template: str | None,
+    *,
+    question_renderer_version: Literal[1, 2] = 2,
 ) -> Iterator[DecisionsDependencyV1]:
     """One source occurrence at a time, with only one user-bounded prefix buffered."""
     checked = validate_run_spec(spec)
@@ -380,7 +405,12 @@ def plan_source(
             key=question_key(task_id),
             trait_id=trait_id,
             kind="choice" if pair else "score",
-            instructions=render_question(spec, trait_id, template),
+            instructions=render_question(
+                spec,
+                trait_id,
+                template,
+                question_renderer_version=question_renderer_version,
+            ),
             trait=next((t for t in spec.rubric.traits if t.trait_id == trait_id), None)
             if spec.rubric
             else None,

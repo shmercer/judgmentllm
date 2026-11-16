@@ -494,6 +494,23 @@ class QuestionPromptSpecV1(StrictModel):
     advanced: bool = False
     limits: RenderLimits = Field(default_factory=RenderLimits)
     exemplar_ids_by_trait: dict[ID, tuple[ID, ...]] = Field(default_factory=dict)
+    output_instructions: str | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
+    @field_validator("output_instructions")
+    @classmethod
+    def exact_instructions(cls, value: str | None) -> str | None:
+        if value is not None:
+            if not value.strip():
+                raise ValueError("prompt.output_instructions must be nonblank text")
+            try:
+                value.encode("utf-8")
+            except UnicodeError:
+                raise ValueError(
+                    "prompt.output_instructions must be valid UTF-8 text"
+                ) from None
+        return value
 
     @field_validator("exemplar_ids_by_trait", mode="before")
     @classmethod

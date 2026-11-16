@@ -730,7 +730,7 @@ class ExecutableRunManifestV8(ExecutableRunManifest):
     pair_presentations: InputSpec | None
     service_identity: ID
     limits: DecisionsLimitsV1
-    question_renderer_version: Literal[1] = 1
+    question_renderer_version: Literal[1, 2] = 1
     transport_context_sha256: SHA256
     initial_transport_count: int = Field(ge=0)
     initial_transport_sha256: SHA256
