@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any, Literal
 
-from judgmentllm.config import RunSpecification, RunSpecV2
+from judgmentllm.config import RunSpecification, RunSpecV2, RunSpecV4
 from judgmentllm.models import PairTask, ResponseItem
 from judgmentllm.output_commitments import SchemaSelectionV2, build_output_commitment
 from judgmentllm.planning import PlannedRequest
@@ -23,6 +23,8 @@ def render_request(
     presentation_version: PresentationVersion = 2,
 ) -> RenderedAssessmentPrompt:
     """Render exact planned membership using supplied verified source lookup."""
+    if isinstance(spec, RunSpecV4):
+        raise ValueError("V4 requires the Decisions question renderer")
     commitment = (
         build_output_commitment(
             spec, request, selection, presentation_version=presentation_version

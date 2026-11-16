@@ -7,7 +7,7 @@ import typer
 
 from judgmentllm import __version__
 from judgmentllm._auth import _select_providers  # pyright: ignore[reportPrivateUsage]
-from judgmentllm._lifecycle_store import load_resume_spec
+from judgmentllm._lifecycle_store import load_resume_spec, resolve_run
 from judgmentllm.auth import credential_status
 from judgmentllm.cli_controls import (
     LifecycleGroup,
@@ -18,6 +18,10 @@ from judgmentllm.cli_controls import (
     progress,
 )
 from judgmentllm.config import RunSpecV2, RunSpecV3, load_run_spec
+from judgmentllm.decisions.provenance import (
+    DecisionsProvenanceReportV1,
+    export_decisions_provenance,
+)
 from judgmentllm.lifecycle import (
     LifecycleError,
     MockExecutionOptions,
@@ -32,7 +36,7 @@ from judgmentllm.lifecycle import (
     validate_inputs,
 )
 from judgmentllm.planning import validate_run
-from judgmentllm.preview import preview_prompt
+from judgmentllm.preview import RenderedDecisionsPreviewV1, preview_prompt
 from judgmentllm.production_prompts import RenderedProductionPromptV1
 from judgmentllm.prompts import RenderedAssessmentPrompt, init_template, list_templates
 from judgmentllm.providers.openai_cli import (
@@ -111,7 +115,11 @@ def templates_preview(
     """Print one complete prompt locally; no credentials or provider calls."""
     if json_output:
 
-        def operation() -> RenderedAssessmentPrompt | RenderedProductionPromptV1:
+        def operation() -> (
+            RenderedAssessmentPrompt
+            | RenderedProductionPromptV1
+            | RenderedDecisionsPreviewV1
+        ):
             spec = load_run_spec(config)
             rendered = preview_prompt(
                 spec, item_id=item_id, trait_id=trait_id, pair_uid=pair_uid
@@ -414,6 +422,19 @@ def results_export(
             high_water_mark=high_water_mark,
         )
     )
+
+
+@results_app.command("provenance")
+def results_provenance(
+    run: RunOption, store: StoreOption = None, json_output: JsonOption = False
+) -> None:
+    """Publish the immutable V4 question/physical companion bundle offline."""
+
+    def operation() -> DecisionsProvenanceReportV1:
+        identifier, root = resolve_run(run, store)
+        return export_decisions_provenance(identifier, store=root)
+
+    perform(operation)
 
 
 # Register explicit online diagnostics; ordinary auth status remains offline.

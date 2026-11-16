@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 from collections.abc import Callable, Hashable
 from pathlib import Path
-from typing import Generic, Literal, TypeAlias, TypeVar, cast
+from typing import Annotated, Generic, Literal, TypeAlias, TypeVar, cast
 
 import yaml
 from pydantic import (
@@ -429,7 +429,235 @@ class RunSpecV3(_RunSpecFields[Literal[3], PromptSpecV3]):
         return self
 
 
-RunSpecification = RunSpec | RunSpecV2 | RunSpecV3
+class SingleRequestGroupingV1(StrictModel):
+    """One question per physical request, with no implicit packing."""
+
+    model_config = ConfigDict(frozen=True)
+    grouping_version: Literal[1] = 1
+    mode: Literal["single"]
+    max_questions_per_request: Literal[1] = 1
+
+    @field_validator("grouping_version", "max_questions_per_request", mode="before")
+    @classmethod
+    def exact_integer(cls, value: object) -> object:
+        if type(value) is not int:
+            raise ValueError("grouping version and maximum must be integers")
+        return value
+
+
+class AutoRequestGroupingV1(StrictModel):
+    """Pack only eligible contiguous questions up to an explicit maximum."""
+
+    model_config = ConfigDict(frozen=True)
+    grouping_version: Literal[1] = 1
+    mode: Literal["auto"]
+    max_questions_per_request: int = Field(gt=0)
+
+    @field_validator("grouping_version", mode="before")
+    @classmethod
+    def exact_integer(cls, value: object) -> object:
+        if type(value) is not int:
+            raise ValueError("grouping_version must be integer 1")
+        return value
+
+
+RequestGroupingSpecV1: TypeAlias = Annotated[
+    SingleRequestGroupingV1 | AutoRequestGroupingV1, Field(discriminator="mode")
+]
+
+
+class DecisionsExecutionSpecV1(StrictModel):
+    """Native question intent; generative grouping is a different authority."""
+
+    model_config = ConfigDict(frozen=True)
+    request_grouping: RequestGroupingSpecV1 = Field(
+        default_factory=lambda: SingleRequestGroupingV1(mode="single")
+    )
+    mode: Literal["live"] = "live"
+    explanations: Literal[False] = False
+    cache_policy: Literal["off"] = "off"
+    tier: ID | None = None
+    concurrency: int = Field(default=4, gt=0)
+
+    @field_validator("explanations", mode="before")
+    @classmethod
+    def exact_false(cls, value: object) -> object:
+        if value is not False:
+            raise ValueError("Decisions does not generate explanations")
+        return value
+
+
+class QuestionPromptSpecV1(StrictModel):
+    """One independently rendered question template and explicit exemplar map."""
+
+    file: Path | None = None
+    advanced: bool = False
+    limits: RenderLimits = Field(default_factory=RenderLimits)
+    exemplar_ids_by_trait: dict[ID, tuple[ID, ...]] = Field(default_factory=dict)
+    output_instructions: str | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
+    @field_validator("output_instructions")
+    @classmethod
+    def exact_instructions(cls, value: str | None) -> str | None:
+        if value is not None:
+            if not value.strip():
+                raise ValueError("prompt.output_instructions must be nonblank text")
+            try:
+                value.encode("utf-8")
+            except UnicodeError:
+                raise ValueError(
+                    "prompt.output_instructions must be valid UTF-8 text"
+                ) from None
+        return value
+
+    @field_validator("exemplar_ids_by_trait", mode="before")
+    @classmethod
+    def ordered_ids(cls, value: object) -> object:
+        if isinstance(value, dict):
+            return {
+                key: tuple(cast(list[object], ids)) if isinstance(ids, list) else ids
+                for key, ids in cast(dict[object, object], value).items()
+            }
+        return value
+
+    @field_validator("file", mode="before")
+    @classmethod
+    def parse_path(cls, value: object, info: ValidationInfo) -> object:
+        return PromptSpec.parse_template_path(value, info)
+
+    @model_validator(mode="after")
+    def custom_advanced(self) -> QuestionPromptSpecV1:
+        if self.advanced and self.file is None:
+            raise ValueError("advanced templating requires prompt.file")
+        return self
+
+
+class RunSpecV4(StrictModel):
+    """Explicit native Decisions configuration; provider adapters remain separate."""
+
+    schema_version: Literal[4] = 4
+    task_kind: Literal["rubric", "pairwise"]
+    input: InputSpec
+    rubric: Rubric | None = None
+    criteria: list[PairwiseCriterion] = Field(
+        default_factory=lambda: list[PairwiseCriterion]()
+    )
+    pairs: InputSpec | None = None
+    pair_presentations: InputSpec | None = None
+    exemplars: list[Exemplar] = Field(default_factory=lambda: list[Exemplar]())
+    provider: ID
+    endpoint: ID
+    model: ID
+    generation: GenerationSpec | None = Field(
+        default=None, exclude_if=lambda v: v is None
+    )
+    execution: DecisionsExecutionSpecV1 = Field(
+        default_factory=DecisionsExecutionSpecV1
+    )
+    prompt: QuestionPromptSpecV1 = Field(default_factory=QuestionPromptSpecV1)
+    normalization: NormalizationOptions = Field(default_factory=NormalizationOptions)
+    capture: Literal["full", "minimal"] = "full"
+    seed: int | None = None
+    output_path: Path = Path("run-data")
+    strict_capabilities: bool = False
+    allow_ties: Literal[False] = False
+    account_scope: ID | None = Field(default=None, exclude_if=lambda v: v is None)
+
+    @property
+    def cache_policy_version(self) -> Literal[2]:
+        return 2
+
+    @field_validator("schema_version", mode="before")
+    @classmethod
+    def exact_version(cls, value: object) -> object:
+        if type(value) is not int or value != 4:
+            raise ValueError("schema_version must be integer 4")
+        return value
+
+    @field_validator("allow_ties", mode="before")
+    @classmethod
+    def no_ties(cls, value: object) -> object:
+        if value is not False:
+            raise ValueError("Decisions requires forced choice")
+        return value
+
+    @field_validator("input", "pairs", "pair_presentations", mode="before")
+    @classmethod
+    def input_path(cls, value: object) -> object:
+        return {"path": value} if isinstance(value, (str, Path)) else value
+
+    @field_validator("output_path", mode="before")
+    @classmethod
+    def output_path_value(cls, value: object, info: ValidationInfo) -> object:
+        return _RunSpecFields.parse_output_path(value, info)
+
+    @field_validator("generation")
+    @classmethod
+    def no_generation(cls, value: GenerationSpec | None) -> None:
+        if (
+            value is not None
+            and GenerationSpec.model_validate(_spec_snapshot(value)).model_dump()
+        ):
+            raise ValueError("generation controls are inapplicable to Decisions")
+        return None
+
+    @model_validator(mode="after")
+    def assessment(self) -> RunSpecV4:
+        if (self.provider, self.endpoint) not in {
+            ("mock", "synthetic"),
+            ("openai", "decisions"),
+            ("typesafe", "systemone"),
+            ("gemini", "decisions"),
+        }:
+            raise ValueError("schema_version 4 requires a native Decisions route")
+        if self.task_kind == "rubric":
+            if (
+                self.rubric is None
+                or self.criteria
+                or self.pairs
+                or self.pair_presentations
+            ):
+                raise ValueError(
+                    "rubric Decisions requires only a rubric and responses"
+                )
+            ids = [t.trait_id for t in self.rubric.traits]
+        else:
+            if (
+                self.rubric is not None
+                or not self.criteria
+                or (self.pairs is None) == (self.pair_presentations is None)
+            ):
+                raise ValueError(
+                    "pairwise Decisions requires criteria and exactly one pair source"
+                )
+            ids = [c.trait_id for c in self.criteria]
+            if len(ids) != len(set(ids)):
+                raise ValueError("duplicate criterion")
+        validate_exemplars(self.exemplars, self.rubric, self.criteria)
+        mapping = self.prompt.exemplar_ids_by_trait
+        if (self.exemplars and set(mapping) != set(ids)) or set(mapping) - set(ids):
+            raise ValueError(
+                "prompt.exemplar_ids_by_trait must explicitly cover every question"
+            )
+        examples = {e.exemplar_id: e for e in self.exemplars}
+        for trait, selected in mapping.items():
+            if len(selected) != len(set(selected)) or any(
+                e not in examples for e in selected
+            ):
+                raise ValueError(
+                    "question exemplar IDs must be unique known references"
+                )
+            for identifier in selected:
+                example = examples[identifier]
+                annotated = set(example.scores) | set(example.rationales)
+                if annotated and trait not in annotated:
+                    raise ValueError("exemplar is annotated only for another question")
+        return self
+
+
+RunSpecification = RunSpec | RunSpecV2 | RunSpecV3 | RunSpecV4
 
 
 def _spec_snapshot(value: object) -> object:
@@ -457,9 +685,11 @@ def validate_run_spec(
     versions fail rather than coerce or migrate. Existing models are detached
     and rejected if validation would repair their current contents.
     """
-    if isinstance(value, (RunSpec, RunSpecV2, RunSpecV3)):
+    if isinstance(value, (RunSpec, RunSpecV2, RunSpecV3, RunSpecV4)):
         expected_version = (
-            3
+            4
+            if isinstance(value, RunSpecV4)
+            else 3
             if isinstance(value, RunSpecV3)
             else 2
             if isinstance(value, RunSpecV2)
@@ -477,14 +707,22 @@ def validate_run_spec(
         raise ConfigurationError("run specification must be an object")
     data = cast(dict[str, object], snapshot)
     version = data.get("schema_version", 1)
-    if type(version) is not int or version not in (1, 2, 3):
+    if type(version) is not int or version not in (1, 2, 3, 4):
         raise ConfigurationError(
-            "schema_version must be a supported integer 1, 2, or 3"
+            "schema_version must be a supported integer 1, 2, 3, or 4"
         )
-    model = RunSpecV3 if version == 3 else RunSpecV2 if version == 2 else RunSpec
+    model = (
+        RunSpecV4
+        if version == 4
+        else RunSpecV3
+        if version == 3
+        else RunSpecV2
+        if version == 2
+        else RunSpec
+    )
     revision = (
         value.cache_policy_version
-        if isinstance(value, (RunSpec, RunSpecV2, RunSpecV3))
+        if isinstance(value, (RunSpec, RunSpecV2, RunSpecV3, RunSpecV4))
         and _cache_policy_version is None
         else 2
         if _cache_policy_version is None
@@ -492,7 +730,7 @@ def validate_run_spec(
     )
     checked = model.model_validate(data, context={"cache_policy_version": revision})
     if (
-        isinstance(value, (RunSpec, RunSpecV2, RunSpecV3))
+        isinstance(value, (RunSpec, RunSpecV2, RunSpecV3, RunSpecV4))
         and _spec_snapshot(checked) != snapshot
     ):
         raise ConfigurationError("run specification would change during validation")
@@ -651,7 +889,7 @@ def _load_run_spec(
     """
     source = Path(path).resolve()
     data = _mapping(document_reader(source), source)
-    for field in ("input", "pairs"):
+    for field in ("input", "pairs", "pair_presentations"):
         value = data.get(field)
         if isinstance(value, (str, Path)):
             data[field] = {"path": _relative_path(value, source)}

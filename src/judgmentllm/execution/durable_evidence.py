@@ -21,6 +21,7 @@ from judgmentllm.evidence.usage import InvocationFailureCode
 from judgmentllm.execution.evidence import committed_authorization
 from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.evidence import (
+    DecisionsEvidenceReceiptV2,
     EvidenceReceipt,
     publish_evidence_receipt,
     read_evidence_receipt,
@@ -48,6 +49,11 @@ class DurableEvidence:
         self.store = session.prepared.store
         self.repository = session.repository
         self.enabled = self.repository.evidence_supported
+        self.receipt_type = (
+            DecisionsEvidenceReceiptV2
+            if session.prepared.manifest.schema_version == 8
+            else EvidenceReceipt
+        )
         self.authorization = ReasoningAuthorization(capture=session.spec.capture)
         self.authorization_sha256: str | None = None
         if self.enabled:
@@ -378,7 +384,7 @@ class DurableEvidence:
                 )
             ack = read_acknowledgment(self.store, work.submission_id)
             assert ack is not None and self.authorization_sha256 is not None
-            companion = EvidenceReceipt(
+            companion = self.receipt_type(
                 identity=self.identity(work, observation_id),
                 correlation_id=work.correlation_id,
                 payload_sha256=work.prepared.payload_sha256,
@@ -428,6 +434,47 @@ class DurableEvidence:
         if not self.enabled:
             return None
         session = self.session
+        if self.receipt_type is DecisionsEvidenceReceiptV2:
+            from judgmentllm.decisions.transport import PreparedDecisionsRequestV1
+            from judgmentllm.persistence.decisions_invocations import (
+                DecisionsInvocationV1,
+                publish_invocation,
+                read_invocation,
+            )
+
+            assert isinstance(work.prepared, PreparedDecisionsRequestV1)
+            prior = read_invocation(self.store, work.submission_id)
+            if prior is not None and (
+                prior.identity != work.prepared.transport_commitment.identity
+                or prior.payload_sha256 != work.prepared.payload_sha256
+            ):
+                raise IntegrityError("Decisions forwarding identity conflicts")
+            if not known_invoked and prior is None:
+                return None
+            fact = prior or DecisionsInvocationV1(
+                identity=work.prepared.transport_commitment.identity,
+                payload_sha256=work.prepared.payload_sha256,
+                usage=extract_provider_usage(
+                    self.identity(work, None),
+                    UsageContext(
+                        provider="mock",
+                        endpoint=session.spec.endpoint,
+                        requested_model=session.spec.model,
+                        observation_kind="invocation",
+                        invocation_kind="live",
+                    ),
+                    reported,
+                ),
+            )
+            artifact = publish_invocation(self.store, fact)
+            session.checkpoint(
+                "after_decisions_invocation_receipt", work.prepared.request_uid
+            )
+            with session.transaction():
+                self.repository._register_artifact(session.run_id, artifact)  # pyright: ignore[reportPrivateUsage]
+            # A later complete observation has its own receipt. This immutable
+            # fact remains independent; it cannot block authoritative recovery.
+            return None
         previous = read_evidence_receipt(self.store, work.submission_id)
         if previous is not None:
             self.verify(previous, work)
@@ -455,6 +502,11 @@ class DurableEvidence:
             ("anthropic", "messages"),
             ("gemini", "models.generate_content"),
             ("vertex", "models.generate_content"),
+            *(
+                ([("mock", "synthetic")])
+                if self.receipt_type is DecisionsEvidenceReceiptV2
+                else []
+            ),
         }:
             return None
         identity = self.identity(work, None)
@@ -472,7 +524,7 @@ class DurableEvidence:
             reported,
         )
         assert self.authorization_sha256 is not None
-        evidence = EvidenceReceipt(
+        evidence = self.receipt_type(
             identity=identity,
             correlation_id=work.correlation_id,
             payload_sha256=work.prepared.payload_sha256,
@@ -543,7 +595,7 @@ class DurableEvidence:
             reported,
         )
         assert self.authorization_sha256 is not None
-        evidence = EvidenceReceipt(
+        evidence = self.receipt_type(
             identity=identity,
             correlation_id=work.correlation_id,
             payload_sha256=work.prepared.payload_sha256,

@@ -24,6 +24,10 @@ from native_transport_fixture import (
 )
 
 from judgmentllm.config import RunSpecV3, load_run_spec, validate_run_spec_json
+from judgmentllm.decisions.transport import (
+    DecisionsCommitmentV1,
+    PreparedDecisionsRequestV1,
+)
 from judgmentllm.execution import execute_run, recover_run
 from judgmentllm.execution.retry import authorize_subset_retry
 from judgmentllm.persistence.hashing import (
@@ -248,10 +252,12 @@ async def test_complete_seal_execute_reopen_recover(
         dependency = next(prepared.iter_request_dependencies())
         attempt = next(prepared.repository.iter_attempts("001"))
         receipt = prepared.transport_for_attempt(attempt.attempt_id)
+        assert not isinstance(receipt, DecisionsCommitmentV1)
         identity = physical_identity(
             "001", dependency.request.request_uid, attempt.attempt_id
         )
         wire = prepared.prepare_transport_attempt(dependency, identity, frozen=receipt)
+        assert not isinstance(wire, PreparedDecisionsRequestV1)
         assert (
             wire.payload_sha256 == attempt.payload_sha256 == bytes_digest(wire.payload)
         )
@@ -409,6 +415,10 @@ async def test_auto_freezes_mixed_transports_for_group_and_single_remainder(
         assert prepared.repository.summary("001").tasks == 3
         assert tuple(prepared.repository.iter_submissions("001")) == ()
         receipts = tuple(prepared.transport_for_attempt(a.attempt_id) for a in attempts)
+        assert all(not isinstance(r, DecisionsCommitmentV1) for r in receipts)
+        receipts = tuple(
+            r for r in receipts if not isinstance(r, DecisionsCommitmentV1)
+        )
         assert tuple(r.mechanism for r in receipts) == ("text", mechanism)
         assert all(r.selection.policy == "auto" for r in receipts)
         assert isinstance(receipts[0], TransportCommitmentV1)
@@ -428,6 +438,7 @@ async def test_auto_freezes_mixed_transports_for_group_and_single_remainder(
                 physical_identity("001", attempt.request_uid, attempt.attempt_id),
                 frozen=receipt,
             )
+            assert not isinstance(wire, PreparedDecisionsRequestV1)
             assert wire.output_commitment.local_validation_required
             assert (wire.output_commitment.projection is not None) == (
                 receipt.mechanism != "text"
@@ -730,11 +741,13 @@ def test_reopen_rejects_missing_changed_or_rehashed_evidence(
         attempt = next(prepared.repository.iter_attempts("001"))
         dependency = next(prepared.iter_request_dependencies())
         receipt = prepared.transport_for_attempt(attempt.attempt_id)
+        assert not isinstance(receipt, DecisionsCommitmentV1)
         wire = prepared.prepare_transport_attempt(
             dependency,
             physical_identity("001", attempt.request_uid, attempt.attempt_id),
             frozen=receipt,
         )
+        assert not isinstance(wire, PreparedDecisionsRequestV1)
         directory = prepared.repository.run_directory("001")
     if damage.startswith("context_"):
         context = adapter.transport_context
@@ -825,6 +838,7 @@ def test_transport_json_duplicate_keys_are_rejected_without_disclosure(
         receipt = prepared.transport_for_attempt(
             next(prepared.repository.iter_attempts("001")).attempt_id
         )
+        assert not isinstance(receipt, DecisionsCommitmentV1)
     raw = receipt.model_dump_json().encode()
     if duplicate == "commitment_sha256":
         bad = raw[:-1] + b',"commitment_sha256":"' + PRIVATE_TEXT.encode() + b'"}'

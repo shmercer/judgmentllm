@@ -3,18 +3,29 @@
 __version__ = "0.1.0a3"
 
 from judgmentllm.auth import CredentialStatus, CredentialStatusV2, credential_status
+
+# Independently versioned native preparation and safe provenance companions.
 from judgmentllm.config import (
+    AutoRequestGroupingV1,
     GenerationSpec,
     PromptSpecV2,
     PromptSpecV3,
+    RequestGroupingSpecV1,
     RunSpec,
     RunSpecification,
     RunSpecV2,
     RunSpecV3,
+    RunSpecV4,
+    SingleRequestGroupingV1,
     load_rubric,
     load_run_spec,
     validate_run_spec,
     validate_run_spec_json,
+)
+from judgmentllm.decisions import (
+    PairPresentationInputV1,
+    PreparedPairPresentationV1,
+    prepare_pair_presentations,
 )
 from judgmentllm.generation import GenerationCapabilities, GenerationParameterCapability
 from judgmentllm.models import (
@@ -165,3 +176,16 @@ __all__ += [
     "RunStatus",
     "RunSummary",
 ]
+
+__all__ += [
+    "RunSpecV4",
+    "RequestGroupingSpecV1",
+    "AutoRequestGroupingV1",
+    "SingleRequestGroupingV1",
+    "PairPresentationInputV1",
+    "PreparedPairPresentationV1",
+    "prepare_pair_presentations",
+    "export_decisions_provenance",
+]
+
+from judgmentllm.decisions.provenance import export_decisions_provenance  # noqa: E402

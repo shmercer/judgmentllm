@@ -102,3 +102,8 @@ for (run in evidence) {
   }
 }
 cat("Grouped lifecycle interoperability passed: 8 results, 4 accepted physical submissions\n")
+
+# V4 uses the same required local gate and retains all assertions above.
+script <- sub("^--file=", "", grep("^--file=", commandArgs(), value = TRUE)[[1L]])
+source(file.path(dirname(script), "decisions_interoperability.R"))
+check_decisions_exports(file.path(root, "decisions"))

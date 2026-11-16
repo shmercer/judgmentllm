@@ -14,7 +14,13 @@ from pydantic import (
 )
 
 from judgmentllm.cache_policy import CachePolicyVersion
-from judgmentllm.config import ExecutionSpec, InputSpec, RunSpecification
+from judgmentllm.config import (
+    DecisionsExecutionSpecV1,
+    ExecutionSpec,
+    InputSpec,
+    RunSpecification,
+)
+from judgmentllm.decisions.records import DecisionsLimitsV1
 from judgmentllm.models import ID
 from judgmentllm.output_commitments import SchemaSelectionV2
 from judgmentllm.persistence.generation import GenerationCommitment
@@ -63,6 +69,20 @@ class SourceCommitment(ExecutionModel):
         ):
             raise ValueError("snapshot must retain the exact original bytes")
         return self
+
+
+class PresentationSourceCommitmentV1(SourceCommitment):
+    """V4-only source authority; historical source/manifest readers stay strict."""
+
+    presentation_source_commitment_version: Literal[1] = 1
+    role: Literal["pair_presentations"] = "pair_presentations"  # pyright: ignore[reportIncompatibleVariableOverride]
+
+    @field_validator("presentation_source_commitment_version", mode="before")
+    @classmethod
+    def native_version(cls, value: object) -> object:
+        if type(value) is not int or value != 1:
+            raise ValueError("presentation source version must be integer 1")
+        return value
 
 
 class CategoryCommitment(ExecutionModel):
@@ -697,6 +717,71 @@ class ExecutableRunManifestV7(ExecutableRunManifest):
         return value
 
 
+class ExecutableRunManifestV8(ExecutableRunManifest):
+    """Synthetic Decisions only; no production SDK or serving authority."""
+
+    schema_version: Literal[8] = 8  # pyright: ignore[reportIncompatibleVariableOverride]
+    run_spec_version: Literal[4] = 4
+    transport_protocol: Literal["judgmentllm-decisions-offline-v1"] = (
+        "judgmentllm-decisions-offline-v1"
+    )
+    execution: DecisionsExecutionSpecV1  # pyright: ignore[reportIncompatibleVariableOverride]
+    sources: tuple[SourceCommitment | PresentationSourceCommitmentV1, ...]  # pyright: ignore[reportIncompatibleVariableOverride]
+    pair_presentations: InputSpec | None
+    service_identity: ID
+    limits: DecisionsLimitsV1
+    question_renderer_version: Literal[1, 2] = 1
+    transport_context_sha256: SHA256
+    initial_transport_count: int = Field(ge=0)
+    initial_transport_sha256: SHA256
+    logical_task_count: int = Field(ge=0)
+    presentation_count: int | None = Field(ge=0)
+
+    @field_validator("schema_version", mode="before")
+    @classmethod
+    def _version(cls, value: object) -> object:
+        if type(value) is not int or value != 8:
+            raise ValueError("schema_version must be integer 8")
+        return value
+
+    @field_validator("run_spec_version", "question_renderer_version", mode="before")
+    @classmethod
+    def native_versions(cls, value: object) -> object:
+        if type(value) is not int:
+            raise ValueError("native manifest versions must be strict integers")
+        return value
+
+    @model_validator(mode="after")
+    def complete(self) -> ExecutableRunManifestV8:
+        if (self.configuration_origin == "file") != (
+            self.configuration_location is not None
+        ):
+            raise ValueError("configuration origin is inconsistent")
+        if self.capture == "full":
+            if (
+                self.specification.relative_path is None
+                or any(s.snapshot is None for s in self.sources)
+                or self.recovery_policy != "explicit_verified_snapshot"
+            ):
+                raise ValueError("full capture requires retained source snapshots")
+        elif (
+            self.specification.relative_path is not None
+            or any(s.snapshot is not None for s in self.sources)
+            or self.recovery_policy != "unchanged_originals"
+        ):
+            raise ValueError("minimal capture cannot retain source text")
+        roles = [s.role for s in self.sources]
+        if roles.count("response") != 1 or len(
+            {s.source_id for s in self.sources}
+        ) != len(self.sources):
+            raise ValueError("source identities are inconsistent")
+        if roles.count("pair_presentations") != int(
+            self.pair_presentations is not None
+        ) or roles.count("pair") != int(self.pairs is not None):
+            raise ValueError("pair source differs from manifest")
+        return self
+
+
 ExecutableManifest = (
     ExecutableRunManifest
     | ExecutableRunManifestV2
@@ -705,6 +790,7 @@ ExecutableManifest = (
     | ExecutableRunManifestV5
     | ExecutableRunManifestV6
     | ExecutableRunManifestV7
+    | ExecutableRunManifestV8
 )
 
 
@@ -720,6 +806,8 @@ def parse_executable_manifest(raw: bytes) -> ExecutableManifest:
         if isinstance(value, dict)
         else None
     )
+    if type(version) is int and version == 8:
+        return ExecutableRunManifestV8.model_validate_json(raw)
     if type(version) is int and version == 7:
         return ExecutableRunManifestV7.model_validate_json(raw)
     if type(version) is int and version == 6:

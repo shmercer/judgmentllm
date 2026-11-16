@@ -5,6 +5,11 @@
 /tests/fixtures/presentation-history/portable/store.tar.gz.base64 -text
 /tests/fixtures/cache-history/producer.py.txt -text
 /tests/fixtures/cache-history/store.tar.gz.base64 -text
+/tests/fixtures/decisions/question-renderer-v1.tar.gz.base64 -text
+/tests/fixtures/decisions/question-renderer-v1.json -text
+/tests/fixtures/decisions/question-renderer-v1-portable.tar.gz.base64 -text
+/tests/fixtures/decisions/question-renderer-v1-portable.json -text
+/tests/fixtures/decisions/question-renderer-v1-portable.producer.py.txt -text
 /examples/rendering-revision2/*.txt -text
 /examples/rendering-revision2/*.json -text
 /examples/rendering-revision2/*.jsonl -text

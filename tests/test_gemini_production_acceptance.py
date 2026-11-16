@@ -18,6 +18,7 @@ from test_gemini_lifecycle import production_spec
 
 from judgmentllm import gemini_registry as registry
 from judgmentllm.config import GenerationSpec, RunSpecV3
+from judgmentllm.decisions.transport import DecisionsCommitmentV1
 from judgmentllm.execution import execute_run, recover_run
 from judgmentllm.gemini_transport import (
     GeminiProductionContext,
@@ -410,6 +411,7 @@ async def test_actual_sdk_bytes_native_failure_and_frozen_recovery(
             )
         assert sent == [wire.payload] and adapter.actual_call_count == 1
         assert b"responseJsonSchema" not in sent[0]
+        assert not isinstance(wire.transport_commitment, DecisionsCommitmentV1)
         assert wire.transport_commitment.mechanism == "text"
         assert canonical_bytes(wire.transport_commitment)
     finally:

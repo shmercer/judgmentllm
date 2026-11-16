@@ -1,5 +1,20 @@
 # Internal persistence contracts — Milestone 2 mock execution and lifecycle
 
+## PR B: explicit schema 1/2/3 dispatch
+
+Fresh stores use schema 3; old stores retain schema 1 or 2 without migration,
+backfill or hash reinterpretation. V4 creation fails in old stores before writes.
+Schema 3 adds indexed immutable presentation sources/members and a per-run
+Decisions marker fixed at run insertion. Only marked response-backed
+`refused`/`provider_refusal` results receive the narrowly reviewed guard exception;
+all other result/evidence guards and exact schema-1/2 statements/checksums remain.
+Executable manifest 8, Decisions commitments 1, acknowledgment 2, evidence 2,
+forwarding-fact 1 and outcome-vector 1 are independently dispatched. Existing
+ownership, receipt replay and atomic `commit_results` provide the lifecycle.
+See [storage/atomicity and companion publication](decisions-lifecycle.md#storage-and-acceptance).
+No provenance bundle is represented as a legacy result-export row.
+
+
 The approved [execution plan](milestone-2-execution-plan.md) is preserved as
 reviewed, with the generation requirement added at the start of Subphase 2.
 This document describes the implemented durable foundation, generation

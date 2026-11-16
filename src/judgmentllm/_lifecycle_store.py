@@ -186,6 +186,14 @@ def inspect_run(repository: Repository, run_id: str) -> RunStatus:
             else None
         )
         summary = repository.summary(run_id)
+        from judgmentllm.decisions.provenance import decisions_status
+        from judgmentllm.preparation.manifest import ExecutableRunManifestV8
+
+        decisions = (
+            decisions_status(repository, manifest)
+            if isinstance(manifest, ExecutableRunManifestV8)
+            else None
+        )
         row = repository.connection.execute(
             "SELECT (SELECT COUNT(*) FROM requests WHERE run_id=?) requests,"
             "(SELECT COUNT(*) FROM tasks WHERE run_id=? AND state IN ('invalid','refused','errored')) failed,"
@@ -217,7 +225,12 @@ def inspect_run(repository: Repository, run_id: str) -> RunStatus:
     finally:
         repository.connection.execute("ROLLBACK")
     planned_tasks = planned_requests = None
-    if manifest is not None:
+    if isinstance(manifest, ExecutableRunManifestV8):
+        planned_tasks, planned_requests = (
+            manifest.logical_task_count,
+            manifest.initial_transport_count,
+        )
+    elif manifest is not None:
         count = next(
             source.record_count
             for source in manifest.sources
@@ -295,6 +308,7 @@ def inspect_run(repository: Repository, run_id: str) -> RunStatus:
             summary.unresolved_submissions
             or (active is False and run.state in {"created", "submitted", "running"})
         ),
+        decisions=decisions,
         artifacts=ArtifactPaths(**paths),
         output_selection=manifest.output_selection
         if isinstance(manifest, ExecutableRunManifestV2)

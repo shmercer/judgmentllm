@@ -116,6 +116,26 @@ def subset_dependency(
     tasks = tuple(t for t in dependency.request.tasks if t.task_id in selected)
     # Callers may supply IDs in arbitrary order; wire membership always follows
     # the immutable original request, never selector or response array order.
+    from judgmentllm.decisions.transport import DecisionsDependencyV1
+
+    if isinstance(dependency, DecisionsDependencyV1):
+        questions = tuple(q for q in dependency.questions if q.task_id in selected)
+        return DecisionsDependencyV1.model_validate_json(
+            canonical_bytes(
+                dependency.model_copy(
+                    update={
+                        "questions": questions,
+                        "request": dependency.request.model_copy(
+                            update={
+                                "tasks": tasks,
+                                "trait_ids": tuple(t.trait_id for t in tasks),
+                                "pair": questions[0].pair,
+                            }
+                        ),
+                    }
+                )
+            )
+        )
     return RequestDependency.model_validate(
         dependency.model_copy(
             update={
@@ -333,7 +353,7 @@ def prepare_subset_retry(
         ):
             raise RetryAuthorizationError("retry operation selection conflicts")
         # Rendering and artifact verification stay outside write transactions.
-        if prepared_run.manifest.schema_version in (3, 4, 5, 6, 7):
+        if prepared_run.manifest.schema_version in (3, 4, 5, 6, 7, 8):
             from judgmentllm.transport import physical_identity
 
             wire = prepared_run.prepare_transport_attempt(
@@ -413,7 +433,7 @@ def prepare_subset_retry(
     adapter.validate(prepared_run.spec)
     attempt_id = stable_id("attempt", run_id, request_uid, attempt_number)
     native_artifacts = ()
-    if prepared_run.manifest.schema_version in (3, 4, 5, 6, 7):
+    if prepared_run.manifest.schema_version in (3, 4, 5, 6, 7, 8):
         from judgmentllm.preparation.native import publish_prepared_transport
         from judgmentllm.transport import physical_identity
 
@@ -428,9 +448,24 @@ def prepare_subset_retry(
             parent=prepared_run.transport_for_attempt(original.attempt_id),
         )
         prompt_bytes = wire.rendered_text.encode("utf-8")
-        native_artifacts = publish_prepared_transport(
-            repository, prepared_run.store, wire, prepared_run.spec.capture
-        )
+        if prepared_run.manifest.schema_version == 8:
+            from judgmentllm.decisions.transport import PreparedDecisionsRequestV1
+            from judgmentllm.preparation.decisions import publish_decisions_request
+
+            assert isinstance(wire, PreparedDecisionsRequestV1)
+            native_artifacts = publish_decisions_request(
+                repository, prepared_run.store, wire, prepared_run.spec.capture
+            )
+        else:
+            from judgmentllm.decisions.transport import PreparedDecisionsRequestV1
+
+            if isinstance(wire, PreparedDecisionsRequestV1):
+                raise IntegrityError(
+                    "historical retry cannot acquire Decisions transport"
+                )
+            native_artifacts = publish_prepared_transport(
+                repository, prepared_run.store, wire, prepared_run.spec.capture
+            )
     else:
         rendered = prepared_run.render_attempt(subset)
         if type(rendered) not in (RenderedPrompt, RenderedPromptV2):

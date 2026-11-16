@@ -10,7 +10,13 @@ from typing import Literal
 
 from pydantic import Field
 
-from judgmentllm.config import RunSpecification, RunSpecV2, RunSpecV3, validate_run_spec
+from judgmentllm.config import (
+    RunSpecification,
+    RunSpecV2,
+    RunSpecV3,
+    RunSpecV4,
+    validate_run_spec,
+)
 from judgmentllm.generation import GenerationCapabilities
 from judgmentllm.io import _revalidate_record, read_pairs, read_responses  # pyright: ignore[reportPrivateUsage]
 from judgmentllm.models import PairTask, ResponseItem, StrictModel, VersionedModel
@@ -228,6 +234,10 @@ class PlannedRequest(VersionedModel):
 def _groups(
     spec: RunSpecification, capabilities: CapabilityProfile
 ) -> tuple[tuple[str, ...], ...]:
+    if isinstance(spec, RunSpecV4):
+        raise PreflightError(
+            "V4 source-specific grouping requires estimate_run or prepare_run"
+        )
     if spec.task_kind == "pairwise":
         return tuple((criterion.trait_id,) for criterion in spec.criteria)
     assert spec.rubric is not None
@@ -279,6 +289,40 @@ def validate_run(
     spec: RunSpecification, *, capabilities: CapabilityProfile | None = None
 ) -> ValidationReport:
     """Validate known compatibility, preserving unknowns as explicit diagnostics."""
+    if isinstance(spec, RunSpecV4):
+        checked = validate_run_spec(spec)
+        assert isinstance(checked, RunSpecV4)
+        issues = []
+        if (
+            capabilities is not None
+            and checked.rubric is not None
+            and capabilities.max_levels is not None
+        ):
+            if any(
+                len(t.levels) > capabilities.max_levels for t in checked.rubric.traits
+            ):
+                issues.append(
+                    ValidationIssue(
+                        code="unsupported",
+                        field="rubric",
+                        message="ordered scale exceeds independently known endpoint limit",
+                        severity="error",
+                    )
+                )
+        if (
+            capabilities is not None
+            and capabilities.modes is not None
+            and "live" not in capabilities.modes
+        ):
+            issues.append(
+                ValidationIssue(
+                    code="unsupported",
+                    field="execution.mode",
+                    message="live execution is unsupported",
+                    severity="error",
+                )
+            )
+        return ValidationReport(issues=tuple(issues))
     if isinstance(spec, (RunSpecV2, RunSpecV3)):
         spec = validate_run_spec(spec)
     if (
@@ -551,6 +595,8 @@ def request_context_fingerprint(
     spec: RunSpecification, *, template_text: str | None
 ) -> str:
     """Commit the established request context without reopening template files."""
+    if isinstance(spec, RunSpecV4):
+        raise PreflightError("V4 uses independently versioned Decisions commitments")
     context_parts: list[object] = [
         spec.rubric.model_dump(mode="json")
         if spec.rubric

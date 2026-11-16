@@ -15,6 +15,7 @@ from typing import cast
 
 from judgmentllm import gemini_types, vertex_types
 from judgmentllm.config import RunSpecification
+from judgmentllm.decisions.transport import PreparedDecisionsRequestV1
 from judgmentllm.evidence import ReportedUsageInput
 from judgmentllm.evidence.usage import InvocationFailureCode
 from judgmentllm.execution.durable_evidence import DurableEvidence
@@ -44,6 +45,7 @@ from judgmentllm.persistence.models import (
 from judgmentllm.persistence.ownership import ExecutorOwnership
 from judgmentllm.persistence.receipts import (
     AcknowledgmentReceipt,
+    AcknowledgmentReceiptV2,
     ResponseReceipt,
     publish_acknowledgment,
     read_acknowledgment,
@@ -61,6 +63,7 @@ from judgmentllm.providers import (
     ProviderError,
     ProviderResponse,
 )
+from judgmentllm.providers.protocol import ProviderAcknowledgmentV2
 
 Fault = Callable[[str, str], None]
 
@@ -207,9 +210,24 @@ class ExecutionSession:
     ) -> PreparedRequest:
         """Reconstruct pinned V3 bytes; historical rendering keeps its old path."""
         assert self.prepared is not None
-        if self.prepared.manifest.schema_version in (3, 4, 5, 6, 7):
+        if self.prepared.manifest.schema_version in (3, 4, 5, 6, 7, 8):
             from judgmentllm.transport import physical_identity
 
+            if self.prepared.manifest.schema_version == 8:
+                from judgmentllm.preparation.decisions import DecisionsPreparedRun
+
+                assert isinstance(self.prepared, DecisionsPreparedRun)
+                if (
+                    getattr(self.adapter, "transport_context", None)
+                    != self.prepared.context()
+                ):
+                    raise IntegrityError("Decisions runtime context changed")
+                return self.prepared.prepare_transport_attempt(
+                    dependency,
+                    physical_identity(
+                        self.run_id, dependency.request.request_uid, attempt_id
+                    ),
+                )
             if (
                 getattr(self.adapter, "transport_context", None)
                 != self.prepared.transport_context
@@ -263,6 +281,7 @@ class ExecutionSession:
         if not isinstance(
             prepared,
             (
+                PreparedDecisionsRequestV1,
                 PreparedRequestV3,
                 PreparedRequestV4,
                 PreparedRequestV5,
@@ -324,7 +343,7 @@ class ExecutionSession:
         while True:
             existing = next(self.existing, None)
             if existing is not None:
-                if self.prepared.manifest.schema_version in (3, 4, 5, 6, 7):
+                if self.prepared.manifest.schema_version in (3, 4, 5, 6, 7, 8):
                     self.verify_native_attempt(existing)
                 results = self.repository.get_results_for_attempt(
                     self.run_id, existing.attempt_id
@@ -363,7 +382,7 @@ class ExecutionSession:
                 dependency = next(self.dependencies, None)
                 if dependency is None:
                     return None
-                if self.prepared.manifest.schema_version in (3, 4, 5, 6, 7):
+                if self.prepared.manifest.schema_version in (3, 4, 5, 6, 7, 8):
                     raise IntegrityError("sealed native request was scheduled twice")
                 ordinal = self.ordinal
                 self.ordinal += 1
@@ -478,6 +497,7 @@ class ExecutionSession:
                     5,
                     6,
                     7,
+                    8,
                 ):
                     self.initial_submission(existing, prepared)
                     submission = self.repository.get_submission_for_attempt(
@@ -507,7 +527,7 @@ class ExecutionSession:
     def repair_committed(self, attempt: AttemptRecord, status: str) -> None:
         """Committed records are authoritative, including a lost final report."""
         assert self.prepared is not None
-        if self.prepared.manifest.schema_version in (3, 4, 5, 6, 7):
+        if self.prepared.manifest.schema_version in (3, 4, 5, 6, 7, 8):
             self.verify_native_attempt(attempt)
         for digest in (attempt.prompt_sha256, attempt.payload_sha256):
             self.prepared.store.verify(
@@ -633,7 +653,20 @@ class ExecutionSession:
         self, work: ExecutionWork, acknowledgment: ProviderAcknowledgment
     ) -> None:
         assert self.prepared is not None
-        receipt = AcknowledgmentReceipt(
+        if isinstance(work.prepared, PreparedDecisionsRequestV1):
+            if (
+                not isinstance(acknowledgment, ProviderAcknowledgmentV2)
+                or acknowledgment.response_evidence.request_uid
+                != work.prepared.request_uid
+            ):
+                raise IntegrityError(
+                    "Decisions acceptance lacks invocation-bound complete response evidence"
+                )
+        elif isinstance(acknowledgment, ProviderAcknowledgmentV2):
+            raise IntegrityError(
+                "historical attempts cannot acquire Decisions acceptance"
+            )
+        values = dict(
             run_id=self.run_id,
             attempt_id=work.attempt_id,
             submission_id=work.submission_id,
@@ -641,6 +674,13 @@ class ExecutionSession:
             payload_sha256=work.prepared.payload_sha256,
             remote_id=acknowledgment.remote_id,
             observation_key=acknowledgment.observation_key,
+        )
+        receipt = (
+            AcknowledgmentReceiptV2.model_validate(
+                {**values, "response_evidence": acknowledgment.response_evidence}
+            )
+            if isinstance(acknowledgment, ProviderAcknowledgmentV2)
+            else AcknowledgmentReceipt.model_validate(values)
         )
         receipt.verify_submission(
             self.repository.get_submission(self.run_id, work.submission_id)
@@ -873,6 +913,12 @@ class ExecutionSession:
         receipt.verify_submission(
             self.repository.get_submission(self.run_id, work.submission_id)
         )
+        if isinstance(receipt, AcknowledgmentReceiptV2):
+            return ProviderAcknowledgmentV2(
+                remote_id=receipt.remote_id,
+                observation_key=receipt.observation_key,
+                response_evidence=receipt.response_evidence,
+            )
         return ProviderAcknowledgment(
             remote_id=receipt.remote_id, observation_key=receipt.observation_key
         )
@@ -942,6 +988,22 @@ class ExecutionSession:
     def process(self, work: ExecutionWork, response: ProviderResponse) -> None:
         assert self.prepared is not None
         self.verify_observation_key(work, response.observation_key)
+        if isinstance(work.prepared, PreparedDecisionsRequestV1):
+            acknowledgment = read_acknowledgment(
+                self.prepared.store, work.submission_id
+            )
+            if not isinstance(acknowledgment, AcknowledgmentReceiptV2) or (
+                acknowledgment.response_evidence.request_uid,
+                acknowledgment.response_evidence.response_sha256,
+                acknowledgment.response_evidence.response_byte_length,
+            ) != (
+                work.prepared.request_uid,
+                bytes_digest(response.raw),
+                len(response.raw),
+            ):
+                raise IntegrityError(
+                    "Decisions complete response differs from acceptance evidence"
+                )
         self.checkpoint("after_response", work.prepared.request_uid)
         raw, receipt, evidence = self.evidence.prepare(work, response)
         verified = (
@@ -994,67 +1056,110 @@ class ExecutionSession:
             self.tier_review_required |= needs_tier_review
         self.checkpoint("after_observation", work.prepared.request_uid)
         self.checkpoint("before_parsing", work.prepared.request_uid)
-        try:
-            parsed = (
-                self.adapter.parse(response, strict_output=True)
-                if self.spec.schema_version in (2, 3)
-                or isinstance(work.prepared, PreparedRequestV2)
-                else self.adapter.parse(response)
-            )
-        except ValueError:
-            if response.kind != "response":
-                raise IntegrityError(
-                    "terminal provider evidence could not be parsed"
-                ) from None
-            parsed = None
-        self.checkpoint("before_validation", work.prepared.request_uid)
-        contract = None
-        if self.prepared.manifest.schema_version in (3, 4, 5, 6, 7):
-            from judgmentllm.anthropic_transport import PreparedRequestV5
-            from judgmentllm.production_transport import PreparedRequestV4
-            from judgmentllm.transport import PreparedRequestV3
+        if isinstance(work.prepared, PreparedDecisionsRequestV1):
+            from judgmentllm.config import RunSpecV4
+            from judgmentllm.decisions.interpretation import interpret_decisions
+            from judgmentllm.decisions.transport import DecisionsDependencyV1
 
-            if not isinstance(
-                work.prepared,
-                (
-                    PreparedRequestV3,
-                    PreparedRequestV4,
-                    PreparedRequestV5,
-                    vertex_types.PreparedRequestV7,
-                    gemini_types.PreparedRequestV6,
-                ),
-            ):
-                raise IntegrityError("native execution requires its committed output")
-            current = self.prepare_attempt(work.dependency, work.attempt_id)
-            if current != work.prepared:
-                raise IntegrityError("native commitment changed before interpretation")
-            contract = work.prepared.output_commitment.contract
-        if self.spec.schema_version == 2 or isinstance(
-            work.prepared, PreparedRequestV2
-        ):
-            if not isinstance(work.prepared, PreparedRequestV2):
-                raise IntegrityError(
-                    "v2 execution requires a committed output contract"
-                )
-            commitment = validate_output_commitment(
-                work.prepared.output_commitment, self.spec, work.dependency.request
+            assert isinstance(self.spec, RunSpecV4) and isinstance(
+                work.dependency, DecisionsDependencyV1
             )
-            # Verify the same detached representation still produces the committed bytes.
             current = self.prepare_attempt(work.dependency, work.attempt_id)
             if current != work.prepared:
-                raise IntegrityError("output commitment changed before interpretation")
-            contract = commitment.contract
-        interpreted = interpret(
-            parsed,
-            self.spec,
-            work.dependency,
-            self.run_id,
-            work.attempt_id,
-            contract=contract,
-            member_checkpoint=lambda: self.checkpoint(
-                "during_member_validation", work.prepared.request_uid
-            ),
-        )
+                raise IntegrityError(
+                    "Decisions commitment changed before interpretation"
+                )
+            from judgmentllm.decisions.responses import ParsedDecisionsResponseV1
+
+            parser = getattr(self.adapter, "parse_decisions", None)
+            if not callable(parser):
+                raise IntegrityError(
+                    "Decisions adapter lacks its typed response boundary"
+                )
+            parsed_decisions = parser(response, work.prepared)
+            if not isinstance(
+                parsed_decisions, ParsedDecisionsResponseV1
+            ) or parsed_decisions.response_sha256 != bytes_digest(response.raw):
+                raise IntegrityError(
+                    "Decisions parser lost its original response binding"
+                )
+            interpreted = interpret_decisions(
+                parsed_decisions,
+                self.spec,
+                work.dependency,
+                work.prepared,
+                member_checkpoint=lambda: self.checkpoint(
+                    "during_member_validation", work.prepared.request_uid
+                ),
+            )
+        else:
+            try:
+                parsed = (
+                    self.adapter.parse(response, strict_output=True)
+                    if self.spec.schema_version in (2, 3)
+                    or isinstance(work.prepared, PreparedRequestV2)
+                    else self.adapter.parse(response)
+                )
+            except ValueError:
+                if response.kind != "response":
+                    raise IntegrityError(
+                        "terminal provider evidence could not be parsed"
+                    ) from None
+                parsed = None
+            self.checkpoint("before_validation", work.prepared.request_uid)
+            contract = None
+            if self.prepared.manifest.schema_version in (3, 4, 5, 6, 7):
+                from judgmentllm.anthropic_transport import PreparedRequestV5
+                from judgmentllm.production_transport import PreparedRequestV4
+                from judgmentllm.transport import PreparedRequestV3
+
+                if not isinstance(
+                    work.prepared,
+                    (
+                        PreparedRequestV3,
+                        PreparedRequestV4,
+                        PreparedRequestV5,
+                        vertex_types.PreparedRequestV7,
+                        gemini_types.PreparedRequestV6,
+                    ),
+                ):
+                    raise IntegrityError(
+                        "native execution requires its committed output"
+                    )
+                current = self.prepare_attempt(work.dependency, work.attempt_id)
+                if current != work.prepared:
+                    raise IntegrityError(
+                        "native commitment changed before interpretation"
+                    )
+                contract = work.prepared.output_commitment.contract
+            if self.spec.schema_version == 2 or isinstance(
+                work.prepared, PreparedRequestV2
+            ):
+                if not isinstance(work.prepared, PreparedRequestV2):
+                    raise IntegrityError(
+                        "v2 execution requires a committed output contract"
+                    )
+                commitment = validate_output_commitment(
+                    work.prepared.output_commitment, self.spec, work.dependency.request
+                )
+                # Verify the same detached representation still produces the committed bytes.
+                current = self.prepare_attempt(work.dependency, work.attempt_id)
+                if current != work.prepared:
+                    raise IntegrityError(
+                        "output commitment changed before interpretation"
+                    )
+                contract = commitment.contract
+            interpreted = interpret(
+                parsed,
+                self.spec,
+                work.dependency,
+                self.run_id,
+                work.attempt_id,
+                contract=contract,
+                member_checkpoint=lambda: self.checkpoint(
+                    "during_member_validation", work.prepared.request_uid
+                ),
+            )
         results = tuple(
             self.provenance(
                 result,
@@ -1066,8 +1171,42 @@ class ExecutionSession:
             )
             for result in interpreted.results
         )
+        vector_artifact = None
+        if isinstance(work.prepared, PreparedDecisionsRequestV1):
+            from judgmentllm.decisions.interpretation import (
+                InterpretedDecisionsResponse,
+            )
+            from judgmentllm.decisions.outcomes import (
+                DecisionsOutcomeVectorV1,
+                publish_outcomes,
+            )
+
+            assert isinstance(interpreted, InterpretedDecisionsResponse)
+            vector = DecisionsOutcomeVectorV1(
+                identity=work.prepared.transport_commitment.identity,
+                observation_id=observation.observation_id,
+                response_sha256=bytes_digest(response.raw),
+                commitment_sha256=work.prepared.transport_commitment.commitment_sha256,
+                recognizable=interpreted.recognizable,
+                whole_response_valid=interpreted.recognizable
+                and not interpreted.unexpected_members
+                and not interpreted.unattributable_members
+                and all(r.status == "complete" for r in results),
+                unexpected_members=interpreted.unexpected_members,
+                unattributable_members=interpreted.unattributable_members,
+                answers=interpreted.answers,
+                result_sha256=tuple(
+                    semantic_digest("normalized-result", r) for r in results
+                ),
+            )
+            vector_artifact = publish_outcomes(self.prepared.store, vector)
+            self.checkpoint(
+                "after_decisions_outcome_artifact", work.prepared.request_uid
+            )
         self.checkpoint("after_normalization", work.prepared.request_uid)
         with self.transaction():
+            if vector_artifact is not None:
+                self.repository._register_artifact(self.run_id, vector_artifact)  # pyright: ignore[reportPrivateUsage]
             self.repository.commit_results(
                 self.run_id,
                 work.attempt_id,

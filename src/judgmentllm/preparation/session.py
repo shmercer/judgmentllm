@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, BinaryIO, Literal
 
-from judgmentllm import gemini_types, vertex_types
+from judgmentllm import decisions_types, gemini_types, vertex_types
 from judgmentllm._verification import ExactToken, exact_token
 from judgmentllm.config import (
     RunSpecification,
@@ -498,7 +498,7 @@ class PreparedRun:
                 self.transport_context,
                 template=template,
                 lookup=self._get,
-                frozen=self.transport_for_attempt(attempt_id),
+                frozen=self._historical_transport_for_attempt(attempt_id),
             )
             rendered = render_request(spec, template, request, self._get, wire)
         elif isinstance(self.manifest, ExecutableRunManifestV2):
@@ -532,6 +532,57 @@ class PreparedRun:
         | TransportCommitmentV3
         | vertex_types.TransportCommitmentV5
         | gemini_types.TransportCommitmentV4
+        | decisions_types.DecisionsCommitmentV1
+    ):
+        return self._historical_transport_for_attempt(attempt_id)
+
+    def prepare_transport_attempt(
+        self,
+        dependency: RequestDependency,
+        identity: PhysicalRequestIdentityV1,
+        *,
+        frozen: TransportCommitmentV1
+        | TransportCommitmentV2
+        | TransportCommitmentV3
+        | vertex_types.TransportCommitmentV5
+        | gemini_types.TransportCommitmentV4
+        | decisions_types.DecisionsCommitmentV1
+        | None = None,
+        parent: TransportCommitmentV1
+        | TransportCommitmentV2
+        | TransportCommitmentV3
+        | vertex_types.TransportCommitmentV5
+        | gemini_types.TransportCommitmentV4
+        | decisions_types.DecisionsCommitmentV1
+        | None = None,
+    ) -> (
+        PreparedRequestV3
+        | PreparedRequestV4
+        | PreparedRequestV5
+        | vertex_types.PreparedRequestV7
+        | gemini_types.PreparedRequestV6
+        | decisions_types.PreparedDecisionsRequestV1
+    ):
+        from judgmentllm.decisions.transport import DecisionsCommitmentV1
+
+        if isinstance(frozen, DecisionsCommitmentV1) or isinstance(
+            parent, DecisionsCommitmentV1
+        ):
+            raise PreparationError(
+                "historical transport cannot inherit Decisions commitment"
+            )
+        return self._historical_prepare_transport_attempt(
+            dependency, identity, frozen=frozen, parent=parent
+        )
+
+    def _historical_transport_for_attempt(
+        self, attempt_id: str
+    ) -> (
+        TransportCommitmentV1
+        | TransportCommitmentV2
+        | TransportCommitmentV3
+        | vertex_types.TransportCommitmentV5
+        | gemini_types.TransportCommitmentV4
     ):
         """Read original safe metadata; missing commitments are never repaired."""
         from judgmentllm.persistence.transport_receipts import read_transport_commitment
@@ -551,6 +602,12 @@ class PreparedRun:
             raise PreparationError("historical preparation has no native transport")
         attempt = self.repository.get_attempt(self.manifest.run_id, attempt_id)
         receipt = read_transport_commitment(self.store, attempt_id)
+        from judgmentllm.decisions.transport import DecisionsCommitmentV1
+
+        if isinstance(receipt, DecisionsCommitmentV1):
+            raise PreparationError(
+                "historical manifest cannot acquire Decisions commitment"
+            )
         if receipt is None or (
             attempt.attempt_id
             != stable_id(
@@ -601,7 +658,7 @@ class PreparedRun:
             )
         return receipt
 
-    def prepare_transport_attempt(
+    def _historical_prepare_transport_attempt(
         self,
         dependency: RequestDependency,
         identity: PhysicalRequestIdentityV1,
@@ -668,7 +725,7 @@ class PreparedRun:
         except NotFoundError:
             existing = None
         if existing is not None:
-            pinned = self.transport_for_attempt(identity.attempt_id)
+            pinned = self._historical_transport_for_attempt(identity.attempt_id)
             if frozen is not None and canonical_bytes(pinned) != canonical_bytes(
                 frozen
             ):
@@ -682,7 +739,7 @@ class PreparedRun:
             raise PreparationError("frozen transport has no matching prepared attempt")
         first_id = stable_id("attempt", self.manifest.run_id, identity.request_uid, 1)
         if identity.attempt_id != first_id:
-            original_receipt = self.transport_for_attempt(first_id)
+            original_receipt = self._historical_transport_for_attempt(first_id)
             if frozen is not None and (
                 frozen.parent_commitment_sha256 != original_receipt.commitment_sha256
                 or frozen.mechanism != original_receipt.mechanism
@@ -948,7 +1005,7 @@ class PreparedRun:
                 self.spec,
                 dependency.request,
                 self.transport_context,
-                self.transport_for_attempt(first_id),
+                self._historical_transport_for_attempt(first_id),
             )
             from judgmentllm.anthropic_transport import OutputCommitmentV5
             from judgmentllm.production_transport import OutputCommitmentV4

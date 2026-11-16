@@ -22,6 +22,7 @@ from judgmentllm.config import (
     RunSpecification,
     RunSpecV2,
     RunSpecV3,
+    RunSpecV4,
     _load_run_spec,  # pyright: ignore[reportPrivateUsage]
     parse_document,
     validate_run_spec,
@@ -125,6 +126,7 @@ def _manifest(
     | gemini_types.GeminiProductionContext
     | None = None,
 ) -> ExecutableManifest:
+    assert not isinstance(spec, RunSpecV4)
     plan = plan_run(spec, capabilities=capabilities)
     raw = canonical_bytes(spec)
     identity = (
@@ -272,6 +274,18 @@ def prepare_run(
     """
     if type(exhaustive_rendering) is not bool:
         raise PreparationError("exhaustive_rendering must be a boolean")
+    if isinstance(spec_or_path, RunSpecV4):
+        from judgmentllm.preparation.decisions import prepare_decisions_run
+
+        if transport_context is not None:
+            raise PreparationError("V4 cannot acquire legacy transport context")
+        return prepare_decisions_run(
+            spec_or_path,
+            store=store,
+            run_id=run_id,
+            capabilities=capabilities,
+        )
+    assert not isinstance(spec_or_path, RunSpecV4)
     repository = Repository(store)
     prepared: PreparedRun | None = None
     try:
@@ -300,6 +314,17 @@ def prepare_run(
             data = parse_document(raw.decode("utf-8"), origin)
             if not isinstance(data, dict):
                 raise PreparationError("configuration must contain an object")
+            version = cast(dict[str, object], data).get("schema_version")
+            if type(version) is int and version == 4:
+                from judgmentllm.preparation.decisions import prepare_decisions_run
+
+                repository.require_decisions_storage()
+                if transport_context is not None:
+                    raise PreparationError("V4 cannot acquire legacy transport context")
+                repository.close()
+                return prepare_decisions_run(
+                    origin, store=store, run_id=run_id, capabilities=capabilities
+                )
             capture = cast(dict[str, object], data).get("capture", "full")
             if capture not in ("full", "minimal"):
                 raise PreparationError("capture must be full or minimal")
@@ -517,6 +542,8 @@ def _load_manifest(
     if not unsealed and repository.get_manifest(run_id).artifact != identity:
         raise PreparationError("published manifest conflicts with the database seal")
     run = repository.get_run(run_id)
+    if (repository.decisions_version(run_id) == 4) != (manifest.schema_version == 8):
+        raise PreparationError("Decisions marker differs from frozen manifest")
     if (run.task_kind, run.provider, run.endpoint, run.model, run.capture) != (
         manifest.task_kind,
         manifest.generation.provider,
@@ -725,7 +752,15 @@ def open_prepared_run(
             if capability_resolver is not None:
                 capabilities = capability_resolver(current)
             profile = _revalidate_record(capabilities) if capabilities else None
-            prepared = PreparedRun(
+            from judgmentllm.preparation.decisions import DecisionsPreparedRun
+            from judgmentllm.preparation.manifest import ExecutableRunManifestV8
+
+            prepared_type = (
+                DecisionsPreparedRun
+                if isinstance(manifest, ExecutableRunManifestV8)
+                else PreparedRun
+            )
+            prepared = prepared_type(
                 repository,
                 manifest,
                 current,
@@ -767,7 +802,11 @@ def open_prepared_run(
                 )
             if unsealed:
                 identity = repository.get_artifact(run_id, prepared.manifest_sha256)
-                repository.seal_run(run_id, ManifestReference(artifact=identity))
+                repository.seal_run(
+                    run_id,
+                    ManifestReference(artifact=identity),
+                    decisions_spec=current if isinstance(current, RunSpecV4) else None,
+                )
         return prepared
     except BaseException as error:
         if prepared is not None:

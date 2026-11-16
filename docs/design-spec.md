@@ -9,9 +9,10 @@ Gemini Developer Decisions, in that order, with required multi-judgment requests
 over identical eligible shared input. The [PR A architecture](native-decisions-design.md)
 specifies a strict immutable single/auto grouping control, deterministic caps and
 context/body splitting, named-question identity, physical acknowledgment,
-atomic member outcomes, once-per-physical usage and R provenance. These are
-review proposals, not executable configuration in this PR; historical behavior,
-IDs, stored bytes and generative grouping remain unchanged.
+atomic member outcomes, once-per-physical usage and R provenance. D1–D4 were accepted with PR #62. [PR B](decisions-lifecycle.md) implements the
+shared lifecycle and RunSpec V4 with a synthetic-only adapter; C–E own production
+native integration. Historical behavior, IDs, stored bytes and generative
+grouping remain unchanged.
 
 This explicitly supersedes the two-native-adapter M4 direction and the pre-M5
 alpha target. Together/Ollama live completion is deferred in priority, retained

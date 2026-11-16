@@ -229,6 +229,15 @@ def compare(
                 if expected
                 else []
             )
+            old_eof = len(old.decode("utf-8").splitlines()) + 1
+            new_eof = len(content.decode("utf-8").splitlines()) + 1
+            if (
+                expected is not None
+                and old_eof in expected["excluded_lines"]
+                and new_eof in actual["excluded_lines"]
+            ):
+                # coverage.py can exclude the virtual EOF after a trailing suite.
+                exclusions = sorted({*exclusions, new_eof})
             if actual["excluded_lines"] != exclusions:
                 raise ValueError(
                     f"Modified source exclusions require explicit reconciliation: {filename}"

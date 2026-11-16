@@ -1,0 +1,138 @@
+"""Produce a portable historical fixture using the retained qualified wheel.
+
+Run with the worktree's Python, -I, and wheel/receipt/fresh-data-root arguments.
+The implementation and synthetic data helpers must match the genuine producer.
+"""
+
+from __future__ import annotations
+
+import base64
+import hashlib
+import io
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import tarfile
+import zipfile
+
+COMMIT = "23c855f60f0cbb61700793e764340c7651719b72"
+repository = Path.cwd()
+wheel, receipt_path, root = (Path(value).resolve() for value in sys.argv[1:])
+assert len(sys.argv) == 4 and not root.exists()
+receipt = json.loads(receipt_path.read_bytes())
+assert receipt["status"] == "passed" and receipt["source_verified"]
+assert receipt["source_sha"] == COMMIT
+
+source_bytes = subprocess.check_output(
+    ["git", "archive", COMMIT, "src/judgmentllm"], cwd=repository
+)
+expected = {}
+with tarfile.open(fileobj=io.BytesIO(source_bytes), mode="r:") as source:
+    for member in source:
+        if member.isfile():
+            stream = source.extractfile(member)
+            assert stream is not None
+            expected[member.name.removeprefix("src/")] = stream.read()
+with zipfile.ZipFile(wheel) as source:
+    installed = {
+        name: source.read(name)
+        for name in source.namelist()
+        if name.startswith("judgmentllm/") and not name.endswith("/")
+    }
+# These private development modules are excluded by the producer's pyproject.
+excluded = {
+    name
+    for name in expected
+    if name == "judgmentllm/keyring.py" or name.startswith("judgmentllm/study/")
+}
+assert set(installed) == set(expected) - excluded
+assert all(raw == expected[name] for name, raw in installed.items())
+helpers = {}
+for name in (
+    "tests/test_decisions_lifecycle.py",
+    "tests/test_decisions_contracts.py",
+    "tests/fixtures/decisions/sched1.json",
+):
+    raw = subprocess.check_output(["git", "show", f"{COMMIT}:{name}"], cwd=repository)
+    assert (repository / name).read_bytes() == raw
+    helpers[name] = hashlib.sha256(raw).hexdigest()
+
+sys.path.insert(0, str(repository / "tests"))
+sys.path.insert(0, str(wheel))
+import judgmentllm
+from judgmentllm.config import QuestionPromptSpecV1
+from judgmentllm.preparation import prepare_run
+from test_decisions_contracts import pair_spec
+from test_decisions_lifecycle import native_spec
+
+assert judgmentllm.__file__.startswith(str(wheel) + "/")
+assert "output_instructions" not in QuestionPromptSpecV1.model_fields
+root.mkdir(parents=True)
+store = root / "store"
+runs = {}
+for kind, helper in (("rubric", native_spec), ("pairwise", pair_spec)):
+    data = root / kind
+    data.mkdir()
+    os.chdir(data)  # Synthetic producer data only; all implementation stays in the wheel.
+    spec = helper(Path("."))
+    assert spec.input.path == Path("responses.jsonl")
+    assert spec.prompt.file is None and spec.output_path == Path("run-data")
+    if kind == "pairwise":
+        assert spec.pair_presentations.path == Path("presentations.jsonl")
+    with prepare_run(spec, store=store, run_id=kind) as prepared:
+        assert prepared.manifest.question_renderer_version == 1
+        assert not list(prepared.repository.iter_submissions(kind))
+        requests = []
+        for dependency in prepared.iter_request_dependencies():
+            uid = dependency.request.request_uid
+            attempt = prepared.repository.get_attempt_for_request(kind, uid)
+            assert attempt is not None
+            commitment = prepared.transport_for_attempt(attempt.attempt_id)
+            wire = prepared.prepare_transport_attempt(dependency, commitment.identity)
+            requests.append(
+                {
+                    "request_uid": uid,
+                    "attempt_id": attempt.attempt_id,
+                    "questions": [q.instructions for q in dependency.questions],
+                    "prompt_sha256": wire.prompt_sha256,
+                    "payload_sha256": wire.payload_sha256,
+                }
+            )
+        runs[kind] = {
+            "manifest_sha256": prepared.manifest_sha256,
+            "requests": requests,
+        }
+
+os.chdir(repository)
+archive = root / "question-renderer-v1-portable.tar.gz"
+files = {}
+with tarfile.open(archive, "w:gz", dereference=True) as output:
+    for path in sorted(store.rglob("*")):
+        if path.is_file():
+            name = path.relative_to(root).as_posix()
+            raw = path.read_bytes()
+            files[name] = {"bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}
+            output.add(path, arcname=name, recursive=False)
+raw = archive.read_bytes()
+metadata = {
+    "producer_commit": COMMIT,
+    "producer_wheel_sha256": hashlib.sha256(wheel.read_bytes()).hexdigest(),
+    "producer_receipt_sha256": hashlib.sha256(receipt_path.read_bytes()).hexdigest(),
+    "producer_script_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+    "producer_files": {
+        "src/" + name: hashlib.sha256(raw).hexdigest()
+        for name, raw in sorted(installed.items())
+    },
+    "producer_helpers": helpers,
+    "archive_sha256": hashlib.sha256(raw).hexdigest(),
+    "files": files,
+    "runs": runs,
+}
+output = repository / "tests/fixtures/decisions/question-renderer-v1-portable"
+output.with_suffix(".tar.gz.base64").write_bytes(base64.b64encode(raw))
+output.with_suffix(".json").write_text(
+    json.dumps(metadata, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8"
+)
+print(json.dumps({"producer_commit": COMMIT, "package_files": len(installed), "archive_sha256": metadata["archive_sha256"]}))

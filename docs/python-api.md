@@ -1,5 +1,25 @@
 # Public Python API and versioned assessment contracts
 
+## PR B: V4 Decisions lifecycle
+
+`RunSpecV4`, `RequestGroupingSpecV1`, `SingleRequestGroupingV1`,
+`AutoRequestGroupingV1`, `PairPresentationInputV1`,
+`PreparedPairPresentationV1`, `prepare_pair_presentations` and
+`export_decisions_provenance` are additive public imports. Existing lifecycle
+entrypoints dispatch V4 with the synthetic adapter. `prepare_run` /
+`open_prepared_run` retain durable internal services; synthetic limit fixtures
+can use `preparation.decisions.prepare_decisions_run` with a typed exact-scope
+context. `estimate_run` returns the independently versioned native plan; old
+structural `plan_run` and `iter_requests` reject V4 deliberately. See
+[the full configuration, lifecycle and export contract](decisions-lifecycle.md).
+
+`RunSpecV4.prompt.output_instructions` accepts optional nonblank UTF-8 text.
+Omission/null stays omitted when serializing; supplied text replaces the task
+default exactly without changing protected rubric/exemplars or typed output
+constraints. `preview_prompt` and ordinary preparation use the same sealed
+question renderer revision. Existing runs cannot acquire a changed override.
+
+
 Milestone 1 supports offline preparation and normalization of supplied synthetic outputs.
 Milestone 2 Subphase 2 adds provider-free immutable source preparation, indexed
 input access, complete manifests, and generation compatibility validation.

@@ -11,7 +11,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from pydantic import model_validator
+from pydantic import Field, field_validator, model_validator
 
 from judgmentllm.models import ID
 from judgmentllm.persistence.artifacts import ArtifactStore
@@ -105,6 +105,63 @@ class AcknowledgmentReceipt(ExecutionModel):
             raise ArtifactIntegrityError("acknowledgment does not match its submission")
 
 
+class CompleteResponseEvidenceV1(ExecutionModel):
+    """A complete received response bound to one guarded invocation."""
+
+    acceptance_evidence_version: Literal[1] = 1
+    run_id: ID
+    request_uid: ID
+    attempt_id: ID
+    submission_id: ID
+    correlation_id: ID
+    payload_sha256: SHA256
+    response_sha256: SHA256
+    response_byte_length: int = Field(ge=0)
+    http_status: int = Field(ge=200, lt=300)
+    protocol: Literal["judgmentllm-decisions-offline-v1"]
+
+    @field_validator("acceptance_evidence_version", mode="before")
+    @classmethod
+    def strict_evidence_version(cls, value: object) -> object:
+        if type(value) is not int or value != 1:
+            raise ValueError("unsupported acceptance evidence version")
+        return value
+
+
+class AcknowledgmentReceiptV2(AcknowledgmentReceipt):
+    """Nullable provider ID requires independent invocation-bound evidence."""
+
+    acknowledgment_version: Literal[2] = 2
+    remote_id: ID | None  # pyright: ignore[reportIncompatibleVariableOverride]
+    response_evidence: CompleteResponseEvidenceV1
+
+    @field_validator("acknowledgment_version", mode="before")
+    @classmethod
+    def strict_ack_version(cls, value: object) -> object:
+        if type(value) is not int or value != 2:
+            raise ValueError("unsupported acknowledgment version")
+        return value
+
+    @model_validator(mode="after")
+    def binding(self) -> AcknowledgmentReceiptV2:
+        evidence = self.response_evidence
+        if (
+            self.run_id,
+            self.attempt_id,
+            self.submission_id,
+            self.correlation_id,
+            self.payload_sha256,
+        ) != (
+            evidence.run_id,
+            evidence.attempt_id,
+            evidence.submission_id,
+            evidence.correlation_id,
+            evidence.payload_sha256,
+        ):
+            raise ValueError("complete response evidence differs from invocation")
+        return self
+
+
 def _acknowledgment_path(submission_id: str) -> str:
     return f"acknowledgments/{bytes_digest(submission_id.encode('utf-8'))}.json"
 
@@ -114,7 +171,12 @@ def publish_acknowledgment(
 ) -> Path:
     """Durably bind accepted identities before the registry acknowledgment."""
     try:
-        receipt = AcknowledgmentReceipt.model_validate_json(canonical_bytes(receipt))
+        receipt_type = (
+            AcknowledgmentReceiptV2
+            if isinstance(receipt, AcknowledgmentReceiptV2)
+            else AcknowledgmentReceipt
+        )
+        receipt = receipt_type.model_validate_json(canonical_bytes(receipt))
     except (ValueError, TypeError):
         raise ArtifactIntegrityError("acknowledgment metadata is invalid") from None
     identity = store.put(canonical_bytes(receipt), "application/json")
@@ -125,7 +187,7 @@ def publish_acknowledgment(
 
 def read_acknowledgment(
     store: ArtifactStore, submission_id: str
-) -> AcknowledgmentReceipt | None:
+) -> AcknowledgmentReceipt | AcknowledgmentReceiptV2 | None:
     """Read verified immutable acknowledged identities for conservative recovery."""
     path = store.reference_path(_acknowledgment_path(submission_id))
     try:
@@ -138,7 +200,14 @@ def read_acknowledgment(
     if len(encoded) > 65536:
         raise ArtifactIntegrityError("acknowledgment metadata is oversized")
     try:
-        receipt = AcknowledgmentReceipt.model_validate_json(encoded)
+        from judgmentllm.config import parse_json
+
+        data = parse_json(encoded.decode("utf-8"))
+        receipt = (
+            AcknowledgmentReceiptV2.model_validate_json(encoded)
+            if isinstance(data, dict) and "acknowledgment_version" in data
+            else AcknowledgmentReceipt.model_validate_json(encoded)
+        )
         if (
             canonical_bytes(receipt) != encoded
             or receipt.submission_id != submission_id

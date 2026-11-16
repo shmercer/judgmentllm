@@ -11,7 +11,7 @@ from collections.abc import Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
-from judgmentllm import gemini_types, vertex_types
+from judgmentllm import decisions_types, gemini_types, vertex_types
 from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.hashing import bytes_digest, canonical_bytes
 from judgmentllm.persistence.models import ArtifactIdentity, ArtifactIntegrityError
@@ -34,7 +34,8 @@ def publish_transport_commitment(
     | TransportCommitmentV2
     | TransportCommitmentV3
     | vertex_types.TransportCommitmentV5
-    | gemini_types.TransportCommitmentV4,
+    | gemini_types.TransportCommitmentV4
+    | decisions_types.DecisionsCommitmentV1,
 ) -> ArtifactIdentity:
     """Publish exact immutable metadata before registry preparation commits."""
 
@@ -60,6 +61,7 @@ def read_transport_commitment(
     | TransportCommitmentV3
     | vertex_types.TransportCommitmentV5
     | gemini_types.TransportCommitmentV4
+    | decisions_types.DecisionsCommitmentV1
     | None
 ):
     """Read the original receipt; absence is never repaired by reconstruction."""
@@ -102,6 +104,7 @@ def iter_transport_commitments(
     | TransportCommitmentV3
     | vertex_types.TransportCommitmentV5
     | gemini_types.TransportCommitmentV4
+    | decisions_types.DecisionsCommitmentV1
 ]:
     """Inspect named safe references in bounded memory, including orphan attempts."""
 
@@ -144,6 +147,7 @@ def _parse_transport_commitment(
     | TransportCommitmentV3
     | vertex_types.TransportCommitmentV5
     | gemini_types.TransportCommitmentV4
+    | decisions_types.DecisionsCommitmentV1
 ):
     from judgmentllm.output_contracts import decode_assessment_output
     from judgmentllm.production_transport import TransportCommitmentV2
@@ -152,6 +156,10 @@ def _parse_transport_commitment(
     value = decode_assessment_output(raw)
     if not isinstance(value, dict):
         raise ValueError("invalid transport commitment")
+    if "decisions_commitment_version" in value:
+        from judgmentllm.decisions.transport import DecisionsCommitmentV1
+
+        return DecisionsCommitmentV1.model_validate_json(raw)
     version = cast(dict[str, object], value).get("transport_commitment_version", 1)
     if type(version) is int and version == 5:
         return vertex_types.TransportCommitmentV5.model_validate_json(raw)

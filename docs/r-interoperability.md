@@ -1,5 +1,21 @@
 # R interoperability: explicit audit and analysis views
 
+## PR B implementation
+
+The existing grouped-lifecycle local gate now additionally consumes actual
+Python-generated V4 full/minimal, retry, refusal, reversed-CJ and unknown-evidence
+exports with strict R/jsonlite. The seven required named gates remain intact.
+`examples/decisions_interoperability.R` independently checks complete probability
+and coding vectors, mapped 5.15 versus native 1.55, nullable selected category,
+confidence, both source-ID layers, all attempts and once-per-submission usage.
+Canonical/R normalized result schema 1 is unchanged. The narrow companion CSV
+uses JSON in every cell; read columns as character, then decode each cell with
+jsonlite. Null, literal strings and leading-zero IDs are preserved. Its immutable
+bundle manifest is published after complete artifacts. See
+[the implemented export contract](decisions-lifecycle.md#inspection-and-companion-exports).
+Vendor SDK/response fixtures and R acceptance for native providers belong to C–E.
+
+
 ## Issue #61 PR A: native multi-question acceptance plan
 
 The [proposed native contracts](native-decisions-design.md#5-accounting-results-and-r)

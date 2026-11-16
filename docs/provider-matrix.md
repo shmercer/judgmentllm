@@ -1,6 +1,37 @@
-# Provider and endpoint compatibility (design target)
+# Provider and endpoint compatibility: implementation and targets
 
-**Baseline matrix as of 2026-11-02; Milestone 3 design evidence reviewed 2026-11-05.** A design commitment is not the same as a qualified model/endpoint combination. Current per-model/region/account status belongs in generated `model-support.md` with evidence dates.
+## PR B implementation boundary (2026-11-15)
+
+RunSpec V4 shared-input preparation, explicit CJ scheduling, grouped lifecycle,
+physical accounting and narrow provenance export are implemented with the own
+`judgmentllm-decisions-offline-v1` synthetic protocol only. Its limits and local
+counter fixtures establish no vendor limits or support. No live qualification,
+provider calls or credential access are part of B. OpenAI Decisions (C), TypeSafe
+Jev (D), Gemini Decisions and separately reviewed SDK compatibility migration (E)
+remain dependency-ready follow-ups. No Google package pin changed in B. See
+[the implemented contract](decisions-lifecycle.md).
+
+The [README's current route table](../README.md#providers-endpoints-and-execution-modes)
+lists executable Python/CLI modes separately from projections and planned adapters.
+Implemented generative routes require V3 and `live`: OpenAI `responses` and
+`chat.completions`, Anthropic `messages`, and separate Gemini Developer/Vertex
+`models.generate_content` adapters. Public V1/V2 mock execution and V4 synthetic
+Decisions are offline. V3 private synthetic transports are fixture infrastructure.
+Native batch and managed bulk-live remain M5 targets for every provider below;
+the table does not establish implemented batch support.
+
+New generative preparations use [presentation revision 2](renderer-revision-2.md).
+Retained original-contract live acceptance does not supply its required
+`assessment_presentation_v2` authority: new explicit native/strict unknown auto
+requests reject, and nonstrict auto selects text. Fixture coverage, current text
+implementation and exact-scope historical live qualification are distinct facts.
+
+
+**Baseline design evidence: 2026-11-02/05; implementation corrections: 2026-11-16.**
+A design commitment is not a qualified model/endpoint combination. Current
+authority is scoped by the reviewed production registries and dated acceptance
+records linked below. A generated per-model/region/account `model-support.md`
+remains a planned reporting surface.
 
 **Issue #61 update, 2026-11-15:** M4 now requires three native adapters and
 shared-input multi-question requests; Gemini Decisions is separate from Developer
@@ -19,7 +50,7 @@ does not remove the intended all-provider qualification requirement.
 | Anthropic Messages | implemented; live acceptance pending | target | later milestone | generative | generative | Phase 5B; SDK 2.3.0 / API 2026-10-21; text JSON and controlled native output_config.format |
 | Gemini Developer | implemented; reviewed four-case live scope accepted | later milestone | later milestone | generative | generative | Phase 5C; google-genai 2.34.0 / v1beta; [exact qualified scope](gemini-live-qualification-acceptance.md); broader mappings remain fixture-only |
 | Gemini Decisions (Developer only) | M4 target, PR E | explicitly unsupported | M5 target | typed score, 2–255 levels | typed choice, 2–255 options | `/v1beta/decisions`, documented `gemini-decision-1`; 1–1,000 named keys; 262,144 total context tokens; no cache/Flex/Priority; SDK>=3.2 compatibility gate |
-| Vertex AI Gemini | target | target (Google Cloud setup required) | yes | generative | generative | `google-genai` SDK; Gemini focus; GCS/BigQuery source and cloud IAM considerations |
+| Vertex AI Gemini | implemented; historical exact-route live scope accepted | M5 target (Google Cloud setup required) | M5 target | generative | generative | google-genai 2.34.0/v1beta1; independent ADC/API-key private-project/global scopes in [accepted evidence](vertex-live-qualification-acceptance.md); current presentation is unqualified |
 | Together AI | lower-priority live target | target, subject to current API qualification | M5/deferred live target | generative | generative | Use official Together Python SDK v3 (`together>=3,<4`); endpoint/model feature coverage must be tested |
 | Ollama local | lower-priority live target | no native provider batch | M5/deferred live target | generative | generative | Official Ollama SDK, local daemon; local model discovery; optional later cloud support separate |
 | TypeSafe AI Jev | M4 target, PR D | unsupported in planned adapter | M5 target | typed score; documented maximum 10 levels | typed choice | Official `typesafe-sdk` System One named map; question-count hard cap unknown; no generated explanations |
@@ -64,19 +95,21 @@ distinguishes documented behavior, planned integration policy and pending
 qualification. Phases 1–3 implement neutral output contracts, v2 mock execution
 and offline authentication diagnostics. Phase 4A adds standalone strict evidence
 records and pure extractors. Phase 5A adds production OpenAI Responses and Chat
-adapters; Phase 5B adds Anthropic Messages and Phase 5C adds Gemini Developer. Other real integrations remain proposed. No endpoint/model
-acquires runtime support or live qualification from those records.
+adapters; Phase 5B adds Anthropic Messages, Phase 5C adds Gemini Developer and
+Phase 5D adds Vertex AI Gemini. Together/Ollama live runners and production
+Decisions adapters remain planned. No endpoint/model acquires runtime support or
+live qualification merely from documentation or fixtures.
 
 - Shared credential resolution uses official SDK mechanisms: provider-specific
   API-key environment variables, Google ADC for Vertex, and no authentication
   for ordinary local Ollama. The ledger records actual source names, precedence
   and SDK alternate-source constraints. Offline status never initializes ADC,
   refreshes tokens, contacts metadata or checks daemon connectivity.
-  **Planned Vertex adapter follow-up:** support a separately selected Google Cloud
-  authorization API key where the Agent Platform endpoint qualifies, alongside
-  (not instead of) ADC. This is not implemented by Phase 3; a stored `vertex`
-  keyring entry is not automatically used. See the
-  [provider evidence](assessment-provider-evidence.md#planned-vertex-authorization-key-route).
+  **Vertex Phase 5D:** implements separately selected Google Cloud authorization
+  API-key and ADC routes. They remain distinct from Developer API credentials and
+  from each other's reviewed project/location scope. Offline status does not
+  initialize either route; a stored `vertex` keyring entry is not automatically
+  used. See the [Vertex guide](vertex.md).
 - `auth status` and its Python API remain offline. Phase 5A adds explicit OpenAI
   `auth verify` and model discovery through a protected, non-generative models-list
   request. Phases 5B/5C add protected Anthropic and Gemini Developer models-list operations; other providers remain deferred; authentication acceptance and model
@@ -164,10 +197,10 @@ The [complete repetition matrix](assessment-provider-evidence.md#phase-4c3-froze
 freezes native guidance separately for every Google route and preserves Together
 and Ollama's projected schema guidance.
 
-This infrastructure does not activate any real provider adapter, model,
-authentication or endpoint. Production catalogs retain no positive real-model
-native acceptance. All serving enforcement stays unknown; complete canonical
-local validation remains mandatory. Implementation acceptance requires retained
+At Phase 4C3 this infrastructure activated no real provider adapter, model,
+authentication or endpoint and supplied no production native acceptance. Later
+Phase 5 records below remain independently scoped; complete canonical local
+validation remains mandatory. Implementation acceptance requires retained
 exact-head qualification; real endpoint construction/authentication and separately
 authorized serving qualification remain Phase 5 and later work.
 
