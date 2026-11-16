@@ -378,6 +378,8 @@
       "test_ordinary_preparation_reports_controls_safely_and_keeps_legacy_builder_closed": {"": []},
       "test_original_study_verifier_does_not_adopt_v4_native_configuration": {"": []},
       "test_presentation_locator_requires_the_frozen_presentation_source": {"[length]": [], "[role]": []},
+      "test_public_preseal_resume_does_not_bypass_frozen_authorities": {"[manifest-full]": [], "[manifest-minimal]": [], "[marker-full]": [], "[marker-minimal]": [], "[specification-full]": [], "[specification-minimal]": []},
+      "test_public_sealed_resume_checks_manifest_before_selecting_adapter": {"[full]": [], "[minimal]": []},
       "test_reconstruction_only_admits_original_ordered_subset_and_parent": {"[dependency]": [], "[frozen]": [], "[missing_parent]": [], "[new_retry]": [], "[parent]": []},
       "test_run_seed_and_legacy_source_builder_cannot_reschedule_native_presentations": {"": []},
       "test_seal_checks_typed_run_and_retained_specification_authorities": {"[run]": [], "[specification]": [], "[version]": []},
@@ -387,6 +389,7 @@
     "tests/test_decisions_processes.py": {
       "test_empty_companion_publication_survives_process_death_without_source_upgrade": {"[after_provenance_artifact-full]": [], "[after_provenance_artifact-minimal]": [], "[after_provenance_reference-full]": [], "[after_provenance_reference-minimal]": [], "[before_provenance_reference-full]": [], "[before_provenance_reference-minimal]": [], "[during_provenance_registration-full]": [], "[during_provenance_registration-minimal]": []},
       "test_failed_subset_retry_authorization_survives_fresh_process_death": {"": []},
+      "test_first_public_resume_after_preseal_process_death_uses_original_adapter": {"[legacy-v1-full]": [], "[legacy-v1-minimal]": [], "[legacy-v2-full]": [], "[legacy-v2-minimal]": [], "[pairwise-full]": [], "[pairwise-minimal]": [], "[rubric-full]": [], "[rubric-minimal]": []},
       "test_forwarding_fact_receipt_crash_can_reconcile_without_rewriting_it": {"": []},
       "test_lost_accepted_response_without_reconciliation_stays_held": {"[full]": [], "[minimal]": []},
       "test_provenance_process_death_and_repeated_publication": {"[after_provenance_artifact]": [], "[after_provenance_reference]": [], "[before_provenance_reference]": [], "[during_provenance_registration]": []},

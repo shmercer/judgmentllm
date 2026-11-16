@@ -942,8 +942,9 @@ async def aresume_run(
             from judgmentllm.preparation import _load_manifest  # pyright: ignore[reportPrivateUsage]
 
             decisions = (
-                run.manifest_sha256 is not None
-                and _load_manifest(
+                repository.decisions_version(identifier) == 4
+                if run.manifest_sha256 is None
+                else _load_manifest(
                     repository, identifier, unsealed=False
                 ).schema_version
                 == 8

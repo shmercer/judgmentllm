@@ -30,6 +30,7 @@ from judgmentllm.lifecycle import (
     LifecycleError,
     _execution_adapter,  # pyright: ignore[reportPrivateUsage]
     _require_presentation,  # pyright: ignore[reportPrivateUsage]
+    resume_run,
 )
 from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.hashing import bytes_digest, canonical_bytes
@@ -413,6 +414,75 @@ def published_native(
         with pytest.raises(RuntimeError, match="pre-seal"):
             prepare_run(spec, store=store, run_id="001")
     return store
+
+
+@pytest.mark.parametrize("capture", ["full", "minimal"])
+@pytest.mark.parametrize("fault", ["manifest", "specification", "marker"])
+def test_public_preseal_resume_does_not_bypass_frozen_authorities(
+    tmp_path: Path, capture: str, fault: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spec = native_spec(tmp_path, capture=capture)
+    store = published_native(tmp_path, spec, monkeypatch)
+    with Repository(store) as repository:
+        path = repository.run_directory("001") / "manifest.json"
+        raw = path.read_bytes()
+    if fault == "manifest":
+        path.write_bytes(b"{}")
+    elif fault == "specification":
+        spec = RunSpecV4.model_validate({**spec.model_dump(), "seed": 99})
+    else:
+        from judgmentllm.providers import MockAdapter
+
+        store = tmp_path / "unmarked"
+        with Repository(store) as repository:
+            repository.create_run(
+                RunRecord(
+                    run_id="001",
+                    task_kind="rubric",
+                    provider="mock",
+                    endpoint="synthetic",
+                    model=spec.model,
+                    capture=spec.capture,
+                )
+            )
+            artifacts = ArtifactStore(repository.run_directory("001"))
+            identity = artifacts.put(raw, "application/json")
+            repository.register_artifact("001", identity)
+            artifacts.publish_manifest(identity)
+        MockAdapter(store / "mock-service.sqlite3")
+    with pytest.raises(LifecycleError):
+        resume_run("001", store=store, spec=spec)
+    with Repository(store) as repository:
+        run = repository.get_run("001")
+        assert run.state == "created" and run.manifest_sha256 is None
+        assert repository.decisions_version("001") == (None if fault == "marker" else 4)
+        assert repository.summary("001").results == 0
+        assert not list(repository.iter_submissions("001"))
+        assert repository.get_owner("001") is None
+
+
+@pytest.mark.parametrize("capture", ["full", "minimal"])
+def test_public_sealed_resume_checks_manifest_before_selecting_adapter(
+    tmp_path: Path, capture: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import judgmentllm.lifecycle as lifecycle
+
+    spec = native_spec(tmp_path, capture=capture)
+    store = tmp_path / "store"
+    with prepare_run(spec, store=store, run_id="001") as prepared:
+        path = prepared.repository.run_directory("001") / "manifest.json"
+    path.write_bytes(b"{}")
+
+    def forbidden(*_args: Any, **_kwargs: Any) -> Any:
+        pytest.fail("adapter selection preceded sealed manifest validation")
+
+    monkeypatch.setattr(lifecycle, "_execution_adapter", forbidden)
+    with pytest.raises(LifecycleError):
+        resume_run("001", store=store, spec=spec)
+    with Repository(store) as repository:
+        assert repository.get_run("001").state == "submitted"
+        assert repository.summary("001").results == 0
+        assert not list(repository.iter_submissions("001"))
 
 
 @pytest.mark.parametrize("fault", ["version", "run", "specification"])

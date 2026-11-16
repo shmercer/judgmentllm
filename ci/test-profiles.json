@@ -335,7 +335,7 @@
         "win32",
         "darwin"
       ],
-      "reason": "Frozen preparation, SQLite authority, historical dispatch and source/presentation binding"
+      "reason": "Frozen preparation, public pre-seal/manifest guards, SQLite authority, historical dispatch and source/presentation binding"
     },
     "tests/test_decisions_processes.py": {
       "cost": "process",
@@ -345,7 +345,7 @@
         "win32",
         "darwin"
       ],
-      "reason": "Fresh OS-process death at acknowledgment, evidence, full-vector and bundle publication windows"
+      "reason": "Fresh OS-process death at public pre-seal resume, acknowledgment, evidence, full-vector and bundle publication windows"
     },
     "tests/test_decisions_provenance_boundaries.py": {
       "cost": "io",

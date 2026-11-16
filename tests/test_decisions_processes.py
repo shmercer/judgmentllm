@@ -10,7 +10,9 @@ from pathlib import Path
 import pytest
 from test_decisions_contracts import pair_spec
 from test_decisions_lifecycle import native_spec
+from test_preparation_rendering import specification
 
+from judgmentllm.config import RunSpec, RunSpecV2
 from judgmentllm.decisions.provenance import export_decisions_provenance
 from judgmentllm.persistence.repository import Repository
 from judgmentllm.preparation import prepare_run
@@ -65,6 +67,108 @@ def run_child(
         text=True,
         timeout=30,
     )
+
+
+@pytest.mark.parametrize("capture", ["full", "minimal"])
+@pytest.mark.parametrize("kind", ["rubric", "pairwise", "legacy-v1", "legacy-v2"])
+def test_first_public_resume_after_preseal_process_death_uses_original_adapter(
+    tmp_path: Path, capture: str, kind: str
+) -> None:
+    if kind.startswith("legacy"):
+        original = specification(tmp_path / "inputs", responses=1, traits=2)
+        model = RunSpec if kind == "legacy-v1" else RunSpecV2
+        spec = model.model_validate(
+            {
+                **original.model_dump(),
+                "schema_version": 1 if kind == "legacy-v1" else 2,
+                "provider": "mock",
+                "endpoint": "synthetic",
+                "capture": capture,
+                "execution": {"grouping": "grouped", "concurrency": 1},
+            }
+        )
+        expected_tasks = 2
+    else:
+        original = native_spec(tmp_path) if kind == "rubric" else pair_spec(tmp_path)
+        spec = type(original).model_validate(
+            {**original.model_dump(), "capture": capture}
+        )
+        expected_tasks = 3 if kind == "rubric" else 12
+    config = tmp_path / "config.json"
+    config.write_text(spec.model_dump_json(), encoding="utf-8")
+    store = tmp_path / "store"
+    crashed = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import os, sys; import judgmentllm.preparation as preparation\n"
+            "from judgmentllm import run_live\n"
+            "def fault(stage, *_):\n"
+            "    if stage == 'manifest_published': os._exit(73)\n"
+            "preparation._checkpoint = fault\n"
+            "run_live(sys.argv[1], store=sys.argv[2])\n",
+            str(config),
+            str(store),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert crashed.returncode == 73, crashed.stderr
+    with Repository(store) as repository:
+        (row,) = repository.connection.execute("SELECT run_id FROM runs").fetchall()
+        run = repository.get_run(row["run_id"])
+        assert run.state == "created" and run.manifest_sha256 is None
+        assert repository.decisions_version(run.run_id) == (
+            None if kind.startswith("legacy") else 4
+        )
+        before = repository.summary(run.run_id)
+        assert before.results == 0 and not list(repository.iter_submissions(run.run_id))
+        memberships = {
+            request.request_uid: repository.request_task_ids(
+                run.run_id, request.request_uid
+            )
+            for request in repository.iter_requests(run.run_id)
+        }
+        manifest_file = repository.run_directory(run.run_id) / "manifest.json"
+        published = manifest_file.read_bytes()
+    reports: list[dict[str, object]] = []
+    for _ in range(2):
+        resumed = subprocess.run(
+            [
+                sys.executable,
+                "-c",
+                "import sys; from judgmentllm import resume_run; "
+                "print(resume_run(sys.argv[1], store=sys.argv[2]).model_dump_json())",
+                run.run_id,
+                str(store),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        assert resumed.returncode == 0, resumed.stderr
+        report = json.loads(resumed.stdout)
+        assert report["outcome"] == "ok" and report["run_status"] == "completed"
+        assert report["results"] == report["completed_tasks"] == expected_tasks
+        assert not report["recovery_required"] and not report["executor_active"]
+        assert ("decisions" in report) == (not kind.startswith("legacy"))
+        reports.append(report)
+    assert reports[0]["attempts"] == reports[1]["attempts"]
+    with Repository(store) as repository:
+        after = repository.summary(run.run_id)
+        assert after.results == expected_tasks
+        expected_requests = 4 if kind == "pairwise" else 1
+        assert len(list(repository.iter_submissions(run.run_id))) == expected_requests
+        if memberships:
+            assert {
+                request.request_uid: repository.request_task_ids(
+                    run.run_id, request.request_uid
+                )
+                for request in repository.iter_requests(run.run_id)
+            } == memberships
+    assert reports[0]["requests"] == reports[1]["requests"] == expected_requests
+    assert manifest_file.read_bytes() == published
 
 
 @pytest.mark.parametrize("capture", ["full", "minimal"])

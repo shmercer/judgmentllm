@@ -120,6 +120,9 @@ index, immutable/no-replace and frozen-source guards. It also adds a nullable
 `runs.decisions_version` fixed in the run's original INSERT. UPDATE, DELETE and
 REPLACE cannot retrofit this marker. Seal/reopen bind marker 4 to RunSpec V4 and
 executable manifest 8. Absent marker retains historical behavior.
+Public resume selects the Decisions adapter from this marker while a run is
+unsealed, including recovery after manifest publication. Sealed runs still use
+the verified manifest; all source/specification/seal checks precede forwarding.
 Native sealing also requires the deeply revalidated V4 specification: its exact
 artifact bytes/hash, configuration/assessment digests, controls and run identity
 must match the manifest. Reopening a published but unsealed run repeats this
