@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 from pathlib import Path
 from typing import Any, cast
@@ -398,13 +399,29 @@ def test_genuine_renderer_one_sealed_runs_keep_original_bytes(
     archive = tmp_path / "history.tar.gz"
     archive.write_bytes(
         base64.b64decode(
-            (fixture / "question-renderer-v1.tar.gz.base64").read_bytes(), validate=True
+            (fixture / "question-renderer-v1-portable.tar.gz.base64").read_bytes(),
+            validate=True,
         )
     )
     metadata = extract_fixture(
-        archive, fixture / "question-renderer-v1.json", tmp_path / "history"
+        archive, fixture / "question-renderer-v1-portable.json", tmp_path / "history"
     )
     assert metadata["producer_commit"] == "23c855f60f0cbb61700793e764340c7651719b72"
+    assert metadata["producer_wheel_sha256"] == (
+        "5d24ab5a52ee8c0414ae40c9ebeec0c83a3408c84174d6a28fedd417702fb44a"
+    )
+    assert (
+        metadata["producer_script_sha256"]
+        == hashlib.sha256(
+            (fixture / "question-renderer-v1-portable.producer.py.txt").read_bytes()
+        ).hexdigest()
+    )
+    original = json.loads((fixture / "question-renderer-v1.json").read_bytes())
+    assert len(metadata["producer_files"]) == 157
+    assert all(
+        metadata["producer_files"][name] == sha
+        for name, sha in original["producer_files"].items()
+    )
     expected = metadata["runs"][kind]
     with open_prepared_run(
         kind, store=tmp_path / "history/store", use_frozen_snapshot=True
@@ -414,6 +431,13 @@ def test_genuine_renderer_one_sealed_runs_keep_original_bytes(
         assert prepared.manifest.question_renderer_version == 1
         assert prepared.manifest_sha256 == expected["manifest_sha256"]
         assert isinstance(prepared.spec, RunSpecV4)
+        # Leaf Path fields preserve their original bytes on POSIX and Windows.
+        assert prepared.spec.input.path == Path("responses.jsonl")
+        assert prepared.spec.output_path == Path("run-data")
+        assert prepared.spec.prompt.file is None
+        if kind == "pairwise":
+            assert prepared.spec.pair_presentations is not None
+            assert prepared.spec.pair_presentations.path == Path("presentations.jsonl")
         with pytest.raises(IntegrityError, match="sealed once"):
             prepared.repository.seal_run(
                 kind,
@@ -434,6 +458,37 @@ def test_genuine_renderer_one_sealed_runs_keep_original_bytes(
         )
         with pytest.raises(PreparationError, match="configuration or seal"):
             prepared.verify_compatibility()
+
+
+def test_original_renderer_one_archive_remains_unchanged(tmp_path: Path) -> None:
+    fixture = Path(__file__).parent / "fixtures/decisions"
+    archive = tmp_path / "history.tar.gz"
+    archive.write_bytes(
+        base64.b64decode(
+            (fixture / "question-renderer-v1.tar.gz.base64").read_bytes(), validate=True
+        )
+    )
+    root = tmp_path / "original"
+    metadata = extract_fixture(archive, fixture / "question-renderer-v1.json", root)
+    assert metadata["archive_sha256"] == (
+        "ac0956bf25b5aa53541ca0e73b9ac831c7f67a2e9c3558e4237abf0a98d8f329"
+    )
+    assert metadata["producer_commit"] == "23c855f60f0cbb61700793e764340c7651719b72"
+    manifests = list((root / "store/runs").glob("*/manifest.json"))
+    assert len(manifests) == 2
+    for path in manifests:
+        manifest = json.loads(path.read_bytes())
+        assert (
+            hashlib.sha256(path.read_bytes()).hexdigest()
+            == (metadata["runs"][manifest["run_id"]]["manifest_sha256"])
+        )
+        assert manifest["question_renderer_version"] == 1
+        spec = json.loads(
+            (path.parent / manifest["specification"]["relative_path"]).read_bytes()
+        )
+        # Inspect original POSIX path bytes without reinterpreting them on Windows.
+        assert spec["input"]["path"].startswith("/")
+        assert "output_instructions" not in spec["prompt"]
 
 
 def test_renderer_authority_cannot_be_downgraded_to_admit_new_prose(

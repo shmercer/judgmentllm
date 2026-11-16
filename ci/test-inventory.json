@@ -338,6 +338,7 @@
       "test_genuine_renderer_one_sealed_runs_keep_original_bytes": {"[pairwise]": [], "[rubric]": []},
       "test_mutated_instruction_intent_is_deeply_revalidated": {"": []},
       "test_old_configuration_versions_do_not_acquire_the_override": {"[1]": [], "[2]": [], "[3]": []},
+      "test_original_renderer_one_archive_remains_unchanged": {"": []},
       "test_override_changes_question_and_wire_commitments_while_task_keys_stay_stable": {"": []},
       "test_override_is_literal_exact_replacement_without_a_hidden_append": {"[ \\t\\xc9valuez cette qualit\\xe9.\\r\\nKeep {{ 7 * 7 }} literal. \\u96ea\\u2028  -pairwise]": [], "[ \\t\\xc9valuez cette qualit\\xe9.\\r\\nKeep {{ 7 * 7 }} literal. \\u96ea\\u2028  -rubric]": [], "[Use this exact instruction.-pairwise]": [], "[Use this exact instruction.-rubric]": [], "[{\"tie\":true}-pairwise]": [], "[{\"tie\":true}-rubric]": []},
       "test_override_obeys_render_and_physical_limits_without_truncation": {"": []},
