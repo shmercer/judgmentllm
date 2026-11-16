@@ -15,6 +15,9 @@ from test_mock_provider import request
 from test_presentation_revision import pair, rubric
 from test_production_transport import case
 
+from judgmentllm.decisions.transport import (
+    PreparedDecisionsRequestV1,
+)
 from judgmentllm.native_schema_v2 import (
     NativeProjectionErrorV2,
     _pre_expansion_budget_v2,
@@ -205,6 +208,7 @@ def test_new_marker_does_not_hide_missing_native_implementation_features(
             dependency,
             physical_identity("001", attempt.request_uid, attempt.attempt_id),
         )
+        assert not isinstance(wire, PreparedDecisionsRequestV1)
         assert isinstance(wire, PreparedRequestV3)
         assert wire.transport_commitment.mechanism == "text"
         decision = wire.output_commitment.selection.openai_decision
@@ -226,6 +230,7 @@ def test_prepared_transport_rejects_revision_from_another_manifest(
         assert attempt is not None
         identity = physical_identity("001", attempt.request_uid, attempt.attempt_id)
         wire = prepared.prepare_transport_attempt(dependency, identity)
+        assert not isinstance(wire, PreparedDecisionsRequestV1)
         old_contract = wire.output_commitment.contract.model_copy(
             update={"presentation_version": 1}
         )

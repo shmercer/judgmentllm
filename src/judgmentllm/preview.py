@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 from judgmentllm import gemini_types, vertex_types
 from judgmentllm.config import (
@@ -11,22 +12,84 @@ from judgmentllm.config import (
     RunSpecification,
     RunSpecV2,
     RunSpecV3,
+    RunSpecV4,
     load_run_spec,
     validate_run_spec,
 )
+from judgmentllm.decisions.transport import DecisionsDependencyV1
 from judgmentllm.io import read_pairs, read_responses
-from judgmentllm.models import PairTask, ResponseItem
+from judgmentllm.models import PairTask, ResponseItem, VersionedModel
 from judgmentllm.planning import CapabilityProfile, plan_record, plan_run
 from judgmentllm.prompts import RenderedAssessmentPrompt
 from judgmentllm.request_rendering import render_request
 
 if TYPE_CHECKING:
     from collections.abc import Callable
-    from typing import Literal
 
     from judgmentllm.anthropic_prompts import RenderedAnthropicPromptV1
     from judgmentllm.planning import PlannedRequest
     from judgmentllm.production_prompts import RenderedProductionPromptV1
+
+
+class RenderedDecisionsPreviewV1(VersionedModel):
+    """Explicit content-bearing preview, independently versioned from old prompts."""
+
+    decisions_preview_version: Literal[1] = 1
+    text: str
+    shared_input: str
+    exemplar_ids: list[str]
+    questions: tuple[dict[str, str], ...]
+
+
+def _decisions_preview(
+    spec: RunSpecV4,
+    item_id: str | None,
+    trait_id: str | None,
+    pair_uid: str | None,
+    capabilities: CapabilityProfile | None,
+) -> RenderedDecisionsPreviewV1:
+    from judgmentllm.preparation import prepare_run
+
+    if (spec.task_kind == "rubric" and (item_id is None or pair_uid is not None)) or (
+        spec.task_kind == "pairwise" and (pair_uid is None or item_id is not None)
+    ):
+        raise ValueError(
+            "select item_id for rubric or an exact prepared pair_uid for pairwise"
+        )
+    with tempfile.TemporaryDirectory(
+        prefix="judgmentllm-decisions-preview-"
+    ) as temporary:
+        with prepare_run(
+            spec, store=temporary, run_id="preview", capabilities=capabilities
+        ) as prepared:
+            for dependency in prepared.iter_request_dependencies():
+                assert isinstance(dependency, DecisionsDependencyV1)
+                if any(
+                    (
+                        task.item_id == item_id
+                        if spec.task_kind == "rubric"
+                        else task.pair_uid == pair_uid
+                    )
+                    and (trait_id is None or task.trait_id == trait_id)
+                    for task in dependency.request.tasks
+                ):
+                    return RenderedDecisionsPreviewV1(
+                        exemplar_ids=list(dependency.request.exemplar_ids),
+                        text=dependency.shared_input
+                        + "\n\n"
+                        + "\n\n".join(q.instructions for q in dependency.questions),
+                        shared_input=dependency.shared_input,
+                        questions=tuple(
+                            dict(
+                                key=q.key,
+                                task_id=q.task_id,
+                                trait_id=q.trait_id,
+                                instructions=q.instructions,
+                            )
+                            for q in dependency.questions
+                        ),
+                    )
+    raise ValueError("preview selection is absent from prepared Decisions membership")
 
 
 def _preview_render(
@@ -95,6 +158,7 @@ def preview_prompt(
     | RenderedAnthropicPromptV1
     | vertex_types.RenderedVertexPromptV1
     | gemini_types.RenderedGeminiPromptV1
+    | RenderedDecisionsPreviewV1
 ):
     """Render one planned request without credentials, networking, or execution.
 
@@ -103,9 +167,11 @@ def preview_prompt(
     """
     spec = (
         validate_run_spec(spec)
-        if isinstance(spec, (RunSpec, RunSpecV2, RunSpecV3))
+        if isinstance(spec, (RunSpec, RunSpecV2, RunSpecV3, RunSpecV4))
         else load_run_spec(spec)
     )
+    if isinstance(spec, RunSpecV4):
+        return _decisions_preview(spec, item_id, trait_id, pair_uid, capabilities)
     if isinstance(spec, RunSpecV3):
         from judgmentllm.lifecycle import _profile  # pyright: ignore[reportPrivateUsage]
 

@@ -15,6 +15,7 @@ from judgmentllm.models import ID
 from judgmentllm.output_commitments import OutputCommitmentV2
 from judgmentllm.persistence.hashing import bytes_digest
 from judgmentllm.persistence.models import SHA256, ExecutionModel
+from judgmentllm.persistence.receipts import CompleteResponseEvidenceV1
 from judgmentllm.planning import CapabilityProfile
 from judgmentllm.preparation.session import RequestDependency
 from judgmentllm.prompts import RenderedAssessmentPrompt
@@ -157,12 +158,21 @@ class ProviderAcknowledgment(ExecutionModel):
     observation_key: ID
 
 
+class ProviderAcknowledgmentV2(ProviderAcknowledgment):
+    remote_id: ID | None  # pyright: ignore[reportIncompatibleVariableOverride]
+    response_evidence: CompleteResponseEvidenceV1
+
+
 class ReconciliationEvidence(ExecutionModel):
     """An absent acknowledgment never supplies one of these positive facts."""
 
     outcome: Literal["not_submitted", "accepted", "observation_available", "unresolved"]
     remote_id: ID | None = None
     observation_key: ID | None = None
+
+
+class DecisionsReconciliationEvidenceV1(ReconciliationEvidence):
+    acknowledgment: ProviderAcknowledgmentV2 | None = None
 
 
 class ProviderResponse(EvidenceModel):

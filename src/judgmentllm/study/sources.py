@@ -50,6 +50,10 @@ def verify_originals(source: Path, package: Path) -> dict[str, object]:
         source_inventory(package, kind)
         for cfg in sorted((root / "configs").glob("*.yaml")):
             spec = load_run_spec(cfg)
+            from judgmentllm.config import RunSpecV4
+
+            if isinstance(spec, RunSpecV4):
+                raise ValueError("historical study sources cannot use V4")
             if kind == "rubric":
                 assert spec.rubric is not None
                 traits = (

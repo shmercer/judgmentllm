@@ -216,7 +216,8 @@ def test_schema_verification_does_not_need_a_writer_lock(tmp_path: Path) -> None
         writer.rollback()
 
 
-@pytest.mark.parametrize("version", [-1, SCHEMA_VERSION + 1, 99])
+# Keep the historical case identity as its next-unsupported-version value advances.
+@pytest.mark.parametrize("version", [-1, pytest.param(SCHEMA_VERSION + 1, id="3"), 99])
 def test_schema_rejects_unknown_versions(
     connection: sqlite3.Connection, version: int
 ) -> None:

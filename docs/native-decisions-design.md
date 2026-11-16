@@ -1,5 +1,15 @@
 # Milestone 4 native Decisions and shared-input requests
 
+PR A was merged at `65bd3353aaa696aebff2539092f2b9814c69aba1`; D1–D4 and PR B
+execution were accepted by the owner and independent review. Historical approval-
+pending wording in section 9 records the earlier review, not a new approval
+requirement. [PR B implementation](decisions-lifecycle.md) preserves those contracts.
+Its independently reviewed amendment permits schema 3's immutable creation-time
+Decisions marker and only the response-to-refused/provider_refusal guard exception,
+with every other evidence/attempt/membership guard retained. D5 remains a future
+migration preference and does not authorize dependency changes in B.
+
+
 **PR A, 2026-11-15: proposed contracts for independent review, not runtime
 support.** [Issue #61](https://github.com/shmercer/judgmentllm/issues/61) approves
 three native adapters and required multi-judgment requests. It supersedes the

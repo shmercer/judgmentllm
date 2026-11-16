@@ -114,7 +114,12 @@ class Repository:
     @property
     def evidence_supported(self) -> bool:
         """Historical schema-1 executions have no fabricated evidence."""
-        return self.connection.execute("PRAGMA user_version").fetchone()[0] == 2
+        return self.connection.execute("PRAGMA user_version").fetchone()[0] in (2, 3)
+
+    def require_decisions_storage(self) -> None:
+        """Never migrate historical stores merely to prepare a new native run."""
+        if self.connection.execute("PRAGMA user_version").fetchone()[0] != 3:
+            raise IntegrityError("Decisions V4 requires a fresh schema-3 store")
 
     def prepare_evidence_commit(
         self, receipt: EvidenceReceipt
@@ -336,13 +341,37 @@ class Repository:
         self.get_run(run_id)
         return self.root / "runs" / bytes_digest(run_id.encode("utf-8"))
 
-    def create_run(self, record: RunRecord) -> None:
+    def create_run(
+        self, record: RunRecord, *, decisions_version: int | None = None
+    ) -> None:
         record = _checked(record)
+        if decisions_version is not None:
+            self.require_decisions_storage()
+            if type(decisions_version) is not int or decisions_version != 4:
+                raise IntegrityError("unsupported Decisions marker")
         if record.state != "created" or record.manifest_sha256 is not None:
             raise IntegrityError("new runs must be unsealed and created")
         with self.transaction():
-            self._insert("runs", record)
+            if decisions_version is None:
+                self._insert("runs", record)
+            else:
+                data = {
+                    **record.model_dump(exclude={"schema_version"}),
+                    "decisions_version": decisions_version,
+                }
+                self.connection.execute(
+                    f"INSERT INTO runs ({','.join(data)}) VALUES ({','.join('?' for _ in data)})",
+                    tuple(data.values()),
+                )
             self._event(record.run_id, "created", "run", record.run_id)
+
+    def decisions_version(self, run_id: str) -> int | None:
+        self.get_run(run_id)
+        if self.connection.execute("PRAGMA user_version").fetchone()[0] != 3:
+            return None
+        return self.connection.execute(
+            "SELECT decisions_version FROM runs WHERE run_id=?", (run_id,)
+        ).fetchone()[0]
 
     def get_run(self, run_id: str) -> RunRecord:
         row = self._one(
@@ -384,7 +413,29 @@ class Repository:
     def seal_run(self, run_id: str, manifest: ManifestReference) -> None:
         """Attach retained manifest bytes once; manifest contents arrive in phase 2."""
         manifest = _checked(manifest)
-        ArtifactStore(self.run_directory(run_id)).verify(manifest.artifact)
+        store = ArtifactStore(self.run_directory(run_id))
+        raw = store.read(manifest.artifact)
+        from judgmentllm.config import parse_json
+
+        try:
+            data = parse_json(raw.decode("utf-8"))
+        except (ValueError, UnicodeError):
+            data = None
+        native = (
+            isinstance(data, dict)
+            and cast(dict[str, object], data).get("schema_version") == 8
+        )
+        if (self.decisions_version(run_id) == 4) != native:
+            raise IntegrityError("Decisions marker differs from frozen manifest")
+        if native:
+            from judgmentllm.preparation.manifest import ExecutableRunManifestV8
+
+            checked_manifest = ExecutableRunManifestV8.model_validate_json(raw)
+            if (
+                checked_manifest.run_id != run_id
+                or checked_manifest.run_spec_version != 4
+            ):
+                raise IntegrityError("Decisions manifest identity differs")
         with self.transaction():
             current = self.get_run(run_id)
             if current.state != "created" or current.manifest_sha256 is not None:
@@ -431,6 +482,10 @@ class Repository:
     def add_source(self, record: SourceRecord, *, owner_token: str) -> None:
         """Insert frozen original-file identity while holding preparation ownership."""
         record = _checked(record)
+        if record.role == "pair_presentations":
+            self.require_decisions_storage()
+            if self.decisions_version(record.run_id) != 4:
+                raise IntegrityError("presentation source requires Decisions authority")
         with self.transaction():
             self._source_write_owner(record.run_id, owner_token)
             self._insert("sources", record)

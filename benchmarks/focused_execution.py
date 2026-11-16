@@ -126,6 +126,9 @@ def initialization_sample(
     try:
         with phase("configuration"):
             spec = load_run_spec(configuration)
+            from judgmentllm.config import RunSpecV4
+
+            assert not isinstance(spec, RunSpecV4)
             if spec.capture != capture:
                 raise ValueError("Initialization capture does not match frozen inputs")
             assert spec.task_kind == "rubric" and spec.rubric is not None

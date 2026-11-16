@@ -1,5 +1,12 @@
 # Recorded design decisions
 
+PR #62's merge accepted D1–D4; independent review subsequently approved PR B.
+[The B implementation record](decisions-lifecycle.md) adds the V4/synthetic shared
+lifecycle, preserving the contracts below. Its reviewed schema-3 marker amendment
+is limited to named response-backed refusals with all existing evidence guards.
+D5 remains deferred to the separately reviewed Google migration before E.
+
+
 ## Issue #61 PR A: native Decisions architecture and release sequence
 
 **2026-11-15 — approved issue scope; detailed architecture proposed for review.**

@@ -1,5 +1,17 @@
 # Provider and endpoint compatibility (design target)
 
+## PR B implementation boundary (2026-11-15)
+
+RunSpec V4 shared-input preparation, explicit CJ scheduling, grouped lifecycle,
+physical accounting and narrow provenance export are implemented with the own
+`judgmentllm-decisions-offline-v1` synthetic protocol only. Its limits and local
+counter fixtures establish no vendor limits or support. No live qualification,
+provider calls or credential access are part of B. OpenAI Decisions (C), TypeSafe
+Jev (D), Gemini Decisions and separately reviewed SDK compatibility migration (E)
+remain dependency-ready follow-ups. No Google package pin changed in B. See
+[the implemented contract](decisions-lifecycle.md).
+
+
 **Baseline matrix as of 2026-11-02; Milestone 3 design evidence reviewed 2026-11-05.** A design commitment is not the same as a qualified model/endpoint combination. Current per-model/region/account status belongs in generated `model-support.md` with evidence dates.
 
 **Issue #61 update, 2026-11-15:** M4 now requires three native adapters and

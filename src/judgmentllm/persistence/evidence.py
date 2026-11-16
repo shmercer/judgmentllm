@@ -111,6 +111,7 @@ class EvidenceReceipt(EvidenceModel):
     @model_validator(mode="after")
     def consistent(self) -> EvidenceReceipt:
         identity = self.identity
+        decisions = isinstance(self, DecisionsEvidenceReceiptV2)
         diagnostic = self.assessment_diagnostic
         if diagnostic is not None and (
             diagnostic.identity != identity
@@ -132,13 +133,17 @@ class EvidenceReceipt(EvidenceModel):
             or self.original is not None
             or self.response_retention != "omitted"
             or (self.usage.provider, self.usage.endpoint)
-            not in {
-                ("openai", "responses"),
-                ("openai", "chat.completions"),
-                ("anthropic", "messages"),
-                ("gemini", "models.generate_content"),
-                ("vertex", "models.generate_content"),
-            }
+            not in (
+                {("mock", "synthetic")}
+                if decisions
+                else {
+                    ("openai", "responses"),
+                    ("openai", "chat.completions"),
+                    ("anthropic", "messages"),
+                    ("gemini", "models.generate_content"),
+                    ("vertex", "models.generate_content"),
+                }
+            )
         ):
             raise ValueError(
                 "unresolved invocation cannot claim failure or observation"
@@ -185,7 +190,7 @@ class EvidenceReceipt(EvidenceModel):
                 self.order is None
                 or self.response_receipt is None
                 or self.observation_key is None
-                or self.remote_id is None
+                or (self.remote_id is None and not decisions)
                 or self.retained is None
                 or self.acknowledgment_sha256 is None
             ):
@@ -241,6 +246,42 @@ class EvidenceReceipt(EvidenceModel):
         ):
             raise ValueError("exact response requires matching source identity")
         return self
+
+
+class DecisionsEvidenceReceiptV2(EvidenceReceipt):
+    """Invocation-bound Decisions evidence; a provider ID may be unavailable."""
+
+    evidence_receipt_version: Literal[2] = 2
+
+    @field_validator("evidence_receipt_version", mode="before")
+    @classmethod
+    def exact_version(cls, value: object) -> object:
+        if type(value) is not int or value != 2:
+            raise ValueError("unsupported Decisions evidence version")
+        return value
+
+    @model_validator(mode="after")
+    def decisions_scope(self) -> DecisionsEvidenceReceiptV2:
+        if (
+            (self.usage.provider, self.usage.endpoint) != ("mock", "synthetic")
+            or self.reasoning
+            or self.assessment_diagnostic
+            or self.service_tier
+        ):
+            raise ValueError("unsupported Decisions evidence scope")
+        return self
+
+
+def parse_evidence_receipt(raw: bytes) -> EvidenceReceipt:
+    from judgmentllm.config import parse_json
+
+    data = parse_json(raw.decode("utf-8"))
+    model = (
+        DecisionsEvidenceReceiptV2
+        if isinstance(data, dict) and "evidence_receipt_version" in data
+        else EvidenceReceipt
+    )
+    return model.model_validate_json(raw)
 
 
 class UsageRevision(EvidenceModel):
@@ -305,7 +346,11 @@ def _read(store: ArtifactStore, path: str, model: type[ModelT]) -> ModelT | None
     try:
         if len(data) > _MAX_RECEIPT_BYTES:
             raise ValueError
-        record = model.model_validate_json(data)
+        record = (
+            cast(ModelT, parse_evidence_receipt(data))
+            if model is EvidenceReceipt
+            else model.model_validate_json(data)
+        )
         if canonical_bytes(record) != data:
             raise ValueError
     except (ValueError, TypeError):
@@ -374,7 +419,7 @@ def publish_evidence_receipt(
     store: ArtifactStore, receipt: EvidenceReceipt
 ) -> ArtifactIdentity:
     """Durably publish metadata before observation/evidence database commit."""
-    receipt = EvidenceReceipt.model_validate_json(canonical_bytes(receipt))
+    receipt = parse_evidence_receipt(canonical_bytes(receipt))
     _verify_artifacts(store, receipt)
     identity = store.put(canonical_bytes(receipt), "application/json")
     store.publish_reference(identity, _reference(receipt.identity.submission_id))
@@ -393,7 +438,7 @@ def read_evidence_receipt(
 
 
 def _supports(repository: Repository) -> bool:
-    return repository.connection.execute("PRAGMA user_version").fetchone()[0] == 2
+    return repository.connection.execute("PRAGMA user_version").fetchone()[0] in (2, 3)
 
 
 _VERIFICATION_AUTHORITY = object()
@@ -468,7 +513,7 @@ def prepare_evidence_commit(
         raise IntegrityError(
             "evidence requires a schema-2 store; historical evidence is unavailable"
         )
-    receipt = EvidenceReceipt.model_validate_json(canonical_bytes(receipt))
+    receipt = parse_evidence_receipt(canonical_bytes(receipt))
     identity = receipt.identity
     store = ArtifactStore(repository.run_directory(identity.run_id), create=False)
     published = read_evidence_receipt(store, identity.submission_id)
@@ -568,7 +613,7 @@ def record_evidence(
         raise IntegrityError(
             "evidence requires a schema-2 store; historical evidence is unavailable"
         )
-    receipt = EvidenceReceipt.model_validate_json(canonical_bytes(receipt))
+    receipt = parse_evidence_receipt(canonical_bytes(receipt))
     verified = (
         prepare_evidence_commit(repository, receipt) if prepared is None else prepared
     )

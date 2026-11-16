@@ -209,6 +209,16 @@
       ],
       "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
     },
+    "tests/test_cache_policy.py": {
+      "cost": "process",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Exact offline SDK controls, immutable replay and actual pre-change Git-source producer subprocesses with real source identity and resume checks on all supported platforms"
+    },
     "tests/test_cli.py": {
       "cost": "quick",
       "domain": "core-contract",
@@ -256,6 +266,78 @@
       "domain": "core-contract",
       "platforms": [],
       "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
+    },
+    "tests/test_decisions_cli.py": {
+      "cost": "process",
+      "domain": "durable-execution",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Actual module CLI processes, paths, typed envelopes and mixed historical/native listings"
+    },
+    "tests/test_decisions_compatibility.py": {
+      "cost": "io",
+      "domain": "core-contract",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Genuine historical SQLite stores, SQL guards and status/CLI serialization bytes"
+    },
+    "tests/test_decisions_contracts.py": {
+      "cost": "io",
+      "domain": "native-transport",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Indexed V4 preparation, exact commitments, split limits, source membership and SCHED1"
+    },
+    "tests/test_decisions_lifecycle.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "V4 grouped SQLite/artifact lifecycle, capture, named vectors and local replay"
+    },
+    "tests/test_decisions_processes.py": {
+      "cost": "process",
+      "domain": "process-ownership",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Fresh OS-process death at acknowledgment, evidence, full-vector and bundle publication windows"
+    },
+    "tests/test_decisions_r.py": {
+      "cost": "process",
+      "domain": "r-interface",
+      "platforms": [],
+      "reason": "Actual strict R/jsonlite consumers run locally; hosted actual R is deferred by policy"
+    },
+    "tests/test_decisions_recovery.py": {
+      "cost": "io",
+      "domain": "immutable-evidence",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Physical invocation guard, immutable evidence, failed-subset retry and provenance publication"
+    },
+    "tests/test_decisions_resources.py": {
+      "cost": "resource",
+      "domain": "resource-stress",
+      "platforms": [],
+      "reason": "Fresh-process indexed 100001 sources/members and grouped queues/export joins; local measurement only"
     },
     "tests/test_distribution_manifest.py": {
       "cost": "process",
@@ -1478,16 +1560,6 @@
         "darwin"
       ],
       "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
-    },
-    "tests/test_cache_policy.py": {
-      "cost": "process",
-      "domain": "provider-sdk",
-      "platforms": [
-        "linux",
-        "win32",
-        "darwin"
-      ],
-      "reason": "Exact offline SDK controls, immutable replay and actual pre-change Git-source producer subprocesses with real source identity and resume checks on all supported platforms"
     }
   },
   "providers": {
@@ -1647,6 +1719,14 @@
     "src/judgmentllm/cli.py",
     "src/judgmentllm/cli_controls.py",
     "src/judgmentllm/config.py",
+    "src/judgmentllm/decisions/__init__.py",
+    "src/judgmentllm/decisions/_base.py",
+    "src/judgmentllm/decisions/interpretation.py",
+    "src/judgmentllm/decisions/outcomes.py",
+    "src/judgmentllm/decisions/provenance.py",
+    "src/judgmentllm/decisions/records.py",
+    "src/judgmentllm/decisions/responses.py",
+    "src/judgmentllm/decisions/transport.py",
     "src/judgmentllm/evidence/__init__.py",
     "src/judgmentllm/evidence/_base.py",
     "src/judgmentllm/evidence/assessment.py",
@@ -1689,11 +1769,13 @@
     "src/judgmentllm/output_contracts.py",
     "src/judgmentllm/persistence/__init__.py",
     "src/judgmentllm/persistence/artifacts.py",
+    "src/judgmentllm/persistence/decisions_invocations.py",
     "src/judgmentllm/persistence/evidence.py",
     "src/judgmentllm/persistence/generation.py",
     "src/judgmentllm/persistence/hashing.py",
     "src/judgmentllm/persistence/models.py",
     "src/judgmentllm/persistence/ownership.py",
+    "src/judgmentllm/persistence/presentations.py",
     "src/judgmentllm/persistence/receipts.py",
     "src/judgmentllm/persistence/repository.py",
     "src/judgmentllm/persistence/schema.py",
@@ -1702,6 +1784,7 @@
     "src/judgmentllm/planning.py",
     "src/judgmentllm/preparation/__init__.py",
     "src/judgmentllm/preparation/capture.py",
+    "src/judgmentllm/preparation/decisions.py",
     "src/judgmentllm/preparation/freezing.py",
     "src/judgmentllm/preparation/index.py",
     "src/judgmentllm/preparation/manifest.py",
@@ -1723,6 +1806,8 @@
     "src/judgmentllm/providers/anthropic_cli.py",
     "src/judgmentllm/providers/anthropic_response.py",
     "src/judgmentllm/providers/anthropic_schema.py",
+    "src/judgmentllm/providers/decisions_mock.py",
+    "src/judgmentllm/providers/decisions_wire.py",
     "src/judgmentllm/providers/evidence.py",
     "src/judgmentllm/providers/gemini.py",
     "src/judgmentllm/providers/gemini_cli.py",

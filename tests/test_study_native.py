@@ -112,6 +112,9 @@ def test_original_content_and_all_312_previews() -> None:
                 )
         for cfg in sorted((root / "configs").glob("*.yaml")):
             spec = load_run_spec(cfg)
+            from judgmentllm.config import RunSpecV4
+
+            assert not isinstance(spec, RunSpecV4)
             if kind == "rubric":
                 assert spec.rubric is not None
                 traits = (

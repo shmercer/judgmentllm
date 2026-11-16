@@ -22,7 +22,9 @@ from judgmentllm.config import (
     RunSpecification,
     RunSpecV2,
     RunSpecV3,
+    RunSpecV4,
     _load_run_spec,  # pyright: ignore[reportPrivateUsage]
+    load_run_spec,
     parse_document,
     validate_run_spec,
     validate_run_spec_json,
@@ -125,6 +127,7 @@ def _manifest(
     | gemini_types.GeminiProductionContext
     | None = None,
 ) -> ExecutableManifest:
+    assert not isinstance(spec, RunSpecV4)
     plan = plan_run(spec, capabilities=capabilities)
     raw = canonical_bytes(spec)
     identity = (
@@ -272,6 +275,23 @@ def prepare_run(
     """
     if type(exhaustive_rendering) is not bool:
         raise PreparationError("exhaustive_rendering must be a boolean")
+    candidate = (
+        spec_or_path
+        if isinstance(spec_or_path, (RunSpec, RunSpecV2, RunSpecV3, RunSpecV4))
+        else load_run_spec(Path(spec_or_path))
+    )
+    if isinstance(candidate, RunSpecV4):
+        from judgmentllm.preparation.decisions import prepare_decisions_run
+
+        if transport_context is not None:
+            raise PreparationError("V4 cannot acquire legacy transport context")
+        return prepare_decisions_run(
+            cast(RunSpecV4 | str | Path, spec_or_path),
+            store=store,
+            run_id=run_id,
+            capabilities=capabilities,
+        )
+    assert not isinstance(spec_or_path, RunSpecV4)
     repository = Repository(store)
     prepared: PreparedRun | None = None
     try:
@@ -517,6 +537,8 @@ def _load_manifest(
     if not unsealed and repository.get_manifest(run_id).artifact != identity:
         raise PreparationError("published manifest conflicts with the database seal")
     run = repository.get_run(run_id)
+    if (repository.decisions_version(run_id) == 4) != (manifest.schema_version == 8):
+        raise PreparationError("Decisions marker differs from frozen manifest")
     if (run.task_kind, run.provider, run.endpoint, run.model, run.capture) != (
         manifest.task_kind,
         manifest.generation.provider,
@@ -725,7 +747,15 @@ def open_prepared_run(
             if capability_resolver is not None:
                 capabilities = capability_resolver(current)
             profile = _revalidate_record(capabilities) if capabilities else None
-            prepared = PreparedRun(
+            from judgmentllm.preparation.decisions import DecisionsPreparedRun
+            from judgmentllm.preparation.manifest import ExecutableRunManifestV8
+
+            prepared_type = (
+                DecisionsPreparedRun
+                if isinstance(manifest, ExecutableRunManifestV8)
+                else PreparedRun
+            )
+            prepared = prepared_type(
                 repository,
                 manifest,
                 current,

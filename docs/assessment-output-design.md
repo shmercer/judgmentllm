@@ -1,5 +1,19 @@
 # Milestone 3 assessment outputs, provider evidence, and authentication
 
+## PR B named Decisions output
+
+[PR B](decisions-lifecycle.md) supplies the provider-neutral typed named-answer
+boundary and synthetic adapter only. It does not route native scoring through a
+generative JSON-schema projection. Provider serialization/parsing stays in the
+adapter boundary; shared validation applies complete member vectors, explicit
+selection, score/choice mappings and recognizable-envelope salvage. Physical
+acceptance and usage remain independent of assessment validity. A null real
+remote ID requires complete response-bound acknowledgment v2, and uncertain
+forwarding remains held. Result schema 1 is preserved with a separate versioned
+question/physical provenance companion. Production adapters and official SDK
+retry/redirect/continuation enforcement are assigned to C–E.
+
+
 ## Issue #61 M4 extension (PR A, proposed)
 
 The [native Decisions design](native-decisions-design.md) adds OpenAI Decisions,

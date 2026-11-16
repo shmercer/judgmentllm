@@ -64,6 +64,9 @@ def render_current_rubric(
     prepared: PreparedRun, dependency: RequestDependency
 ) -> RenderedAssessmentPrompt:
     current = prepared.spec
+    from judgmentllm.config import RunSpecV4
+
+    assert not isinstance(current, RunSpecV4)
     assert current.rubric is not None
     return render_prompt(
         response=prepared.get_response("000"),
@@ -114,6 +117,9 @@ def test_equivalent_replacement_objects_preserve_exact_rendering(
 
 def change_context(prepared: PreparedRun, change: str) -> None:
     spec = prepared.spec
+    from judgmentllm.config import RunSpecV4
+
+    assert not isinstance(spec, RunSpecV4)
     assert spec.rubric is not None and spec.generation is not None
     trait = spec.rubric.traits[0]
     if change == "boolean_concurrency":
@@ -746,6 +752,9 @@ async def test_configuration_mutated_after_preparation_is_rejected_at_claim(
         changed = True
         current = adapter.active_spec
         assert current is not None
+        from judgmentllm.config import RunSpecV4
+
+        assert not isinstance(current, RunSpecV4)
         if change == "criterion":
             current.criteria[0].description += " A changed criterion."
         elif change == "rubric_description":

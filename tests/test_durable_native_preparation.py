@@ -13,6 +13,10 @@ from pydantic import ValidationError
 from test_native_transport_integration import offline as offline
 
 from judgmentllm.config import RunSpecV3, load_run_spec
+from judgmentllm.decisions.transport import (
+    DecisionsCommitmentV1,
+    PreparedDecisionsRequestV1,
+)
 from judgmentllm.persistence.hashing import bytes_digest
 from judgmentllm.persistence.models import IntegrityError
 from judgmentllm.persistence.repository import Repository
@@ -113,12 +117,14 @@ def test_preseal_bijection_and_exact_frozen_reopen(
             )
             assert attempt is not None
             receipt = prepared.transport_for_attempt(attempt.attempt_id)
+            assert not isinstance(receipt, DecisionsCommitmentV1)
             identities.append(receipt.commitment_sha256)
             wire = prepared.prepare_transport_attempt(
                 dependency,
                 physical_identity("001", attempt.request_uid, attempt.attempt_id),
                 frozen=receipt,
             )
+            assert not isinstance(wire, PreparedDecisionsRequestV1)
             assert wire.payload_sha256 == attempt.payload_sha256
             for content in wire.content_artifacts().values():
                 artifact = prepared.repository.get_artifact(
@@ -194,6 +200,7 @@ def test_sealed_preparation_rejects_missing_extra_or_changed_commitments(
             )
         else:
             receipt = prepared.transport_for_attempt(first.attempt_id)
+            assert not isinstance(receipt, DecisionsCommitmentV1)
             assert receipt.native_schema_sha256 is not None
             artifact = prepared.repository.get_artifact(
                 "001", receipt.native_schema_sha256
@@ -328,6 +335,7 @@ def test_rehashed_standalone_receipt_cannot_replace_an_initial_commitment(
     ) as prepared:
         attempt = next(prepared.repository.iter_attempts("001"))
         receipt = prepared.transport_for_attempt(attempt.attempt_id)
+        assert not isinstance(receipt, DecisionsCommitmentV1)
         changed = receipt.model_dump(mode="json", exclude={"commitment_sha256"})
         changed["context_sha256"] = "0" * 64
         changed["plan_sha256"] = TransportPlanV1.model_validate_json(
@@ -481,11 +489,13 @@ async def test_completed_subset_retry_requires_its_exact_retained_transport_arti
         parent = prepared.dependency_for_request(retry.request_uid)
         subset = subset_dependency(parent, (failed.task_id,))
         receipt = prepared.transport_for_attempt(retry.attempt_id)
+        assert not isinstance(receipt, DecisionsCommitmentV1)
         wire = prepared.prepare_transport_attempt(
             subset,
             physical_identity("001", retry.request_uid, retry.attempt_id),
             frozen=receipt,
         )
+        assert not isinstance(wire, PreparedDecisionsRequestV1)
         content = wire.content_artifacts()[artifact_name]
         artifact = prepared.repository.get_artifact("001", bytes_digest(content))
         assert artifact.relative_path is not None
@@ -560,6 +570,7 @@ def test_existing_attempt_implicitly_loads_frozen_transport_without_reselection(
             dependency,
             physical_identity("001", attempt.request_uid, attempt.attempt_id),
         )
+        assert not isinstance(wire, PreparedDecisionsRequestV1)
         assert wire.payload_sha256 == attempt.payload_sha256
         assert wire.transport_commitment == prepared.transport_for_attempt(
             attempt.attempt_id
@@ -605,6 +616,7 @@ def test_receipt_publication_does_not_write_its_object_twice(
             dependency,
             physical_identity("001", attempt.request_uid, attempt.attempt_id),
         )
+        assert not isinstance(wire, PreparedDecisionsRequestV1)
         receipt_bytes = canonical_bytes(wire.transport_commitment)
         original = prepared.store.put
         writes = 0
@@ -668,6 +680,7 @@ async def test_rehashed_retry_lineage_is_checked_before_payload_reconstruction(
             prepared.dependency_for_request(retry.request_uid), (failed.task_id,)
         )
         receipt = prepared.transport_for_attempt(retry.attempt_id)
+        assert not isinstance(receipt, DecisionsCommitmentV1)
         data = receipt.model_dump(mode="json", exclude={"commitment_sha256"})
         if change == "parent":
             data["parent_commitment_sha256"] = "0" * 64

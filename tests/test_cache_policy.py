@@ -545,6 +545,7 @@ async def test_genuine_historical_requests_replay_without_new_control(
         rebuilt = prepare_production_request(
             spec, dependency, receipt.identity, context, frozen=receipt
         )
+
         assert rebuilt.payload == original and rebuilt.transport_commitment == receipt
         return
     with open_prepared_run(
@@ -567,7 +568,11 @@ async def test_genuine_historical_requests_replay_without_new_control(
             canonical_bytes(receipt)
             == (tmp_path / f"{run_id}-receipt.json").read_bytes()
         )
+        from judgmentllm.decisions.transport import PreparedDecisionsRequestV1
+
+        assert isinstance(prepared.spec, RunSpecV3)
         rebuilt = prepared.prepare_transport_attempt(dependency, receipt.identity)
+        assert not isinstance(rebuilt, PreparedDecisionsRequestV1)
         assert rebuilt.payload == original
         import judgmentllm.transport_dispatch as dispatch
 

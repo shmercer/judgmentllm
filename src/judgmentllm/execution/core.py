@@ -128,6 +128,16 @@ async def execute_run(
             try:
                 work = retained.work
                 response = retained.response
+                ack_handoff = getattr(
+                    adapter, "_received_acknowledgment_for_cancellation", None
+                )
+                if retained.acknowledgment is None and ack_handoff is not None:
+                    retained.acknowledgment = ack_handoff(
+                        work.prepared,
+                        submission_id=work.submission_id,
+                        correlation_id=work.correlation_id,
+                    )
+                    retained.invoked |= retained.acknowledgment is not None
                 if response is None and retained.acknowledgment is not None:
                     response = cancellation_handoff(
                         work.prepared,
@@ -236,17 +246,27 @@ async def execute_run(
                                 await call(session.uncertain, work)
                                 cancellation_work.pop(work.submission_id, None)
                                 continue
+                            from judgmentllm.providers.protocol import (
+                                DecisionsReconciliationEvidenceV1,
+                            )
+
                             if (
+                                isinstance(evidence, DecisionsReconciliationEvidenceV1)
+                                and evidence.acknowledgment is not None
+                            ):
+                                acknowledgment = evidence.acknowledgment
+                            elif (
                                 evidence.remote_id is None
                                 or evidence.observation_key is None
                             ):
                                 raise IntegrityError(
                                     "accepted reconciliation lacks identity"
                                 )
-                            acknowledgment = ProviderAcknowledgment(
-                                remote_id=evidence.remote_id,
-                                observation_key=evidence.observation_key,
-                            )
+                            else:
+                                acknowledgment = ProviderAcknowledgment(
+                                    remote_id=evidence.remote_id,
+                                    observation_key=evidence.observation_key,
+                                )
                         await call(session.acknowledge, work, acknowledgment)
                     if retained is not None:
                         retained.acknowledgment = acknowledgment

@@ -48,6 +48,7 @@ class SourceRecord(ExecutionModel):
         "pairs",
         "response",
         "pair",
+        "pair_presentations",
     ]
     ordinal: int = Field(ge=0)
     original_location: str

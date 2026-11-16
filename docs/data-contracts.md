@@ -1,5 +1,17 @@
 # Data contracts and scoring semantics
 
+## Implemented PR B boundary
+
+`RunSpecV4` now admits the strict immutable `RequestGroupingSpecV1` single/auto
+union and explicit pair-presentation sources. Omission selects single; supplied
+objects require mode. The ordinary Python/CLI lifecycle prepares and executes
+V4 through the synthetic adapter only. New request/crosswalk/acceptance and
+provenance versions are described in [the PR B contract](decisions-lifecycle.md).
+Normalized results and CLI envelope remain version 1, and V1–V3 behavior/bytes
+remain unchanged. The PR A paragraphs below are historical design context;
+D1–D4 were accepted with PR #62's merge, and B execution was independently approved.
+
+
 **RunSpec versions 1/2 remain historical; explicit version 3 supports independently dispatched synthetic and production transport boundaries. Document and normalized-result schemas remain version 1.** Assessment models live in
 `judgmentllm.models`, run configuration in `judgmentllm.config`, and normalized
 outputs in `judgmentllm.results`. Public lifecycle services execute synthetic

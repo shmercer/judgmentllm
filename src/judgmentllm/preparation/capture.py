@@ -12,6 +12,7 @@ from typing import BinaryIO, Literal, cast
 from judgmentllm.config import (
     InputSpec,
     RunSpecification,
+    RunSpecV4,
     parse_document,
 )
 from judgmentllm.models import PairTask, ResponseItem
@@ -45,6 +46,7 @@ from judgmentllm.preparation.index import (
     parsing_context,
 )
 from judgmentllm.preparation.manifest import (
+    PresentationSourceCommitmentV1,
     SourceCommitment,
     SourceFormat,
 )
@@ -59,7 +61,14 @@ from judgmentllm.preparation.session import _render_request  # pyright: ignore[r
 from judgmentllm.prompts import validate_prompt_template
 
 SourceRole = Literal[
-    "configuration", "rubric", "criteria", "exemplars", "template", "response", "pair"
+    "configuration",
+    "rubric",
+    "criteria",
+    "exemplars",
+    "template",
+    "response",
+    "pair",
+    "pair_presentations",
 ]
 
 
@@ -127,15 +136,21 @@ class SourceBuilder:
         if stage is not None:
             stage.verify()
         frozen = _Frozen(
-            SourceCommitment(
-                source_id=source_id,
-                role=role,
-                ordinal=ordinal,
-                original_location=str(path),
-                raw_sha256=digest,
-                byte_length=length,
-                generation=generation,
-                format=format,
+            (
+                PresentationSourceCommitmentV1
+                if role == "pair_presentations"
+                else SourceCommitment
+            ).model_validate(
+                dict(
+                    source_id=source_id,
+                    role=role,
+                    ordinal=ordinal,
+                    original_location=str(path),
+                    raw_sha256=digest,
+                    byte_length=length,
+                    generation=generation,
+                    format=format,
+                )
             ),
             stage,
         )
@@ -367,6 +382,8 @@ class SourceBuilder:
         template: str | None,
         capabilities: CapabilityProfile | None,
     ) -> None:
+        if isinstance(spec, RunSpecV4):
+            raise PreparationError("V4 requires Decisions preparation")
         plan = plan_run(spec, capabilities=capabilities)
         for group in plan.trait_groups:
             validate_prompt_template(

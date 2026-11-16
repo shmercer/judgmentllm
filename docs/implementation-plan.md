@@ -314,6 +314,16 @@ conduct paid calls as part of this design task.
 
 ## Milestone 4 - Native decision/score adapters
 
+**PR B implementation:** [V4 shared preparation and durable named-member lifecycle](decisions-lifecycle.md)
+is implemented with synthetic-only transport, exact historical dispatch and the
+reviewed schema-3 marker/refusal exception. C–E production adapters/SDK work, F
+integration, M5 batch/bulk-live/caching and post-M5 alpha review remain separate.
+Acceptance requires the protected-base automatic Level3 plan, exact-source local
+Linux/Python3.11 historical coverage (90% combined), all seven strict R gates,
+affected resources/packages and separately verified exact-head hosted ordinary/
+serial functional evidence. Synthetic acceptance does not qualify vendor support.
+
+
 **Approved scope change:** [Issue #61](https://github.com/shmercer/judgmentllm/issues/61)
 supersedes the earlier OpenAI/Jev-only milestone and universal 2–10-level
 acceptance wording. Implement **OpenAI Decisions, TypeSafe AI Jev, then Gemini

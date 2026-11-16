@@ -1,5 +1,22 @@
 # Command-line interface
 
+## PR B: native preparation and provenance
+
+The same `validate`, `plan`, `templates preview`, `run`, `resume`, status/listing
+and result-export services now dispatch explicit RunSpec V4 for `mock/synthetic`.
+The V4 plan is independently versioned and has no legacy trait-groups field.
+Verified V4 status/summary/validation reports carry typed `decisions` detail;
+historical outputs omit that field, including nested listings. CLI envelope 1
+and normalized result schema 1 retain their exact serializers and nulls.
+
+`judgmentllm results provenance --run RUN_ID --store STORE --json` invokes
+`export_decisions_provenance`, publishing the narrow question/physical JSONL+CSV
+bundle and returning its immutable manifest reference. This is separate from
+`results export`, which retains all existing canonical/R contracts. See
+[configuration, counts, null/zero and exports](decisions-lifecycle.md).
+Production native routes remain unavailable until their C–E adapters.
+
+
 Executable name: `judgmentllm` (distribution and import name planned as `judgmentllm`). CLI must call the same library functions as the Python interface, never parallel implementations.
 
 ## Implemented global commands

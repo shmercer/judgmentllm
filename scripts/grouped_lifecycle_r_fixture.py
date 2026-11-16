@@ -154,6 +154,9 @@ async def persist(root: Path) -> None:
         with Repository(store) as repository:
             document(root / f"{run_id}-digests.json", digests(repository, run_id))
     assert initial.ledger.acceptance_count() == 4
+    from decisions_r_fixture import persist as persist_decisions
+
+    await persist_decisions(root / "decisions")
 
 
 async def export(root: Path) -> None:
@@ -256,6 +259,9 @@ async def export(root: Path) -> None:
         assert original.export_id == before["export_id"] and original.row_count == 3
         row.update(exports=reports, prior_export=original.model_dump(mode="json"))
         evidence.append(row)
+    from decisions_r_fixture import export as export_decisions
+
+    await export_decisions(root / "decisions")
     assert provider.submit_calls == 0 and provider.ledger.acceptance_count() == 4
     (root / "grouped-lifecycle.jsonl").write_text(
         "".join(json.dumps(row) + "\n" for row in evidence), encoding="utf-8"

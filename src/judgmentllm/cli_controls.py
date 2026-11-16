@@ -111,6 +111,7 @@ def _command_name(args: Sequence[str]) -> str:
             ("runs", "status"),
             ("runs", "resume"),
             ("results", "export"),
+            ("results", "provenance"),
         }:
             return " ".join(args[:2])
         return args[0]

@@ -32,6 +32,7 @@ from judgmentllm.config import (
     RunSpecification,
     RunSpecV2,
     RunSpecV3,
+    RunSpecV4,
     load_run_spec,
     parse_json,
     validate_run_spec,
@@ -40,6 +41,8 @@ from judgmentllm.execution import execute_run, recover_run
 from judgmentllm.execution.exports import export_run
 from judgmentllm.execution.retry import authorize_subset_retry
 from judgmentllm.lifecycle_models import (
+    DecisionsExecutionPlanV1,
+    DecisionsPreparationV1,
     ErrorCategory,
     ExecutionPlan,
     ExportFile,
@@ -88,6 +91,9 @@ def _production_context(
     | gemini_types.GeminiProductionContext
     | None
 ):
+    if isinstance(spec, RunSpecV4):
+        _require_presentation(spec)
+        return None
     if spec.provider == "vertex":
         if (
             not isinstance(spec, RunSpecV3)
@@ -165,7 +171,37 @@ def _execution_adapter(
     *,
     resume: bool,
     concurrency: int = 4,
+    decisions: bool = False,
 ) -> ProviderAdapter:
+    if decisions:
+        from judgmentllm.providers.decisions_mock import (
+            DecisionsScenarioV1,
+            MockDecisionsAdapter,
+        )
+
+        if (provider, endpoint) != ("mock", "synthetic"):
+            raise LifecycleError(
+                "unsupported_capability",
+                "production Decisions adapters are assigned to PRs C-E",
+            )
+        controls = (
+            MockExecutionOptions.model_validate(dict(options))
+            if options is not None
+            else MockExecutionOptions()
+        )
+        scenario = (
+            DecisionsScenarioV1()
+            if controls.fixture_path is None
+            else DecisionsScenarioV1.model_validate_json(
+                controls.fixture_path.read_bytes()
+            )
+        )
+        return MockDecisionsAdapter(
+            controls.ledger_path or store / "mock-service.sqlite3",
+            scenario=scenario,
+            retrieval_available=controls.retrieval_available,
+            reconciliation_available=controls.reconciliation_available,
+        )
     if provider == "vertex":
         if options is not None or endpoint != "models.generate_content":
             raise LifecycleError(
@@ -245,7 +281,7 @@ class _MockFixture(VersionedModel):
 def _checked_spec(spec_or_path: RunSpecification | str | Path) -> RunSpecification:
     return (
         validate_run_spec(spec_or_path)
-        if isinstance(spec_or_path, (RunSpec, RunSpecV2, RunSpecV3))
+        if isinstance(spec_or_path, (RunSpec, RunSpecV2, RunSpecV3, RunSpecV4))
         else load_run_spec(spec_or_path)
     )
 
@@ -404,6 +440,13 @@ def _mock_adapter(
 
 def _require_presentation(spec: RunSpecification) -> None:
     """Reject unavailable v2 mechanisms before creating a runtime store."""
+    if isinstance(spec, RunSpecV4):
+        if (spec.provider, spec.endpoint) != ("mock", "synthetic"):
+            raise LifecycleError(
+                "unsupported_capability",
+                "production Decisions adapters are assigned to PRs C-E",
+            )
+        return
     if isinstance(spec, RunSpecV3) and spec.provider in {
         "openai",
         "anthropic",
@@ -431,6 +474,13 @@ def _profile(
     *,
     allow_invalid: bool = False,
 ) -> CapabilityProfile | None:
+    if isinstance(spec, RunSpecV4):
+        _require_presentation(spec)
+        from judgmentllm.providers.decisions_mock import MockDecisionsAdapter
+
+        return capabilities or MockDecisionsAdapter.capabilities_for(
+            spec.provider, spec.endpoint, spec.model
+        )
     profile = (
         CapabilityProfile.model_validate(dict(capabilities))
         if capabilities is not None
@@ -571,6 +621,13 @@ def validate_inputs(
                     issues=issues[:100],
                     total_issues=len(issues),
                     truncated=len(issues) > 100,
+                    decisions=DecisionsPreparationV1(
+                        logical_tasks=prepared.manifest.logical_task_count,
+                        physical_requests=prepared.manifest.initial_transport_count,
+                        presentations=prepared.manifest.presentation_count,
+                    )
+                    if prepared.manifest.schema_version == 8
+                    else None,
                     output_selection=resolve_schema_selection(spec, profile)
                     if isinstance(spec, RunSpecV2)
                     else None,
@@ -600,7 +657,7 @@ def estimate_run(
     spec_or_path: RunSpecification | str | Path,
     *,
     capabilities: CapabilityProfile | None = None,
-) -> ExecutionPlan:
+) -> ExecutionPlan | DecisionsExecutionPlanV1:
     """Prepare once privately and derive exact counts without a task product."""
     with (
         _errors(),
@@ -621,6 +678,16 @@ def estimate_run(
                 s.record_count for s in manifest.sources if s.role == "response"
             )
             pairs = sum(s.record_count for s in manifest.sources if s.role == "pair")
+            if manifest.schema_version == 8:
+                return DecisionsExecutionPlanV1(
+                    task_kind=spec.task_kind,
+                    response_count=responses,
+                    pair_count=pairs,
+                    source_count=len(manifest.sources),
+                    logical_tasks=manifest.logical_task_count,
+                    requests=manifest.initial_transport_count,
+                    presentations=manifest.presentation_count,
+                )
             mock = (spec.provider, spec.endpoint) == ("mock", "synthetic")
             selected: (
                 dict[
@@ -738,6 +805,7 @@ async def arun_live(
             mock,
             resume=False,
             concurrency=spec.execution.concurrency,
+            decisions=isinstance(spec, RunSpecV4),
         )
         try:
             getattr(adapter, "validate_new_run", adapter.validate)(spec)
@@ -765,6 +833,9 @@ async def arun_live(
                     run_id,
                     adapter.capabilities(spec),
                     _production_context(spec),
+                    getattr(adapter, "transport_context", None)
+                    if isinstance(spec, RunSpecV4)
+                    else None,
                 )
             )
             try:
@@ -799,7 +870,22 @@ def _prepare(
     | vertex_types.VertexProductionContext
     | gemini_types.GeminiProductionContext
     | None = None,
+    decisions_context: object = None,
 ) -> None:
+    if decisions_context is not None:
+        from judgmentllm.decisions.transport import DecisionsContextV1
+        from judgmentllm.preparation.decisions import prepare_decisions_run
+
+        assert isinstance(decisions_context, DecisionsContextV1)
+        with prepare_decisions_run(
+            cast(RunSpecV4 | str | Path, spec_or_path),
+            store=root,
+            run_id=run_id,
+            capabilities=profile,
+            context=decisions_context,
+        ):
+            pass
+        return
     with prepare_run(
         spec_or_path,
         store=root,
@@ -853,8 +939,23 @@ async def aresume_run(
         # execution/retry services perform complete source and context checks.
         with ReadOnlyRepository(root) as repository:
             run = repository.get_run(identifier)
+            from judgmentllm.preparation import _load_manifest  # pyright: ignore[reportPrivateUsage]
+
+            decisions = (
+                run.manifest_sha256 is not None
+                and _load_manifest(
+                    repository, identifier, unsealed=False
+                ).schema_version
+                == 8
+            )
         adapter = _execution_adapter(
-            run.provider, run.endpoint, run.model, root, mock, resume=True
+            run.provider,
+            run.endpoint,
+            run.model,
+            root,
+            mock,
+            resume=True,
+            decisions=decisions,
         )
         try:
             _progress(progress, "started", identifier, root)

@@ -12,7 +12,7 @@ import sqlite3
 
 from judgmentllm.persistence.models import TRANSITIONS, SchemaVersionError, utc_now
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def _choices(values: tuple[str, ...] | list[str]) -> str:
@@ -680,7 +680,7 @@ _EVIDENCE_TRIGGERS = tuple(
         _no_replace(table, keys),
     )
 )
-_STATEMENTS = (
+_V2_STATEMENTS = (
     *_LEGACY_STATEMENTS,
     *_EVIDENCE_TABLES,
     "CREATE UNIQUE INDEX idx_observations_evidence_link ON observations (run_id, observation_id, submission_id)",
@@ -691,7 +691,86 @@ _STATEMENTS = (
     _index("evidence_receipts", "ordered", "run_id, submission_id"),
     *_EVIDENCE_TRIGGERS,
 )
+SCHEMA_2_CHECKSUM = hashlib.sha256(
+    "\n".join(_V2_STATEMENTS).encode("utf-8")
+).hexdigest()
+
+# Source occurrences precede criterion projection; historical pair rows cannot
+# represent this identity or enforce member uniqueness independently of packing.
+_PRESENTATION_TABLES = (
+    f"""CREATE TABLE presentation_inputs (
+        run_id TEXT NOT NULL, source_presentation_id TEXT NOT NULL,
+        source_id TEXT NOT NULL, ordinal INTEGER NOT NULL CHECK(ordinal>=0),
+        byte_offset INTEGER NOT NULL CHECK(byte_offset>=0),
+        byte_length INTEGER NOT NULL CHECK(byte_length>0),
+        record_sha256 TEXT NOT NULL CHECK({_hash("record_sha256")}),
+        structure_json TEXT NOT NULL CHECK(json_valid(structure_json)),
+        PRIMARY KEY(run_id,source_presentation_id), UNIQUE(run_id,source_id,ordinal),
+        FOREIGN KEY(run_id,source_id) REFERENCES sources(run_id,source_id)
+    )""",
+    """CREATE TABLE presentation_source_members (
+        run_id TEXT NOT NULL, source_presentation_id TEXT NOT NULL,
+        source_pair_uid TEXT NOT NULL, trait_id TEXT NOT NULL,
+        position INTEGER NOT NULL CHECK(position>=0),
+        PRIMARY KEY(run_id,source_pair_uid),
+        UNIQUE(run_id,source_presentation_id,position),
+        UNIQUE(run_id,source_presentation_id,trait_id),
+        FOREIGN KEY(run_id,source_presentation_id)
+          REFERENCES presentation_inputs(run_id,source_presentation_id)
+    )""",
+)
+_PRESENTATION_KEYS = {
+    "presentation_inputs": (
+        ("run_id", "source_presentation_id"),
+        ("run_id", "source_id", "ordinal"),
+    ),
+    "presentation_source_members": (
+        ("run_id", "source_pair_uid"),
+        ("run_id", "source_presentation_id", "position"),
+        ("run_id", "source_presentation_id", "trait_id"),
+    ),
+}
+_PRESENTATION_GUARDS = tuple(
+    statement
+    for table, keys in _PRESENTATION_KEYS.items()
+    for statement in (
+        _guard(f"{table}_immutable_update", "UPDATE", table),
+        _guard(f"{table}_immutable_delete", "DELETE", table),
+        _no_replace(table, keys),
+        _guard(
+            f"{table}_frozen",
+            "INSERT",
+            table,
+            "(SELECT state FROM runs WHERE run_id=NEW.run_id)!='created' OR (SELECT decisions_version FROM runs WHERE run_id=NEW.run_id) IS NOT 4",
+        ),
+    )
+)
+# Schema 2's response-only guard cannot express a named refusal alongside a
+# complete sibling. The exception is scoped to a marker fixed at run insertion.
+_V2_RESULT_EVIDENCE = next(
+    s for s in _V2_STATEMENTS if s.startswith("CREATE TRIGGER results_evidence ")
+)
+_V3_RESULT_EVIDENCE = _V2_RESULT_EVIDENCE.replace(
+    "(o.kind='response' AND NEW.status IN ('complete','invalid'))",
+    """(o.kind='response' AND (NEW.status IN ('complete','invalid')
+                OR (NEW.status='refused'
+                  AND json_extract(NEW.record_json,'$.error_kind')='provider_refusal'
+                  AND EXISTS(SELECT 1 FROM runs r WHERE r.run_id=NEW.run_id
+                    AND r.decisions_version=4))))""",
+)
+_STATEMENTS = (
+    *(s for s in _V2_STATEMENTS if s != _V2_RESULT_EVIDENCE),
+    "ALTER TABLE runs ADD COLUMN decisions_version INTEGER CHECK(decisions_version IS NULL OR decisions_version=4)",
+    """CREATE TRIGGER runs_decisions_version_immutable BEFORE UPDATE OF decisions_version ON runs
+        WHEN NEW.decisions_version IS NOT OLD.decisions_version
+        BEGIN SELECT RAISE(ABORT,'immutable Decisions marker'); END""",
+    _V3_RESULT_EVIDENCE,
+    *_PRESENTATION_TABLES,
+    _index("presentation_inputs", "ordered", "run_id,ordinal"),
+    *_PRESENTATION_GUARDS,
+)
 SCHEMA_CHECKSUM = hashlib.sha256("\n".join(_STATEMENTS).encode("utf-8")).hexdigest()
+_CHECKSUMS = {1: LEGACY_SCHEMA_CHECKSUM, 2: SCHEMA_2_CHECKSUM, 3: SCHEMA_CHECKSUM}
 
 
 def _schema_digest(connection: sqlite3.Connection) -> str:
@@ -710,14 +789,14 @@ def verify(connection: sqlite3.Connection) -> None:
     actual structure are checked against the same committed database snapshot.
     """
     version = connection.execute("PRAGMA user_version").fetchone()[0]
-    if version not in (1, SCHEMA_VERSION):
+    if version not in _CHECKSUMS:
         raise SchemaVersionError("unsupported database schema version")
     migrations = connection.execute(
         "SELECT version,checksum,schema_sha256 FROM schema_migrations ORDER BY version"
     ).fetchall()
     if len(migrations) != 1 or tuple(migrations[0][:2]) != (
         version,
-        LEGACY_SCHEMA_CHECKSUM if version == 1 else SCHEMA_CHECKSUM,
+        _CHECKSUMS[version],
     ):
         raise SchemaVersionError("database migration checksum is inconsistent")
     if migrations[0][2] != _schema_digest(connection):
@@ -738,7 +817,7 @@ def initialize(connection: sqlite3.Connection) -> None:
         initial_version = connection.execute("PRAGMA user_version").fetchone()[0]
         connection.execute("BEGIN IMMEDIATE" if initial_version == 0 else "BEGIN")
         version = connection.execute("PRAGMA user_version").fetchone()[0]
-        if version not in (0, 1, SCHEMA_VERSION):
+        if version != 0 and version not in _CHECKSUMS:
             raise SchemaVersionError("unsupported database schema version")
         if version == 0:
             if connection.execute(

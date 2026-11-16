@@ -100,6 +100,39 @@ class InputValidationReport(ExecutionModel):
     output_selection: SchemaSelectionV2 | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    decisions: DecisionsPreparationV1 | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
+
+class DecisionsPreparationV1(PublicModel):
+    detail_version: Literal[1] = 1
+    logical_tasks: Count
+    physical_requests: Count
+    presentations: Count | None
+
+
+class DecisionsExecutionPlanV1(ExecutionModel):
+    """V4 plan: grouping is source-specific, without historical trait_groups."""
+
+    plan_version: Literal[1] = 1
+    run_spec_version: Literal[4] = 4
+    task_kind: Literal["rubric", "pairwise"]
+    response_count: Count
+    pair_count: Count
+    source_count: Count
+    logical_tasks: Count
+    requests: Count
+    presentations: Count | None
+    cache_policy: Literal["off"] = "off"
+    cache_report: Literal["uncached"] = "uncached"
+    estimated_input_tokens: Count | None = None
+    estimated_output_tokens: Count | None = None
+    estimated_cost: float | None = None
+    pricing: Literal["not_applicable"] = "not_applicable"
+    transport_protocol: Literal["judgmentllm-decisions-offline-v1"] = (
+        "judgmentllm-decisions-offline-v1"
+    )
 
 
 class ExecutionPlan(ExecutionModel):
@@ -213,6 +246,30 @@ class RunStatus(ExecutionModel):
     output_selection: SchemaSelectionV2 | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    decisions: DecisionsStatusV1 | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
+
+class DecisionsStatusV1(PublicModel):
+    detail_version: Literal[1] = 1
+    logical_tasks: Count
+    physical_requests: Count
+    presentations: Count | None
+    known_invocations: Count
+    invocation_unknown: Count
+    observed_responses: Count
+    usage_evidence: Literal[
+        "unavailable", "unknown", "partial", "reported", "not_applicable"
+    ]
+    input_tokens: Count | None
+    output_tokens: Count | None
+    cost: float | None
+    cost_currency: str | None = None
+    cost_evidence: Literal[
+        "unavailable", "unknown", "partial", "reported", "not_applicable"
+    ]
+    provenance_manifest: str | None = None
 
 
 class RunSummary(RunStatus):
