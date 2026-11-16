@@ -14,7 +14,10 @@ import tempfile
 from collections.abc import Callable, Generator, Iterator, Sequence
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Literal, TypeVar, cast
+from typing import TYPE_CHECKING, Literal, TypeVar, cast
+
+if TYPE_CHECKING:
+    from judgmentllm.config import RunSpecV4
 
 from judgmentllm.evidence.usage import ProviderUsage
 from judgmentllm.io import Result, revalidate_result
@@ -410,8 +413,14 @@ class Repository:
         )
         self._event(run_id, "artifact_registered", "artifact", identity.sha256)
 
-    def seal_run(self, run_id: str, manifest: ManifestReference) -> None:
-        """Attach retained manifest bytes once; manifest contents arrive in phase 2."""
+    def seal_run(
+        self,
+        run_id: str,
+        manifest: ManifestReference,
+        *,
+        decisions_spec: RunSpecV4 | None = None,
+    ) -> None:
+        """Seal once; native runs also bind their exact frozen specification."""
         manifest = _checked(manifest)
         store = ArtifactStore(self.run_directory(run_id))
         raw = store.read(manifest.artifact)
@@ -428,14 +437,68 @@ class Repository:
         if (self.decisions_version(run_id) == 4) != native:
             raise IntegrityError("Decisions marker differs from frozen manifest")
         if native:
-            from judgmentllm.preparation.manifest import ExecutableRunManifestV8
+            from judgmentllm.config import RunSpecV4, validate_run_spec
+            from judgmentllm.persistence.generation import build_generation_commitment
+            from judgmentllm.preparation.manifest import (
+                ExecutableRunManifestV8,
+                assessment_digest,
+                configuration_digest,
+            )
 
             checked_manifest = ExecutableRunManifestV8.model_validate_json(raw)
+            if decisions_spec is None:
+                raise IntegrityError("Decisions seal requires its frozen RunSpec V4")
+            checked_spec = validate_run_spec(decisions_spec)
+            if not isinstance(checked_spec, RunSpecV4):
+                raise IntegrityError("Decisions seal requires its frozen RunSpec V4")
+            specification = canonical_bytes(checked_spec)
             if (
                 checked_manifest.run_id != run_id
                 or checked_manifest.run_spec_version != 4
+                or checked_manifest.configuration_sha256
+                != configuration_digest(checked_spec)
+                or checked_manifest.assessment_sha256 != assessment_digest(checked_spec)
+                or checked_manifest.generation
+                != build_generation_commitment(checked_spec)
+                or (
+                    checked_manifest.specification.sha256,
+                    checked_manifest.specification.byte_length,
+                )
+                != (bytes_digest(specification), len(specification))
+                or any(
+                    getattr(checked_manifest, field) != getattr(checked_spec, field)
+                    for field in (
+                        "task_kind",
+                        "capture",
+                        "input",
+                        "pairs",
+                        "pair_presentations",
+                        "execution",
+                        "seed",
+                        "allow_ties",
+                        "strict_capabilities",
+                    )
+                )
             ):
-                raise IntegrityError("Decisions manifest identity differs")
+                raise IntegrityError(
+                    "Decisions manifest differs from frozen RunSpec V4"
+                )
+            run = self.get_run(run_id)
+            if (run.task_kind, run.provider, run.endpoint, run.model, run.capture) != (
+                checked_spec.task_kind,
+                checked_spec.provider,
+                checked_spec.endpoint,
+                checked_spec.model,
+                checked_spec.capture,
+            ):
+                raise IntegrityError("Decisions run differs from frozen RunSpec V4")
+            if (
+                checked_spec.capture == "full"
+                and store.read(checked_manifest.specification) != specification
+            ):
+                raise IntegrityError("Decisions frozen specification bytes differ")
+        elif decisions_spec is not None:
+            raise IntegrityError("historical seal cannot acquire Decisions authority")
         with self.transaction():
             current = self.get_run(run_id)
             if current.state != "created" or current.manifest_sha256 is not None:

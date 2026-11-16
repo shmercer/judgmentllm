@@ -72,6 +72,7 @@ def run_child(
     "stage",
     [
         "after_submitting",
+        "receiver_before_acceptance",
         "after_submit",
         "after_acknowledgment_receipt",
         "after_acknowledgment",
@@ -120,9 +121,13 @@ def test_real_death_reopens_and_commits_a_full_vector_once(
     )
     with Repository(store) as repository:
         results = list(repository.iter_results("001"))
-        if stage == "after_submitting":
-            assert results == [] and entries == []
-            assert next(repository.iter_submissions("001")).certainty == "not_submitted"
+        if stage in {"after_submitting", "receiver_before_acceptance"}:
+            assert results == [] and len(entries) == int(
+                stage == "receiver_before_acceptance"
+            )
+            assert next(repository.iter_submissions("001")).certainty == "unknown"
+            assert json.loads(resumed.stdout)["recovery_required"]
+            assert json.loads(again.stdout)["recovery_required"]
         else:
             assert len(results) == 3 and len(entries) == 1
             assert {r.trait_id: r.status for r in results} == {
@@ -130,13 +135,32 @@ def test_real_death_reopens_and_commits_a_full_vector_once(
                 "01": "refused",
                 "02": "complete",
             }
-    if stage != "after_submitting":
+    if stage not in {"after_submitting", "receiver_before_acceptance"}:
         assert (
             export_decisions_provenance(
                 "001", store=store
             ).manifest.totals.known_invocations
             == 1
         )
+    else:
+        totals = export_decisions_provenance("001", store=store).manifest.totals
+        assert totals.known_invocations == 0 and totals.invocation_unknown == 1
+        assert totals.input_tokens is totals.output_tokens is totals.cost is None
+        from judgmentllm.execution.retry import authorize_subset_retry
+        from judgmentllm.persistence.models import RetryAuthorizationError
+        from judgmentllm.providers.decisions_mock import MockDecisionsAdapter
+
+        with Repository(store) as repository:
+            request = next(repository.iter_requests("001"))
+            tasks = repository.request_task_ids("001", request.request_uid)
+        with pytest.raises(RetryAuthorizationError):
+            authorize_subset_retry(
+                "001",
+                store=store,
+                adapter=MockDecisionsAdapter(store / "mock-service.sqlite3"),
+                task_ids=tasks,
+                operation_id="unsafe-preacceptance",
+            )
 
 
 @pytest.mark.parametrize("capture", ["full", "minimal"])

@@ -19,6 +19,7 @@ class DecisionsModel(ExecutionModel):
         "physical_provenance_version",
         "provenance_manifest_version",
         "provenance_report_version",
+        "normalized_result_schema",
         "invocation_evidence_version",
         mode="before",
         check_fields=False,

@@ -94,6 +94,11 @@ index, immutable/no-replace and frozen-source guards. It also adds a nullable
 `runs.decisions_version` fixed in the run's original INSERT. UPDATE, DELETE and
 REPLACE cannot retrofit this marker. Seal/reopen bind marker 4 to RunSpec V4 and
 executable manifest 8. Absent marker retains historical behavior.
+Native sealing also requires the deeply revalidated V4 specification: its exact
+artifact bytes/hash, configuration/assessment digests, controls and run identity
+must match the manifest. Reopening a published but unsealed run repeats this
+binding; minimal capture supplies the verified specification without retaining
+its text. Legacy seal callers retain their existing interface and authority.
 
 The other required SQL difference is narrow: a marked run may commit a
 `refused`/`provider_refusal` member from a `response` observation. Every existing
@@ -121,6 +126,9 @@ A local observation key is a separate identity. Missing acknowledgments or lost/
 partial responses are held; recovery never blindly resubmits. Known forwarding
 without acceptance has its own immutable invocation receipt, allowing later
 authoritative reconciliation without rewriting an uncertain fact.
+A missing synthetic acceptance row stays unresolved, including death after
+receiver entry and before acceptance is recorded. Only an explicit negative
+service record matching correlation and payload can establish nonacceptance.
 
 Typed adapter parsing rejects duplicate raw JSON keys and preserves named answer
 order. Shared interpretation salvages siblings only from a recognizable bound

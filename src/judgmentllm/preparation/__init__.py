@@ -24,7 +24,6 @@ from judgmentllm.config import (
     RunSpecV3,
     RunSpecV4,
     _load_run_spec,  # pyright: ignore[reportPrivateUsage]
-    load_run_spec,
     parse_document,
     validate_run_spec,
     validate_run_spec_json,
@@ -275,18 +274,13 @@ def prepare_run(
     """
     if type(exhaustive_rendering) is not bool:
         raise PreparationError("exhaustive_rendering must be a boolean")
-    candidate = (
-        spec_or_path
-        if isinstance(spec_or_path, (RunSpec, RunSpecV2, RunSpecV3, RunSpecV4))
-        else load_run_spec(Path(spec_or_path))
-    )
-    if isinstance(candidate, RunSpecV4):
+    if isinstance(spec_or_path, RunSpecV4):
         from judgmentllm.preparation.decisions import prepare_decisions_run
 
         if transport_context is not None:
             raise PreparationError("V4 cannot acquire legacy transport context")
         return prepare_decisions_run(
-            cast(RunSpecV4 | str | Path, spec_or_path),
+            spec_or_path,
             store=store,
             run_id=run_id,
             capabilities=capabilities,
@@ -320,6 +314,17 @@ def prepare_run(
             data = parse_document(raw.decode("utf-8"), origin)
             if not isinstance(data, dict):
                 raise PreparationError("configuration must contain an object")
+            version = cast(dict[str, object], data).get("schema_version")
+            if type(version) is int and version == 4:
+                from judgmentllm.preparation.decisions import prepare_decisions_run
+
+                repository.require_decisions_storage()
+                if transport_context is not None:
+                    raise PreparationError("V4 cannot acquire legacy transport context")
+                repository.close()
+                return prepare_decisions_run(
+                    origin, store=store, run_id=run_id, capabilities=capabilities
+                )
             capture = cast(dict[str, object], data).get("capture", "full")
             if capture not in ("full", "minimal"):
                 raise PreparationError("capture must be full or minimal")
@@ -797,7 +802,11 @@ def open_prepared_run(
                 )
             if unsealed:
                 identity = repository.get_artifact(run_id, prepared.manifest_sha256)
-                repository.seal_run(run_id, ManifestReference(artifact=identity))
+                repository.seal_run(
+                    run_id,
+                    ManifestReference(artifact=identity),
+                    decisions_spec=current if isinstance(current, RunSpecV4) else None,
+                )
         return prepared
     except BaseException as error:
         if prepared is not None:

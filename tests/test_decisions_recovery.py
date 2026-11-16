@@ -94,6 +94,56 @@ async def test_receiver_negative_control_counts_before_acceptance_deduplication(
     assert adapter.ledger.acceptance_count() == 1
 
 
+@pytest.mark.parametrize("conflict", [None, "correlation", "payload"])
+@pytest.mark.asyncio
+async def test_nonacceptance_requires_an_explicit_identity_bound_service_record(
+    tmp_path: Path,
+    conflict: str | None,
+) -> None:
+    from judgmentllm.preparation.decisions import DecisionsPreparedRun
+    from judgmentllm.providers.ledger import AcceptanceRecord
+    from judgmentllm.providers.protocol import ProviderIntegrityError
+    from judgmentllm.transport import physical_identity
+
+    spec = native_spec(tmp_path)
+    store = tmp_path / "store"
+    with prepare_run(spec, store=store, run_id="001") as prepared:
+        assert isinstance(prepared, DecisionsPreparedRun)
+        dependency = next(prepared.iter_request_dependencies())
+        attempt = next(prepared.repository.iter_attempts("001"))
+        wire = prepared.prepare_transport_attempt(
+            dependency,
+            physical_identity("001", attempt.request_uid, attempt.attempt_id),
+        )
+    adapter = MockDecisionsAdapter(store / "mock-service.sqlite3")
+    identity = wire.transport_commitment.identity
+    arguments = dict(
+        submission_id=identity.submission_id, correlation_id=identity.correlation_id
+    )
+    assert (await adapter.reconcile(wire, **arguments)).outcome == "unresolved"
+    adapter.ledger.establish(
+        AcceptanceRecord(
+            submission_id=identity.submission_id,
+            correlation_id="foreign"
+            if conflict == "correlation"
+            else identity.correlation_id,
+            payload_sha256="f" * 64 if conflict == "payload" else wire.payload_sha256,
+            accepted=False,
+            observation_key=None,
+            recipe=None,
+            acceptance_count=0,
+            retrieval_status="not_accepted",
+        ),
+        service_identity=adapter.transport_context.service_identity,
+    )
+    if conflict:
+        with pytest.raises(ProviderIntegrityError):
+            await adapter.reconcile(wire, **arguments)
+    else:
+        assert (await adapter.reconcile(wire, **arguments)).outcome == "not_submitted"
+    assert adapter.forward_entries == adapter.submit_calls == 0
+
+
 @pytest.mark.parametrize(
     "transport", ["timeout_before", "timeout_after", "partial_reception"]
 )
@@ -138,6 +188,7 @@ async def test_uncertainty_is_held_and_authoritative_reconciliation_never_forwar
         0 if transport == "timeout_before" else 3
     )
     assert recovered.forward_entries == recovered.submit_calls == 0
+    assert report.recovery_required == (transport == "timeout_before")
 
 
 @pytest.mark.asyncio
@@ -223,6 +274,11 @@ async def test_provenance_reference_published_last_and_repeated_export_converges
     assert len(references) == int(stage == "after_provenance_reference")
     bundle = export_decisions_provenance("001", store=store)
     again = export_decisions_provenance("001", store=store)
+    for version in (True, 1.0, "1"):
+        with pytest.raises(ValueError):
+            type(bundle.manifest).model_validate(
+                {**bundle.manifest.model_dump(), "normalized_result_schema": version}
+            )
     assert bundle == again and Path(
         bundle.manifest_path
     ).read_bytes() == canonical_bytes(bundle.manifest)

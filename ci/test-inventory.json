@@ -309,6 +309,7 @@
       "test_genuine_historical_store_inspection_export_and_v4_rejection_do_not_migrate": {"[1]": [], "[2]": []},
       "test_marked_refusal_does_not_bypass_existing_evidence_guards": {"[not_refused]": [], "[unaccepted]": [], "[wrong_attempt]": [], "[wrong_error]": [], "[wrong_membership]": [], "[wrong_observation]": []},
       "test_marker_mismatch_fails_seal_and_reopen_without_retrofit": {"": []},
+      "test_native_seal_requires_the_exact_frozen_v4_specification": {"[full]": [], "[minimal]": []},
       "test_old_status_listing_summary_and_cli_envelope_bytes_are_exact": {"": []},
       "test_run_and_decisions_marker_are_created_atomically": {"": []},
       "test_schema2_statement_checksum_remains_exact": {"": []},
@@ -346,7 +347,7 @@
       "test_forwarding_fact_receipt_crash_can_reconcile_without_rewriting_it": {"": []},
       "test_lost_accepted_response_without_reconciliation_stays_held": {"[full]": [], "[minimal]": []},
       "test_provenance_process_death_and_repeated_publication": {"[after_provenance_artifact]": [], "[after_provenance_reference]": [], "[before_provenance_reference]": [], "[during_provenance_registration]": []},
-      "test_real_death_reopens_and_commits_a_full_vector_once": {"[after_acknowledgment-full]": [], "[after_acknowledgment-minimal]": [], "[after_acknowledgment_receipt-full]": [], "[after_acknowledgment_receipt-minimal]": [], "[after_decisions_outcome_artifact-full]": [], "[after_decisions_outcome_artifact-minimal]": [], "[after_evidence_artifacts-full]": [], "[after_evidence_artifacts-minimal]": [], "[after_evidence_receipt-full]": [], "[after_evidence_receipt-minimal]": [], "[after_observation-full]": [], "[after_observation-minimal]": [], "[after_receipt-full]": [], "[after_receipt-minimal]": [], "[after_response-full]": [], "[after_response-minimal]": [], "[after_result-full]": [], "[after_result-minimal]": [], "[after_submit-full]": [], "[after_submit-minimal]": [], "[after_submitting-full]": [], "[after_submitting-minimal]": [], "[during_evidence_transaction-full]": [], "[during_evidence_transaction-minimal]": [], "[during_member_validation-full]": [], "[during_member_validation-minimal]": [], "[during_result_transaction-full]": [], "[during_result_transaction-minimal]": []},
+      "test_real_death_reopens_and_commits_a_full_vector_once": {"[after_acknowledgment-full]": [], "[after_acknowledgment-minimal]": [], "[after_acknowledgment_receipt-full]": [], "[after_acknowledgment_receipt-minimal]": [], "[after_decisions_outcome_artifact-full]": [], "[after_decisions_outcome_artifact-minimal]": [], "[after_evidence_artifacts-full]": [], "[after_evidence_artifacts-minimal]": [], "[after_evidence_receipt-full]": [], "[after_evidence_receipt-minimal]": [], "[after_observation-full]": [], "[after_observation-minimal]": [], "[after_receipt-full]": [], "[after_receipt-minimal]": [], "[after_response-full]": [], "[after_response-minimal]": [], "[after_result-full]": [], "[after_result-minimal]": [], "[after_submit-full]": [], "[after_submit-minimal]": [], "[after_submitting-full]": [], "[after_submitting-minimal]": [], "[during_evidence_transaction-full]": [], "[during_evidence_transaction-minimal]": [], "[during_member_validation-full]": [], "[during_member_validation-minimal]": [], "[during_result_transaction-full]": [], "[during_result_transaction-minimal]": [], "[receiver_before_acceptance-full]": [], "[receiver_before_acceptance-minimal]": []},
       "test_sched1_preparation_reopens_in_a_fresh_process": {"[41]": [], "[42]": []}
     },
     "tests/test_decisions_r.py": {
@@ -356,6 +357,7 @@
       "test_cj_reversed_presentation_and_explicit_winner": {"": []},
       "test_extra_forward_is_blocked_and_first_evidence_survives": {"[continuation]": [], "[redirect]": [], "[retry]": []},
       "test_failed_subset_retry_is_ancestral_and_operation_idempotent": {"": []},
+      "test_nonacceptance_requires_an_explicit_identity_bound_service_record": {"[None]": [], "[correlation]": [], "[payload]": []},
       "test_ordinary_python_validation_plan_execution_status_and_companion": {"": []},
       "test_provenance_reference_published_last_and_repeated_export_converges": {"[after_provenance_artifact]": [], "[after_provenance_reference]": [], "[after_provenance_serialization]": [], "[before_provenance_reference]": [], "[during_provenance_registration]": []},
       "test_receiver_negative_control_counts_before_acceptance_deduplication": {"": []},

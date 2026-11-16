@@ -11,8 +11,11 @@ from contextlib import ExitStack
 from pathlib import Path
 from typing import BinaryIO, cast
 
+from pydantic import ValidationError
+
 from judgmentllm import __version__
 from judgmentllm.config import (
+    ConfigurationError,
     InputSpec,
     RunSpecV4,
     _load_run_spec,  # pyright: ignore[reportPrivateUsage]
@@ -828,8 +831,18 @@ def prepare_decisions_run(
             _checkpoint("manifest_published")
             for source in sources:
                 require_signature(Path(source.original_location), source.generation)
-            repository.seal_run(run_id, ManifestReference(artifact=artifact))
+            repository.seal_run(
+                run_id, ManifestReference(artifact=artifact), decisions_spec=spec
+            )
         return prepared
-    except BaseException:
+    except BaseException as error:
         prepared.close() if prepared is not None else repository.close()
+        if isinstance(
+            error, (OSError, ConfigurationError, ValidationError, UnicodeError)
+        ):
+            raise PreparationError(
+                "source/configuration validation failed during preparation"
+            ) from None
+        if isinstance(error, ValueError):
+            raise PreparationError(str(error)) from None
         raise

@@ -434,7 +434,14 @@ class MockDecisionsAdapter:
             submission_id,
             service_identity=self.transport_context.service_identity,
         )
-        if record is None or not record.accepted:
+        if record is None:
+            return DecisionsReconciliationEvidenceV1(outcome="unresolved")
+        if (record.correlation_id, record.payload_sha256) != (
+            correlation_id,
+            wire.payload_sha256,
+        ):
+            raise ProviderIntegrityError("Decisions reconciliation identity conflicts")
+        if not record.accepted:
             return DecisionsReconciliationEvidenceV1(outcome="not_submitted")
         if not self.retrieval_available:
             return DecisionsReconciliationEvidenceV1(outcome="unresolved")

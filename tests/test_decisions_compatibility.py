@@ -373,3 +373,42 @@ def test_run_and_decisions_marker_are_created_atomically(
             repository.connection.execute("SELECT count(*) FROM runs").fetchone()[0]
             == 0
         )
+
+
+@pytest.mark.parametrize("capture", ["full", "minimal"])
+def test_native_seal_requires_the_exact_frozen_v4_specification(
+    tmp_path: Path, capture: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import judgmentllm.preparation as preparation
+    from judgmentllm.config import RunSpecV4
+    from judgmentllm.persistence.models import ManifestReference
+
+    spec = native_spec(tmp_path, capture=capture)
+    store = tmp_path / "store"
+
+    def interrupt(stage: str, *_args: object) -> None:
+        if stage == "manifest_published":
+            raise RuntimeError("synthetic pre-seal interruption")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(preparation, "_checkpoint", interrupt)
+        with pytest.raises(RuntimeError, match="pre-seal"):
+            prepare_run(spec, store=store, run_id="001")
+    with Repository(store) as repository:
+        manifest = preparation._load_manifest(repository, "001", unsealed=True)  # pyright: ignore[reportPrivateUsage]
+        identity = repository.get_artifact(
+            "001", bytes_digest(canonical_bytes(manifest))
+        )
+        reference = ManifestReference(artifact=identity)
+        with pytest.raises(IntegrityError, match="RunSpec V4"):
+            repository.seal_run("001", reference)
+        changed = RunSpecV4.model_validate({**spec.model_dump(), "seed": 99})
+        with pytest.raises(IntegrityError, match="RunSpec V4"):
+            repository.seal_run("001", reference, decisions_spec=changed)
+        assert repository.get_run("001").state == "created"
+        assert repository.get_run("001").manifest_sha256 is None
+        assert repository.decisions_version("001") == 4
+    # Recovery performs the same binding before finishing this published seal.
+    with open_prepared_run("001", store=store, spec=spec) as prepared:
+        assert prepared.repository.get_run("001").state == "submitted"
+        assert prepared.repository.decisions_version("001") == 4
