@@ -150,12 +150,26 @@ for that judgment. Missing files, uncertain dependencies/dispatch, unknown field
 duplicate keys or a foreign source/policy/contract fail closed. A placement change
 may authorize only host/global exclusivity, never weaker isolation.
 
-The supervisor passes the record using `--scheduling-review PATH` and
-`--scheduling-review-sha256 INDEPENDENT_PIN` to the same trusted driver's plan,
-lane and `verify-local` operations (and complete-grid check, when applicable).
-Admission rebuilds the contract and rechecks the independently supplied pin;
-it never derives approval from the plan's recorded review. Scheduling approval
-cannot authorize evidence reuse, provider calls or reduced acceptance.
+The initial merged `92699003` driver has no `--scheduling-review` or
+`--scheduling-review-sha256` options. Its separate-source bootstrap commands above
+retain exclusive placement and cannot establish restored overlap. Do not add
+flags to that pinned checkout or substitute candidate policy as trusted authority.
+Those review options apply only to a subsequently admitted merged driver that
+implements them. That driver rebuilds the contract and rechecks the supervisor's
+independent pin rather than deriving approval from a plan's recorded review.
+Scheduling approval cannot authorize evidence reuse, provider calls or reduced
+acceptance.
+
+Before overlap execution, independent reviewers must authorize each whole-module
+declaration and each fingerprint successor change. A dispatch partition is only
+a source/hash assignment, not that authorization. Apply only specifically reviewed
+metadata, commit and freeze it, then finalize the external review ledger against
+that exact source; never put a commit's own SHA in its policy. A separately
+authorized bounded candidate suite without `--plan` remains diagnostic
+(`qualification: false`). Actual two-test child-process overlap, complete phases,
+teardown, exclusive serial/resource barriers and owned cleanup must be reviewed
+separately from protected acceptance. The existing suite R switch runs all seven
+gates within that barrier graph; a separately launched gate cannot replace it.
 
 Only independently admitted **merged** slice commits subsequently recorded by
 the supervisor become trusted policy SHAs. No future SHA is assumed. Changes in

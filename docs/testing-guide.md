@@ -407,13 +407,26 @@ The bounded resolver supports regular `.py` source modules/packages and namespac
 directories with no conflicting module/initializer format in the source manifest.
 It retains module and package alternatives at every parent, including bytecode,
 extensions, cache variants and unknown suffixes; it does not guess which loader
-or package wins. Names are compared conservatively across case variants. Every
-non-`.py` execution candidate is fingerprinted and blocks admission, even beside
-valid source or with an exact-source binding. A directory with descendants alone
-does not prove a safe namespace. Ordinary namespace children and data files remain
-supported when no conflicting entry point exists. This is source-layout checking,
-not arbitrary import-hook or interpreter analysis; external import/environment
-behavior still needs independent review and qualification.
+or package wins. Names are compared conservatively across case variants.
+
+An implicitly discovered, exact-case regular `name.pyi` beside regular `name.py`
+is type data only when there is no competing module/package/cache/case layout.
+Initializer and stub-only layouts remain unsupported. The stub grammar permits
+docstrings, non-star imports/reexports, and synchronous/asynchronous overloads
+with a uniquely imported typing `overload`, literal defaults, simple type
+annotations and ellipsis-only bodies. Other statements, executable signatures,
+hooks, classes, rebinding and unsupported syntax fail closed. Both sibling byte
+hashes remain dependencies; this does not approve the `.py` implementation.
+
+Discovery role matters: every non-`.py` execution demand still blocks admission,
+including a recognized stub named by an entry/support path or declared target.
+Type-data discovery cannot erase later execution demand in either order. Binding
+hash validation and target traversal apply to both roles; a declaration is never
+a format exemption. A directory with descendants alone does not prove a safe
+namespace. Ordinary namespace children and data files remain supported when no
+conflicting entry point exists. This is source-layout checking, not arbitrary
+import-hook or interpreter analysis; external import/environment behavior still
+needs independent review and qualification.
 
 Every other Python form requires independent exact-source module review,
 including imports, ordinary functions, calls, classes, decorators, hooks,

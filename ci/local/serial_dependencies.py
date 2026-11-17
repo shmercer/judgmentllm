@@ -140,6 +140,101 @@ def plugin_dispatch(tree: ast.Module) -> tuple[list[str], bool]:
     return plugins, False
 
 
+def type_stub(raw: bytes) -> bool:
+    """Recognize only static reexports and overloads; never execute annotations."""
+    try:
+        tree = ast.parse(raw)
+    except (SyntaxError, UnicodeError):
+        return False
+    imports: set[str] = set()
+    functions: set[str] = set()
+    overload: str | None = None
+    annotation_nodes = (
+        ast.Name,
+        ast.Attribute,
+        ast.Subscript,
+        ast.Tuple,
+        ast.BinOp,
+        ast.BitOr,
+        ast.Constant,
+        ast.Load,
+    )
+    for node in tree.body:
+        if (
+            isinstance(node, ast.Expr)
+            and isinstance(node.value, ast.Constant)
+            and isinstance(node.value.value, str)
+        ):
+            continue
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            for alias in node.names:
+                name = alias.asname or (
+                    alias.name.split(".", 1)[0]
+                    if isinstance(node, ast.Import)
+                    else alias.name
+                )
+                if (
+                    alias.name == "*"
+                    or name.startswith("__")
+                    or name in imports | functions
+                ):
+                    return False
+                imports.add(name)
+                if (
+                    isinstance(node, ast.ImportFrom)
+                    and not node.level
+                    and node.module == "typing"
+                    and alias.name == "overload"
+                ):
+                    if overload is not None:
+                        return False
+                    overload = name
+            continue
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            return False
+        if (
+            overload is None
+            or node.name.startswith("__")
+            or node.name in imports
+            or getattr(node, "type_params", ())
+            or len(node.decorator_list) != 1
+            or not isinstance(node.decorator_list[0], ast.Name)
+            or node.decorator_list[0].id != overload
+            or len(node.body) != 1
+            or not isinstance(node.body[0], ast.Expr)
+            or not isinstance(node.body[0].value, ast.Constant)
+            or node.body[0].value.value is not Ellipsis
+        ):
+            return False
+        functions.add(node.name)
+        args = [*node.args.posonlyargs, *node.args.args, *node.args.kwonlyargs]
+        if node.args.vararg is not None:
+            args.append(node.args.vararg)
+        if node.args.kwarg is not None:
+            args.append(node.args.kwarg)
+        annotations = [arg.annotation for arg in args if arg.annotation is not None]
+        if node.returns is not None:
+            annotations.append(node.returns)
+        if any(
+            not all(
+                isinstance(value, annotation_nodes) for value in ast.walk(annotation)
+            )
+            for annotation in annotations
+        ):
+            return False
+        for value in [
+            *node.args.defaults,
+            *(value for value in node.args.kw_defaults if value is not None),
+        ]:
+            if any(isinstance(part, ast.Call) for part in ast.walk(value)):
+                return False
+            try:
+                ast.literal_eval(value)
+            except (ValueError, TypeError):
+                return False
+    return True
+
+
 def closure(
     files: dict[str, bytes | None],
     selector: str,
@@ -163,13 +258,35 @@ def closure(
         stem = entry.parent / entry.name.split(".", 1)[0]
         variants.setdefault(stem.as_posix().casefold(), []).append(path)
     test = selector.split("::", 1)[0]
-    pending = [test, *scope["support_modules"]]
+    pending = [(path, True) for path in [test, *scope["support_modules"]]]
     for parent in [Path(test).parent, *Path(test).parent.parents]:
         conftest = (parent / "conftest.py").as_posix()
         if conftest in paths:
-            pending.append(conftest)
-    visited: set[str] = set()
+            pending.append((conftest, True))
+    visited: set[tuple[str, bool]] = set()
     problems: list[str] = []
+
+    def sibling_stub(path: str) -> bool:
+        entry = Path(path)
+        source = entry.with_suffix(".py").as_posix()
+        stem = entry.with_suffix("")
+        raw = files.get(path)
+        return (
+            entry.suffix == ".pyi"
+            and entry.stem.isidentifier()
+            and entry.stem != "__init__"
+            and raw is not None
+            and files.get(source) is not None
+            and set(variants.get(stem.as_posix().casefold(), [])) == {path, source}
+            and not variants.get(
+                (entry.parent / "__pycache__" / entry.stem).as_posix().casefold()
+            )
+            and not any(
+                value.casefold().startswith(stem.as_posix().casefold() + "/")
+                for value in paths
+            )
+            and type_stub(raw)
+        )
 
     def include(candidate: Path) -> bool:
         """Retain all layout alternatives; never guess package/loader precedence."""
@@ -180,7 +297,7 @@ def closure(
                 alternatives.extend([part, part.parent / "__pycache__" / part.name])
             for alternative in alternatives:
                 names = variants.get(alternative.as_posix().casefold(), [])
-                pending.extend(names)
+                pending.extend((name, not sibling_stub(name)) for name in names)
                 if part == candidate and names:
                     found = True
         return found
@@ -205,10 +322,10 @@ def closure(
         return found
 
     while pending:
-        path = pending.pop()
-        if path in visited:
+        path, execution = pending.pop()
+        if (path, execution) in visited:
             continue
-        visited.add(path)
+        visited.add((path, execution))
         required.add(path)
         include(Path(path).with_suffix(""))
         raw = files.get(path)
@@ -219,9 +336,11 @@ def closure(
                 or hashlib.sha256(raw).hexdigest() != binding["source_sha256"]
             ):
                 problems.append(f"{path}: exact-source execution review is stale")
-            pending.extend(binding["targets"])
+            pending.extend((target, True) for target in binding["targets"])
         if raw is None:
             problems.append(f"{path}: missing or nonregular helper")
+            continue
+        if not execution:
             continue
         if Path(path).suffix != ".py":
             problems.append(
