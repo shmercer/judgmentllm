@@ -67,60 +67,33 @@ def snapshot(source: Path, ref: str | None = None) -> dict[str, bytes | None]:
     return result
 
 
-def import_dispatch(tree: ast.Module) -> bool:
-    """Recognize review boundaries, never infer Python loader bindings or targets."""
-    modules = {"builtins", "importlib"}
-    references = {
-        "__builtins__",
-        "__import__",
-        "import_module",
-        "exec_module",
-        "load_module",
-        "spec_from_file_location",
-        "module_from_spec",
-        "getattr",
-        "setattr",
-        "delattr",
-        "globals",
-        "locals",
-        "vars",
-        "eval",
-        "exec",
-        "compile",
-        "__dict__",
-        "__getattribute__",
-        "__getattr__",
-        "__setattr__",
-        "__delattr__",
-        "__globals__",
-        "f_globals",
-        "f_locals",
-        "_getframe",
-        "currentframe",
-        "attrgetter",
-        "methodcaller",
-    }
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import) and any(
-            alias.name.split(".", 1)[0] in modules for alias in node.names
+def requires_review(tree: ast.Module) -> bool:
+    """Accept a small declarative subset; do not interpret executable Python."""
+    literals = (
+        ast.Constant,
+        ast.List,
+        ast.Tuple,
+        ast.Set,
+        ast.Dict,
+        ast.UnaryOp,
+        ast.UAdd,
+        ast.USub,
+        ast.Load,
+    )
+    for node in tree.body:
+        if isinstance(node, ast.Pass):
+            continue
+        elif isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant):
+            continue
+        elif (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and not node.targets[0].id.startswith("__")
+            and all(isinstance(value, literals) for value in ast.walk(node.value))
         ):
-            return True
-        if isinstance(node, ast.ImportFrom) and (
-            (node.module or "").split(".", 1)[0] in modules
-            or any(
-                alias.name == "*" or alias.name in references for alias in node.names
-            )
-        ):
-            return True
-        if isinstance(node, ast.Name) and node.id in modules | references:
-            return True
-        if isinstance(node, ast.Attribute) and node.attr in references:
-            return True
-        if (
-            isinstance(node, ast.Constant)
-            and isinstance(node.value, str)
-            and node.value in modules | references
-        ):
+            continue
+        else:
             return True
     return False
 
@@ -231,6 +204,14 @@ def closure(
             if initializer in paths and initializer not in visited:
                 pending.append(initializer)
         raw = files.get(path)
+        binding = scope["dynamic_imports"].get(path)
+        if binding is not None:
+            if (
+                raw is None
+                or hashlib.sha256(raw).hexdigest() != binding["source_sha256"]
+            ):
+                problems.append(f"{path}: exact-source execution review is stale")
+            pending.extend(binding["targets"])
         if raw is None:
             problems.append(f"{path}: missing or nonregular helper")
             continue
@@ -240,7 +221,7 @@ def closure(
             problems.append(f"{path}: helper imports cannot be assessed")
             continue
         plugins, dynamic = plugin_dispatch(tree)
-        dynamic = import_dispatch(tree) or dynamic
+        dynamic = requires_review(tree) or dynamic
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
@@ -274,14 +255,6 @@ def closure(
         for name in plugins:
             if not local_module(name, path):
                 dynamic = True
-        if dynamic:
-            binding = scope["dynamic_imports"].get(path)
-            if (
-                binding is None
-                or hashlib.sha256(raw).hexdigest() != binding["source_sha256"]
-            ):
-                problems.append(f"{path}: dynamic dispatch needs independent review")
-            else:
-                for target in binding["targets"]:
-                    pending.append(target)
+        if dynamic and binding is None:
+            problems.append(f"{path}: executable module needs independent review")
     return required, sorted(problems)

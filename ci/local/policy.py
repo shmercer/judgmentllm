@@ -98,7 +98,7 @@ def read(root: Path) -> dict[str, Any]:
                 or set(binding) != {"source_sha256", "targets", "reason"}
                 or re.fullmatch(r"[0-9a-f]{64}", str(binding["source_sha256"])) is None
                 or not binding["reason"]
-                or not binding["targets"]
+                or not isinstance(binding["targets"], list)
                 or len(binding["targets"]) != len(set(binding["targets"]))
                 or any(not safe_path(target) for target in binding["targets"])
             ):

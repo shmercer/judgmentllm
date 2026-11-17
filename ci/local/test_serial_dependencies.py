@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import os
 import subprocess
@@ -18,7 +19,7 @@ from local import policy as local_policy
 from local import scheduling_contract as contract
 from local.serial_dependencies import closure, snapshot
 from test_risk import freeze
-from test_scheduling_contract import SAFE, checksum
+from test_scheduling_contract import SAFE, checksum, review_execution
 from test_scheduling_contract import project as project
 
 
@@ -52,6 +53,7 @@ def test_implicit_setup_changes_block_previously_passed_overlap(
         policy["serial_shared_dependencies"][path.relative_to(source).as_posix()] = (
             checksum(path)
         )
+    review_execution(policy, source, implicit, [])
     (source / "ci/local-policy.json").write_text(json.dumps(policy))
     base = freeze(source)
     assert contract.build(source, base, base, policy, known)["status"] == "passed"
@@ -118,6 +120,25 @@ def test_nested_pytest_parents_and_initializers_are_transitive(project: Any) -> 
     }
     scope = copy.deepcopy(policy["serial_dependency_scope"])
     scope["support_modules"] = ["tests/helper.py"]
+    scope["dynamic_imports"]["tests/nested/test_safe.py"] = {
+        "source_sha256": hashlib.sha256(
+            files["tests/nested/test_safe.py"] or b""
+        ).hexdigest(),
+        "targets": [],
+        "reason": "Synthetic no-op test body",
+    }
+    for path in [
+        "conftest.py",
+        "tests/conftest.py",
+        "tests/nested/conftest.py",
+        "tests/__init__.py",
+        "tests/nested/__init__.py",
+    ]:
+        scope["dynamic_imports"][path] = {
+            "source_sha256": hashlib.sha256(files[path] or b"").hexdigest(),
+            "targets": [],
+            "reason": "Synthetic static import reviewed for execution effects",
+        }
     required, problems = closure(files, "tests/nested/test_safe.py::test_safe", scope)
     assert not problems
     assert set(files) - {"tests/unrelated/conftest.py"} <= required
@@ -156,6 +177,9 @@ def test_local_plugins_aliases_and_relative_dispatch_follow_all_helpers(
         path.write_text(text)
         policy["serial_shared_dependencies"][name] = checksum(path)
     policy["serial"][0]["dependencies"]["tests/test_safe.py"] = checksum(test)
+    review_execution(policy, source, "tests/test_safe.py", [])
+    for path in ["plugins/__init__.py", "plugins/choice.py", "shared/helper.py"]:
+        review_execution(policy, source, path, [])
     policy["serial_dependency_scope"]["dynamic_imports"]["plugins/plugin.py"] = {
         "source_sha256": checksum(source / "plugins/plugin.py"),
         "targets": ["plugins/choice.py"],
@@ -213,6 +237,7 @@ def test_unresolved_dispatch_requires_exact_reviewed_binding(
         path.write_text(text)
     files = snapshot(source)
     scope = policy["serial_dependency_scope"]
+    review_execution(policy, source, "plugins/choice.py", [])
     assert closure(files, SAFE, scope)[1]
     scope["dynamic_imports"]["tests/test_safe.py"] = {
         "source_sha256": checksum(test),
@@ -236,6 +261,24 @@ def test_reviewed_manifests_can_name_implicit_and_external_helpers(
     policy["serial_shared_dependencies"][path] = "0" * 64
     (tmp_path / "local-policy.json").write_text(json.dumps(policy))
     assert path in local_policy.read(tmp_path)["serial_shared_dependencies"]
+
+
+def test_exact_module_review_may_declare_no_additional_targets(tmp_path: Path) -> None:
+    policy = json.loads(
+        (Path(__file__).resolve().parents[1] / "local-policy.json").read_text()
+    )
+    policy["serial_dependency_scope"]["dynamic_imports"]["tests/synthetic.py"] = {
+        "source_sha256": "0" * 64,
+        "targets": [],
+        "reason": "Synthetic module reviewed with no additional imports",
+    }
+    (tmp_path / "local-policy.json").write_text(json.dumps(policy))
+    assert (
+        local_policy.read(tmp_path)["serial_dependency_scope"]["dynamic_imports"][
+            "tests/synthetic.py"
+        ]["targets"]
+        == []
+    )
 
 
 @pytest.mark.parametrize(

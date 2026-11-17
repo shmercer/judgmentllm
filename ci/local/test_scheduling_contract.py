@@ -31,6 +31,17 @@ def checksum(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def review_execution(
+    policy: dict[str, Any], source: Path, path: str, targets: list[str]
+) -> None:
+    """Explicit reviews belong only to these disposable synthetic repositories."""
+    policy["serial_dependency_scope"]["dynamic_imports"][path] = {
+        "source_sha256": checksum(source / path),
+        "targets": targets,
+        "reason": "Synthetic module review; no approval for repository source",
+    }
+
+
 @pytest.fixture
 def project(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -116,6 +127,7 @@ def project(
         "provider_sources": {"src/judgmentllm/providers/openai_response.py": "openai"},
         "shared_sources": ["src/judgmentllm/providers/openai_response.py"],
     }
+    review_execution(policy, source, "tests/test_safe.py", ["tests/helper.py"])
     ci = source / "ci"
     ci.mkdir()
     metadata: list[tuple[str, dict[str, Any]]] = [
@@ -510,6 +522,12 @@ def test_helper_packages_plugins_and_literal_dispatch_are_transitive(
         "targets": ["tests/choice.py"],
         "reason": "Synthetic reviewed dispatch only",
     }
+    for path in ["tests/test_safe.py", "tests/pkg/__init__.py", "tests/plugin.py"]:
+        policy["serial_dependency_scope"]["dynamic_imports"][path] = {
+            "source_sha256": hashlib.sha256(files[path] or b"").hexdigest(),
+            "targets": [],
+            "reason": "Synthetic static import reviewed for execution effects",
+        }
     required, problems = closure(files, SAFE, policy["serial_dependency_scope"])
     assert not problems
     assert set(files) - {"tests/test_unrelated.py"} <= required

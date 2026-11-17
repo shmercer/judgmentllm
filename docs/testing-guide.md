@@ -396,22 +396,38 @@ Review helpers transitively, parent package initializers, autouse fixtures,
 applicable root/ancestor conftests, pytest plugins and dynamic dispatch. The
 runner bounds conftest discovery to the candidate source with `--confcutdir`.
 Repository-local plugins and helpers outside `tests/` are traversed too, including
-their package initializers. Non-star static imports are followed automatically.
-Python loader bindings and targets are not inferred: references to
-`importlib`/`builtins`, wildcard imports, loader APIs, and reflection/namespace
-APIs require independent review even when a call has a literal-looking target.
-Match captures, exception handlers and module aliases can rebind those names;
-literal text alone cannot establish the actual import.
+their package initializers. Automatic module handling accepts only constant
+expressions/docstrings, `pass`, and a single name assigned literal
+constants/containers with optional numeric signs. Namespace names starting with
+`__` require review. Only
+one plain literal `pytest_plugins` declaration is automatic; annotations,
+mutations and escapes require review.
 
-Only one top-level literal `pytest_plugins` declaration is automatic. Mutations,
-aliasing, passing/returning the list, reflective access and any other escaped
-reference require review. These unknown forms use the same finite explicit
-target list bound to the exact declaring/helper source hash in
-`serial_dependency_scope.dynamic_imports`; an unknown or edited dispatch fails
-closed. The reviewed targets are traversed through their local helpers, so a
-later plugin or transitive helper byte change still invalidates placement.
-These checks are scoped to the reviewed test/setup/helper closure; an unrelated
-ordinary addition does not become a dependency merely for containing reflection.
+Every other Python form requires independent exact-source module review,
+including imports, ordinary functions, calls, classes, decorators, hooks,
+aliasing and control flow. An import can execute module hooks or expose objects
+that pytest inspects implicitly, so traversing static imports alone cannot
+authorize execution. This is a bounded syntax rule, not a completeness claim about
+arbitrary Python. It does not try to enumerate dangerous APIs or infer a loader's
+literal-looking target. `pytest.importorskip`, `pkgutil.resolve_name`,
+`pydoc.locate`, `runpy`, implicit module hooks and namespace replacement all
+cross this boundary along with unrecognized execution forms.
+
+Use the existing `serial_dependency_scope.dynamic_imports` record to bind each
+reviewed module's exact source hash and finite additional target paths. An empty
+target list explicitly records a review finding no additional imports; it is
+never inferred from unrecognized syntax. Review the complete execution and
+fixture/plugin behavior, indirect calls, external dependencies and environment;
+leave uncertain closures blocked. No author may self-approve these records.
+Every declared record is hash-checked and its targets traversed, even for a module
+inside the static subset. Missing/stale declarations, missing/deleted targets,
+unreviewed executable targets and transitive changes fail closed. Static imports
+are still traversed in reviewed executable modules; review does not replace
+dependency fingerprints or qualification.
+
+These checks apply only to the owned test/setup/helper execution closure; an
+unrelated ordinary test is not parsed or hashed merely for containing executable
+Python. Broader shared source/environment controls remain fingerprinted.
 Keep all real source-inventory reads at their existing call sites.
 Neither a setup optimization nor a diagnostic timing permits caching those reads,
 removing assertions, reducing the 42-case pilot or relaxing recovery/deadlines.
