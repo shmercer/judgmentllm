@@ -157,6 +157,11 @@ def closure(
         and not Path(path).name.startswith("test_")
     } | set(scope["controls"])
     paths = set(files) | (known_paths or set())
+    variants: dict[str, list[str]] = {}
+    for path in sorted(paths):
+        entry = Path(path)
+        stem = entry.parent / entry.name.split(".", 1)[0]
+        variants.setdefault(stem.as_posix().casefold(), []).append(path)
     test = selector.split("::", 1)[0]
     pending = [test, *scope["support_modules"]]
     for parent in [Path(test).parent, *Path(test).parent.parents]:
@@ -165,6 +170,20 @@ def closure(
             pending.append(conftest)
     visited: set[str] = set()
     problems: list[str] = []
+
+    def include(candidate: Path) -> bool:
+        """Retain all layout alternatives; never guess package/loader precedence."""
+        found = False
+        for part in [candidate, *candidate.parents]:
+            alternatives = [part / "__init__", part / "__pycache__" / "__init__"]
+            if part.name:
+                alternatives.extend([part, part.parent / "__pycache__" / part.name])
+            for alternative in alternatives:
+                names = variants.get(alternative.as_posix().casefold(), [])
+                pending.extend(names)
+                if part == candidate and names:
+                    found = True
+        return found
 
     def local_module(module: str, importer: str, *, relative: bool = False) -> bool:
         candidates = (
@@ -177,19 +196,11 @@ def closure(
         )
         found = False
         for candidate in candidates:
-            targets = [candidate / "__init__.py"]
-            if candidate.name:
-                targets.append(candidate.with_suffix(".py"))
-            for target in targets:
-                name = target.as_posix()
-                if name in paths:
-                    pending.append(name)
-                    found = True
-            for parent in candidate.parents:
-                initializer = (parent / "__init__.py").as_posix()
-                if initializer in paths:
-                    pending.append(initializer)
-            if any(path.startswith(candidate.as_posix() + "/") for path in paths):
+            found = include(candidate) or found
+            if any(
+                path.casefold().startswith(candidate.as_posix().casefold() + "/")
+                for path in paths
+            ):
                 found = True  # Repository-local namespace package.
         return found
 
@@ -199,10 +210,7 @@ def closure(
             continue
         visited.add(path)
         required.add(path)
-        for parent in [Path(path).parent, *Path(path).parent.parents]:
-            initializer = (parent / "__init__.py").as_posix()
-            if initializer in paths and initializer not in visited:
-                pending.append(initializer)
+        include(Path(path).with_suffix(""))
         raw = files.get(path)
         binding = scope["dynamic_imports"].get(path)
         if binding is not None:
@@ -214,6 +222,11 @@ def closure(
             pending.extend(binding["targets"])
         if raw is None:
             problems.append(f"{path}: missing or nonregular helper")
+            continue
+        if Path(path).suffix != ".py":
+            problems.append(
+                f"{path}: unsupported executable format; only .py source is supported"
+            )
             continue
         try:
             tree = ast.parse(raw)

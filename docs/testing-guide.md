@@ -403,6 +403,18 @@ constants/containers with optional numeric signs. Namespace names starting with
 one plain literal `pytest_plugins` declaration is automatic; annotations,
 mutations and escapes require review.
 
+The bounded resolver supports regular `.py` source modules/packages and namespace
+directories with no conflicting module/initializer format in the source manifest.
+It retains module and package alternatives at every parent, including bytecode,
+extensions, cache variants and unknown suffixes; it does not guess which loader
+or package wins. Names are compared conservatively across case variants. Every
+non-`.py` execution candidate is fingerprinted and blocks admission, even beside
+valid source or with an exact-source binding. A directory with descendants alone
+does not prove a safe namespace. Ordinary namespace children and data files remain
+supported when no conflicting entry point exists. This is source-layout checking,
+not arbitrary import-hook or interpreter analysis; external import/environment
+behavior still needs independent review and qualification.
+
 Every other Python form requires independent exact-source module review,
 including imports, ordinary functions, calls, classes, decorators, hooks,
 aliasing and control flow. An import can execute module hooks or expose objects
