@@ -578,6 +578,7 @@
       "test_cross_field_validation_errors_are_content_free": {"": []},
       "test_failure_and_repeated_observation_identity": {"": []},
       "test_frozen_unknown_fields_and_unknown_semantics": {"": []},
+      "test_historical_chat_usage_cannot_be_relabelled_as_decisions_usage": {"": []},
       "test_multiple_estimate_assumptions_must_be_distinct": {"": []},
       "test_nested_anthropic_cache_counts_not_added": {"": []},
       "test_nested_counts_without_parent_do_not_invent_aggregate": {"": []},
@@ -1281,12 +1282,23 @@
     "tests/test_openai_decisions_lifecycle.py": {
       "test_ambient_headers_and_debug_logs_cannot_leak": {"": []},
       "test_complete_trait_instructions_and_examples_are_question_local": {"": []},
+      "test_durable_evidence_checks_original_acceptance_before_replay": {"[ack_hash]": [], "[ack_kind]": [], "[ack_length]": [], "[commitment]": []},
       "test_exact_endpoint_and_user_splitting": {"[1-32-groups0]": [], "[12-32-groups2]": [], "[13-1-groups3]": [], "[2-32-groups1]": [], "[4-3-groups6]": [], "[400-500-groups4]": [], "[401-500-groups5]": []},
+      "test_explicit_production_context_must_match_configuration": {"": []},
+      "test_in_memory_replay_cannot_bypass_immutable_evidence": {"[bytes]": [], "[metadata]": [], "[missing]": []},
+      "test_in_process_filtered_recovery_matches_real_process_contract": {"": []},
       "test_invalid_controls_and_sdk_version_precede_credentials": {"": []},
       "test_multi_criterion_orientation_repetition_and_subset_retry": {"": []},
+      "test_production_records_require_independent_scope_and_replay_bindings": {"[invocation_validation]": [], "[manifest_context]": [], "[missing_validation]": [], "[original_binding]": [], "[replay_count]": [], "[replay_failure]": [], "[replay_mask]": [], "[scope]": []},
+      "test_production_versions_reject_coercion_without_relabeling_history": {"[acceptance-acceptance_evidence_version-0]": [], "[acceptance-acceptance_evidence_version-True]": [], "[ack-acknowledgment_version-0]": [], "[ack-acknowledgment_version-True]": [], "[bundle-physical_row_version-0]": [], "[bundle-physical_row_version-True]": [], "[bundle-question_row_version-0]": [], "[bundle-question_row_version-True]": [], "[evidence-evidence_receipt_version-0]": [], "[evidence-evidence_receipt_version-True]": [], "[manifest-schema_version-0]": [], "[manifest-schema_version-True]": [], "[replay-replay_version-0]": [], "[replay-replay_version-True]": [], "[replay_metadata-replay_policy_version-0]": [], "[replay_metadata-replay_policy_version-True]": [], "[wire-preparation_version-0]": [], "[wire-preparation_version-True]": []},
+      "test_public_production_preflight_execution_and_mock_rejection": {"": []},
       "test_public_resume_preserves_eight_worker_capacity_across_burst_and_retry": {"": []},
+      "test_public_resume_rejects_registry_manifest_family_conflict": {"": []},
       "test_received_failures_are_not_repaired_or_hidden": {"[bad_index-expected7]": [], "[bad_label-expected6]": [], "[bad_sum-expected5]": [], "[bad_type-expected8]": [], "[bad_usage-expected14]": [], "[duplicate-expected1]": [], "[duplicate_json-expected11]": [], "[extra_field-expected4]": [], "[missing-expected0]": [], "[order-expected10]": [], "[refusal-expected9]": [], "[triple_duplicate-expected2]": [], "[unexpected-expected3]": [], "[unknown_root-expected13]": [], "[utf8-expected12]": []},
-      "test_score_limits_cannot_be_overridden_or_become_neutral_limits": {"[10]": [], "[11]": [], "[2]": []}
+      "test_registered_forwarding_protocol_cannot_be_relabelled": {"[False]": [], "[True]": []},
+      "test_rehashed_saved_replay_still_requires_canonical_bound_metadata": {"[metadata]": [], "[noncanonical]": []},
+      "test_score_limits_cannot_be_overridden_or_become_neutral_limits": {"[10]": [], "[11]": [], "[2]": []},
+      "test_seal_fails_closed_if_parser_violates_its_typed_dispatch_contract": {"[False]": [], "[True]": []}
     },
     "tests/test_openai_decisions_processes.py": {
       "test_corrupt_filtered_receipts_never_forward_or_fabricate_results": {"[acknowledgment]": [], "[derivative]": [], "[evidence]": []},
@@ -1298,10 +1310,18 @@
     },
     "tests/test_openai_decisions_sdk.py": {
       "test_actual_sdk_preserves_four_hundred_named_questions": {"": []},
+      "test_adapter_scope_and_legacy_entrypoints_never_resolve_credentials": {"[account_scope]": [], "[model]": []},
+      "test_body_limits_do_not_publish_an_oversized_handoff": {"[response_stream]": [], "[retained_serializer]": []},
       "test_cancellation_preserves_receipt_authority_and_never_reforwards": {"[False]": [], "[True]": []},
       "test_http_failures_never_gain_replay_authority": {"[rate]": [], "[redirect]": [], "[rejected]": [], "[timeout]": [], "[truncated]": []},
+      "test_missing_credential_resolution_has_only_the_readiness_code": {"": []},
+      "test_non_exception_after_receipt_propagates_and_restores_context": {"": []},
+      "test_replay_cannot_rebind_an_invocation_or_named_answer": {"[answer_name]": [], "[identity]": [], "[member_order]": []},
       "test_sdk_hidden_second_forward_preserves_the_first_response": {"": []},
-      "test_sdk_lifecycle_and_versioned_provenance": {"[full]": [], "[minimal]": []}
+      "test_sdk_lifecycle_and_versioned_provenance": {"[full]": [], "[minimal]": []},
+      "test_sdk_wrong_route_is_rejected_before_forwarding": {"": []},
+      "test_submission_identity_and_handoff_capacity_do_not_lose_responses": {"": []},
+      "test_wire_faults_preserve_content_free_findings_and_named_siblings": {"[choice_count]": [], "[choice_entry]": [], "[choice_mapping]": [], "[choice_not_list]": [], "[model]": [], "[nameless]": [], "[nonobject]": [], "[score_count]": [], "[score_mean]": [], "[score_not_list]": [], "[unrecognized]": []}
     },
     "tests/test_openai_diagnostics.py": {
       "test_diagnostic_debug_logs_suppress_remote_identifiers_and_errors": {"": []},
