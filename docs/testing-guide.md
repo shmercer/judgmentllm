@@ -411,7 +411,8 @@ or package wins. Names are compared conservatively across case variants.
 
 An implicitly discovered, exact-case regular `name.pyi` beside regular `name.py`
 is type data only when there is no competing module/package/cache/case layout.
-Initializer and stub-only layouts remain unsupported. The stub grammar permits
+Initializer pairs in any letter case and stub-only layouts remain unsupported.
+The stub grammar permits
 docstrings, non-star imports/reexports, and synchronous/asynchronous overloads
 with a uniquely imported typing `overload`, literal defaults, simple type
 annotations and ellipsis-only bodies. Other statements, executable signatures,

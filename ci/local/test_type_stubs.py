@@ -239,6 +239,71 @@ def test_implicit_type_data_still_validates_binding_and_follows_targets(
         assert "plugins.pyi: exact-source execution review is stale" in problems
 
 
+@pytest.mark.parametrize("initializer", ["__init__", "__INIT__", "__Init__"])
+@pytest.mark.parametrize("discovery", ["plugin", "ancestor"])
+def test_initializer_stub_pairs_block_same_source_admission(
+    project: Any, tmp_path: Path, initializer: str, discovery: str
+) -> None:
+    source, _, policy, known = project
+    package = source / "pkg"
+    package.mkdir()
+    implementation = package / (initializer + ".py")
+    implementation.write_text("VALUE = 1\n")
+    stub = package / (initializer + ".pyi")
+    stub.write_text("from typing import Any as Any\n")
+    assert type_stub(stub.read_bytes())
+    plugin = "pkg" if discovery == "plugin" else "pkg.plugin"
+    paths = [implementation, stub, source / "tests/conftest.py"]
+    paths[-1].write_text(f"pytest_plugins = [{plugin!r}]\n")
+    if discovery == "ancestor":
+        child = package / "plugin.py"
+        child.write_text("VALUE = 1\n")
+        paths.append(child)
+    for path in paths:
+        policy["serial_shared_dependencies"][path.relative_to(source).as_posix()] = (
+            checksum(path)
+        )
+    (source / "ci/local-policy.json").write_text(json.dumps(policy))
+    head = freeze(source)
+    # Real pytest accepts the package/namespace; conservative layout admission must not.
+    execute(source, tmp_path / "initializer-loader")
+    row = contract.build(source, head, head, policy, known)["placements"][SAFE]
+    admissions: list[str] = []
+    for level in range(5):
+        plan = risk.make_plan(source, head, head, minimum=level)
+        assert plan["risk"] == level
+        try:
+            contract.require(plan, source)
+        except ValueError as error:
+            admissions.append(str(error))
+        else:
+            admissions.append("incorrectly admitted")
+    groups = local_policy.serial_groups([SAFE], policy, source)
+    (tmp_path / "initializer-report.json").write_text(
+        json.dumps(
+            {
+                "initializer": initializer,
+                "discovery": discovery,
+                "head": head,
+                "placement": row,
+                "admissions_0_through_4": admissions,
+                "runtime_groups": groups,
+            },
+            indent=2,
+        )
+    )
+    assert not row["differences"]
+    stub_path = stub.relative_to(source).as_posix()
+    assert row["dependencies"][stub_path] == checksum(stub)
+    assert row["closure_problems"] == [
+        f"{stub_path}: unsupported executable format; only .py source is supported"
+    ]
+    assert row["status"] == "requalification-required"
+    assert row["placement"] == "globally-exclusive-serial"
+    assert groups["globally-exclusive-serial"] == [SAFE]
+    assert all("requalification-required" in admission for admission in admissions)
+
+
 @pytest.mark.parametrize("fault", ["stub-change", "source-change", "explicit-demand"])
 def test_real_source_import_and_same_source_admission_at_all_levels(
     project: Any, tmp_path: Path, fault: str

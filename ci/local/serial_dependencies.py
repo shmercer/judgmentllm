@@ -274,7 +274,7 @@ def closure(
         return (
             entry.suffix == ".pyi"
             and entry.stem.isidentifier()
-            and entry.stem != "__init__"
+            and entry.stem.casefold() != "__init__"
             and raw is not None
             and files.get(source) is not None
             and set(variants.get(stem.as_posix().casefold(), [])) == {path, source}
