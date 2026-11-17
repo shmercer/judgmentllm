@@ -82,7 +82,12 @@ Unassigned OpenAI HTTP ownership and both diagnostic close paths retain one
 cleanup task, shield it and drain its terminal result before propagating errors
 or cancellation. Ordinary cleanup failures do not replace the original OpenAI
 constructor exception; diagnostic status rules and logging-context restoration
-remain intact. The existing ten-second `wait_for` convention is cooperative,
+remain intact. Cleanup returns its cancellation as a terminal value, so original
+cancellation precedes the first observed caller cancellation, which precedes
+cleanup cancellation; cumulative cancellation counts do not determine priority.
+OpenAI model discovery rejects decoded model IDs containing the resolved key
+before publishing any models from that page, through the existing inconclusive
+response path. The existing ten-second `wait_for` convention is cooperative,
 not a hard cutoff or proof of resource release. Gemini/Vertex TLS setup precedes
 sync-client allocation; this makes no broader constructor-cancellation promise.
 Focused cleanup tests do not establish scheduling approval or qualification.

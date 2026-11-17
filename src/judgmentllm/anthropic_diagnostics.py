@@ -242,10 +242,10 @@ async def adiscover_models(
             if client is not None or http_client is not None:
                 close = client.close if client is not None else http_client.aclose
 
-                async def close_owned() -> Exception | None:
+                async def close_owned() -> Exception | asyncio.CancelledError | None:
                     try:
                         await asyncio.wait_for(close(), timeout=10.0)
-                    except Exception as error:
+                    except (Exception, asyncio.CancelledError) as error:
                         return error
                     return None
 
@@ -257,18 +257,14 @@ async def adiscover_models(
                     except asyncio.CancelledError as error:
                         if cancelled is None:
                             cancelled = error
-                close_error: Exception | None = None
-                try:
-                    close_error = pending.result()
-                except asyncio.CancelledError as error:
-                    owner = asyncio.current_task()
-                    if cancelled is None or owner is None or not owner.cancelling():
-                        cancelled = error
+                outcome = pending.result()
                 if original_cancel is not None:
                     raise original_cancel
                 if cancelled is not None:
                     raise cancelled
-                if close_error is not None:
+                if isinstance(outcome, asyncio.CancelledError):
+                    raise outcome
+                if outcome is not None:
                     status = "network_unavailable"
                     diagnostic = "network_unavailable"
         finally:

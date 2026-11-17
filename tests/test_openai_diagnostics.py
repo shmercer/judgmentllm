@@ -288,6 +288,256 @@ async def test_request_cancellation_closes_sdk_owned_http(
     assert all(owned.done() for owned in [task, *tasks, *owners])
 
 
+@pytest.mark.parametrize("prior", [False, True])
+@pytest.mark.parametrize("constructor", ["runtime", "cancel", "success"])
+@pytest.mark.asyncio
+async def test_earlier_handled_cancellation_preserves_cleanup_identity(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    prior: bool,
+    constructor: str,
+) -> None:
+    async def invoke() -> None:
+        owner = asyncio.current_task()
+        assert owner is not None
+        owner.cancel("earlier-handled")
+        try:
+            await asyncio.sleep(0)
+        except asyncio.CancelledError:
+            pass
+        assert owner.cancelling() == 1
+        await test_diagnostic_owned_cleanup_and_status_priority(
+            monkeypatch, caplog, prior, constructor, "self-cancel"
+        )
+
+    await asyncio.create_task(invoke())
+
+
+@pytest.mark.parametrize("prior", [False, True])
+@pytest.mark.parametrize("constructor", ["runtime", "cancel", "success"])
+@pytest.mark.asyncio
+async def test_earlier_handled_cancellation_keeps_first_new_caller(
+    monkeypatch: pytest.MonkeyPatch, prior: bool, constructor: str
+) -> None:
+    original = diagnostics.adiscover_models
+
+    async def with_history(**kwargs: Any) -> Any:
+        owner = asyncio.current_task()
+        assert owner is not None
+        owner.cancel("earlier-handled")
+        try:
+            await asyncio.sleep(0)
+        except asyncio.CancelledError:
+            pass
+        assert owner.cancelling() == 1
+        return await original(**kwargs)
+
+    monkeypatch.setattr(diagnostics, "adiscover_models", with_history)
+    await test_real_cancellation_during_diagnostic_close_is_drained(
+        monkeypatch, prior, constructor, "self-cancel"
+    )
+
+
+@pytest.mark.parametrize("prior", [False, True])
+@pytest.mark.parametrize("caller_first", [False, True])
+@pytest.mark.parametrize("constructor", ["runtime", "cancel", "success"])
+@pytest.mark.asyncio
+async def test_cleanup_callback_order_preserves_caller_and_original(
+    monkeypatch: pytest.MonkeyPatch, prior: bool, caller_first: bool, constructor: str
+) -> None:
+    original = (
+        asyncio.CancelledError("original-constructor")
+        if constructor == "cancel"
+        else RuntimeError("PRIVATE_CONSTRUCTOR")
+    )
+    cleanup_cancel = asyncio.CancelledError("cleanup-self-cancel")
+    result_readers: list[asyncio.Task[Any] | None] = []
+    retained: list[asyncio.Task[Any]] = []
+    states: list[tuple[bool, bool]] = []
+    restored: list[bool] = []
+    owner: asyncio.Task[Any] | None = None
+    closed: list[bool] = []
+    forwarded: list[Any] = []
+    waits, owners = _cleanup_waits(monkeypatch)
+    protected = diagnostics._protected_client
+
+    class ObservedTask(asyncio.Task[Any]):
+        def result(self) -> Any:
+            result_readers.append(asyncio.current_task())
+            return super().result()
+
+    def create_retained(coro: Any) -> asyncio.Task[Any]:
+        pending = ObservedTask(coro)
+        retained.append(pending)
+        return pending
+
+    def ordered_shield(pending: asyncio.Future[Any]) -> asyncio.Future[Any]:
+        assert not pending.done()
+
+        def cancel_owner(_: asyncio.Future[Any]) -> None:
+            assert owner is not None
+            states.append((outer.done(), outer.cancelled()))
+            owner.cancel("caller-first")
+
+        if caller_first:
+            pending.add_done_callback(cancel_owner)
+        outer = asyncio.shield(pending)
+        if not caller_first:
+            pending.add_done_callback(cancel_owner)
+        return outer
+
+    monkeypatch.setattr(diagnostics.asyncio, "create_task", create_retained)
+    monkeypatch.setattr(diagnostics.asyncio, "shield", ordered_shield)
+
+    class SelfCancellingTransport(httpx2.AsyncBaseTransport):
+        async def handle_async_request(self, request: Any) -> Any:
+            forwarded.append(request)
+            return httpx2.Response(200, json={"data": [], "has_more": False})
+
+        async def aclose(self) -> None:
+            assert diagnostics._SDK_LOGGING.get() is True
+            closed.append(True)
+            raise cleanup_cancel
+
+    def capture(*args: Any, **kwargs: Any) -> Any:
+        if constructor != "success":
+            raise original
+        return protected(*args, **kwargs)
+
+    monkeypatch.setattr(diagnostics, "_protected_client", capture)
+
+    async def invoke() -> Any:
+        nonlocal owner
+        owner = asyncio.current_task()
+        token = diagnostics._SDK_LOGGING.set(prior)
+        try:
+            return await diagnostics.adiscover_models(
+                http_transport=SelfCancellingTransport()
+            )
+        finally:
+            restored.append(diagnostics._SDK_LOGGING.get())
+            diagnostics._SDK_LOGGING.reset(token)
+            assert owner in result_readers
+
+    task = asyncio.create_task(invoke())
+    with pytest.raises(asyncio.CancelledError) as caught:
+        await asyncio.wait_for(task, timeout=1.0)
+    if constructor == "cancel":
+        assert caught.value is original
+    else:
+        assert caught.value.args == ("caller-first",)
+    assert states == [(not caller_first, False)]
+    assert closed == [True] and restored == [prior]
+    assert len(forwarded) == int(constructor == "success")
+    assert waits == ([20.0] if constructor == "success" else []) + [10.0]
+    assert len(owners) == len(retained) == 1
+    assert all(pending.done() for pending in [task, *owners, *retained])
+    assert not retained[0].cancelled()
+    assert retained[0].result() is cleanup_cancel
+
+
+@pytest.mark.parametrize("escaped", [False, True])
+@pytest.mark.parametrize("identifier", ["exact-key", "embedded-key", "ordinary"])
+@pytest.mark.parametrize("requested", [False, True])
+@pytest.mark.parametrize("close_failure", [False, True])
+def test_decoded_model_ids_are_safe_through_public_api_and_cli(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    escaped: bool,
+    identifier: str,
+    requested: bool,
+    close_failure: bool,
+) -> None:
+    from judgmentllm import discover_models as public_models
+    from judgmentllm.providers import openai_cli as command
+
+    key = "synthetic-selected-key"
+    value = (
+        key
+        if identifier == "exact-key"
+        else "prefix-" + key + "-suffix"
+        if identifier == "embedded-key"
+        else "ordinary-model"
+    )
+    encoded_key = "".join("\\u" + format(ord(character), "04x") for character in key)
+    encoded = (
+        '"'
+        + "".join("\\u" + format(ord(character), "04x") for character in value)
+        + '"'
+        if escaped
+        else json.dumps(value)
+    )
+    raw = (
+        '{"data":[{"id":"model-visible"},{"id":' + encoded + '}],"has_more":false}'
+    ).encode()
+    reports: list[ModelDiscovery] = []
+    forwarded: list[Any] = []
+    closed: list[bool] = []
+    caplog.set_level(logging.DEBUG)
+
+    class ModelTransport(httpx2.AsyncBaseTransport):
+        async def handle_async_request(self, request: Any) -> Any:
+            forwarded.append(request)
+            return httpx2.Response(
+                200, content=raw, headers={"content-type": "application/json"}
+            )
+
+        async def aclose(self) -> None:
+            closed.append(True)
+            if close_failure:
+                raise RuntimeError("PRIVATE_CLOSE")
+
+    def offline_models(
+        *, provider: str = "openai", model: str | None = None
+    ) -> ModelDiscovery:
+        report = public_models(
+            provider=provider, model=model, http_transport=ModelTransport()
+        )
+        assert isinstance(report, ModelDiscovery)
+        reports.append(report)
+        return report
+
+    monkeypatch.setattr(command, "discover_models", offline_models)
+    arguments = ["providers", "models", "--provider", "openai", "--json"]
+    if requested:
+        arguments += ["--model", "model-visible"]
+    result = CliRunner().invoke(app, arguments)
+    assert len(reports) == 1
+    report = reports[0]
+    echo = identifier != "ordinary"
+    assert report.models == (() if echo else ("model-visible", "ordinary-model"))
+    assert report.complete is (not echo)
+    assert report.requested_model == ("model-visible" if requested else None)
+    assert report.model_visibility == (
+        "not_requested" if not requested else "unknown" if echo else "visible"
+    )
+    assert report.verification.verification_status == (
+        "network_unavailable"
+        if close_failure
+        else "inconclusive"
+        if echo
+        else "authentication_accepted"
+    )
+    if echo:
+        assert report.verification.diagnostic_code == (
+            "network_unavailable" if close_failure else "inconclusive_response"
+        )
+    assert result.exit_code == (1 if close_failure else 3 if echo else 0), result.output
+    envelope = json.loads(result.stdout)
+    assert envelope["schema_version"] == 1
+    assert envelope["status"] == (
+        "error" if close_failure else "partial" if echo else "ok"
+    )
+    assert envelope["data"]["models"] == list(report.models)
+    assert report.sdk_calls == len(forwarded) == 1 and closed == [True]
+    output = result.stdout + result.stderr + report.model_dump_json() + caplog.text
+    assert (
+        key not in output
+        and encoded_key not in output
+        and "PRIVATE_CLOSE" not in output
+    )
+
+
 @pytest.mark.parametrize(
     "status,expected",
     [

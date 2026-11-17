@@ -527,10 +527,10 @@ class OpenAIAdapter:
             )
         except (Exception, asyncio.CancelledError) as original:
 
-            async def close_unassigned() -> Exception | None:
+            async def close_unassigned() -> Exception | asyncio.CancelledError | None:
                 try:
                     await asyncio.wait_for(client.aclose(), timeout=10.0)
-                except Exception as error:
+                except (Exception, asyncio.CancelledError) as error:
                     return error
                 return None
 
@@ -542,16 +542,13 @@ class OpenAIAdapter:
                 except asyncio.CancelledError as error:
                     if cancelled is None:
                         cancelled = error
-            try:
-                pending.result()  # Ordinary cleanup failure cannot replace construction.
-            except asyncio.CancelledError as error:
-                owner = asyncio.current_task()
-                if cancelled is None or owner is None or not owner.cancelling():
-                    cancelled = error
+            outcome = pending.result()
             if isinstance(original, asyncio.CancelledError):
                 raise
             if cancelled is not None:
                 raise cancelled from None
+            if isinstance(outcome, asyncio.CancelledError):
+                raise outcome from None
             raise
         return self._client
 
