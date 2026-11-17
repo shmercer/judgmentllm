@@ -77,6 +77,16 @@ configuration comparisons remain real repeated reads. The pilot still has its
 42 configurations, recovery boundaries, assertions and 126 exports. No setup
 cache or production immutability mechanism is introduced; no speedup is required.
 
+The cleanup prerequisite separately reviews five provider/diagnostic files.
+Unassigned OpenAI HTTP ownership and both diagnostic close paths retain one
+cleanup task, shield it and drain its terminal result before propagating errors
+or cancellation. Ordinary cleanup failures do not replace the original OpenAI
+constructor exception; diagnostic status rules and logging-context restoration
+remain intact. The existing ten-second `wait_for` convention is cooperative,
+not a hard cutoff or proof of resource release. Gemini/Vertex TLS setup precedes
+sync-client allocation; this makes no broader constructor-cancellation promise.
+Focused cleanup tests do not establish scheduling approval or qualification.
+
 The initial trusted driver is **92699003a1e8eacbb92ef09f9f9870641733c8ab**.
 It does not contain this new contract, so Slice A cannot use the candidate hook
 to qualify itself. Bootstrap is a separately reviewed Level 3 change qualified

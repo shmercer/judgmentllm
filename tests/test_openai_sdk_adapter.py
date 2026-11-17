@@ -3,6 +3,7 @@
 # pyright: reportPrivateUsage=false
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import socket
@@ -10,6 +11,7 @@ from collections.abc import AsyncIterator
 from dataclasses import replace
 from datetime import date
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Literal, cast
 
 import httpx2
@@ -40,6 +42,197 @@ def offline(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(socket, "getaddrinfo", forbidden)
     monkeypatch.setattr(socket, "create_connection", forbidden)
+
+
+def _cleanup_waits(
+    monkeypatch: pytest.MonkeyPatch, implementation: Any, *, shorten: bool = False
+) -> tuple[list[float], list[asyncio.Task[Any]]]:
+    waits: list[float] = []
+    owners: list[asyncio.Task[Any]] = []
+
+    async def observed(awaitable: Any, timeout: float) -> Any:
+        waits.append(timeout)
+        assert timeout in {10.0, 20.0}
+        if timeout == 10.0:
+            task = asyncio.current_task()
+            assert task is not None
+            owners.append(task)
+        return await asyncio.wait_for(
+            awaitable, timeout=0.01 if shorten and timeout == 10.0 else timeout
+        )
+
+    monkeypatch.setattr(
+        implementation,
+        "asyncio",
+        SimpleNamespace(**(vars(asyncio) | {"wait_for": observed})),
+    )
+    return waits, owners
+
+
+@pytest.mark.parametrize("endpoint", ["responses", "chat.completions"])
+@pytest.mark.parametrize("constructor", ["runtime", "value", "cancel"])
+@pytest.mark.parametrize("closing", ["success", "error", "self-cancel", "timeout"])
+@pytest.mark.asyncio
+async def test_unassigned_http_cleanup_preserves_exception_priority(
+    monkeypatch: pytest.MonkeyPatch, endpoint: str, constructor: str, closing: str
+) -> None:
+    from judgmentllm.providers import openai as implementation
+
+    original = {
+        "runtime": RuntimeError("PRIVATE_CONSTRUCTOR"),
+        "value": ValueError("PRIVATE_CONSTRUCTOR"),
+        "cancel": asyncio.CancelledError("original-constructor"),
+    }[constructor]
+    cleanup_cancel = asyncio.CancelledError("cleanup-self-cancel")
+    closed: list[asyncio.Task[Any]] = []
+    finished = asyncio.Event()
+    supplied: list[Any] = []
+    waits, owners = _cleanup_waits(
+        monkeypatch, implementation, shorten=closing == "timeout"
+    )
+
+    class TrackedTransport(httpx2.AsyncBaseTransport):
+        async def handle_async_request(self, request: Any) -> Any:
+            raise AssertionError("Constructor failure must never forward")
+
+        async def aclose(self) -> None:
+            task = asyncio.current_task()
+            assert task is not None
+            closed.append(task)
+            try:
+                if closing == "timeout":
+                    await asyncio.Event().wait()
+                if closing == "error":
+                    raise RuntimeError("PRIVATE_CLOSE")
+                if closing == "self-cancel":
+                    raise cleanup_cancel
+            finally:
+                finished.set()
+
+    def fail(*args: Any, **kwargs: Any) -> Any:
+        supplied.append(kwargs["http_client"])
+        assert not supplied[-1].is_closed
+        raise original
+
+    monkeypatch.setattr(implementation, "_protected_client", fail)
+    adapter = OpenAIAdapter(
+        endpoint, "offline-model", http_transport=TrackedTransport()
+    )
+    expected = (
+        cleanup_cancel
+        if closing == "self-cancel" and constructor != "cancel"
+        else original
+    )
+    with pytest.raises(type(expected)) as caught:
+        await adapter._execution_client()
+    assert caught.value is expected
+    assert len(supplied) == len(closed) == 1
+    assert finished.is_set()
+    assert waits == [10.0] and len(owners) == 1
+    assert all(task.done() for task in [*closed, *owners])
+    assert adapter._client is None and adapter.actual_call_count == 0
+
+
+@pytest.mark.parametrize("constructor", ["runtime", "cancel"])
+@pytest.mark.parametrize("closing", ["success", "error", "self-cancel"])
+@pytest.mark.asyncio
+async def test_task_cancellation_drains_unassigned_http(
+    monkeypatch: pytest.MonkeyPatch, constructor: str, closing: str
+) -> None:
+    from judgmentllm.providers import openai as implementation
+
+    original = (
+        asyncio.CancelledError("original-constructor")
+        if constructor == "cancel"
+        else RuntimeError("PRIVATE_CONSTRUCTOR")
+    )
+    entered, release, finished = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    closed: list[asyncio.Task[Any]] = []
+    waits, owners = _cleanup_waits(monkeypatch, implementation)
+
+    class HeldTransport(httpx2.AsyncBaseTransport):
+        async def handle_async_request(self, request: Any) -> Any:
+            raise AssertionError("Constructor failure must never forward")
+
+        async def aclose(self) -> None:
+            task = asyncio.current_task()
+            assert task is not None
+            closed.append(task)
+            entered.set()
+            try:
+                await release.wait()
+                if closing == "error":
+                    raise RuntimeError("PRIVATE_CLOSE")
+                if closing == "self-cancel":
+                    raise asyncio.CancelledError("cleanup-self-cancel")
+            finally:
+                finished.set()
+
+    def fail(*args: Any, **kwargs: Any) -> Any:
+        raise original
+
+    monkeypatch.setattr(implementation, "_protected_client", fail)
+    adapter = OpenAIAdapter(
+        "responses", "offline-model", http_transport=HeldTransport()
+    )
+    task = asyncio.create_task(adapter._execution_client())
+    try:
+        await asyncio.wait_for(entered.wait(), timeout=1.0)
+        task.cancel("caller-first")
+        await asyncio.sleep(0)
+        assert not task.done() and not finished.is_set()
+        task.cancel("caller-second")
+        await asyncio.sleep(0)
+        assert not task.done() and not finished.is_set()
+    finally:
+        release.set()
+    with pytest.raises(asyncio.CancelledError) as caught:
+        await asyncio.wait_for(task, timeout=1.0)
+    if constructor == "cancel":
+        assert caught.value is original
+    else:
+        assert caught.value.args == ("caller-first",)
+    assert finished.is_set() and len(closed) == 1
+    assert waits == [10.0] and len(owners) == 1
+    assert all(owned.done() for owned in [task, *closed, *owners])
+    assert adapter._client is None and adapter.actual_call_count == 0
+
+
+@pytest.mark.parametrize("endpoint", ["responses", "chat.completions"])
+@pytest.mark.asyncio
+async def test_real_sdk_owns_http_until_successful_sequential_close(
+    monkeypatch: pytest.MonkeyPatch, endpoint: str
+) -> None:
+    from judgmentllm.providers import openai as implementation
+
+    closed: list[bool] = []
+    supplied: list[Any] = []
+    protected = implementation._protected_client
+
+    class TrackedTransport(httpx2.AsyncBaseTransport):
+        async def handle_async_request(self, request: Any) -> Any:
+            raise AssertionError("Construction and closure must not forward")
+
+        async def aclose(self) -> None:
+            closed.append(True)
+
+    def capture(*args: Any, **kwargs: Any) -> Any:
+        client = protected(*args, **kwargs)
+        supplied.append(kwargs["http_client"])
+        assert client._client is supplied[-1]
+        assert not supplied[-1].is_closed and not closed
+        return client
+
+    monkeypatch.setattr(implementation, "_protected_client", capture)
+    adapter = OpenAIAdapter(
+        endpoint, "offline-model", http_transport=TrackedTransport()
+    )
+    assert await adapter._execution_client() is adapter._client
+    assert len(supplied) == 1 and not closed
+    await adapter.aclose()
+    assert closed == [True] and adapter._client is None
+    await adapter.aclose()
+    assert closed == [True]
 
 
 def invocation(wire: Any) -> dict[str, str]:

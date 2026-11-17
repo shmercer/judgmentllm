@@ -202,10 +202,10 @@ def _protected_client(
     def deny_sync(request: Any) -> Any:
         raise ProviderIntegrityError("Gemini synchronous I/O is unavailable")
 
+    tls = ssl.create_default_context(cafile=certifi.where())
     sync_client = http.Client(
         transport=http.MockTransport(deny_sync), trust_env=False, follow_redirects=False
     )
-    tls = ssl.create_default_context(cafile=certifi.where())
     try:
         client = sdk.Client(
             api_key=key,

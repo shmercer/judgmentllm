@@ -3,14 +3,18 @@
 # pyright: reportPrivateUsage=false
 from __future__ import annotations
 
+import asyncio
 import json
+import logging
 import socket
+from types import SimpleNamespace
 from typing import Any
 
 import httpx2
 import pytest
 from typer.testing import CliRunner
 
+from judgmentllm import openai_diagnostics as diagnostics
 from judgmentllm.auth import credential_status
 from judgmentllm.cli import app
 from judgmentllm.openai_diagnostics import (
@@ -32,6 +36,256 @@ def offline(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(socket, "getaddrinfo", forbidden)
     monkeypatch.setattr(socket, "create_connection", forbidden)
+
+
+def _cleanup_waits(
+    monkeypatch: pytest.MonkeyPatch, *, shorten: bool = False
+) -> tuple[list[float], list[asyncio.Task[Any]]]:
+    waits: list[float] = []
+    owners: list[asyncio.Task[Any]] = []
+
+    async def observed(awaitable: Any, timeout: float) -> Any:
+        waits.append(timeout)
+        assert timeout in {10.0, 20.0}
+        if timeout == 10.0:
+            task = asyncio.current_task()
+            assert task is not None
+            owners.append(task)
+        return await asyncio.wait_for(
+            awaitable, timeout=0.01 if shorten and timeout == 10.0 else timeout
+        )
+
+    monkeypatch.setattr(
+        diagnostics,
+        "asyncio",
+        SimpleNamespace(**(vars(asyncio) | {"wait_for": observed})),
+    )
+    return waits, owners
+
+
+@pytest.mark.parametrize("prior", [False, True])
+@pytest.mark.parametrize(
+    "constructor,closing",
+    [
+        (constructor, closing)
+        for constructor in ["value", "runtime", "cancel", "success"]
+        for closing in ["success", "error", "self-cancel", "timeout"]
+    ]
+    + [("missing", "success")],
+)
+@pytest.mark.asyncio
+async def test_diagnostic_owned_cleanup_and_status_priority(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    prior: bool,
+    constructor: str,
+    closing: str,
+) -> None:
+    original = {
+        "value": ValueError("PRIVATE_CONSTRUCTOR"),
+        "runtime": RuntimeError("PRIVATE_CONSTRUCTOR"),
+        "cancel": asyncio.CancelledError("original-constructor"),
+    }.get(constructor)
+    cleanup_cancel = asyncio.CancelledError("cleanup-self-cancel")
+    supplied: list[Any] = []
+    closed: list[asyncio.Task[Any]] = []
+    finished = asyncio.Event()
+    forwarded: list[Any] = []
+    waits, owners = _cleanup_waits(monkeypatch, shorten=closing == "timeout")
+    protected = diagnostics._protected_client
+    caplog.set_level(logging.DEBUG)
+
+    class TrackedTransport(httpx2.AsyncBaseTransport):
+        async def handle_async_request(self, request: Any) -> Any:
+            forwarded.append(request)
+            return httpx2.Response(200, json={"data": [], "has_more": False})
+
+        async def aclose(self) -> None:
+            task = asyncio.current_task()
+            assert task is not None
+            closed.append(task)
+            assert diagnostics._SDK_LOGGING.get() is True
+            logging.getLogger("openai._base_client").debug("PRIVATE_CLOSE")
+            try:
+                if closing == "timeout":
+                    await asyncio.Event().wait()
+                if closing == "error":
+                    raise RuntimeError("PRIVATE_CLOSE")
+                if closing == "self-cancel":
+                    raise cleanup_cancel
+            finally:
+                finished.set()
+
+    def capture(*args: Any, **kwargs: Any) -> Any:
+        supplied.append(kwargs["http_client"])
+        assert not supplied[-1].is_closed and not closed
+        if original is not None:
+            raise original
+        client = protected(*args, **kwargs)
+        assert client._client is supplied[-1]
+        return client
+
+    monkeypatch.setattr(diagnostics, "_protected_client", capture)
+    if constructor == "missing":
+        monkeypatch.delenv("OPENAI_API_KEY")
+    token = diagnostics._SDK_LOGGING.set(prior)
+    try:
+        if constructor == "cancel" or closing == "self-cancel":
+            expected = original if constructor == "cancel" else cleanup_cancel
+            with pytest.raises(asyncio.CancelledError) as caught:
+                await diagnostics.adiscover_models(http_transport=TrackedTransport())
+            assert caught.value is expected
+        else:
+            result = await diagnostics.adiscover_models(
+                http_transport=TrackedTransport()
+            )
+            expected_status = (
+                "inconclusive"
+                if constructor in {"value", "missing"} and closing == "success"
+                else "authentication_accepted"
+                if constructor == closing == "success"
+                else "network_unavailable"
+            )
+            assert result.verification.verification_status == expected_status
+            assert result.sdk_calls == len(forwarded)
+            assert "PRIVATE" not in result.model_dump_json()
+        assert diagnostics._SDK_LOGGING.get() is prior
+    finally:
+        diagnostics._SDK_LOGGING.reset(token)
+    expected_calls = int(constructor == "success")
+    assert len(forwarded) == expected_calls
+    assert len(supplied) == len(closed) == int(constructor != "missing")
+    assert finished.is_set() is (constructor != "missing")
+    assert waits == ([20.0] if expected_calls else []) + (
+        [] if constructor == "missing" else [10.0]
+    )
+    assert len(owners) == int(constructor != "missing")
+    assert all(task.done() for task in [*closed, *owners])
+    assert "PRIVATE" not in caplog.text and "synthetic-selected-key" not in caplog.text
+
+
+@pytest.mark.parametrize("prior", [False, True])
+@pytest.mark.parametrize("constructor", ["runtime", "cancel", "success"])
+@pytest.mark.parametrize("closing", ["success", "error", "self-cancel"])
+@pytest.mark.asyncio
+async def test_real_cancellation_during_diagnostic_close_is_drained(
+    monkeypatch: pytest.MonkeyPatch, prior: bool, constructor: str, closing: str
+) -> None:
+    original = (
+        asyncio.CancelledError("original-constructor")
+        if constructor == "cancel"
+        else RuntimeError("PRIVATE_CONSTRUCTOR")
+    )
+    entered, release, finished = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    closed: list[asyncio.Task[Any]] = []
+    forwarded: list[Any] = []
+    restored: list[bool] = []
+    waits, owners = _cleanup_waits(monkeypatch)
+    protected = diagnostics._protected_client
+
+    class HeldTransport(httpx2.AsyncBaseTransport):
+        async def handle_async_request(self, request: Any) -> Any:
+            forwarded.append(request)
+            return httpx2.Response(200, json={"data": [], "has_more": False})
+
+        async def aclose(self) -> None:
+            task = asyncio.current_task()
+            assert task is not None
+            closed.append(task)
+            assert diagnostics._SDK_LOGGING.get() is True
+            entered.set()
+            try:
+                await release.wait()
+                if closing == "error":
+                    raise RuntimeError("PRIVATE_CLOSE")
+                if closing == "self-cancel":
+                    raise asyncio.CancelledError("cleanup-self-cancel")
+            finally:
+                finished.set()
+
+    def capture(*args: Any, **kwargs: Any) -> Any:
+        if constructor != "success":
+            raise original
+        return protected(*args, **kwargs)
+
+    monkeypatch.setattr(diagnostics, "_protected_client", capture)
+
+    async def invoke() -> Any:
+        token = diagnostics._SDK_LOGGING.set(prior)
+        try:
+            return await diagnostics.adiscover_models(http_transport=HeldTransport())
+        finally:
+            restored.append(diagnostics._SDK_LOGGING.get())
+            diagnostics._SDK_LOGGING.reset(token)
+
+    task = asyncio.create_task(invoke())
+    try:
+        await asyncio.wait_for(entered.wait(), timeout=1.0)
+        task.cancel("caller-first")
+        await asyncio.sleep(0)
+        assert not task.done() and not finished.is_set()
+        task.cancel("caller-second")
+        await asyncio.sleep(0)
+        assert not task.done() and not finished.is_set()
+    finally:
+        release.set()
+    with pytest.raises(asyncio.CancelledError) as caught:
+        await asyncio.wait_for(task, timeout=1.0)
+    if constructor == "cancel":
+        assert caught.value is original
+    else:
+        assert caught.value.args == ("caller-first",)
+    assert finished.is_set() and len(closed) == 1
+    assert restored == [prior]
+    assert len(forwarded) == int(constructor == "success")
+    assert waits == ([20.0] if constructor == "success" else []) + [10.0]
+    assert len(owners) == 1
+    assert all(owned.done() for owned in [task, *closed, *owners])
+
+
+@pytest.mark.parametrize("prior", [False, True])
+@pytest.mark.asyncio
+async def test_request_cancellation_closes_sdk_owned_http(
+    monkeypatch: pytest.MonkeyPatch, prior: bool
+) -> None:
+    entered, finished = asyncio.Event(), asyncio.Event()
+    tasks: list[asyncio.Task[Any]] = []
+    closed: list[bool] = []
+    restored: list[bool] = []
+    waits, owners = _cleanup_waits(monkeypatch)
+
+    class HeldRequest(httpx2.AsyncBaseTransport):
+        async def handle_async_request(self, request: Any) -> Any:
+            task = asyncio.current_task()
+            assert task is not None
+            tasks.append(task)
+            entered.set()
+            await asyncio.Event().wait()
+            raise AssertionError("Cancelled diagnostic must not resume")
+
+        async def aclose(self) -> None:
+            assert diagnostics._SDK_LOGGING.get() is True
+            closed.append(True)
+            finished.set()
+
+    async def invoke() -> Any:
+        token = diagnostics._SDK_LOGGING.set(prior)
+        try:
+            return await diagnostics.adiscover_models(http_transport=HeldRequest())
+        finally:
+            restored.append(diagnostics._SDK_LOGGING.get())
+            diagnostics._SDK_LOGGING.reset(token)
+
+    task = asyncio.create_task(invoke())
+    await asyncio.wait_for(entered.wait(), timeout=1.0)
+    task.cancel("request-cancel")
+    with pytest.raises(asyncio.CancelledError) as caught:
+        await asyncio.wait_for(task, timeout=1.0)
+    assert caught.value.args == ("request-cancel",)
+    assert closed == [True] and finished.is_set()
+    assert restored == [prior]
+    assert waits == [20.0, 10.0] and len(owners) == 1
+    assert all(owned.done() for owned in [task, *tasks, *owners])
 
 
 @pytest.mark.parametrize(

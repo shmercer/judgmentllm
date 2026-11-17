@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from importlib.metadata import PackageNotFoundError
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import httpx2
@@ -168,6 +169,127 @@ def test_invalid_endpoint_and_connection_bounds_fail_before_sdk(
 ) -> None:
     with pytest.raises(ProviderError):
         p.GeminiAdapter(endpoint, "offline-model", concurrency=concurrency)
+
+
+@pytest.mark.parametrize("entry", ["direct", "adapter"])
+@pytest.mark.parametrize("failure", ["roots", "tls", "sdk", "success"])
+@pytest.mark.asyncio
+async def test_tls_ordering_and_real_sdk_http_ownership(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, entry: str, failure: str
+) -> None:
+    import certifi
+
+    _, spec, _, context = wire_for(tmp_path)
+    sdk, http = p._sdk()
+    sync_clients: list[Any] = []
+    async_clients: list[Any] = []
+    forwarded: list[Any] = []
+
+    class TrackedSync(httpx2.Client):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__(*args, **kwargs)
+            self.close_calls = 0
+            sync_clients.append(self)
+
+        def close(self) -> None:
+            self.close_calls += 1
+            super().close()
+
+    class TrackedAsync(httpx2.AsyncClient):
+        def __init__(self, *args: Any, **kwargs: Any) -> None:
+            super().__init__(*args, **kwargs)
+            self.close_calls = 0
+            async_clients.append(self)
+
+        async def aclose(self) -> None:
+            self.close_calls += 1
+            await super().aclose()
+
+    def fail(*args: Any, **kwargs: Any) -> Any:
+        raise RuntimeError("PRIVATE_CONSTRUCTION")
+
+    def forbidden(request: Any) -> Any:
+        forwarded.append(request)
+        raise AssertionError("Client setup/cleanup must never forward")
+
+    http = SimpleNamespace(
+        **(vars(http) | {"Client": TrackedSync, "AsyncClient": TrackedAsync})
+    )
+    if failure == "roots":
+        monkeypatch.setattr(certifi, "where", fail)
+    elif failure == "tls":
+        monkeypatch.setattr(
+            p,
+            "ssl",
+            SimpleNamespace(**(vars(p.ssl) | {"create_default_context": fail})),
+        )
+    elif failure == "sdk":
+        sdk = SimpleNamespace(**(vars(sdk) | {"Client": fail}))
+    monkeypatch.setattr(p, "_sdk", lambda: (sdk, http))
+    adapter = p.GeminiAdapter(
+        "models.generate_content",
+        spec.model,
+        context=context,
+        http_transport=httpx2.MockTransport(forbidden),
+    )
+    outer = (
+        http.AsyncClient(transport=http.MockTransport(forbidden), trust_env=False)
+        if entry == "direct"
+        else None
+    )
+    try:
+        if failure == "success":
+            client = (
+                p._protected_client(sdk, http, key="SYNTHETIC_KEY", http_client=outer)
+                if entry == "direct"
+                else await adapter._execution_client()
+            )
+            assert len(sync_clients) == len(async_clients) == 1
+            assert client._api_client._httpx_client is sync_clients[0]
+            assert client._api_client._async_httpx_client is async_clients[0]
+            assert sync_clients[0].close_calls == async_clients[0].close_calls == 0
+            if entry == "direct":
+                await p._close_client(client)
+            else:
+                await adapter.aclose()
+                assert adapter._client is None
+                await adapter.aclose()
+            assert all(
+                owned.close_calls == 1 for owned in [*sync_clients, *async_clients]
+            )
+        else:
+            expected = (
+                RuntimeError
+                if entry == "direct" and failure != "sdk"
+                else ProviderIntegrityError
+            )
+            with pytest.raises(expected) as caught:
+                if entry == "direct":
+                    p._protected_client(
+                        sdk, http, key="SYNTHETIC_KEY", http_client=outer
+                    )
+                else:
+                    await adapter._execution_client()
+            if expected is ProviderIntegrityError:
+                assert "PRIVATE" not in str(caught.value)
+            assert len(sync_clients) == int(failure == "sdk")
+            assert all(client.close_calls == 1 for client in sync_clients)
+            if entry == "direct":
+                assert async_clients[0].close_calls == 0
+            else:
+                assert async_clients[0].close_calls == 1
+                assert adapter._client is None
+    finally:
+        if outer is not None and not outer.is_closed:
+            await outer.aclose()
+        if adapter._client is not None:
+            await adapter.aclose()
+        for owned in sync_clients:
+            if not owned.is_closed:
+                owned.close()
+    assert len(async_clients) == 1
+    assert all(client.close_calls == 1 for client in [*sync_clients, *async_clients])
+    assert not forwarded and adapter.actual_call_count == 0
 
 
 @pytest.mark.asyncio

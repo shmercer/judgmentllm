@@ -87,6 +87,8 @@ async def adiscover_models(
     complete = False
     calls = 0
     client: Any = None
+    http_client: Any = None
+    original_cancel: asyncio.CancelledError | None = None
     logging_token = _SDK_LOGGING.set(True)
     try:
         try:
@@ -179,7 +181,8 @@ async def adiscover_models(
         models = tuple(dict.fromkeys(identifiers))
         complete = body.get("has_more", False) is False
         status = "authentication_accepted"
-    except asyncio.CancelledError:
+    except asyncio.CancelledError as error:
+        original_cancel = error
         raise
     except Exception as error:
         code = getattr(error, "status_code", None)
@@ -202,11 +205,38 @@ async def adiscover_models(
             diagnostic = "inconclusive_response"
     finally:
         try:
-            if client is not None:
-                await client.close()
-        except Exception:
-            status = "network_unavailable"
-            diagnostic = "network_unavailable"
+            if client is not None or http_client is not None:
+                close = client.close if client is not None else http_client.aclose
+
+                async def close_owned() -> Exception | None:
+                    try:
+                        await asyncio.wait_for(close(), timeout=10.0)
+                    except Exception as error:
+                        return error
+                    return None
+
+                pending = asyncio.create_task(close_owned())
+                cancelled: asyncio.CancelledError | None = None
+                while not pending.done():
+                    try:
+                        await asyncio.shield(pending)
+                    except asyncio.CancelledError as error:
+                        if cancelled is None:
+                            cancelled = error
+                close_error: Exception | None = None
+                try:
+                    close_error = pending.result()
+                except asyncio.CancelledError as error:
+                    owner = asyncio.current_task()
+                    if cancelled is None or owner is None or not owner.cancelling():
+                        cancelled = error
+                if original_cancel is not None:
+                    raise original_cancel
+                if cancelled is not None:
+                    raise cancelled
+                if close_error is not None:
+                    status = "network_unavailable"
+                    diagnostic = "network_unavailable"
         finally:
             _SDK_LOGGING.reset(logging_token)
     verification = AuthVerification(

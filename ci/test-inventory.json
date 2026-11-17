@@ -11,6 +11,7 @@
     },
     "tests/test_anthropic_diagnostics.py": {
       "test_diagnostic_debug_logs_suppress_remote_identifiers_and_errors": {"": []},
+      "test_diagnostic_owned_cleanup_and_status_priority": {"[cancel-error-False]": [], "[cancel-error-True]": [], "[cancel-self-cancel-False]": [], "[cancel-self-cancel-True]": [], "[cancel-success-False]": [], "[cancel-success-True]": [], "[cancel-timeout-False]": [], "[cancel-timeout-True]": [], "[missing-success-False]": [], "[missing-success-True]": [], "[runtime-error-False]": [], "[runtime-error-True]": [], "[runtime-self-cancel-False]": [], "[runtime-self-cancel-True]": [], "[runtime-success-False]": [], "[runtime-success-True]": [], "[runtime-timeout-False]": [], "[runtime-timeout-True]": [], "[success-error-False]": [], "[success-error-True]": [], "[success-self-cancel-False]": [], "[success-self-cancel-True]": [], "[success-success-False]": [], "[success-success-True]": [], "[success-timeout-False]": [], "[success-timeout-True]": [], "[value-error-False]": [], "[value-error-True]": [], "[value-self-cancel-False]": [], "[value-self-cancel-True]": [], "[value-success-False]": [], "[value-success-True]": [], "[value-timeout-False]": [], "[value-timeout-True]": []},
       "test_diagnostics_sdk_mismatch_never_initializes_client": {"": []},
       "test_missing_credentials_and_wrong_provider_make_no_call": {"": []},
       "test_missing_sdk_is_sanitized_unsupported": {"": []},
@@ -19,6 +20,8 @@
       "test_one_sdk_read_authentication_status": {"[200-authentication_accepted]": [], "[401-credentials_rejected]": [], "[403-permission_denied]": [], "[429-rate_limited]": [], "[500-network_unavailable]": [], "[503-network_unavailable]": []},
       "test_public_async_diagnostics_preserve_provider_specific_record_types": {"[anthropic]": [], "[openai]": []},
       "test_public_sync_diagnostics_preserve_provider_specific_record_types": {"[anthropic]": [], "[openai]": []},
+      "test_real_cancellation_during_diagnostic_close_is_drained": {"[error-cancel-False]": [], "[error-cancel-True]": [], "[error-runtime-False]": [], "[error-runtime-True]": [], "[error-success-False]": [], "[error-success-True]": [], "[self-cancel-cancel-False]": [], "[self-cancel-cancel-True]": [], "[self-cancel-runtime-False]": [], "[self-cancel-runtime-True]": [], "[self-cancel-success-False]": [], "[self-cancel-success-True]": [], "[success-cancel-False]": [], "[success-cancel-True]": [], "[success-runtime-False]": [], "[success-runtime-True]": [], "[success-success-False]": [], "[success-success-True]": []},
+      "test_request_cancellation_closes_sdk_owned_http": {"[False]": [], "[True]": []},
       "test_sync_diagnostics_and_cli_envelope": {"": []}
     },
     "tests/test_anthropic_integrity.py": {
@@ -805,7 +808,8 @@
       "test_missing_provider_extra_has_no_sensitive_exception": {"": []},
       "test_oversized_http_response_consumes_one_uncertain_submission": {"": []},
       "test_response_handoff_capacity_identity_and_parse_integrity": {"": []},
-      "test_scope_and_current_generation_restrictions_fail_before_submission": {"": []}
+      "test_scope_and_current_generation_restrictions_fail_before_submission": {"": []},
+      "test_tls_ordering_and_real_sdk_http_ownership": {"[roots-adapter]": [], "[roots-direct]": [], "[sdk-adapter]": [], "[sdk-direct]": [], "[success-adapter]": [], "[success-direct]": [], "[tls-adapter]": [], "[tls-direct]": []}
     },
     "tests/test_gemini_invalid_utf8.py": {
       "test_escaped_surrogate_and_empty_text_do_not_lose_observation": {"[ \\t\\n-full-models.generate_content]": [], "[ \\t\\n-minimal-models.generate_content]": [], "[-full-models.generate_content]": [], "[-minimal-models.generate_content]": [], "[\\ud800-full-models.generate_content]": [], "[\\ud800-minimal-models.generate_content]": [], "[\\udfff-full-models.generate_content]": [], "[\\udfff-minimal-models.generate_content]": []}
@@ -1275,10 +1279,13 @@
     },
     "tests/test_openai_diagnostics.py": {
       "test_diagnostic_debug_logs_suppress_remote_identifiers_and_errors": {"": []},
+      "test_diagnostic_owned_cleanup_and_status_priority": {"[cancel-error-False]": [], "[cancel-error-True]": [], "[cancel-self-cancel-False]": [], "[cancel-self-cancel-True]": [], "[cancel-success-False]": [], "[cancel-success-True]": [], "[cancel-timeout-False]": [], "[cancel-timeout-True]": [], "[missing-success-False]": [], "[missing-success-True]": [], "[runtime-error-False]": [], "[runtime-error-True]": [], "[runtime-self-cancel-False]": [], "[runtime-self-cancel-True]": [], "[runtime-success-False]": [], "[runtime-success-True]": [], "[runtime-timeout-False]": [], "[runtime-timeout-True]": [], "[success-error-False]": [], "[success-error-True]": [], "[success-self-cancel-False]": [], "[success-self-cancel-True]": [], "[success-success-False]": [], "[success-success-True]": [], "[success-timeout-False]": [], "[success-timeout-True]": [], "[value-error-False]": [], "[value-error-True]": [], "[value-self-cancel-False]": [], "[value-self-cancel-True]": [], "[value-success-False]": [], "[value-success-True]": [], "[value-timeout-False]": [], "[value-timeout-True]": []},
       "test_missing_credentials_and_wrong_provider_make_no_call": {"": []},
       "test_missing_sdk_is_sanitized_unsupported": {"": []},
       "test_models_visibility_no_pagination": {"[body0-not_visible-True]": [], "[body1-unknown-True]": [], "[body2-visible-True]": [], "[body3-unknown-False]": [], "[body4-unknown-False]": []},
       "test_one_sdk_read_authentication_status": {"[200-authentication_accepted]": [], "[401-credentials_rejected]": [], "[403-permission_denied]": [], "[429-rate_limited]": [], "[500-network_unavailable]": [], "[503-network_unavailable]": []},
+      "test_real_cancellation_during_diagnostic_close_is_drained": {"[error-cancel-False]": [], "[error-cancel-True]": [], "[error-runtime-False]": [], "[error-runtime-True]": [], "[error-success-False]": [], "[error-success-True]": [], "[self-cancel-cancel-False]": [], "[self-cancel-cancel-True]": [], "[self-cancel-runtime-False]": [], "[self-cancel-runtime-True]": [], "[self-cancel-success-False]": [], "[self-cancel-success-True]": [], "[success-cancel-False]": [], "[success-cancel-True]": [], "[success-runtime-False]": [], "[success-runtime-True]": [], "[success-success-False]": [], "[success-success-True]": []},
+      "test_request_cancellation_closes_sdk_owned_http": {"[False]": [], "[True]": []},
       "test_sync_diagnostics_and_cli_envelope": {"": []}
     },
     "tests/test_openai_invalid_utf8.py": {
@@ -1346,7 +1353,10 @@
       "test_oversized_http_response_is_bounded_uncertainty": {"": []},
       "test_public_resume_uses_sealed_concurrency_for_connection_pool": {"": []},
       "test_readiness_errors_are_actionable_and_network_free": {"": []},
+      "test_real_sdk_owns_http_until_successful_sequential_close": {"[chat.completions]": [], "[responses]": []},
+      "test_task_cancellation_drains_unassigned_http": {"[error-cancel]": [], "[error-runtime]": [], "[self-cancel-cancel]": [], "[self-cancel-runtime]": [], "[success-cancel]": [], "[success-runtime]": []},
       "test_transport_failure_never_retries": {"[cancel]": [], "[connection]": [], "[timeout]": []},
+      "test_unassigned_http_cleanup_preserves_exception_priority": {"[error-cancel-chat.completions]": [], "[error-cancel-responses]": [], "[error-runtime-chat.completions]": [], "[error-runtime-responses]": [], "[error-value-chat.completions]": [], "[error-value-responses]": [], "[self-cancel-cancel-chat.completions]": [], "[self-cancel-cancel-responses]": [], "[self-cancel-runtime-chat.completions]": [], "[self-cancel-runtime-responses]": [], "[self-cancel-value-chat.completions]": [], "[self-cancel-value-responses]": [], "[success-cancel-chat.completions]": [], "[success-cancel-responses]": [], "[success-runtime-chat.completions]": [], "[success-runtime-responses]": [], "[success-value-chat.completions]": [], "[success-value-responses]": [], "[timeout-cancel-chat.completions]": [], "[timeout-cancel-responses]": [], "[timeout-runtime-chat.completions]": [], "[timeout-runtime-responses]": [], "[timeout-value-chat.completions]": [], "[timeout-value-responses]": []},
       "test_unused_sdk_platform_probe_cannot_run": {"": []}
     },
     "tests/test_openai_uncertain_usage.py": {
@@ -2209,7 +2219,8 @@
       "test_missing_provider_extra_has_no_sensitive_exception": {"": []},
       "test_oversized_http_response_consumes_one_uncertain_submission": {"": []},
       "test_response_handoff_capacity_identity_and_parse_integrity": {"": []},
-      "test_scope_and_current_generation_restrictions_fail_before_submission": {"": []}
+      "test_scope_and_current_generation_restrictions_fail_before_submission": {"": []},
+      "test_tls_ordering_and_real_sdk_http_ownership": {"[roots-adapter]": [], "[roots-direct]": [], "[sdk-adapter]": [], "[sdk-direct]": [], "[success-adapter]": [], "[success-direct]": [], "[tls-adapter]": [], "[tls-direct]": []}
     },
     "tests/test_vertex_invalid_utf8.py": {
       "test_escaped_surrogate_and_empty_text_do_not_lose_observation": {"[ \\t\\n-full-models.generate_content]": [], "[ \\t\\n-minimal-models.generate_content]": [], "[-full-models.generate_content]": [], "[-minimal-models.generate_content]": [], "[\\ud800-full-models.generate_content]": [], "[\\ud800-minimal-models.generate_content]": [], "[\\udfff-full-models.generate_content]": [], "[\\udfff-minimal-models.generate_content]": []}

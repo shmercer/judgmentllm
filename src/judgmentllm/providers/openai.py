@@ -516,14 +516,43 @@ class OpenAIAdapter:
             follow_redirects=False,
             trust_env=False,
         )
-        self._client = _protected_client(
-            sdk,
-            api_key=key,
-            base_url="https://api.openai.com/v1",
-            max_retries=0,
-            timeout=http.Timeout(60.0, connect=10.0, write=10.0, pool=10.0),
-            http_client=client,
-        )
+        try:
+            self._client = _protected_client(
+                sdk,
+                api_key=key,
+                base_url="https://api.openai.com/v1",
+                max_retries=0,
+                timeout=http.Timeout(60.0, connect=10.0, write=10.0, pool=10.0),
+                http_client=client,
+            )
+        except (Exception, asyncio.CancelledError) as original:
+
+            async def close_unassigned() -> Exception | None:
+                try:
+                    await asyncio.wait_for(client.aclose(), timeout=10.0)
+                except Exception as error:
+                    return error
+                return None
+
+            pending = asyncio.create_task(close_unassigned())
+            cancelled: asyncio.CancelledError | None = None
+            while not pending.done():
+                try:
+                    await asyncio.shield(pending)
+                except asyncio.CancelledError as error:
+                    if cancelled is None:
+                        cancelled = error
+            try:
+                pending.result()  # Ordinary cleanup failure cannot replace construction.
+            except asyncio.CancelledError as error:
+                owner = asyncio.current_task()
+                if cancelled is None or owner is None or not owner.cancelling():
+                    cancelled = error
+            if isinstance(original, asyncio.CancelledError):
+                raise
+            if cancelled is not None:
+                raise cancelled from None
+            raise
         return self._client
 
     async def submit(
