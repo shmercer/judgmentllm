@@ -178,6 +178,8 @@ def run(
     schedule_certificate: Path | None = None,
     run_r_gates: bool = False,
     benchmark_only: bool = False,
+    scheduling_review: Path | None = None,
+    scheduling_review_sha256: str | None = None,
 ) -> int:
     if benchmark_only and (plan is not None or targets == ["tests"]):
         raise ValueError(
@@ -213,6 +215,16 @@ def run(
                 "Selected coverage cannot establish historical qualification"
             )
     source = source.resolve(strict=True)
+    contract_result = None
+    if plan is not None and execution_scope == "local":
+        from local.scheduling_contract import require
+
+        contract_result = require(
+            plan,
+            source,
+            review=scheduling_review,
+            review_sha256=scheduling_review_sha256,
+        )
     output = output.resolve()
     if output.is_relative_to(source):
         raise ValueError("Test evidence must be outside the source tree")
@@ -529,7 +541,7 @@ def run(
         from orchestrator import Stage, choose
         from orchestrator import run as run_stages
         from policy import read as read_local_policy
-        from policy import serial_groups
+        from policy import serial_groups, serial_placement_report
         from process import systemd_available
 
         local_policy = plan.get("local_policy") if plan is not None else None
@@ -581,9 +593,22 @@ def run(
         if bound_workers or execution_scope == "local":
             workers = min(workers, resources["effective_cpus"])
         logical_parts = {label: list(nodes) for label, nodes in parts.items()}
+        placement_evidence = serial_placement_report(
+            parts["serial"], local_policy, source
+        )
         group_kinds = {label: label for label in parts}
         if chosen == "concurrent":
-            classified = serial_groups(parts.pop("serial"), local_policy, source)
+            classified = serial_groups(
+                parts.pop("serial"),
+                local_policy,
+                source,
+                placements={
+                    selector: row["placement"]
+                    for selector, row in contract_result["placements"].items()
+                }
+                if contract_result is not None
+                else None,
+            )
             for placement, nodes in classified.items():
                 label = {
                     "concurrency-safe-serial": "serial-safe",
@@ -614,14 +639,7 @@ def run(
             serial_placement={
                 node: {
                     "placement": label,
-                    "reason": next(
-                        (
-                            entry["reason"]
-                            for entry in local_policy["serial"]
-                            if node == entry["selector"] and label == "serial-safe"
-                        ),
-                        "default global isolation or changed dependency; conservative barrier",
-                    ),
+                    "evidence": placement_evidence[node],
                 }
                 for label, nodes in parts.items()
                 if group_kinds[label] == "serial"
@@ -1091,6 +1109,8 @@ def main() -> int:
         "--execution-scope", choices=("local", "hosted"), default="local"
     )
     parser.add_argument("--preflight-report", type=Path, action="append", default=[])
+    parser.add_argument("--scheduling-review", type=Path)
+    parser.add_argument("--scheduling-review-sha256")
     parser.add_argument(
         "--preflight-root",
         type=Path,
@@ -1199,6 +1219,8 @@ def main() -> int:
         local_schedule=options.local_schedule,
         schedule_certificate=options.schedule_certificate,
         run_r_gates=options.run_r_gates,
+        scheduling_review=options.scheduling_review,
+        scheduling_review_sha256=options.scheduling_review_sha256,
     )
 
 

@@ -227,6 +227,8 @@ def main() -> int:
         help="Optional performance diagnostics; not required for auto",
     )
     parser.add_argument("--ref")
+    parser.add_argument("--scheduling-review", type=Path)
+    parser.add_argument("--scheduling-review-sha256")
     parser.add_argument("--mode", choices=("prepare", "check"), default="check")
     parser.add_argument(
         "--schedule",
@@ -284,6 +286,8 @@ def main() -> int:
             head,
             minimum=options.risk,
             purpose="main-local" if options.profile == "main" else "pr",
+            scheduling_review=options.scheduling_review,
+            scheduling_review_sha256=options.scheduling_review_sha256,
         )
         output = options.output or Path(tempfile.gettempdir()) / (
             "judgmentllm-pr-" + datetime.now(UTC).strftime("%Y%m%dT%H%M%S%fZ")
@@ -312,6 +316,23 @@ def main() -> int:
             f"Local requirements: coverage={plan['coverage']}, R={plan['r_gates']}, resources={plan['resources']}; deferred={plan['deferred']}",
             flush=True,
         )
+        contract = plan["scheduling_contract"]
+        print(
+            f"Scheduling contract: {contract['status']}; executing policy {contract['policy_sha']}",
+            flush=True,
+        )
+        for selector, row in contract["placements"].items():
+            if row["status"] != "passed":
+                print(
+                    f"  {selector}: {row['reason']}; see scheduling_contract.placements in plan.json",
+                    flush=True,
+                )
+        for problem in contract["isolation_problems"]:
+            print(f"  requalification-required: {problem}", flush=True)
+        if contract["policy_change"]:
+            print(
+                f"  requalification-required: {contract['policy_change']}", flush=True
+            )
         if options.plan_only:
             return 0
         python = (
@@ -342,6 +363,16 @@ def main() -> int:
                     *(
                         ["--schedule-certificate", str(options.schedule_certificate)]
                         if options.schedule_certificate is not None
+                        else []
+                    ),
+                    *(
+                        [
+                            "--scheduling-review",
+                            str(options.scheduling_review),
+                            "--scheduling-review-sha256",
+                            str(options.scheduling_review_sha256),
+                        ]
+                        if options.scheduling_review is not None
                         else []
                     ),
                     "--run-id",
@@ -387,6 +418,15 @@ def main() -> int:
         "--schedule",
         options.schedule,
     ]
+    if options.scheduling_review is not None:
+        command.extend(
+            (
+                "--scheduling-review",
+                str(options.scheduling_review),
+                "--scheduling-review-sha256",
+                str(options.scheduling_review_sha256),
+            )
+        )
     if options.output:
         command.extend(["--result-root", str(options.output)])
     code = subprocess.run(command, cwd=ROOT, check=False).returncode

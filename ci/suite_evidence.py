@@ -25,9 +25,23 @@ def validate_suite(
     partition: str = "all",
     source: Path | None = None,
     attempt_id: str | None = None,
+    scheduling_review: Path | None = None,
+    scheduling_review_sha256: str | None = None,
 ) -> dict[str, Any]:
     """Recompute the exact scope and require one terminal report per planned case."""
     root = output / "suite"
+    contract = None
+    if scope == "local":
+        if source is None:
+            raise ValueError("Scheduling admission requires exact source")
+        from local.scheduling_contract import require
+
+        contract = require(
+            plan,
+            source,
+            review=scheduling_review,
+            review_sha256=scheduling_review_sha256,
+        )
     summary = read(root / "summary.json")
     collection = read(root / "collection.json")
     needed = required_steps(plan, lane, execution_scope=scope, partition=partition)
@@ -132,7 +146,15 @@ def validate_suite(
         from local.policy import serial_groups
 
         grouped = serial_groups(
-            sorted(required.pop("serial")), plan["local_policy"], source
+            sorted(required.pop("serial")),
+            plan["local_policy"],
+            source,
+            placements={
+                selector: row["placement"]
+                for selector, row in contract["placements"].items()
+            }
+            if contract is not None
+            else None,
         )
         for placement, nodes in grouped.items():
             label = {

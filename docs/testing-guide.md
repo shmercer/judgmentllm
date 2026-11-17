@@ -349,3 +349,53 @@ and diagnostic; real deadline failures and all correctness, coverage, R, resourc
 and isolation requirements remain blocking. Shared
 foreground allocation covers native grids and background main work; no permanent
 main timer may be activated before independent review and merge.
+
+The scheduling contract is checked at every local acceptance level, including
+when the two reviewed overlap tests are absent from the selected lane. Inspect
+the plan's `scheduling_contract.placements` for exact dependency differences and
+effective fallback placement. A stale fingerprint is a blocking
+`requalification-required` result, even if a diagnostic run passed with global
+isolation. Do not refresh fingerprints or write an approval to make a check
+green; prepare the source-bound report for independent review. Later CI,
+classification, reporting and coverage changes must repeat this check.
+
+An unrelated ordinary test must not invalidate overlap merely because the full
+inventory JSON changed. Add independent tests using this scaffold, retaining
+the established module AST and using private state:
+
+```python
+def test_new_independent_case(tmp_path):
+    from judgmentllm.some_existing_module import existing_function
+
+    result = existing_function(tmp_path / "private-state")
+    assert result == expected_result
+```
+
+Replace the example import and assertion with the real contract. Keep ordinary
+tests unmarked unless they need a documented isolation boundary. Classify the
+module/function in `ci/test-profiles.json`, collect and reconcile the complete
+inventory, and inspect the automatic plan. The scheduling closure follows only
+the reviewed tests' helpers plus shared source/fixture/runtime controls; it
+does not hash unrelated test bodies or the entire inventory into both placements.
+An added fixture, helper implementation, plugin or collection hook remains
+Level 3 and must be reviewed for its actual effect.
+
+For new `serial` or `resource` cases, also propose an exact function/parameter
+selector and nonblank reason in `ci/local-policy.json`'s `isolation_reasons`:
+
+```json
+{
+  "tests/test_example.py::test_real_child_boundary":
+    "Real child shares an OS lock; preserve its existing deadline and cleanup assertions"
+}
+```
+
+The reason documents the proposed boundary; it grants no overlap authority.
+Unknown serial cases retain global isolation. A missing reason blocks admission.
+Review helpers transitively, parent package initializers, autouse fixtures,
+pytest plugins and dynamic dispatch. Nonliteral helper imports need a finite
+explicit target list bound to the exact helper source hash in
+`serial_dependency_scope.dynamic_imports`; an unknown or edited dispatch fails
+closed. Keep all real source-inventory reads at their existing call sites.
+Neither a setup optimization nor a diagnostic timing permits caching those reads,
+removing assertions, reducing the 42-case pilot or relaxing recovery/deadlines.

@@ -458,6 +458,8 @@ def make_plan(
     *,
     minimum: int = 0,
     purpose: str = "pr",
+    scheduling_review: Path | None = None,
+    scheduling_review_sha256: str | None = None,
 ) -> dict[str, Any]:
     if type(minimum) is not int or not 0 <= minimum <= 4:
         raise ValueError("Minimum risk must be 0 through 4")
@@ -771,6 +773,21 @@ def make_plan(
             "packaging": not packaging,
         },
     }
+    from local.scheduling_contract import apply_review
+    from local.scheduling_contract import build as scheduling_contract
+
+    plan["scheduling_contract"] = apply_review(
+        scheduling_contract(
+            source,
+            base,
+            head,
+            local_policy,
+            case_inventory,
+            policy_code_sha256=plan["policy_code_sha256"],
+        ),
+        scheduling_review,
+        scheduling_review_sha256,
+    )
     plan["plan_sha256"] = hashlib.sha256(
         json.dumps(plan, sort_keys=True).encode()
     ).hexdigest()
@@ -811,6 +828,8 @@ def required_steps(
         return {"tests"}
     primary = lane == "linux-3.11"
     names: set[str] = {"docs"} if primary else set()
+    if execution_scope == "local":
+        names.add("scheduling-contract")
     if plan["risk"] >= 1 and primary:
         names.update(("ruff", "format", "pyright"))
     if plan["risk"] >= 1:

@@ -44,6 +44,8 @@ def run_lane(
     partition: str = "all",
     local_schedule: str = "auto",
     schedule_certificate: Path | None = None,
+    scheduling_review: Path | None = None,
+    scheduling_review_sha256: str | None = None,
 ) -> int:
     if execution_scope not in {"local", "hosted"}:
         raise ValueError("Execution scope must be local or hosted")
@@ -100,6 +102,7 @@ def run_lane(
             "resource_measurements": execution_scope == "hosted" and plan["resources"],
             "coverage": execution_scope == "hosted" and plan["coverage"],
             "r_interoperability": execution_scope == "hosted",
+            "scheduling_contract": execution_scope == "hosted",
         },
         "risk": plan["risk"],
         "test_profile": lane_profile(plan, lane, execution_scope),
@@ -122,7 +125,14 @@ def run_lane(
     started = time.monotonic()
     python = sys.executable
     receipt_path = output / ("quality.json" if quality_only else "receipt.json")
-    cheap = needed & {"docs", "ruff", "format", "pyright", "infrastructure"}
+    cheap = needed & {
+        "docs",
+        "ruff",
+        "format",
+        "pyright",
+        "infrastructure",
+        "scheduling-contract",
+    }
 
     def step(name: str, command: list[str]) -> None:
         before = time.monotonic()
@@ -158,6 +168,30 @@ def run_lane(
 
     try:
         verify_source()
+        if "scheduling-contract" in needed:
+            from local.scheduling_contract import require
+
+            before = time.monotonic()
+            try:
+                report["scheduling_contract"] = require(
+                    plan,
+                    source,
+                    review=scheduling_review,
+                    review_sha256=scheduling_review_sha256,
+                )
+            except (OSError, ValueError, KeyError) as error:
+                report["steps"].append(
+                    {"name": "scheduling-contract", "exit_code": 1, "error": str(error)}
+                )
+                raise
+            report["steps"].append(
+                {
+                    "name": "scheduling-contract",
+                    "exit_code": 0,
+                    "seconds": time.monotonic() - before,
+                }
+            )
+            save(receipt_path, report)
         if (
             quality_receipt is not None
             and lane == "linux-3.11"
@@ -298,6 +332,13 @@ def run_lane(
                 command.append("--skip-r")
             else:
                 command += ["--local-schedule", local_schedule, "--run-r-gates"]
+                if scheduling_review is not None:
+                    command += [
+                        "--scheduling-review",
+                        str(scheduling_review),
+                        "--scheduling-review-sha256",
+                        str(scheduling_review_sha256),
+                    ]
                 if schedule_certificate is not None:
                     command += ["--schedule-certificate", str(schedule_certificate)]
             save(output / "executed-plan.json", plan)
@@ -329,6 +370,8 @@ def run_lane(
                 partition=partition,
                 source=source,
                 attempt_id=report["attempt_id"],
+                scheduling_review=scheduling_review,
+                scheduling_review_sha256=scheduling_review_sha256,
             )
             report["selection_sha256"] = suite["selection_sha256"]
             for name, result in suite.get("r_gates", {}).items():
@@ -503,6 +546,15 @@ def main() -> int:
     parser.add_argument("--quality-only", action="store_true")
     parser.add_argument("--quality-receipt", type=Path)
     parser.add_argument(
+        "--scheduling-review",
+        type=Path,
+        help="Supervisor-designated scheduling-only review record",
+    )
+    parser.add_argument(
+        "--scheduling-review-sha256",
+        help="Independent supervisor pin; never inferred from candidate artifacts",
+    )
+    parser.add_argument(
         "--execution-scope", choices=("local", "hosted"), default="hosted"
     )
     args = parser.parse_args()
@@ -512,7 +564,13 @@ def main() -> int:
         args.base = git(args.source, "rev-parse", args.base)
     if args.operation == "plan":
         plan = make_plan(
-            args.source, args.base, args.head, minimum=args.risk, purpose=args.purpose
+            args.source,
+            args.base,
+            args.head,
+            minimum=args.risk,
+            purpose=args.purpose,
+            scheduling_review=args.scheduling_review,
+            scheduling_review_sha256=args.scheduling_review_sha256,
         )
         args.output.parent.mkdir(parents=True, exist_ok=True)
         save(args.output, plan)
@@ -544,11 +602,19 @@ def main() -> int:
             partition=args.partition,
             local_schedule=args.local_schedule,
             schedule_certificate=args.schedule_certificate,
+            scheduling_review=args.scheduling_review,
+            scheduling_review_sha256=args.scheduling_review_sha256,
         )
     if not args.base or not args.head:
         parser.error("independent admission requires --base and --head")
     expected_plan = make_plan(
-        args.source, args.base, args.head, minimum=args.risk, purpose=args.purpose
+        args.source,
+        args.base,
+        args.head,
+        minimum=args.risk,
+        purpose=args.purpose,
+        scheduling_review=args.scheduling_review,
+        scheduling_review_sha256=args.scheduling_review_sha256,
     )
     if json.dumps(plan, sort_keys=True) != json.dumps(expected_plan, sort_keys=True):
         raise ValueError("Plan artifact differs from protected-base classification")
@@ -559,7 +625,19 @@ def main() -> int:
                 args.source, "status", "--porcelain"
             ):
                 raise ValueError("Local admission requires the clean exact source")
+            from local.scheduling_contract import require
+
+            contract = require(
+                plan,
+                args.source,
+                review=args.scheduling_review,
+                review_sha256=args.scheduling_review_sha256,
+            )
             receipt = read(args.receipts / "receipt.json")
+            if receipt.get("scheduling_contract") != contract:
+                raise ValueError(
+                    "Local receipt omitted its independent scheduling admission"
+                )
             steps = receipt["steps"]
             names = [step["name"] for step in steps]
             if (
@@ -599,6 +677,8 @@ def main() -> int:
                     scope="local",
                     source=args.source,
                     attempt_id=receipt.get("attempt_id"),
+                    scheduling_review=args.scheduling_review,
+                    scheduling_review_sha256=args.scheduling_review_sha256,
                 )
                 if receipt.get("selection_sha256") != suite["selection_sha256"]:
                     raise ValueError("Local receipt does not bind its exact selection")
@@ -652,6 +732,7 @@ def main() -> int:
                 "coverage": plan["coverage"],
                 "r_gates": plan["r_gates"],
                 "resources": plan["resources"],
+                "scheduling_contract": True,
             },
             "passed": not errors,
             "errors": errors,

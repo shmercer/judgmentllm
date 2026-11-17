@@ -332,6 +332,8 @@ def test_pr_planning_does_not_write_bytecode_to_its_policy_copy(
         "local/resource_specs.py",
         "local/telemetry.py",
         "local/policy.py",
+        "local/serial_dependencies.py",
+        "local/scheduling_contract.py",
     ):
         destination = source / "ci" / name
         destination.parent.mkdir(parents=True, exist_ok=True)
@@ -516,7 +518,13 @@ def test_resource_measurement_selection_follows_execution_scope(
                 "source_verified": True,
                 "steps": [
                     {"name": name, "exit_code": 0}
-                    for name in ("docs", "ruff", "format", "pyright")
+                    for name in (
+                        "docs",
+                        "ruff",
+                        "format",
+                        "pyright",
+                        *(["scheduling-contract"] if scope == "local" else []),
+                    )
                 ],
             }
         )

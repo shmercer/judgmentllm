@@ -104,6 +104,68 @@
       "selector": "tests/test_study_workflow.py::test_complete_synthetic_pilot_recovery_never_forwards_again"
     }
   ],
+  "serial_dependency_scope": {
+    "controls": [
+      ".gitattributes",
+      "pyproject.toml",
+      "uv.lock",
+      "ci/coverage-floor.json",
+      "ci/test-contract.json",
+      "ci/verification-map.json",
+      ".github/workflows/ci.yml"
+    ],
+    "dynamic_imports": {
+      "tests/reasoning_fixture.py": {
+        "reason": "Complete declared provider alternatives, including Gemini offline response and transport/registry dispatch; changed helper bytes invalidate this declaration.",
+        "source_sha256": "3c757a328886ba3d6a27828bf09f7924cbf7dff3bd4b89d6de023d0ae95ace76",
+        "targets": [
+          "src/judgmentllm/anthropic_registry.py",
+          "src/judgmentllm/anthropic_transport.py",
+          "src/judgmentllm/gemini_registry.py",
+          "src/judgmentllm/gemini_transport.py",
+          "src/judgmentllm/production_registry.py",
+          "src/judgmentllm/production_transport.py",
+          "tests/anthropic_fixture.py",
+          "tests/gemini_fixture.py",
+          "tests/gemini_offline.py",
+          "tests/test_anthropic_lifecycle.py",
+          "tests/test_anthropic_transport.py",
+          "tests/test_gemini_transport.py",
+          "tests/test_openai_lifecycle.py",
+          "tests/test_production_transport.py"
+        ]
+      },
+      "tests/study_fixture.py": {
+        "reason": "Complete declared provider alternatives, including Gemini offline response and transport/registry dispatch; changed helper bytes invalidate this declaration.",
+        "source_sha256": "72c54422eeb482131d67f27446e237dbe9afb7911479a286083e89c43db93a61",
+        "targets": [
+          "src/judgmentllm/providers/anthropic.py",
+          "src/judgmentllm/providers/gemini.py",
+          "src/judgmentllm/providers/openai.py"
+        ]
+      },
+      "tests/test_study_native.py": {
+        "reason": "Complete declared provider alternatives, including Gemini offline response and transport/registry dispatch; changed helper bytes invalidate this declaration.",
+        "source_sha256": "3dfe2cf6e66df9039d81f048bff88097197524c8b3d83e02c9d187a314a2a4f0",
+        "targets": [
+          "src/judgmentllm/providers/anthropic.py",
+          "src/judgmentllm/providers/gemini.py",
+          "src/judgmentllm/providers/openai.py"
+        ]
+      }
+    },
+    "reason": "Candidate conservative closure: retain all runtime sources/assets/controls and actual helper dispatch. Existing reviewed digests remain unchanged; stale or unrecorded dependencies require independent exact-source requalification.",
+    "roots": [
+      "src/judgmentllm",
+      "scripts",
+      "benchmarks",
+      "examples/study-native",
+      "tests/fixtures"
+    ],
+    "support_modules": [
+      "tests/conftest.py"
+    ]
+  },
   "serial_shared_dependencies": {
     ".gitattributes": "3196281f2725c13078e65ca474703153bc800b65a014419f0b263aa29ee97637",
     "benchmarks/evidence/benchmark.coveragerc": "52d463fdace059892e1a59466830532c0c2bdc43378ea73dbed505cf3d8d7bb9",

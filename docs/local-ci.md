@@ -61,6 +61,100 @@ without a separate troubleshooting-only status that could qualify a PR.
 Do not run both complete grids by default. Release evidence must identify actual
 platform/version coverage, including hosted macOS 3.15 when using the native grid.
 
+## Scheduling-contract bootstrap
+
+Slice A adds reporting and admission, without changing production verification
+or refreshing the existing overlap fingerprints. The reviewed candidates are:
+
+- `tests/test_study_limits.py::test_one_handoff_resume_and_completion_preserve_all_identities`
+- `tests/test_study_workflow.py::test_complete_synthetic_pilot_recovery_never_forwards_again`
+
+Their shared source changes have made the old hashes stale. The candidate reports
+global isolation and blocks its own local acceptance until an independent
+scheduling decision is supplied. This is an intentional pending safety result,
+not proof that overlap has been restored. Production `source_inventory` and all
+configuration comparisons remain real repeated reads. The pilot still has its
+42 configurations, recovery boundaries, assertions and 126 exports. No setup
+cache or production immutability mechanism is introduced; no speedup is required.
+
+The initial trusted driver is **92699003a1e8eacbb92ef09f9f9870641733c8ab**.
+It does not contain this new contract, so Slice A cannot use the candidate hook
+to qualify itself. Bootstrap is a separately reviewed Level 3 change qualified
+entirely under that existing policy. `ci/check.py` imports its own checkout's
+policy; invoking it from the candidate does not establish protected authority.
+The existing absolute `ci/acceptance.py` interface supports a separate source:
+
+```bash
+# Supervisor-designated clean, pinned checkout and external evidence directory.
+# Run only under the supervisor's foreground qualification lease after review.
+"$JLLM_PYTHON" -B "$JLLM_POLICY/ci/acceptance.py" plan \
+  --source "$JLLM_CANDIDATE" \
+  --base 92699003a1e8eacbb92ef09f9f9870641733c8ab \
+  --head "$JLLM_CANDIDATE_SHA" --output "$JLLM_EVIDENCE/protected-plan.json"
+"$JLLM_PYTHON" -B "$JLLM_POLICY/ci/acceptance.py" lane \
+  --source "$JLLM_CANDIDATE" --plan "$JLLM_EVIDENCE/protected-plan.json" \
+  --execution-scope local --run-id "$JLLM_RUN_ID" \
+  --output "$JLLM_EVIDENCE/protected-primary"
+"$JLLM_PYTHON" -B "$JLLM_POLICY/ci/acceptance.py" verify-local \
+  --source "$JLLM_CANDIDATE" \
+  --base 92699003a1e8eacbb92ef09f9f9870641733c8ab \
+  --head "$JLLM_CANDIDATE_SHA" --plan "$JLLM_EVIDENCE/protected-plan.json" \
+  --receipts "$JLLM_EVIDENCE/protected-primary" --run-id "$JLLM_RUN_ID" \
+  --output "$JLLM_EVIDENCE/protected-admission.json"
+```
+
+Verify the driver HEAD equals the trusted SHA and both trees are clean before
+and after. Policy Python, taxonomy, local scheduling and reporter/verifier imports
+must come from the pinned driver; tests/runtime come from the exact frozen
+candidate. The retained driver/source separation regression replaces candidate
+policy/reporting modules with raising sentinels and verifies the trusted reporter
+actually runs. It is an offline diagnostic, not final source qualification.
+Preserve all current required local/hosted gates, source identity checks, locks,
+resource barriers, R dependencies, platform fixtures, cleanup and deadlines.
+Never edit source while qualification runs. Never run resource measurements
+alongside another campaign. No background service or new qualification mechanism
+is needed for this bootstrap.
+
+Candidate overlap/contract exercises remain separately labeled diagnostics.
+After independent source review, the supervisor arranges the foreground lease,
+reviews the dependency differences and actual overlap/cleanup evidence, and
+records either requalification or a more conservative placement decision.
+Runtime without an approved override continues to serialize safely. After
+activation, independently verify effective placement in the suite summary and
+case receipts; a declared safe placement alone is insufficient.
+
+For review preparation, copy the **computed** policy/source/contract identities
+from the frozen candidate plan into an external draft with
+`status: "pending-independent-review"`. The supervisor's accepted record has
+exact fields `schema_version` (1), `purpose` (`scheduling-only`), `status`
+(`approved`), `policy_sha`, `source_sha`, `contract_sha256`, `decision`
+(`requalified` or `placement-change`), `placements`, `reviewer`,
+`review_reference`, `reason`, and `evidence`. `placements` must name both exact
+selectors. `evidence` contains absolute regular JSON artifact paths and their
+SHA-256 hashes; each must bind the source, passed status and complete cleanup.
+Requalification also requires successful isolation and the exact unique case IDs.
+The independent reviewer checks the underlying raw execution/resource/cleanup
+artifacts and records that review; these fields are not an automatic substitute
+for that judgment. Missing files, uncertain dependencies/dispatch, unknown fields,
+duplicate keys or a foreign source/policy/contract fail closed. A placement change
+may authorize only host/global exclusivity, never weaker isolation.
+
+The supervisor passes the record using `--scheduling-review PATH` and
+`--scheduling-review-sha256 INDEPENDENT_PIN` to the same trusted driver's plan,
+lane and `verify-local` operations (and complete-grid check, when applicable).
+Admission rebuilds the contract and rechecks the independently supplied pin;
+it never derives approval from the plan's recorded review. Scheduling approval
+cannot authorize evidence reuse, provider calls or reduced acceptance.
+
+Only independently admitted **merged** slice commits subsequently recorded by
+the supervisor become trusted policy SHAs. No future SHA is assumed. Changes in
+slices B–E must reestablish their affected scheduling closures rather than inherit
+Slice A's evidence. Slice A does not implement those slices. Retained PRB artifacts
+remain historical observations and are ineligible reuse origins; a fresh reuse
+origin can exist only after independently merged receipt policy/mechanism.
+Any first-consumer benefit decision later uses bounded targeted observation,
+not a broad benchmark or assumed sum of test durations.
+
 ## Existing infrastructure and isolation
 
 | Platform | Reused environment | JudgmentLLM state |

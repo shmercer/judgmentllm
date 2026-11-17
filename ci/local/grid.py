@@ -406,6 +406,8 @@ def main() -> int:
         "--repo", type=Path, default=Path(__file__).resolve().parents[2]
     )
     parser.add_argument("--ref", required=True)
+    parser.add_argument("--scheduling-review", type=Path)
+    parser.add_argument("--scheduling-review-sha256")
     parser.add_argument(
         "--mode", choices=("doctor", "prepare", "check"), default="check"
     )
@@ -428,6 +430,26 @@ def main() -> int:
     if re.fullmatch(r"[0-9a-f]{40}", args.ref) is None:
         parser.error("--ref must be the complete proposed commit SHA")
     repo = args.repo.resolve(strict=True)
+    scheduling_contract = None
+    if args.mode == "check" and args.suite_stage == "full":
+        # Complete-grid admission has the same gate as risk-based local lanes.
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from local.scheduling_contract import require
+        from risk import make_plan
+
+        scheduling_contract = require(
+            make_plan(
+                repo,
+                args.ref,
+                args.ref,
+                minimum=4,
+                scheduling_review=args.scheduling_review,
+                scheduling_review_sha256=args.scheduling_review_sha256,
+            ),
+            repo,
+            review=args.scheduling_review,
+            review_sha256=args.scheduling_review_sha256,
+        )
     platforms = list(STATES) if args.platform == "all" else [args.platform]
     schedule = get_schedule(args.schedule)
     host = read_resources()
@@ -473,6 +495,7 @@ def main() -> int:
         "host_resources": host,
         "allocation_budget": budget,
         "suite_stage": args.suite_stage,
+        "scheduling_contract": scheduling_contract,
         "resource_policy": "bounded independent allocations; explicit shared-guest slots",
         "status": "running",
         "started_at": datetime.now(UTC).isoformat(),

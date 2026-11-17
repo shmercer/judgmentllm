@@ -62,6 +62,27 @@ domains, costs, platform relevance, reasons and its selection digest. Final
 `case-accounting.json` labels cases `executed`, `deferred-by-policy` or
 `not-required-for-this-lane` or `covered-by-grid-partition`; only actual terminal reports count as execution.
 
+Every local acceptance level, including documentation/wording-only changes, also
+requires the scheduling contract. This checks both reviewed overlap tests even
+when neither is selected. `scheduling_contract.placements` reports declared and
+effective placement, exact dependency hashes, missing/changed/unrecorded paths,
+and unresolved helper dispatch. Stale evidence is `requalification-required`:
+runtime safely falls back to global isolation, but that fallback does not pass
+local admission. Conservative scheduling cannot bypass this gate. Complete-grid
+check mode has the same admission gate before launching native work; partial
+benchmark stages remain non-qualifying. Hosted receipts explicitly defer this
+local requirement.
+
+Only independently reviewed exact-source requalification, or an independently
+reviewed more conservative placement change, can clear the failure. The
+supervisor supplies the external review record and its independent SHA-256 pin
+to planning, execution and independent admission. A record embedded in a plan
+cannot approve that plan. This review authorizes scheduling only; it cannot
+replace correctness, coverage, R, resources, cleanup or platform acceptance.
+CI/classification/reporting/coverage changes in later efficiency slices must
+reestablish this contract as well. See the
+[bootstrap and trust procedure](local-ci.md#scheduling-contract-bootstrap).
+
 Test isolation and OS relevance are independent. Changed modules run whole on the
 primary platform; extended/smoke lanes add their reviewed platform-relevant cases.
 Unknown/new cases remain mandatory, and Level 4 still selects everything. Real
