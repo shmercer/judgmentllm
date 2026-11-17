@@ -425,6 +425,9 @@ class Runner:
                     key: receipt.get(key)
                     for key in (
                         "status",
+                        "qualification",
+                        "qualification_reason",
+                        "scheduling_contract",
                         "stage",
                         "workers",
                         "manifest_complete",
@@ -677,8 +680,25 @@ class Runner:
                 and self.summary["source_verified_before"]
                 and self.summary["source_verified_after"]
             )
+            suites = [
+                step["suite"] for step in self.summary["steps"] if "suite" in step
+            ]
             self.summary.update(
                 status="passed" if passed else "failed",
+                qualification=(
+                    passed
+                    and self.options.mode == "check"
+                    and self.options.suite_stage == "full"
+                    and bool(suites)
+                    and all(
+                        suite.get("qualification") is True
+                        and isinstance(suite.get("scheduling_contract"), dict)
+                        and suite["scheduling_contract"].get("status") == "passed"
+                        and suite["scheduling_contract"].get("source_sha")
+                        == self.options.commit
+                        for suite in suites
+                    )
+                ),
                 finished_at=datetime.now(UTC).isoformat(),
                 duration_seconds=time.monotonic() - started,
                 all_scheduled_gates_finished=completed,

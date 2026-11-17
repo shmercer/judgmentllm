@@ -43,6 +43,10 @@ def validate_suite(
             review_sha256=scheduling_review_sha256,
         )
     summary = read(root / "summary.json")
+    if scope == "local" and summary.get("scheduling_contract") != contract:
+        raise ValueError(
+            "Suite omitted or changed its independently reconstructed scheduling admission"
+        )
     collection = read(root / "collection.json")
     needed = required_steps(plan, lane, execution_scope=scope, partition=partition)
     expected = next(item for item in plan["lanes"] if item["id"] == lane)
@@ -85,7 +89,7 @@ def validate_suite(
         or summary.get("stage") != "full"
         or summary.get("grid_partition", "all") != partition
         or summary.get("status") != "passed"
-        or summary.get("qualification", True) is not True
+        or summary.get("qualification") is not True
         or summary.get("selection_complete") is not True
         or summary.get("coverage_enabled") is not coverage_enabled
         or summary["source"]["commit"] != plan["source_sha"]

@@ -39,20 +39,7 @@ def read(root: Path) -> dict[str, Any]:
     seen: set[str] = set()
     shared = policy.get("serial_shared_dependencies", {})
     if any(
-        not (
-            path.startswith(
-                ("src/", "tests/", "scripts/", "examples/", "benchmarks/", "ci/")
-            )
-            or path
-            in {
-                "pyproject.toml",
-                "uv.lock",
-                ".gitattributes",
-                ".github/workflows/ci.yml",
-            }
-        )
-        or ".." in Path(path).parts
-        or len(value) != 64
+        not safe_path(path) or re.fullmatch(r"[0-9a-f]{64}", str(value)) is None
         for path, value in shared.items()
     ):
         raise ValueError("Invalid shared serial dependency manifest")
@@ -132,6 +119,8 @@ def safe_path(path: object) -> bool:
     return (
         isinstance(path, str)
         and bool(path)
+        and path != "."
+        and Path(path).as_posix() == path
         and not Path(path).is_absolute()
         and ".." not in Path(path).parts
         and "\\" not in path

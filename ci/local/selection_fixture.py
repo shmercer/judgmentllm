@@ -97,6 +97,7 @@ def write_suite(
             "source": {"commit": plan["source_sha"], "dirty": False},
             "provenance": provenance,
             "status": "passed",
+            "qualification": True,
             "selection_complete": True,
             "stage": "full",
             "grid_partition": partition,

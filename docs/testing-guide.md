@@ -393,9 +393,23 @@ selector and nonblank reason in `ci/local-policy.json`'s `isolation_reasons`:
 The reason documents the proposed boundary; it grants no overlap authority.
 Unknown serial cases retain global isolation. A missing reason blocks admission.
 Review helpers transitively, parent package initializers, autouse fixtures,
-pytest plugins and dynamic dispatch. Nonliteral helper imports need a finite
+applicable root/ancestor conftests, pytest plugins and dynamic dispatch. The
+runner bounds conftest discovery to the candidate source with `--confcutdir`.
+Repository-local plugins and helpers outside `tests/` are traversed too, including
+their package initializers. Relative `import_module` calls with literal package
+and module names and simple loader aliases are resolved. Variable packages,
+escaped/rebound loaders and unsupported module names require independent review.
+Nonliteral helper imports need a finite
 explicit target list bound to the exact helper source hash in
 `serial_dependency_scope.dynamic_imports`; an unknown or edited dispatch fails
 closed. Keep all real source-inventory reads at their existing call sites.
 Neither a setup optimization nor a diagnostic timing permits caching those reads,
 removing assertions, reducing the 42-case pilot or relaxing recovery/deadlines.
+
+An unplanned full suite remains diagnostic even when every case passes. Its
+`qualification: false` result propagates through the native adapter; complete-grid
+admission requires the exact reconstructed local scheduling contract as well as
+the existing correctness, coverage, R and resource evidence. A planned local
+suite checks admission before allocating evidence at every risk level. Synthetic
+driver integration tests bind their private lane to the running host/interpreter;
+the real lane mismatch checks and Linux/Python 3.11 primary policy remain intact.

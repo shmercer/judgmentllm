@@ -155,9 +155,22 @@ def admission_errors(
     archive_sha256: str,
     lockfile_sha256: str,
     suite_stage: str = "full",
+    scheduling_contract: dict[str, Any] | None = None,
 ) -> list[str]:
     """Admit only the platform's exact Python/OS/source results from this run."""
     errors: list[str] = []
+    if (
+        mode == "check"
+        and suite_stage == "full"
+        and (
+            scheduling_contract is None
+            or scheduling_contract.get("status") != "passed"
+            or scheduling_contract.get("source_sha") != ref
+        )
+    ):
+        errors.append(
+            "Full native admission requires the independently reconstructed scheduling contract"
+        )
     expected_versions = set(PYTHON_VERSIONS[platform])
     if len(summaries) != len(expected_versions):
         errors.append(
@@ -255,6 +268,12 @@ def admission_errors(
                     )
         if item.get("suite_stage", "full") != suite_stage:
             errors.append(f"Summary {index + 1} has incompatible suite scope")
+        if (
+            mode == "check"
+            and suite_stage == "full"
+            and item.get("qualification") is not True
+        ):
+            errors.append(f"Summary {index + 1} has no admitted qualification")
         for raw_step in steps:
             if not isinstance(raw_step, dict):
                 continue
@@ -273,6 +292,20 @@ def admission_errors(
                     errors.append(f"Summary {index + 1} has invalid partition evidence")
                 else:
                     detail = cast(dict[str, Any], receipt)
+                    if (
+                        mode == "check"
+                        and suite_stage == "full"
+                        and detail.get("qualification") is not True
+                    ):
+                        errors.append(f"Summary {index + 1} has an unadmitted suite")
+                    if (
+                        mode == "check"
+                        and suite_stage == "full"
+                        and detail.get("scheduling_contract") != scheduling_contract
+                    ):
+                        errors.append(
+                            f"Summary {index + 1} has missing or foreign scheduling admission"
+                        )
                     if detail.get("selection_complete") is not True or (
                         suite_stage == "full"
                         and detail.get("manifest_complete") is not True
@@ -605,6 +638,7 @@ def main() -> int:
                     archive_sha256=archive_sha256,
                     lockfile_sha256=lockfile_sha256,
                     suite_stage=args.suite_stage,
+                    scheduling_contract=scheduling_contract,
                 )
                 lane["admission_errors"] = errors
                 valid = valid and not errors

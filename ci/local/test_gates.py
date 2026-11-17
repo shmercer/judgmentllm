@@ -116,6 +116,8 @@ def fake_commands(
     fail_pytest: bool = False,
     missing_git: bool = False,
     mutate: Path | None = None,
+    suite_qualification: bool = False,
+    scheduling_admission: dict[str, Any] | None = None,
 ) -> list[list[str]]:
     calls: list[list[str]] = []
 
@@ -150,6 +152,8 @@ def fake_commands(
                     json.dumps(
                         {
                             "status": "failed" if fail_pytest else "passed",
+                            "qualification": suite_qualification,
+                            "scheduling_contract": scheduling_admission,
                             "source": {"commit": "a" * 40},
                             "stage": "full",
                             "manifest_complete": True,
@@ -200,6 +204,34 @@ def test_missing_git_fails_before_costly_setup_or_synthetic_suite_execution(
     assert runner.summary["status"] == "failed"
     assert runner.summary["error"]["phase"] == "environment-setup"
     assert runner.summary["source_verified_after"] is True
+
+
+@pytest.mark.parametrize(
+    "qualification,admission,expected",
+    [
+        (False, None, False),
+        (True, None, False),
+        (True, {"status": "requalification-required", "source_sha": "a" * 40}, False),
+        (True, {"status": "passed", "source_sha": "b" * 40}, False),
+        (True, {"status": "passed", "source_sha": "a" * 40}, True),
+    ],
+)
+def test_full_direct_adapter_propagates_only_local_source_bound_admission(
+    staged: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    qualification: bool,
+    admission: dict[str, Any] | None,
+    expected: bool,
+) -> None:
+    fake_commands(
+        monkeypatch, suite_qualification=qualification, scheduling_admission=admission
+    )
+    runner = gates.Runner(options(staged, tmp_path / "result"))
+    assert runner.run() == 0
+    assert runner.summary["qualification"] is expected
+    step = next(step for step in runner.summary["steps"] if step.get("suite"))
+    assert step["suite"]["scheduling_contract"] == admission
 
 
 @pytest.mark.parametrize(
@@ -328,6 +360,7 @@ def test_complete_offline_plan_preserves_failures(
     assert runner.run() == int(fail_lint)
     summary = json.loads((runner.output / "summary.json").read_text())
     assert summary["status"] == ("failed" if fail_lint else "passed")
+    assert summary["qualification"] is False
     assert summary["source_verified_before"] and summary["source_verified_after"]
     assert summary["lockfile_sha256"] == gates.digest(staged / "uv.lock")
     assert (

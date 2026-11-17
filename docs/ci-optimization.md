@@ -69,9 +69,14 @@ effective placement, exact dependency hashes, missing/changed/unrecorded paths,
 and unresolved helper dispatch. Stale evidence is `requalification-required`:
 runtime safely falls back to global isolation, but that fallback does not pass
 local admission. Conservative scheduling cannot bypass this gate. Complete-grid
-check mode has the same admission gate before launching native work; partial
-benchmark stages remain non-qualifying. Hosted receipts explicitly defer this
-local requirement.
+check mode reconstructs the contract before launching native work and requires
+the identical admitted contract in every qualifying suite receipt. An unplanned
+suite is explicitly diagnostic (`qualification: false`), including the native
+adapter's current archived full-suite invocation. Adapter and grid admission must
+preserve that result; host admission cannot upgrade an unadmitted guest. Full
+checks can pass functionally without providing qualification. Partial benchmark
+stages remain non-qualifying. Hosted functional receipts explicitly defer the
+local requirement and cannot substitute for an admitted local native suite.
 
 Only independently reviewed exact-source requalification, or an independently
 reviewed more conservative placement change, can clear the failure. The

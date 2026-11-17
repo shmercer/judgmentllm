@@ -123,6 +123,17 @@ Runtime without an approved override continues to serialize safely. After
 activation, independently verify effective placement in the suite summary and
 case receipts; a declared safe placement alone is insufficient.
 
+Every qualifying local suite must reconstruct admission itself before allocating
+evidence. A native adapter currently invokes an archived suite without a trusted
+plan, so that invocation is explicitly diagnostic even in full check mode.
+The adapter retains `qualification: false`; complete-grid admission rejects a
+missing, foreign or nonpassing per-suite contract even when host admission passed.
+These candidate native commands therefore cannot currently establish comprehensive
+or release qualification. Transporting trusted admission into archived guests
+requires separate infrastructure review; no unsigned override is introduced here.
+Slice A bootstrap final acceptance continues through the separate accepted
+92699003 plan/lane/verify-local driver above, under the supervisor's allocation.
+
 For review preparation, copy the **computed** policy/source/contract identities
 from the frozen candidate plan into an external draft with
 `status: "pending-independent-review"`. The supervisor's accepted record has

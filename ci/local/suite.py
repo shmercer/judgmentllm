@@ -262,7 +262,15 @@ def run(
     started = time.monotonic()
     summary: dict[str, Any] = {
         "schema_version": 1,
-        "qualification": not benchmark_only,
+        "qualification": plan is not None and not benchmark_only,
+        "qualification_reason": (
+            "trusted local plan and reconstructed scheduling admission"
+            if contract_result is not None
+            else "planned hosted functional scope; local scheduling admission deferred"
+            if plan is not None
+            else "unplanned diagnostic; no trusted scheduling admission"
+        ),
+        "scheduling_contract": contract_result,
         "workers": workers,
         "distribution": distribution,
         "requested_workers": requested_workers,
@@ -336,6 +344,7 @@ def run(
             "pytest",
             "-p",
             "ci.local.pytest_report",
+            f"--confcutdir={source}",
             *(
                 targets
                 if label == "collection"

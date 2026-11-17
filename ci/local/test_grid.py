@@ -19,6 +19,12 @@ import pytest
 from source import stage
 from test_source import repository
 
+SCHEDULING_CONTRACT: dict[str, Any] = {
+    "status": "passed",
+    "source_sha": "a" * 40,
+    "contract_sha256": "synthetic-contract",
+}
+
 
 def summaries(platform: str = "windows", mode: str = "check") -> list[dict[str, Any]]:
     return [
@@ -28,6 +34,7 @@ def summaries(platform: str = "windows", mode: str = "check") -> list[dict[str, 
             "lockfile_sha256": "c" * 64,
             "mode": mode,
             "status": "passed",
+            "qualification": True,
             "source_verified_before": True,
             "source_verified_after": True,
             "all_scheduled_gates_finished": True,
@@ -43,7 +50,12 @@ def summaries(platform: str = "windows", mode: str = "check") -> list[dict[str, 
                     "exit_code": 0,
                     "coverage_enabled": name == "pytest-coverage",
                     "coverage_percent": 91.8 if name == "pytest-coverage" else None,
-                    "suite": {"selection_complete": True, "manifest_complete": True}
+                    "suite": {
+                        "selection_complete": True,
+                        "manifest_complete": True,
+                        "qualification": True,
+                        "scheduling_contract": dict(SCHEDULING_CONTRACT),
+                    }
                     if name in {"pytest-coverage", "pytest-no-coverage"}
                     else None,
                 }
@@ -64,6 +76,48 @@ def admit(
         mode=mode,
         archive_sha256="b" * 64,
         lockfile_sha256="c" * 64,
+        scheduling_contract=SCHEDULING_CONTRACT,
+    )
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "adapter",
+        "suite",
+        "missing-contract",
+        "foreign-contract",
+        "missing-host-admission",
+    ],
+)
+def test_full_grid_never_upgrades_unadmitted_native_suites(fault: str) -> None:
+    items = summaries()
+    if fault == "adapter":
+        items[0]["qualification"] = False
+    elif fault != "missing-host-admission":
+        step = next(step for step in items[0]["steps"] if step.get("suite"))
+        if fault == "suite":
+            step["suite"]["qualification"] = False
+        elif fault == "missing-contract":
+            del step["suite"]["scheduling_contract"]
+        else:
+            step["suite"]["scheduling_contract"] = {
+                **SCHEDULING_CONTRACT,
+                "source_sha": "d" * 40,
+            }
+    errors = grid.admission_errors(
+        items,
+        platform="windows",
+        ref="a" * 40,
+        mode="check",
+        archive_sha256="b" * 64,
+        lockfile_sha256="c" * 64,
+        scheduling_contract=None
+        if fault == "missing-host-admission"
+        else SCHEDULING_CONTRACT,
+    )
+    assert errors and any(
+        "admission" in error or "admitted" in error for error in errors
     )
 
 
@@ -112,6 +166,7 @@ def test_fresh_collection_ignores_old_results_and_rejects_extra_new_results(
         mode="check",
         archive_sha256="b" * 64,
         lockfile_sha256="c" * 64,
+        scheduling_contract=SCHEDULING_CONTRACT,
     )
     assert admit(summaries() + summaries())
     assert admit(summaries()[:1])

@@ -6,6 +6,7 @@ import copy
 import hashlib
 import json
 import os
+import platform
 import shutil
 import subprocess
 import sys
@@ -136,6 +137,18 @@ def project(
     return source, base, policy, known
 
 
+def current_synthetic_lane() -> dict[str, str]:
+    return {
+        "id": "linux-3.11",
+        "os": {
+            "Linux": "ubuntu-24.04",
+            "Windows": "windows-latest",
+            "Darwin": "macos-latest",
+        }[platform.system()],
+        "python": f"{sys.version_info.major}.{sys.version_info.minor}",
+    }
+
+
 def test_unrelated_reconciled_test_addition_preserves_parallel_placement(
     project: Any,
 ) -> None:
@@ -169,7 +182,7 @@ def test_all_levels_block_stale_evidence_when_safe_test_is_unselected(
     )
     with pytest.raises(ValueError, match="requalification-required"):
         contract.require(plan, source)
-    plan["lanes"][0]["python"] = f"{sys.version_info.major}.{sys.version_info.minor}"
+    plan["lanes"][0].update(current_synthetic_lane())
     output = tmp_path / "lane"
     assert (
         acceptance.run_lane(
@@ -207,6 +220,100 @@ def test_moderate_provider_edit_requires_gate_without_infrastructure_or_safe_sel
     assert "infrastructure" not in required and "scheduling-contract" in required
     with pytest.raises(ValueError, match="requalification-required"):
         contract.require(plan, source)
+
+
+@pytest.mark.parametrize("level", range(5))
+def test_planned_full_suite_blocks_staleness_before_evidence_allocation(
+    project: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, level: int
+) -> None:
+    import suite
+
+    source, base, _, _ = project
+    (source / "tests/helper.py").write_text("VALUE = 2\n")
+    plan = risk.make_plan(source, base, freeze(source), minimum=level)
+
+    def unexpected() -> Any:
+        pytest.fail("Stale scheduling reached evidence/resource allocation")
+
+    monkeypatch.setattr(suite, "read_resources", unexpected)
+    output = tmp_path / "suite"
+    with pytest.raises(ValueError, match="requalification-required"):
+        suite.run(
+            source=source,
+            output=output,
+            targets=["tests"],
+            workers=1,
+            coverage=False,
+            plan=plan,
+            local_schedule="conservative",
+        )
+    assert not output.exists()
+
+
+def test_unplanned_full_suite_is_explicitly_nonqualifying(
+    project: Any, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import process
+    import suite
+
+    source, _, _, _ = project
+    (source / "pyproject.toml").write_text(
+        '[tool.pytest.ini_options]\nmarkers=["serial: synthetic isolation"]\n'
+    )
+    contract_path = source / "ci/test-contract.json"
+    contract_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "required_nodes": [SAFE, "tests/test_other.py::test_other"],
+                "replacements": {},
+            }
+        )
+    )
+    freeze(source)
+    monkeypatch.setattr(process, "systemd_available", lambda: False)
+    monkeypatch.setenv(
+        "JUDGMENTLLM_ALLOCATION_ROOT", str(tmp_path / "private-allocation")
+    )
+    monkeypatch.delenv("JUDGMENTLLM_ALLOCATION_TOKEN", raising=False)
+    output = tmp_path / "unadmitted-suite"
+    assert (
+        suite.run(
+            source=source,
+            output=output,
+            targets=["tests"],
+            workers=1,
+            coverage=False,
+            contract=contract_path,
+            local_schedule="conservative",
+        )
+        == 0
+    )
+    summary = json.loads((output / "summary.json").read_text())
+    assert summary["status"] == "passed" and summary["manifest_complete"] is True
+    assert summary["qualification"] is False and summary["scheduling_contract"] is None
+    assert "no trusted scheduling admission" in summary["qualification_reason"]
+
+
+@pytest.mark.parametrize("field", ["python", "os"])
+def test_real_lane_interpreter_and_os_mismatch_still_fail_before_execution(
+    project: Any, tmp_path: Path, field: str
+) -> None:
+    source, base, _, _ = project
+    plan = risk.make_plan(source, base, base, minimum=1)
+    lane = current_synthetic_lane()
+    lane[field] = (
+        "0.0"
+        if field == "python"
+        else ("windows-latest" if platform.system() != "Windows" else "ubuntu-24.04")
+    )
+    plan["lanes"][0].update(lane)
+    output = tmp_path / "wrong-lane"
+    with pytest.raises(ValueError, match="Lane interpreter/OS"):
+        acceptance.run_lane(
+            plan, source, output, "linux-3.11", "synthetic", execution_scope="local"
+        )
+    assert not output.exists()
 
 
 def test_no_test_receipt_cannot_bypass_independent_scheduling_admission(
@@ -661,6 +768,11 @@ def test_pinned_driver_and_reporter_execute_separately_from_candidate_policy(
             'SYSTEMCTL = shutil.which("systemctl", path=os.defpath)',
             "SYSTEMCTL = None",
         )
+    )
+    # Only the disposable policy owns this host-bound two-case lane.
+    risk_file = trusted / "ci/risk.py"
+    risk_file.write_text(
+        risk_file.read_text() + f"\nPRIMARY = {current_synthetic_lane()!r}\n"
     )
     subprocess.run(["git", "init", "-q", str(trusted)], check=True)
     for name in (
