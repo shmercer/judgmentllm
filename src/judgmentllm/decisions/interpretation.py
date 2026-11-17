@@ -12,7 +12,10 @@ from pydantic import Field
 from judgmentllm.config import RunSpecV4
 from judgmentllm.decisions.outcomes import AnswerAttributionV1
 from judgmentllm.decisions.records import DecisionQuestionV1
-from judgmentllm.decisions.responses import ParsedDecisionsResponseV1
+from judgmentllm.decisions.responses import (
+    ParsedDecisionsResponseV1,
+    ParsedDecisionsResponseV2,
+)
 from judgmentllm.decisions.transport import (
     DecisionsDependencyV1,
     PreparedDecisionsRequestV1,
@@ -28,6 +31,7 @@ from judgmentllm.results import normalize_pairwise_result, normalize_rubric_resu
 @dataclass(frozen=True)
 class InterpretedDecisionsResponse(InterpretedResponse):
     answers: tuple[AnswerAttributionV1, ...] = ()
+    envelope_findings: tuple[str, ...] = ()
 
 
 class IndexedProbabilityV1(StrictModel):
@@ -199,9 +203,18 @@ def interpret_decisions(
             unique_order
         ):
             recognizable = False
+    metadata = (
+        response.metadata if isinstance(response, ParsedDecisionsResponseV2) else None
+    )
+    if metadata is not None:
+        extras, unattributed = (
+            metadata.unexpected_members,
+            metadata.unattributable_members,
+        )
     results: list[Result] = []
     answers: list[AnswerAttributionV1] = []
-    for question in dependency.questions:
+    for index, question in enumerate(dependency.questions):
+        member = metadata.members[index] if metadata is not None else None
         selected = subset_dependency(dependency, (question.task_id,))
         attributed = members.get(question.key, [])
         answer_type = (
@@ -213,10 +226,14 @@ def interpret_decisions(
             AnswerAttributionV1.model_validate(
                 {
                     "key": question.key,
-                    "answer_ordinals": tuple(ordinals.get(question.key, []))
+                    "answer_ordinals": member.answer_ordinals
+                    if member is not None
+                    else tuple(ordinals.get(question.key, []))
                     if recognizable
                     else (),
-                    "answer_type": answer_type
+                    "answer_type": member.answer_type
+                    if member is not None
+                    else answer_type
                     if recognizable
                     and isinstance(answer_type, str)
                     and answer_type in {"score", "choice", "refusal"}
@@ -229,7 +246,10 @@ def interpret_decisions(
         result: Result | None = None
         status, error = "invalid", "invalid_output"
         entries = members.get(question.key, [])
-        if response.kind == "refusal":
+        if member is not None and member.failure is not None:
+            error = member.failure
+            status = "refused" if member.failure == "provider_refusal" else "invalid"
+        elif response.kind == "refusal":
             status, error = "refused", "provider_refusal"
         elif response.kind == "provider_error":
             status, error = "errored", "provider_error"
@@ -265,4 +285,5 @@ def interpret_decisions(
         unexpected_members=extras,
         unattributable_members=unattributed,
         answers=tuple(answers),
+        envelope_findings=metadata.findings if metadata is not None else (),
     )

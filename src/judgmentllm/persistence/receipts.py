@@ -9,7 +9,7 @@ binding it to an accepted submission in the registry.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
 from pydantic import Field, field_validator, model_validator
 
@@ -162,6 +162,32 @@ class AcknowledgmentReceiptV2(AcknowledgmentReceipt):
         return self
 
 
+class CompleteResponseEvidenceV2(CompleteResponseEvidenceV1):
+    acceptance_evidence_version: Literal[2] = 2  # pyright: ignore[reportIncompatibleVariableOverride]
+    protocol: Literal["openai-decisions-production-v1"] = (  # pyright: ignore[reportIncompatibleVariableOverride]
+        "openai-decisions-production-v1"  # pyright: ignore[reportIncompatibleVariableOverride]
+    )
+
+    @field_validator("acceptance_evidence_version", mode="before")
+    @classmethod
+    def strict_evidence_version(cls, value: object) -> object:
+        if type(value) is not int or value != 2:
+            raise ValueError("unsupported production acceptance evidence version")
+        return value
+
+
+class AcknowledgmentReceiptV3(AcknowledgmentReceiptV2):
+    acknowledgment_version: Literal[3] = 3  # pyright: ignore[reportIncompatibleVariableOverride]
+    response_evidence: CompleteResponseEvidenceV2  # pyright: ignore[reportIncompatibleVariableOverride]
+
+    @field_validator("acknowledgment_version", mode="before")
+    @classmethod
+    def strict_ack_version(cls, value: object) -> object:
+        if type(value) is not int or value != 3:
+            raise ValueError("unsupported production acknowledgment version")
+        return value
+
+
 def _acknowledgment_path(submission_id: str) -> str:
     return f"acknowledgments/{bytes_digest(submission_id.encode('utf-8'))}.json"
 
@@ -172,7 +198,9 @@ def publish_acknowledgment(
     """Durably bind accepted identities before the registry acknowledgment."""
     try:
         receipt_type = (
-            AcknowledgmentReceiptV2
+            AcknowledgmentReceiptV3
+            if type(receipt) is AcknowledgmentReceiptV3
+            else AcknowledgmentReceiptV2
             if isinstance(receipt, AcknowledgmentReceiptV2)
             else AcknowledgmentReceipt
         )
@@ -202,10 +230,14 @@ def read_acknowledgment(
     try:
         from judgmentllm.config import parse_json
 
-        data = parse_json(encoded.decode("utf-8"))
+        data = cast(dict[str, object], parse_json(encoded.decode("utf-8")))
         receipt = (
-            AcknowledgmentReceiptV2.model_validate_json(encoded)
-            if isinstance(data, dict) and "acknowledgment_version" in data
+            AcknowledgmentReceiptV3.model_validate_json(encoded)
+            if isinstance(cast(object, data), dict)
+            and type(data.get("acknowledgment_version")) is int
+            and data["acknowledgment_version"] == 3
+            else AcknowledgmentReceiptV2.model_validate_json(encoded)
+            if isinstance(cast(object, data), dict) and "acknowledgment_version" in data
             else AcknowledgmentReceipt.model_validate_json(encoded)
         )
         if (

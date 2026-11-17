@@ -1,5 +1,15 @@
 # Internal persistence contracts — Milestone 2 mock execution and lifecycle
 
+## PR C production Decisions addition
+
+[Native OpenAI Decisions](openai-decisions.md) now uses the ordinary V4 installed
+Python/CLI lifecycle with official SDK 3.42.1 and offline synthetic acceptance.
+Production acceptance, privacy-filtered replay and physical provenance have
+additive versions; historical synthetic contracts remain exact. Normalized/R
+schema 1, SQLite3 and the seven strict local R gates remain unchanged. Live
+qualification, Jev/Gemini integration and release remain deferred.
+
+
 ## PR B: explicit schema 1/2/3 dispatch
 
 Fresh stores use schema 3; old stores retain schema 1 or 2 without migration,

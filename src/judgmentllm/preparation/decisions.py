@@ -32,6 +32,7 @@ from judgmentllm.decisions.transport import (
     DecisionsCommitmentV1,
     DecisionsContextV1,
     DecisionsDependencyV1,
+    OpenAIDecisionsContextV1,
     PreparedDecisionsRequestV1,
     plan_source,
     prepare_request,
@@ -80,6 +81,7 @@ from judgmentllm.preparation.index import ParsingContext, _BinaryLines, read_rec
 from judgmentllm.preparation.manifest import (
     CategoryCommitment,
     ExecutableRunManifestV8,
+    ExecutableRunManifestV9,
     ExemplarCommitment,
     SourceFormat,
     TemplateCommitment,
@@ -284,8 +286,10 @@ def assessment_commitments(
 class DecisionsPreparedRun(PreparedRun):
     """Native-specific reconstruction; legacy source readers remain unchanged."""
 
-    def context(self) -> DecisionsContextV1:
+    def context(self) -> DecisionsContextV1 | OpenAIDecisionsContextV1:
         assert isinstance(self.manifest, ExecutableRunManifestV8)
+        if isinstance(self.manifest, ExecutableRunManifestV9):
+            return self.manifest.production_context
         return DecisionsContextV1(
             service_identity=self.manifest.service_identity, limits=self.manifest.limits
         )
@@ -605,7 +609,7 @@ def prepare_decisions_run(
     store: str | Path,
     run_id: str,
     capabilities: CapabilityProfile | None = None,
-    context: DecisionsContextV1 | None = None,
+    context: DecisionsContextV1 | OpenAIDecisionsContextV1 | None = None,
 ) -> DecisionsPreparedRun:
     from judgmentllm.preparation import _checkpoint, _memory_source  # pyright: ignore[reportPrivateUsage]
     from judgmentllm.providers.decisions_mock import MockDecisionsAdapter
@@ -641,13 +645,25 @@ def prepare_decisions_run(
             else _load_run_spec(cast(Path, origin), document_reader=discover)
         )
         assert isinstance(spec, RunSpecV4)
+        if (spec.provider, spec.endpoint) == ("openai", "decisions"):
+            from judgmentllm.providers.openai_decisions import decisions_context
+
+            current_context = decisions_context(spec)
+            if context is not None and context != current_context:
+                raise PreparationError(
+                    "OpenAI Decisions context differs from configuration"
+                )
+            context = current_context
         context = (
             context
             or MockDecisionsAdapter(
                 Path(store) / "mock-service.sqlite3"
             ).transport_context
         )
-        if (spec.provider, spec.endpoint) != ("mock", "synthetic"):
+        if (spec.provider, spec.endpoint) not in {
+            ("mock", "synthetic"),
+            ("openai", "decisions"),
+        }:
             raise PreparationError(
                 "production Decisions adapters are not implemented in PR B"
             )
@@ -716,50 +732,64 @@ def prepare_decisions_run(
             )
             repository.register_artifact(run_id, specification)
             traits, exemplars = assessment_commitments(spec)
-            manifest = ExecutableRunManifestV8(
-                run_id=run_id,
-                task_kind=spec.task_kind,
-                capture=spec.capture,
-                configuration_origin="file" if origin else "python",
-                configuration_location=str(origin) if origin else None,
-                configuration_sha256=configuration_digest(spec),
-                assessment_sha256=assessment_digest(spec),
-                specification=specification,
-                sources=sources,
-                input=spec.input,
-                pairs=spec.pairs,
-                pair_presentations=spec.pair_presentations,
-                traits=traits,
-                exemplars=exemplars,
-                template=TemplateCommitment(
-                    sha256=semantic_digest("prompt-template", template),
-                    preset=None,
-                    advanced=spec.prompt.advanced,
-                    limits_sha256=semantic_digest("render-limits", spec.prompt.limits),
-                    presentation_version=2,
-                ),
-                execution=spec.execution,
-                trait_groups=(),
-                seed=spec.seed,
-                allow_ties=False,
-                strict_capabilities=spec.strict_capabilities,
-                generation=build_generation_commitment(spec),
-                capabilities=capabilities,
-                recovery_policy="explicit_verified_snapshot"
-                if spec.capture == "full"
-                else "unchanged_originals",
-                package_version=__version__,
-                cache_policy_version=2,
-                question_renderer_version=2,
-                service_identity=context.service_identity,
-                limits=context.limits,
-                transport_context_sha256=semantic_digest(
-                    "decisions-context-v1", context
-                ),
-                initial_transport_count=0,
-                initial_transport_sha256="0" * 64,
-                logical_task_count=0,
-                presentation_count=0 if spec.pair_presentations else None,
+            manifest_type = (
+                ExecutableRunManifestV9
+                if isinstance(context, OpenAIDecisionsContextV1)
+                else ExecutableRunManifestV8
+            )
+            manifest = manifest_type.model_validate(
+                dict(
+                    **(
+                        {"production_context": context}
+                        if isinstance(context, OpenAIDecisionsContextV1)
+                        else {}
+                    ),
+                    run_id=run_id,
+                    task_kind=spec.task_kind,
+                    capture=spec.capture,
+                    configuration_origin="file" if origin else "python",
+                    configuration_location=str(origin) if origin else None,
+                    configuration_sha256=configuration_digest(spec),
+                    assessment_sha256=assessment_digest(spec),
+                    specification=specification,
+                    sources=sources,
+                    input=spec.input,
+                    pairs=spec.pairs,
+                    pair_presentations=spec.pair_presentations,
+                    traits=traits,
+                    exemplars=exemplars,
+                    template=TemplateCommitment(
+                        sha256=semantic_digest("prompt-template", template),
+                        preset=None,
+                        advanced=spec.prompt.advanced,
+                        limits_sha256=semantic_digest(
+                            "render-limits", spec.prompt.limits
+                        ),
+                        presentation_version=2,
+                    ),
+                    execution=spec.execution,
+                    trait_groups=(),
+                    seed=spec.seed,
+                    allow_ties=False,
+                    strict_capabilities=spec.strict_capabilities,
+                    generation=build_generation_commitment(spec),
+                    capabilities=capabilities,
+                    recovery_policy="explicit_verified_snapshot"
+                    if spec.capture == "full"
+                    else "unchanged_originals",
+                    package_version=__version__,
+                    cache_policy_version=2,
+                    question_renderer_version=2,
+                    service_identity=context.service_identity,
+                    limits=context.limits,
+                    transport_context_sha256=semantic_digest(
+                        "decisions-context-v1", context
+                    ),
+                    initial_transport_count=0,
+                    initial_transport_sha256="0" * 64,
+                    logical_task_count=0,
+                    presentation_count=0 if spec.pair_presentations else None,
+                )
             )
             prepared = DecisionsPreparedRun(
                 repository, manifest, spec, template, capabilities

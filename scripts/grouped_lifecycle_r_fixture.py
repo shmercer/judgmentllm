@@ -157,6 +157,9 @@ async def persist(root: Path) -> None:
     from decisions_r_fixture import persist as persist_decisions
 
     await persist_decisions(root / "decisions")
+    from openai_decisions_r_fixture import persist as persist_openai
+
+    persist_openai(root / "openai-decisions")
 
 
 async def export(root: Path) -> None:
@@ -262,6 +265,9 @@ async def export(root: Path) -> None:
     from decisions_r_fixture import export as export_decisions
 
     await export_decisions(root / "decisions")
+    from openai_decisions_r_fixture import export as export_openai
+
+    export_openai(root / "openai-decisions")
     assert provider.submit_calls == 0 and provider.ledger.acceptance_count() == 4
     (root / "grouped-lifecycle.jsonl").write_text(
         "".join(json.dumps(row) + "\n" for row in evidence), encoding="utf-8"

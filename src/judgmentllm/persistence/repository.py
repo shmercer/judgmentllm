@@ -428,22 +428,25 @@ class Repository:
             data = parse_json(raw.decode("utf-8"))
         except (ValueError, UnicodeError):
             data = None
-        native = (
-            isinstance(data, dict)
-            and cast(dict[str, object], data).get("schema_version") == 8
-        )
+        native = isinstance(data, dict) and cast(dict[str, object], data).get(
+            "schema_version"
+        ) in (8, 9)
         if (self.decisions_version(run_id) == 4) != native:
             raise IntegrityError("Decisions marker differs from frozen manifest")
         if native:
             from judgmentllm.config import RunSpecV4, validate_run_spec
             from judgmentllm.persistence.generation import build_generation_commitment
             from judgmentllm.preparation.manifest import (
-                ExecutableRunManifestV8,
                 assessment_digest,
                 configuration_digest,
+                parse_executable_manifest,
             )
 
-            checked_manifest = ExecutableRunManifestV8.model_validate_json(raw)
+            checked_manifest = parse_executable_manifest(raw)
+            from judgmentllm.preparation.manifest import ExecutableRunManifestV8
+
+            if not isinstance(checked_manifest, ExecutableRunManifestV8):
+                raise IntegrityError("Decisions manifest protocol differs")
             if decisions_spec is None:
                 raise IntegrityError("Decisions seal requires its frozen RunSpec V4")
             checked_spec = validate_run_spec(decisions_spec)

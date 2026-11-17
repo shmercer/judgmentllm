@@ -21,6 +21,7 @@ UsageSource = Literal[
     "unknown",
     "openai.chat.usage",
     "openai.responses.usage",
+    "openai.decisions.usage",
     "anthropic.messages.usage",
     "gemini.generate_content.usageMetadata",
     "vertex.generate_content.usageMetadata",
@@ -89,6 +90,7 @@ class UsageBreakdown(_UsageSemantics):
         if self.semantics_version == 2 and self.usage_source not in {
             "openai.chat.usage",
             "openai.responses.usage",
+            "openai.decisions.usage",
         }:
             raise ValueError("usage semantics 2 requires an OpenAI usage source")
         if self.field.endswith(".cache_write_tokens") and self.semantics_version != 2:
@@ -188,6 +190,14 @@ _SEMANTICS: dict[
         "cache_write_tokens",
     ),
 }
+
+_SEMANTICS.update(
+    {
+        ("openai.decisions.usage", field): relation
+        for (source, field), relation in tuple(_SEMANTICS.items())
+        if source == "openai.responses.usage"
+    }
+)
 
 
 class ReportedCost(_UsageSemantics):
@@ -337,6 +347,7 @@ class ReportedUsageInput(_UsageSemantics):
         if self.semantics_version == 2 and self.usage_source not in {
             "openai.chat.usage",
             "openai.responses.usage",
+            "openai.decisions.usage",
         }:
             raise ValueError("usage semantics 2 requires an OpenAI usage source")
         fields = tuple(row.field for row in self.breakdown)
@@ -355,7 +366,11 @@ class ReportedUsageInput(_UsageSemantics):
             raise ValueError(
                 "reported cost semantics are not established for this source"
             )
-        if self.usage_source in {"openai.chat.usage", "openai.responses.usage"}:
+        if self.usage_source in {
+            "openai.chat.usage",
+            "openai.responses.usage",
+            "openai.decisions.usage",
+        }:
             if self.cache_write_tokens is not None and self.semantics_version != 2:
                 raise ValueError("4A mapping does not establish cache write tokens")
             for component, parent in (
@@ -447,6 +462,11 @@ class ProviderUsage(EvidenceIdentity, UsageContext, ReportedUsageInput):
             self.provider,
             self.endpoint,
         ) != ("openai", "chat.completions"):
+            raise ValueError("usage source does not match provider endpoint")
+        if self.usage_source == "openai.decisions.usage" and (
+            self.provider,
+            self.endpoint,
+        ) != ("openai", "decisions"):
             raise ValueError("usage source does not match provider endpoint")
         if self.usage_source == "openai.responses.usage" and (
             self.provider,

@@ -293,6 +293,15 @@ def validate_run(
         checked = validate_run_spec(spec)
         assert isinstance(checked, RunSpecV4)
         issues = []
+        if (checked.provider, checked.endpoint) == ("openai", "decisions"):
+            issues.append(
+                ValidationIssue(
+                    code="unknown_context_limit",
+                    field="model",
+                    message="OpenAI Decisions context ceiling and token counter are unestablished; no fit or cost estimate is claimed",
+                    severity="error" if checked.strict_capabilities else "warning",
+                )
+            )
         if (
             capabilities is not None
             and checked.rubric is not None

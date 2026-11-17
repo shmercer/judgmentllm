@@ -20,6 +20,7 @@ from judgmentllm.cli_controls import (
 from judgmentllm.config import RunSpecV2, RunSpecV3, load_run_spec
 from judgmentllm.decisions.provenance import (
     DecisionsProvenanceReportV1,
+    DecisionsProvenanceReportV2,
     export_decisions_provenance,
 )
 from judgmentllm.lifecycle import (
@@ -430,7 +431,7 @@ def results_provenance(
 ) -> None:
     """Publish the immutable V4 question/physical companion bundle offline."""
 
-    def operation() -> DecisionsProvenanceReportV1:
+    def operation() -> DecisionsProvenanceReportV1 | DecisionsProvenanceReportV2:
         identifier, root = resolve_run(run, store)
         return export_decisions_provenance(identifier, store=root)
 

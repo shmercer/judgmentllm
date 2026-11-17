@@ -1,5 +1,15 @@
 # Data contracts and scoring semantics
 
+## PR C production Decisions addition
+
+[Native OpenAI Decisions](openai-decisions.md) now uses the ordinary V4 installed
+Python/CLI lifecycle with official SDK 3.42.1 and offline synthetic acceptance.
+Production acceptance, privacy-filtered replay and physical provenance have
+additive versions; historical synthetic contracts remain exact. Normalized/R
+schema 1, SQLite3 and the seven strict local R gates remain unchanged. Live
+qualification, Jev/Gemini integration and release remain deferred.
+
+
 ## Implemented PR B boundary
 
 `RunSpecV4` now admits the strict immutable `RequestGroupingSpecV1` single/auto

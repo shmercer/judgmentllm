@@ -314,6 +314,11 @@ conduct paid calls as part of this design task.
 
 ## Milestone 4 - Native decision/score adapters
 
+**PR C candidate:** [official OpenAI Decisions](openai-decisions.md) is implemented
+with additive production acknowledgment/provenance and filtered replay. Focused
+offline SDK/process/R checks precede independent code review; source-bound local
+and protected hosted qualification remain required after that review.
+
 **PR B implementation:** [V4 shared preparation and durable named-member lifecycle](decisions-lifecycle.md)
 is implemented with synthetic-only transport, exact historical dispatch and the
 reviewed schema-3 marker/refusal exception. C–E production adapters/SDK work, F

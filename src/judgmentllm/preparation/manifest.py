@@ -20,7 +20,11 @@ from judgmentllm.config import (
     InputSpec,
     RunSpecification,
 )
-from judgmentllm.decisions.records import DecisionsLimitsV1
+from judgmentllm.decisions.records import (
+    DecisionsLimitsV1,
+    DecisionsLimitsV2,
+    OpenAIDecisionsContextV1,
+)
 from judgmentllm.models import ID
 from judgmentllm.output_commitments import SchemaSelectionV2
 from judgmentllm.persistence.generation import GenerationCommitment
@@ -782,6 +786,37 @@ class ExecutableRunManifestV8(ExecutableRunManifest):
         return self
 
 
+class ExecutableRunManifestV9(ExecutableRunManifestV8):
+    """Official OpenAI Decisions, independent of the historical synthetic protocol."""
+
+    schema_version: Literal[9] = 9  # pyright: ignore[reportIncompatibleVariableOverride]
+    transport_protocol: Literal["openai-decisions-production-v1"] = (  # pyright: ignore[reportIncompatibleVariableOverride]
+        "openai-decisions-production-v1"  # pyright: ignore[reportIncompatibleVariableOverride]
+    )
+    limits: DecisionsLimitsV2  # pyright: ignore[reportIncompatibleVariableOverride]
+    production_context: OpenAIDecisionsContextV1
+
+    @field_validator("schema_version", mode="before")
+    @classmethod
+    def _version(cls, value: object) -> object:
+        if type(value) is not int or value != 9:
+            raise ValueError("schema_version must be integer 9")
+        return value
+
+    @model_validator(mode="after")
+    def production_binding(self) -> ExecutableRunManifestV9:
+        if (
+            (self.generation.provider, self.generation.endpoint)
+            != ("openai", "decisions")
+            or self.limits != self.production_context.limits
+            or self.service_identity != self.production_context.service_identity
+            or self.transport_context_sha256
+            != semantic_digest("decisions-context-v1", self.production_context)
+        ):
+            raise ValueError("production Decisions context differs from manifest")
+        return self
+
+
 ExecutableManifest = (
     ExecutableRunManifest
     | ExecutableRunManifestV2
@@ -791,6 +826,7 @@ ExecutableManifest = (
     | ExecutableRunManifestV6
     | ExecutableRunManifestV7
     | ExecutableRunManifestV8
+    | ExecutableRunManifestV9
 )
 
 
@@ -806,6 +842,8 @@ def parse_executable_manifest(raw: bytes) -> ExecutableManifest:
         if isinstance(value, dict)
         else None
     )
+    if type(version) is int and version == 9:
+        return ExecutableRunManifestV9.model_validate_json(raw)
     if type(version) is int and version == 8:
         return ExecutableRunManifestV8.model_validate_json(raw)
     if type(version) is int and version == 7:

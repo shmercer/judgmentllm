@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, cast
 
 from pydantic import model_validator
 
@@ -36,10 +36,19 @@ class DecisionsInvocationV1(DecisionsModel):
             or self.usage.observation_kind != "invocation"
             or self.usage.definitive_failure_id is not None
             or self.usage.invocation_failure_code is not None
-            or (self.usage.provider, self.usage.endpoint) != ("mock", "synthetic")
+            or (self.usage.provider, self.usage.endpoint)
+            != (
+                ("openai", "decisions")
+                if type(self) is DecisionsInvocationV2
+                else ("mock", "synthetic")
+            )
         ):
             raise ValueError("forwarding fact cannot claim acceptance or failure")
         return self
+
+
+class DecisionsInvocationV2(DecisionsInvocationV1):
+    invocation_evidence_version: Literal[2] = 2  # pyright: ignore[reportIncompatibleVariableOverride]
 
 
 def invocation_reference(submission_id: str) -> str:
@@ -70,7 +79,17 @@ def read_invocation(
             "Decisions forwarding fact is unavailable"
         ) from None
     try:
-        fact = DecisionsInvocationV1.model_validate_json(raw)
+        from judgmentllm.config import parse_json
+
+        value = cast(dict[str, object], parse_json(raw.decode("utf-8")))
+        model = (
+            DecisionsInvocationV2
+            if isinstance(cast(object, value), dict)
+            and type(value.get("invocation_evidence_version")) is int
+            and value["invocation_evidence_version"] == 2
+            else DecisionsInvocationV1
+        )
+        fact = model.model_validate_json(raw)
         if (
             len(raw) > 1_048_576
             or canonical_bytes(fact) != raw

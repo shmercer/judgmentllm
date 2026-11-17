@@ -1273,6 +1273,30 @@
       "test_unknown_features_obey_strict_capabilities": {"[chat.completions]": [], "[responses]": []},
       "test_unknown_ties_obey_strict_policy": {"[chat.completions]": [], "[responses]": []}
     },
+    "tests/test_openai_decisions_lifecycle.py": {
+      "test_ambient_headers_and_debug_logs_cannot_leak": {"": []},
+      "test_complete_trait_instructions_and_examples_are_question_local": {"": []},
+      "test_exact_endpoint_and_user_splitting": {"[1-32-groups0]": [], "[12-32-groups2]": [], "[13-1-groups3]": [], "[2-32-groups1]": [], "[4-3-groups6]": [], "[400-500-groups4]": [], "[401-500-groups5]": []},
+      "test_invalid_controls_and_sdk_version_precede_credentials": {"": []},
+      "test_multi_criterion_orientation_repetition_and_subset_retry": {"": []},
+      "test_received_failures_are_not_repaired_or_hidden": {"[bad_index-expected7]": [], "[bad_label-expected6]": [], "[bad_sum-expected5]": [], "[bad_type-expected8]": [], "[bad_usage-expected14]": [], "[duplicate-expected1]": [], "[duplicate_json-expected11]": [], "[extra_field-expected4]": [], "[missing-expected0]": [], "[order-expected10]": [], "[refusal-expected9]": [], "[triple_duplicate-expected2]": [], "[unexpected-expected3]": [], "[unknown_root-expected13]": [], "[utf8-expected12]": []},
+      "test_score_limits_cannot_be_overridden_or_become_neutral_limits": {"[10]": [], "[11]": [], "[2]": []}
+    },
+    "tests/test_openai_decisions_processes.py": {
+      "test_corrupt_filtered_receipts_never_forward_or_fabricate_results": {"[acknowledgment]": [], "[derivative]": [], "[evidence]": []},
+      "test_filtered_death_replays_same_siblings_without_forwarding": {"[after_decisions_outcome_artifact]": [], "[after_evidence_receipt]": [], "[after_receipt]": [], "[during_evidence_transaction]": [], "[during_member_validation]": [], "[during_result_transaction]": [], "[manifest_published]": []},
+      "test_minimal_uncommitted_response_stays_held": {"": []}
+    },
+    "tests/test_openai_decisions_r.py": {
+      "test_strict_production_exports_in_real_r": {"": ["r_interop", "serial"]}
+    },
+    "tests/test_openai_decisions_sdk.py": {
+      "test_actual_sdk_preserves_four_hundred_named_questions": {"": []},
+      "test_cancellation_preserves_receipt_authority_and_never_reforwards": {"[False]": [], "[True]": []},
+      "test_http_failures_never_gain_replay_authority": {"[rate]": [], "[redirect]": [], "[rejected]": [], "[timeout]": [], "[truncated]": []},
+      "test_sdk_hidden_second_forward_preserves_the_first_response": {"": []},
+      "test_sdk_lifecycle_and_versioned_provenance": {"[full]": [], "[minimal]": []}
+    },
     "tests/test_openai_diagnostics.py": {
       "test_diagnostic_debug_logs_suppress_remote_identifiers_and_errors": {"": []},
       "test_missing_credentials_and_wrong_provider_make_no_call": {"": []},

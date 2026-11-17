@@ -16,6 +16,7 @@ from pydantic import Field, model_validator
 from judgmentllm import gemini_types, vertex_types
 from judgmentllm.anthropic_assessment import AnthropicAssessmentComponentV2
 from judgmentllm.assessment_diagnostics import AssessmentComponent
+from judgmentllm.decisions.replay import DecisionsReplayMetadataV1
 from judgmentllm.evidence._base import EvidenceIdentity, EvidenceModel
 from judgmentllm.evidence.order import (
     OrderEvidence,
@@ -92,6 +93,12 @@ class ProviderEvidence(EvidenceModel):
     when the original envelope contains no authentication-bearing material.
     """
 
+    decisions_validation: DecisionsReplayMetadataV1 | None = Field(
+        default=None, exclude=True
+    )
+    decisions_retained_kind: Literal["original", "filtered_replay"] | None = Field(
+        default=None, exclude=True
+    )
     provenance: Literal["synthetic_fixture", "provider_documented"]
     service_tier: ServiceTierObservation | None = Field(
         default=None, exclude_if=lambda value: value is None

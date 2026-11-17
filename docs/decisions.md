@@ -1,5 +1,17 @@
 # Recorded design decisions
 
+## Issue #61 PR C: independent production evidence and filtered replay
+
+Use additive production complete-response evidence2/acknowledgment3 rather than
+relaxing synthetic acknowledgment2. Physical provenance2 and bundle/report2 bind
+the corresponding production limits and evidence. Independently bind original
+response and retained representation in evidence3. Preserve parser-derived
+findings and original attribution before filtering; verified full-capture replay
+reuses the same interpretation and physical usage. Minimal uncommitted content
+remains unresolved. See [the adapter contract](openai-decisions.md). This implements
+offline support and grants no live qualification or publication authority.
+
+
 PR #62's merge accepted D1–D4; independent review subsequently approved PR B.
 [The B implementation record](decisions-lifecycle.md) adds the V4/synthetic shared
 lifecycle, preserving the contracts below. Its reviewed schema-3 marker amendment
