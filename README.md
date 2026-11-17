@@ -1,6 +1,6 @@
 # JudgmentLLM
 
-**Implemented: durable mock execution, OpenAI Responses/Chat Completions, Anthropic Messages, Gemini Developer and Vertex AI generative adapters, plus the synthetic-only V4 Decisions lifecycle. Development version 0.1.0a3; implementation, offline fixtures and exact-scope live qualification are separate evidence.**
+**Implemented: durable mock execution, OpenAI Responses/Chat Completions, Anthropic Messages, Gemini Developer and Vertex AI generative adapters, plus native OpenAI Decisions and the V4 synthetic Decisions lifecycle. Development version 0.1.0a3; implementation, offline fixtures and exact-scope live qualification are separate evidence.**
 
 Milestone 2 adds an [internal preparation foundation](https://github.com/shmercer/judgmentllm/blob/main/docs/persistence-contracts.md)
 for SQLite state, immutable source snapshots, indexed input access, complete run
@@ -42,7 +42,7 @@ billable network operations and require the provider's explicit V3 configuration
 | Vertex AI Gemini / `models.generate_content` | `live`, V3 | Implemented generative adapter; separate ADC/API-key routing and SDK/lifecycle fixtures |
 | Together / `chat.completions` | Planned live runner | Offline schema-projection/private transport fixtures; no production run/resume adapter |
 | Local Ollama / `chat` | Planned live runner | Offline schema-projection/private transport fixtures; no production run/resume adapter |
-| OpenAI / `decisions` | Planned V4 adapter, PR C | Not executable through production run/resume |
+| OpenAI / `decisions` | Implemented V4 official SDK adapter | Live orchestration; synthetic offline tests, live qualification pending |
 | TypeSafe Jev / `systemone` | Planned V4 adapter, PR D | Not executable through production run/resume |
 | Gemini Developer / `decisions` | Planned V4 adapter, PR E | Not executable through production run/resume; separate from `generate_content` |
 
@@ -263,7 +263,7 @@ optional complete campaign, not a prerequisite for routine PRs.
 
 ## Optional dependencies and later milestones
 
-Extras remain `openai`, `anthropic`, `google`, `together`, `ollama`, `typesafe`, `parquet`, `api`, and `all`. An installed extra alone establishes neither an executable adapter nor live qualification; use the implemented-route table above. Production Decisions adapters, Together/Ollama live runners, M5 batch/bulk-live, the M6 CLI-first `rubricLLM` wrapper and M7 optional local FastAPI remain later work under the [implementation plan](docs/implementation-plan.md). R calls operate on runs/files or sized task groups, not one Python process per judgment.
+Extras remain `openai`, `anthropic`, `google`, `together`, `ollama`, `typesafe`, `parquet`, `api`, and `all`. An installed extra alone establishes neither an executable adapter nor live qualification; use the implemented-route table above. TypeSafe/Gemini Decisions adapters, Together/Ollama live runners, M5 batch/bulk-live, the M6 CLI-first `rubricLLM` wrapper and M7 optional local FastAPI remain later work under the [implementation plan](docs/implementation-plan.md). R calls operate on runs/files or sized task groups, not one Python process per judgment.
 
 The repository is [shmercer/judgmentllm](https://github.com/shmercer/judgmentllm), licensed under [MIT](https://github.com/shmercer/judgmentllm/blob/main/LICENSE), and not yet published to PyPI. The core does not implement Bradley–Terry fitting, adaptive pairing, or rubric calibration; these remain in `pairwiseLLM`.
 
@@ -290,3 +290,12 @@ The 42-call native and 24-call service-tier proposals authorize zero calls;
 account eligibility, billable-token bounds and prices remain independent gates.
 Ordinary production qualification and the existing service/reasoning rules stay
 unchanged. No student-writing study or live provider request is authorized here.
+
+### Native OpenAI Decisions
+
+RunSpec V4 now supports native OpenAI score/choice requests through the ordinary
+installed Python/CLI lifecycle, including shared-input trait/criterion grouping.
+See [configuration, constraints and filtered recovery](docs/openai-decisions.md).
+The official SDK adapter is tested with synthetic offline HTTP; live support is
+unqualified. Jev, Gemini Decisions and the later integration/release work remain
+separate.

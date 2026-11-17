@@ -312,14 +312,14 @@ def test_ordinary_preparation_reports_controls_safely_and_keeps_legacy_builder_c
         prepare_decisions_run(spec, store=tmp_path / "malformed", run_id="001")
     assert "PRIVATE_CANARY" not in str(invalid.value)
     production = RunSpecV4.model_validate(
-        {**spec.model_dump(), "provider": "openai", "endpoint": "decisions"}
+        {**spec.model_dump(), "provider": "typesafe", "endpoint": "systemone"}
     )
     with pytest.raises(PreparationError, match="not implemented"):
         prepare_decisions_run(production, store=tmp_path / "unsupported", run_id="001")
     with pytest.raises(LifecycleError):
         _execution_adapter(
-            "openai",
-            "decisions",
+            "typesafe",
+            "systemone",
             "unknown",
             tmp_path,
             None,

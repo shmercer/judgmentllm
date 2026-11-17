@@ -542,7 +542,9 @@ def _load_manifest(
     if not unsealed and repository.get_manifest(run_id).artifact != identity:
         raise PreparationError("published manifest conflicts with the database seal")
     run = repository.get_run(run_id)
-    if (repository.decisions_version(run_id) == 4) != (manifest.schema_version == 8):
+    if (repository.decisions_version(run_id) == 4) != (
+        manifest.schema_version in (8, 9)
+    ):
         raise PreparationError("Decisions marker differs from frozen manifest")
     if (run.task_kind, run.provider, run.endpoint, run.model, run.capture) != (
         manifest.task_kind,

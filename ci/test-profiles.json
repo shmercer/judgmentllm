@@ -975,6 +975,46 @@
       "platforms": [],
       "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
     },
+    "tests/test_openai_decisions_lifecycle.py": {
+      "cost": "heavy",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "SDK lifecycle, endpoint boundaries, sibling failures, explicit retries and privacy canaries"
+    },
+    "tests/test_openai_decisions_processes.py": {
+      "cost": "process",
+      "domain": "process-ownership",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Real installed-console process death, receipt replay, corruption and minimal-capture holds"
+    },
+    "tests/test_openai_decisions_r.py": {
+      "cost": "process",
+      "domain": "r-interface",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Actual installed SDK outputs consumed in local strict R/jsonlite; explicitly deferred on hosted lanes"
+    },
+    "tests/test_openai_decisions_sdk.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Actual pinned SDK, guarded HTTP, local SQLite evidence and conservative invocation failures"
+    },
     "tests/test_openai_diagnostics.py": {
       "cost": "io",
       "domain": "provider-sdk",
@@ -1710,6 +1750,10 @@
       "tests/test_native_v2_compatibility.py",
       "tests/test_openai_cancellation.py",
       "tests/test_openai_capabilities.py",
+      "tests/test_openai_decisions_lifecycle.py",
+      "tests/test_openai_decisions_processes.py",
+      "tests/test_openai_decisions_r.py",
+      "tests/test_openai_decisions_sdk.py",
       "tests/test_openai_diagnostics.py",
       "tests/test_openai_invalid_utf8.py",
       "tests/test_openai_lifecycle.py",
@@ -1785,6 +1829,7 @@
     "src/judgmentllm/decisions/outcomes.py",
     "src/judgmentllm/decisions/provenance.py",
     "src/judgmentllm/decisions/records.py",
+    "src/judgmentllm/decisions/replay.py",
     "src/judgmentllm/decisions/responses.py",
     "src/judgmentllm/decisions/transport.py",
     "src/judgmentllm/decisions_types.py",
@@ -1881,6 +1926,8 @@
     "src/judgmentllm/providers/ollama_schema.py",
     "src/judgmentllm/providers/openai.py",
     "src/judgmentllm/providers/openai_cli.py",
+    "src/judgmentllm/providers/openai_decisions.py",
+    "src/judgmentllm/providers/openai_decisions_response.py",
     "src/judgmentllm/providers/openai_response.py",
     "src/judgmentllm/providers/openai_schema.py",
     "src/judgmentllm/providers/protocol.py",
@@ -2018,6 +2065,8 @@
     "src/judgmentllm/providers/google_schema.py": "google",
     "src/judgmentllm/providers/ollama_schema.py": "ollama",
     "src/judgmentllm/providers/openai.py": "openai",
+    "src/judgmentllm/providers/openai_decisions.py": "openai",
+    "src/judgmentllm/providers/openai_decisions_response.py": "openai",
     "src/judgmentllm/providers/openai_response.py": "openai",
     "src/judgmentllm/providers/openai_schema.py": "openai",
     "src/judgmentllm/providers/together_schema.py": "together",

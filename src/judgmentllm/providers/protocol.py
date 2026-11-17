@@ -9,13 +9,17 @@ from typing import Any, Literal, Protocol, Self
 from pydantic import Field, JsonValue, field_validator, model_validator
 
 from judgmentllm.config import GenerationSpec, RunSpecification
+from judgmentllm.decisions.replay import OpenAIDecisionsReplayV1
 from judgmentllm.evidence._base import EvidenceModel
 from judgmentllm.evidence.usage import InvocationFailureCode, ReportedUsageInput
 from judgmentllm.models import ID
 from judgmentllm.output_commitments import OutputCommitmentV2
 from judgmentllm.persistence.hashing import bytes_digest
 from judgmentllm.persistence.models import SHA256, ExecutionModel
-from judgmentllm.persistence.receipts import CompleteResponseEvidenceV1
+from judgmentllm.persistence.receipts import (
+    CompleteResponseEvidenceV1,
+    CompleteResponseEvidenceV2,
+)
 from judgmentllm.planning import CapabilityProfile
 from judgmentllm.preparation.session import RequestDependency
 from judgmentllm.prompts import RenderedAssessmentPrompt
@@ -163,6 +167,10 @@ class ProviderAcknowledgmentV2(ProviderAcknowledgment):
     response_evidence: CompleteResponseEvidenceV1
 
 
+class ProviderAcknowledgmentV3(ProviderAcknowledgmentV2):
+    response_evidence: CompleteResponseEvidenceV2  # pyright: ignore[reportIncompatibleVariableOverride]
+
+
 class ReconciliationEvidence(ExecutionModel):
     """An absent acknowledgment never supplies one of these positive facts."""
 
@@ -178,6 +186,9 @@ class DecisionsReconciliationEvidenceV1(ReconciliationEvidence):
 class ProviderResponse(EvidenceModel):
     """Exact received bytes; only full capture may retain them."""
 
+    decisions_replay: OpenAIDecisionsReplayV1 | None = Field(
+        default=None, exclude=True, repr=False
+    )
     observation_key: ID
     kind: Literal["response", "refusal", "provider_error", "confirmed_cancellation"]
     raw: bytes = Field(exclude=True, repr=False)

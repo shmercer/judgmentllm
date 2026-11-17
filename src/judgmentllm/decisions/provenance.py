@@ -8,19 +8,28 @@ import tempfile
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Literal, cast
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from judgmentllm.decisions._base import DecisionsModel
 from judgmentllm.decisions.outcomes import AnswerAttributionV1, read_outcomes
-from judgmentllm.decisions.records import DecisionsLimitsV1, QuestionCommitmentV1
+from judgmentllm.decisions.records import (
+    DecisionsLimitsV1,
+    DecisionsLimitsV2,
+    QuestionCommitmentV1,
+)
+from judgmentllm.decisions.replay import DecisionsReplayMetadataV1
 from judgmentllm.decisions.transport import DecisionsCommitmentV1
 from judgmentllm.evidence.usage import ProviderUsage
 from judgmentllm.lifecycle_models import DecisionsStatusV1
 from judgmentllm.models import ID
 from judgmentllm.persistence.artifacts import ArtifactStore
-from judgmentllm.persistence.decisions_invocations import read_invocation
+from judgmentllm.persistence.decisions_invocations import (
+    DecisionsInvocationV1,
+    DecisionsInvocationV2,
+    read_invocation,
+)
 from judgmentllm.persistence.evidence import authoritative_usage, usage_high_water_mark
 from judgmentllm.persistence.hashing import (
     bytes_digest,
@@ -35,12 +44,16 @@ from judgmentllm.persistence.models import (
 from judgmentllm.persistence.receipts import (
     AcknowledgmentReceiptV2,
     CompleteResponseEvidenceV1,
+    CompleteResponseEvidenceV2,
     read_acknowledgment,
 )
 from judgmentllm.persistence.repository import Repository
 from judgmentllm.persistence.transport_receipts import read_transport_commitment
 from judgmentllm.preparation import _load_manifest  # pyright: ignore[reportPrivateUsage]
-from judgmentllm.preparation.manifest import ExecutableRunManifestV8
+from judgmentllm.preparation.manifest import (
+    ExecutableRunManifestV8,
+    ExecutableRunManifestV9,
+)
 from judgmentllm.transport import PhysicalRequestIdentityV1, physical_identity
 
 
@@ -65,6 +78,18 @@ class PhysicalProvenanceV1(DecisionsModel):
     observation_id: ID | None
     selected_usage: ProviderUsage | None
     usage_selection: Literal["revision", "forwarding_fact", "unavailable"]
+
+
+class PhysicalProvenanceV2(PhysicalProvenanceV1):
+    physical_provenance_version: Literal[2] = 2  # pyright: ignore[reportIncompatibleVariableOverride]
+    limits: DecisionsLimitsV2  # pyright: ignore[reportIncompatibleVariableOverride]
+    complete_response_evidence: CompleteResponseEvidenceV2 | None  # pyright: ignore[reportIncompatibleVariableOverride]
+    original_response: ArtifactIdentity | None
+    retained_response: ArtifactIdentity | None
+    retained_kind: Literal["original", "filtered_replay", "omitted"]
+    validation: DecisionsReplayMetadataV1 | None
+    acknowledgment_receipt_sha256: SHA256 | None
+    evidence_receipt_sha256: SHA256 | None
 
 
 class QuestionProvenanceV1(DecisionsModel):
@@ -111,6 +136,38 @@ class DecisionsProvenanceReportV1(DecisionsModel):
     bundle_id: SHA256
     manifest_path: str
     manifest: DecisionsProvenanceManifestV1
+
+
+class DecisionsProvenanceManifestV2(DecisionsProvenanceManifestV1):
+    provenance_manifest_version: Literal[2] = 2  # pyright: ignore[reportIncompatibleVariableOverride]
+    physical_row_version: Literal[2] = 2
+    question_row_version: Literal[1] = 1
+
+    @field_validator("physical_row_version", "question_row_version", mode="before")
+    @classmethod
+    def row_version(cls, value: object) -> object:
+        if type(value) is not int:
+            raise ValueError("row versions must be integers")
+        return value
+
+
+class DecisionsProvenanceReportV2(DecisionsProvenanceReportV1):
+    provenance_report_version: Literal[2] = 2  # pyright: ignore[reportIncompatibleVariableOverride]
+    manifest: DecisionsProvenanceManifestV2  # pyright: ignore[reportIncompatibleVariableOverride]
+
+
+def _parse_manifest(raw: bytes) -> DecisionsProvenanceManifestV1:
+    from judgmentllm.config import parse_json
+
+    value = cast(dict[str, object], parse_json(raw.decode("utf-8")))
+    model = (
+        DecisionsProvenanceManifestV2
+        if isinstance(cast(object, value), dict)
+        and type(value.get("provenance_manifest_version")) is int
+        and value["provenance_manifest_version"] == 2
+        else DecisionsProvenanceManifestV1
+    )
+    return model.model_validate_json(raw)
 
 
 @dataclass
@@ -252,6 +309,13 @@ def physical_rows(
             else None
         )
         if fact is not None:
+            expected_fact = (
+                DecisionsInvocationV2
+                if isinstance(manifest, ExecutableRunManifestV9)
+                else DecisionsInvocationV1
+            )
+            if type(fact) is not expected_fact:
+                raise IntegrityError("Decisions forwarding protocol differs")
             if (
                 fact.identity != commitment.identity
                 or fact.payload_sha256 != attempt.payload_sha256
@@ -288,8 +352,39 @@ def physical_rows(
             if submission and submission.state != "prepared"
             else "not_started"
         )
-        yield PhysicalProvenanceV1.model_validate(
+        from judgmentllm.persistence.evidence import DecisionsEvidenceReceiptV3
+
+        production = isinstance(manifest, ExecutableRunManifestV9)
+        production_evidence = (
+            evidence if isinstance(evidence, DecisionsEvidenceReceiptV3) else None
+        )
+        row_type = PhysicalProvenanceV2 if production else PhysicalProvenanceV1
+        yield row_type.model_validate(
             dict(
+                **(
+                    dict(
+                        original_response=production_evidence.original
+                        if production_evidence
+                        else None,
+                        retained_response=production_evidence.retained
+                        if production_evidence
+                        else None,
+                        retained_kind=production_evidence.retained_kind
+                        if production_evidence
+                        else "omitted",
+                        validation=production_evidence.validation
+                        if production_evidence
+                        else None,
+                        acknowledgment_receipt_sha256=bytes_digest(canonical_bytes(ack))
+                        if ack
+                        else None,
+                        evidence_receipt_sha256=bytes_digest(canonical_bytes(evidence))
+                        if evidence
+                        else None,
+                    )
+                    if production
+                    else {}
+                ),
                 identity=commitment.identity,
                 state=submission.state if submission else "prepared",
                 invocation_evidence=invocation,
@@ -305,7 +400,10 @@ def physical_rows(
                 complete_response_evidence=ack.response_evidence
                 if isinstance(ack, AcknowledgmentReceiptV2)
                 else None,
-                raw_response=evidence.retained if evidence is not None else None,
+                raw_response=evidence.retained
+                if evidence is not None
+                and getattr(evidence, "retained_kind", None) != "filtered_replay"
+                else None,
                 provider_remote_id=ack.remote_id if ack else None,
                 local_observation_key=observation.observation_key
                 if observation
@@ -375,6 +473,13 @@ def decisions_status(
                     (manifest.run_id, bytes_digest(canonical_bytes(fact))),
                 ).fetchone()
                 if registered is not None:
+                    expected_fact = (
+                        DecisionsInvocationV2
+                        if isinstance(manifest, ExecutableRunManifestV9)
+                        else DecisionsInvocationV1
+                    )
+                    if type(fact) is not expected_fact:
+                        raise IntegrityError("Decisions forwarding protocol differs")
                     known, usage = True, fact.usage
         totals.record(
             usage,
@@ -396,7 +501,7 @@ def decisions_status(
                     f"decisions-provenance/{entry.name}"
                 ).open("rb") as stream:
                     raw = stream.read(1_048_577)
-                bundle = DecisionsProvenanceManifestV1.model_validate_json(raw)
+                bundle = _parse_manifest(raw)
                 if (
                     len(raw) > 1_048_576
                     or canonical_bytes(bundle) != raw
@@ -499,7 +604,7 @@ def _reference(bundle_id: str) -> str:
 
 def read_decisions_provenance(
     repository: Repository, run_id: str, bundle_id: str
-) -> DecisionsProvenanceReportV1 | None:
+) -> DecisionsProvenanceReportV1 | DecisionsProvenanceReportV2 | None:
     if len(bundle_id) != 64 or any(c not in "0123456789abcdef" for c in bundle_id):
         raise ValueError("invalid Decisions bundle identity")
     artifacts = ArtifactStore(repository.run_directory(run_id), create=False)
@@ -509,7 +614,7 @@ def read_decisions_provenance(
             raw = stream.read(1_048_577)
     except FileNotFoundError:
         return None
-    manifest = DecisionsProvenanceManifestV1.model_validate_json(raw)
+    manifest = _parse_manifest(raw)
     if (
         len(raw) > 1_048_576
         or canonical_bytes(manifest) != raw
@@ -520,7 +625,9 @@ def read_decisions_provenance(
     ):
         raise IntegrityError("Decisions provenance manifest is inconsistent")
     expected = semantic_digest(
-        "decisions-provenance-v1",
+        "decisions-provenance-v2"
+        if isinstance(manifest, DecisionsProvenanceManifestV2)
+        else "decisions-provenance-v1",
         [
             run_id,
             manifest.source_manifest_sha256,
@@ -548,14 +655,24 @@ def read_decisions_provenance(
         ):
             raise IntegrityError("Decisions companion publication metadata differs")
         artifacts.verify(file.artifact)
-    return DecisionsProvenanceReportV1(
-        run_id=run_id, bundle_id=bundle_id, manifest_path=str(path), manifest=manifest
+    report_type = (
+        DecisionsProvenanceReportV2
+        if isinstance(manifest, DecisionsProvenanceManifestV2)
+        else DecisionsProvenanceReportV1
+    )
+    return report_type.model_validate(
+        dict(
+            run_id=run_id,
+            bundle_id=bundle_id,
+            manifest_path=str(path),
+            manifest=manifest,
+        )
     )
 
 
 def export_decisions_provenance(
     run_id: str, *, store: str | Path, fault: Callable[[str], None] | None = None
-) -> DecisionsProvenanceReportV1:
+) -> DecisionsProvenanceReportV1 | DecisionsProvenanceReportV2:
     """Publish four complete companions, then their immutable manifest reference."""
 
     def checkpoint(stage: str) -> None:
@@ -580,7 +697,9 @@ def export_decisions_provenance(
                 (run_id,),
             ).fetchone()[0]
             bundle_id = semantic_digest(
-                "decisions-provenance-v1",
+                "decisions-provenance-v2"
+                if isinstance(manifest, ExecutableRunManifestV9)
+                else "decisions-provenance-v1",
                 [
                     run_id,
                     repository.get_run(run_id).manifest_sha256,
@@ -618,7 +737,12 @@ def export_decisions_provenance(
                         csv.writer(physicals_csv),
                     )
                     question_writer.writerow(QuestionProvenanceV1.model_fields)
-                    physical_writer.writerow(PhysicalProvenanceV1.model_fields)
+                    physical_type = (
+                        PhysicalProvenanceV2
+                        if isinstance(manifest, ExecutableRunManifestV9)
+                        else PhysicalProvenanceV1
+                    )
+                    physical_writer.writerow(physical_type.model_fields)
                     for physical in physical_rows(repository, manifest, usage_high):
                         totals.add(physical)
                         physicals.write(canonical_bytes(physical) + b"\n")
@@ -667,7 +791,12 @@ def export_decisions_provenance(
         finally:
             repository.connection.execute("ROLLBACK")
             repository.connection.execute("PRAGMA query_only=OFF")
-        bundle = DecisionsProvenanceManifestV1(
+        manifest_type = (
+            DecisionsProvenanceManifestV2
+            if isinstance(manifest, ExecutableRunManifestV9)
+            else DecisionsProvenanceManifestV1
+        )
+        bundle = manifest_type(
             run_id=run_id,
             bundle_id=bundle_id,
             source_manifest_sha256=bytes_digest(canonical_bytes(manifest)),

@@ -1,5 +1,15 @@
 # Provider and endpoint compatibility: implementation and targets
 
+## PR C production Decisions addition
+
+[Native OpenAI Decisions](openai-decisions.md) now uses the ordinary V4 installed
+Python/CLI lifecycle with official SDK 3.42.1 and offline synthetic acceptance.
+Production acceptance, privacy-filtered replay and physical provenance have
+additive versions; historical synthetic contracts remain exact. Normalized/R
+schema 1, SQLite3 and the seven strict local R gates remain unchanged. Live
+qualification, Jev/Gemini integration and release remain deferred.
+
+
 ## PR B implementation boundary (2026-11-15)
 
 RunSpec V4 shared-input preparation, explicit CJ scheduling, grouped lifecycle,
@@ -46,7 +56,7 @@ does not remove the intended all-provider qualification requirement.
 |---|---|---|---|---|---|---|
 | OpenAI Chat Completions | implemented; reviewed live scope accepted | target | later milestone | generative | generative | Phase 5A, SDK 3.42.1; exact-model capability unknown until qualified |
 | OpenAI Responses | implemented; reviewed live scope accepted | target | later milestone | generative | generative | Phase 5A, SDK 3.42.1; exact-model capability unknown until qualified |
-| OpenAI Decisions | M4 target, PR C | unsupported in planned adapter | M5 target | typed score, 2–10 levels | typed choice | `/v1/decisions`, current documented `gpt-6-luna`; 1–400 ordered named questions; complete probabilities; OFF requires explicit cache mode without breakpoints |
+| OpenAI Decisions | implemented PR C candidate; live qualification pending | unsupported in planned adapter | M5 target | typed score, 2–10 levels | typed choice | `/v1/decisions`, current documented `gpt-6-luna`; 1–400 ordered named questions; complete probabilities; OFF requires explicit cache mode without breakpoints |
 | Anthropic Messages | implemented; live acceptance pending | target | later milestone | generative | generative | Phase 5B; SDK 2.3.0 / API 2026-10-21; text JSON and controlled native output_config.format |
 | Gemini Developer | implemented; reviewed four-case live scope accepted | later milestone | later milestone | generative | generative | Phase 5C; google-genai 2.34.0 / v1beta; [exact qualified scope](gemini-live-qualification-acceptance.md); broader mappings remain fixture-only |
 | Gemini Decisions (Developer only) | M4 target, PR E | explicitly unsupported | M5 target | typed score, 2–255 levels | typed choice, 2–255 options | `/v1beta/decisions`, documented `gemini-decision-1`; 1–1,000 named keys; 262,144 total context tokens; no cache/Flex/Priority; SDK>=3.2 compatibility gate |

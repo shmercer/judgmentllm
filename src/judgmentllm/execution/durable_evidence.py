@@ -22,6 +22,7 @@ from judgmentllm.execution.evidence import committed_authorization
 from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.evidence import (
     DecisionsEvidenceReceiptV2,
+    DecisionsEvidenceReceiptV3,
     EvidenceReceipt,
     publish_evidence_receipt,
     read_evidence_receipt,
@@ -50,7 +51,9 @@ class DurableEvidence:
         self.repository = session.repository
         self.enabled = self.repository.evidence_supported
         self.receipt_type = (
-            DecisionsEvidenceReceiptV2
+            DecisionsEvidenceReceiptV3
+            if session.prepared.manifest.schema_version == 9
+            else DecisionsEvidenceReceiptV2
             if session.prepared.manifest.schema_version == 8
             else EvidenceReceipt
         )
@@ -123,6 +126,29 @@ class DurableEvidence:
             )
         ):
             raise IntegrityError("service evidence differs from the sealed request")
+        if (
+            isinstance(evidence, DecisionsEvidenceReceiptV3)
+            and evidence.validation is not None
+        ):
+            ack = read_acknowledgment(self.store, work.submission_id)
+            from judgmentllm.decisions.transport import PreparedDecisionsRequestV2
+            from judgmentllm.persistence.receipts import AcknowledgmentReceiptV3
+
+            assert isinstance(work.prepared, PreparedDecisionsRequestV2)
+            v = evidence.validation
+            if (
+                not isinstance(ack, AcknowledgmentReceiptV3)
+                or (
+                    ack.response_evidence.response_sha256,
+                    ack.response_evidence.response_byte_length,
+                )
+                != (v.original_sha256, v.original_byte_length)
+                or v.commitment_sha256
+                != work.prepared.transport_commitment.commitment_sha256
+            ):
+                raise IntegrityError(
+                    "production original/replay acceptance binding differs"
+                )
         if evidence.response_receipt is not None:
             receipt = evidence.response_receipt
             session.verify_receipt(work, receipt)
@@ -384,32 +410,54 @@ class DurableEvidence:
                 )
             ack = read_acknowledgment(self.store, work.submission_id)
             assert ack is not None and self.authorization_sha256 is not None
-            companion = self.receipt_type(
-                identity=self.identity(work, observation_id),
-                correlation_id=work.correlation_id,
-                payload_sha256=work.prepared.payload_sha256,
-                acknowledgment_sha256=bytes_digest(canonical_bytes(ack)),
-                response_receipt_sha256=bytes_digest(canonical_bytes(receipt)),
-                response_receipt=receipt,
-                observation_key=response.observation_key,
-                remote_id=ack.remote_id,
-                capture=session.spec.capture,
-                authorization=self.authorization,
-                authorization_sha256=self.authorization_sha256,
-                usage=prepared.usage,
-                service_tier=prepared.service_tier,
-                assessment_diagnostic=diagnostic,
-                order=prepared.order,
-                reasoning=prepared.reasoning,
-                original=ArtifactStore.hash_only(
-                    prepared.original_sha256, len(response.raw), "application/json"
+            production = self.receipt_type is DecisionsEvidenceReceiptV3
+            validation = (
+                response.evidence.decisions_validation
+                if response.evidence is not None
+                else None
+            )
+            companion = self.receipt_type.model_validate(
+                dict(
+                    **(
+                        {
+                            "validation": validation,
+                            "retained_kind": response.evidence.decisions_retained_kind,
+                        }
+                        if production and response.evidence is not None
+                        else {}
+                    ),
+                    identity=self.identity(work, observation_id),
+                    correlation_id=work.correlation_id,
+                    payload_sha256=work.prepared.payload_sha256,
+                    acknowledgment_sha256=bytes_digest(canonical_bytes(ack)),
+                    response_receipt_sha256=bytes_digest(canonical_bytes(receipt)),
+                    response_receipt=receipt,
+                    observation_key=response.observation_key,
+                    remote_id=ack.remote_id,
+                    capture=session.spec.capture,
+                    authorization=self.authorization,
+                    authorization_sha256=self.authorization_sha256,
+                    usage=prepared.usage,
+                    service_tier=prepared.service_tier,
+                    assessment_diagnostic=diagnostic,
+                    order=prepared.order,
+                    reasoning=prepared.reasoning,
+                    original=ArtifactStore.hash_only(
+                        validation.original_sha256,
+                        validation.original_byte_length,
+                        "application/json",
+                    )
+                    if production and validation is not None
+                    else ArtifactStore.hash_only(
+                        prepared.original_sha256, len(response.raw), "application/json"
+                    )
+                    if prepared.original_sha256
+                    else None,
+                    retained=raw,
+                    response_retention="omitted"
+                    if prepared.disposition == "withheld"
+                    else prepared.disposition,
                 )
-                if prepared.original_sha256
-                else None,
-                retained=raw,
-                response_retention="omitted"
-                if prepared.disposition == "withheld"
-                else prepared.disposition,
             )
             if previous is not None and previous != companion:
                 raise IntegrityError("replayed evidence conflicts")
@@ -434,7 +482,10 @@ class DurableEvidence:
         if not self.enabled:
             return None
         session = self.session
-        if self.receipt_type is DecisionsEvidenceReceiptV2:
+        if self.receipt_type in (
+            DecisionsEvidenceReceiptV2,
+            DecisionsEvidenceReceiptV3,
+        ):
             from judgmentllm.decisions.transport import PreparedDecisionsRequestV1
             from judgmentllm.persistence.decisions_invocations import (
                 DecisionsInvocationV1,
@@ -451,13 +502,26 @@ class DurableEvidence:
                 raise IntegrityError("Decisions forwarding identity conflicts")
             if not known_invoked and prior is None:
                 return None
-            fact = prior or DecisionsInvocationV1(
+            from judgmentllm.persistence.decisions_invocations import (
+                DecisionsInvocationV2,
+            )
+
+            fact_type = (
+                DecisionsInvocationV2
+                if self.receipt_type is DecisionsEvidenceReceiptV3
+                else DecisionsInvocationV1
+            )
+            if prior is not None and type(prior) is not fact_type:
+                raise IntegrityError("Decisions forwarding protocol differs")
+            fact = prior or fact_type(
                 identity=work.prepared.transport_commitment.identity,
                 payload_sha256=work.prepared.payload_sha256,
                 usage=extract_provider_usage(
                     self.identity(work, None),
                     UsageContext(
-                        provider="mock",
+                        provider="openai"
+                        if self.receipt_type is DecisionsEvidenceReceiptV3
+                        else "mock",
                         endpoint=session.spec.endpoint,
                         requested_model=session.spec.model,
                         observation_kind="invocation",

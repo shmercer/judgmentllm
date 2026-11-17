@@ -1,5 +1,15 @@
 # R interoperability: explicit audit and analysis views
 
+## PR C production Decisions addition
+
+[Native OpenAI Decisions](openai-decisions.md) now uses the ordinary V4 installed
+Python/CLI lifecycle with official SDK 3.42.1 and offline synthetic acceptance.
+Production acceptance, privacy-filtered replay and physical provenance have
+additive versions; historical synthetic contracts remain exact. Normalized/R
+schema 1, SQLite3 and the seven strict local R gates remain unchanged. Live
+qualification, Jev/Gemini integration and release remain deferred.
+
+
 ## PR B implementation
 
 The existing grouped-lifecycle local gate now additionally consumes actual
@@ -521,6 +531,15 @@ uv run --offline --no-sync python scripts/grouped_lifecycle_r_fixture.py --phase
 uv run --offline --no-sync python scripts/grouped_lifecycle_r_fixture.py --phase export --output /tmp/judgmentllm-grouped-lifecycle-r
 JUDGMENTLLM_R_STRICT=1 Rscript --vanilla examples/grouped_lifecycle_interoperability.R /tmp/judgmentllm-grouped-lifecycle-r
 ```
+
+The default grouped producer includes the historical, synthetic Decisions and
+OpenAI Decisions fixtures; this three-command pipeline remains complete. Only
+the pytest generator uses `--historical-only`, composing historical persist,
+OpenAI persist under `openai-decisions/`, historical export, and OpenAI export as
+four separate processes with the existing 60-second phase limits. The OpenAI
+inner CLI calls retain their 30-second limits. Both readers share the complete
+byte-immutable tree, and the combined R consumer retains its 30-second limit and
+all assertions, including exactly four OpenAI rubric/pairwise full/minimal variants.
 
 All five earlier strict gates remain required. This sixth gate uses only base R
 and jsonlite. At this stage installed-CLI lifecycle testing was assigned to

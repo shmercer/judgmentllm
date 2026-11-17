@@ -74,6 +74,7 @@ from judgmentllm.planning import (
     validate_run,
 )
 from judgmentllm.preparation import PreparationError, prepare_run
+from judgmentllm.preparation.manifest import ExecutableRunManifestV8
 from judgmentllm.providers import MockAdapter, MockScenario, ProviderError
 
 if TYPE_CHECKING:
@@ -143,7 +144,7 @@ def _production_context(
     if spec.endpoint not in ("responses", "chat.completions"):
         raise LifecycleError(
             "unsupported_capability",
-            "OpenAI endpoint must be responses or chat.completions; Decisions is unavailable",
+            "OpenAI generative endpoints require responses or chat.completions; Decisions requires RunSpec V4",
         )
     from judgmentllm.production_transport import production_context
 
@@ -179,6 +180,14 @@ def _execution_adapter(
             MockDecisionsAdapter,
         )
 
+        if (provider, endpoint) == ("openai", "decisions"):
+            if options is not None:
+                raise LifecycleError(
+                    "validation", "OpenAI Decisions does not accept mock controls"
+                )
+            from judgmentllm.providers.openai_decisions import OpenAIDecisionsAdapter
+
+            return OpenAIDecisionsAdapter(model, concurrency=concurrency)
         if (provider, endpoint) != ("mock", "synthetic"):
             raise LifecycleError(
                 "unsupported_capability",
@@ -441,6 +450,11 @@ def _mock_adapter(
 def _require_presentation(spec: RunSpecification) -> None:
     """Reject unavailable v2 mechanisms before creating a runtime store."""
     if isinstance(spec, RunSpecV4):
+        if (spec.provider, spec.endpoint) == ("openai", "decisions"):
+            from judgmentllm.providers.openai_decisions import decisions_context
+
+            decisions_context(spec)
+            return
         if (spec.provider, spec.endpoint) != ("mock", "synthetic"):
             raise LifecycleError(
                 "unsupported_capability",
@@ -476,6 +490,12 @@ def _profile(
 ) -> CapabilityProfile | None:
     if isinstance(spec, RunSpecV4):
         _require_presentation(spec)
+        if (spec.provider, spec.endpoint) == ("openai", "decisions"):
+            from judgmentllm.providers.openai_decisions import OpenAIDecisionsAdapter
+
+            return OpenAIDecisionsAdapter.capabilities_for(
+                spec.provider, spec.endpoint, spec.model
+            )
         from judgmentllm.providers.decisions_mock import MockDecisionsAdapter
 
         return capabilities or MockDecisionsAdapter.capabilities_for(
@@ -626,7 +646,7 @@ def validate_inputs(
                         physical_requests=prepared.manifest.initial_transport_count,
                         presentations=prepared.manifest.presentation_count,
                     )
-                    if prepared.manifest.schema_version == 8
+                    if isinstance(prepared.manifest, ExecutableRunManifestV8)
                     else None,
                     output_selection=resolve_schema_selection(spec, profile)
                     if isinstance(spec, RunSpecV2)
@@ -678,7 +698,7 @@ def estimate_run(
                 s.record_count for s in manifest.sources if s.role == "response"
             )
             pairs = sum(s.record_count for s in manifest.sources if s.role == "pair")
-            if manifest.schema_version == 8:
+            if isinstance(manifest, ExecutableRunManifestV8):
                 return DecisionsExecutionPlanV1(
                     task_kind=spec.task_kind,
                     response_count=responses,
@@ -808,6 +828,14 @@ async def arun_live(
             decisions=isinstance(spec, RunSpecV4),
         )
         try:
+            if isinstance(spec, RunSpecV4) and spec.provider == "openai":
+                from judgmentllm.providers.openai_decisions import (
+                    OpenAIDecisionsAdapter,
+                    decisions_context,
+                )
+
+                assert isinstance(adapter, OpenAIDecisionsAdapter)
+                adapter.transport_context = decisions_context(spec)
             getattr(adapter, "validate_new_run", adapter.validate)(spec)
             readiness = getattr(adapter, "validate_credentials", None)
             if readiness is not None:
@@ -873,10 +901,13 @@ def _prepare(
     decisions_context: object = None,
 ) -> None:
     if decisions_context is not None:
+        from judgmentllm.decisions.records import OpenAIDecisionsContextV1
         from judgmentllm.decisions.transport import DecisionsContextV1
         from judgmentllm.preparation.decisions import prepare_decisions_run
 
-        assert isinstance(decisions_context, DecisionsContextV1)
+        assert isinstance(
+            decisions_context, (DecisionsContextV1, OpenAIDecisionsContextV1)
+        )
         with prepare_decisions_run(
             cast(RunSpecV4 | str | Path, spec_or_path),
             store=root,
@@ -947,8 +978,21 @@ async def aresume_run(
                 else _load_manifest(
                     repository, identifier, unsealed=False
                 ).schema_version
-                == 8
+                in (8, 9)
             )
+        decisions_manifest = None
+        if decisions and run.provider == "openai":
+            from judgmentllm.preparation.manifest import ExecutableRunManifestV9
+
+            with ReadOnlyRepository(root) as repository:
+                manifest = _load_manifest(
+                    repository, identifier, unsealed=run.manifest_sha256 is None
+                )
+                if not isinstance(manifest, ExecutableRunManifestV9):
+                    raise LifecycleError(
+                        "execution", "OpenAI Decisions manifest differs"
+                    )
+                decisions_manifest = manifest
         adapter = _execution_adapter(
             run.provider,
             run.endpoint,
@@ -956,8 +1000,16 @@ async def aresume_run(
             root,
             mock,
             resume=True,
+            concurrency=decisions_manifest.execution.concurrency
+            if decisions_manifest is not None
+            else 4,
             decisions=decisions,
         )
+        if decisions_manifest is not None:
+            from judgmentllm.providers.openai_decisions import OpenAIDecisionsAdapter
+
+            assert isinstance(adapter, OpenAIDecisionsAdapter)
+            adapter.transport_context = decisions_manifest.production_context
         try:
             _progress(progress, "started", identifier, root)
             if retry is not None:

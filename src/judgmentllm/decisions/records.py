@@ -335,3 +335,30 @@ class DecisionsLimitsV1(DecisionsModel):
     source: Literal["synthetic.offline.fixture"] = "synthetic.offline.fixture"
     checked_on: Literal["2026-11-15"] = "2026-11-15"
     local_body_bytes: int = Field(default=8_388_608, gt=0)
+
+
+class DecisionsLimitsV2(DecisionsLimitsV1):
+    """Documented Decisions bounds; unknown ceilings are deliberately absent."""
+
+    limit_version: Literal[2] = 2  # pyright: ignore[reportIncompatibleVariableOverride]
+    max_questions: Literal[400] = 400  # pyright: ignore[reportIncompatibleVariableOverride]
+    max_body_bytes: None = None  # pyright: ignore[reportIncompatibleVariableOverride]
+    max_context_tokens: None = None  # pyright: ignore[reportIncompatibleVariableOverride]
+    counter: None = None  # pyright: ignore[reportIncompatibleVariableOverride]
+    local_body_bytes: int = Field(default=8_388_608, gt=0, le=8_388_608)
+    source: Literal["openai.decisions.documentation"] = "openai.decisions.documentation"  # pyright: ignore[reportIncompatibleVariableOverride]
+    checked_on: Literal["2026-11-17"] = "2026-11-17"  # pyright: ignore[reportIncompatibleVariableOverride]
+
+
+class OpenAIDecisionsContextV1(DecisionsModel):
+    protocol: Literal["openai-decisions-production-v1"] = (
+        "openai-decisions-production-v1"
+    )
+    provider: Literal["openai"] = "openai"
+    endpoint: Literal["decisions"] = "decisions"
+    service_identity: Literal["openai.decisions.v1"] = "openai.decisions.v1"
+    sdk_version: Literal["3.42.1"] = "3.42.1"
+    api_version: Literal["v1"] = "v1"
+    credential_source: Literal["OPENAI_API_KEY"] = "OPENAI_API_KEY"
+    account_scope: ID | None = None
+    limits: DecisionsLimitsV2 = Field(default_factory=DecisionsLimitsV2)

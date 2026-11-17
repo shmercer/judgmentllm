@@ -93,7 +93,7 @@ def digests(repository: Repository, run_id: str) -> list[str]:
     ]
 
 
-async def persist(root: Path) -> None:
+async def persist(root: Path, *, historical_only: bool = False) -> None:
     root.mkdir(parents=True, exist_ok=True)
     store = root / "store"
     initial, retry = adapter(root, partial=True), adapter(root)
@@ -157,9 +157,13 @@ async def persist(root: Path) -> None:
     from decisions_r_fixture import persist as persist_decisions
 
     await persist_decisions(root / "decisions")
+    if not historical_only:
+        from openai_decisions_r_fixture import persist as persist_openai
+
+        persist_openai(root / "openai-decisions")
 
 
-async def export(root: Path) -> None:
+async def export(root: Path, *, historical_only: bool = False) -> None:
     store = root / "store"
     provider = adapter(root)
     evidence: list[dict[str, object]] = []
@@ -262,6 +266,10 @@ async def export(root: Path) -> None:
     from decisions_r_fixture import export as export_decisions
 
     await export_decisions(root / "decisions")
+    if not historical_only:
+        from openai_decisions_r_fixture import export as export_openai
+
+        export_openai(root / "openai-decisions")
     assert provider.submit_calls == 0 and provider.ledger.acceptance_count() == 4
     (root / "grouped-lifecycle.jsonl").write_text(
         "".join(json.dumps(row) + "\n" for row in evidence), encoding="utf-8"
@@ -272,11 +280,16 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--phase", choices=("persist", "export"), required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--historical-only",
+        action="store_true",
+        help="Exclude OpenAI phases when pytest runs them separately.",
+    )
     options = parser.parse_args()
     asyncio.run(
-        persist(options.output)
+        persist(options.output, historical_only=options.historical_only)
         if options.phase == "persist"
-        else export(options.output)
+        else export(options.output, historical_only=options.historical_only)
     )
 
 

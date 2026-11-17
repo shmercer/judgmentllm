@@ -15,7 +15,10 @@ from typing import cast
 
 from judgmentllm import gemini_types, vertex_types
 from judgmentllm.config import RunSpecification
-from judgmentllm.decisions.transport import PreparedDecisionsRequestV1
+from judgmentllm.decisions.transport import (
+    PreparedDecisionsRequestV1,
+    PreparedDecisionsRequestV2,
+)
 from judgmentllm.evidence import ReportedUsageInput
 from judgmentllm.evidence.usage import InvocationFailureCode
 from judgmentllm.execution.durable_evidence import DurableEvidence
@@ -29,6 +32,7 @@ from judgmentllm.execution.retry import (
 from judgmentllm.output_commitments import validate_output_commitment
 from judgmentllm.persistence.hashing import (
     bytes_digest,
+    canonical_bytes,
     semantic_digest,
 )
 from judgmentllm.persistence.models import (
@@ -46,6 +50,7 @@ from judgmentllm.persistence.ownership import ExecutorOwnership
 from judgmentllm.persistence.receipts import (
     AcknowledgmentReceipt,
     AcknowledgmentReceiptV2,
+    AcknowledgmentReceiptV3,
     ResponseReceipt,
     publish_acknowledgment,
     read_acknowledgment,
@@ -63,7 +68,10 @@ from judgmentllm.providers import (
     ProviderError,
     ProviderResponse,
 )
-from judgmentllm.providers.protocol import ProviderAcknowledgmentV2
+from judgmentllm.providers.protocol import (
+    ProviderAcknowledgmentV2,
+    ProviderAcknowledgmentV3,
+)
 
 Fault = Callable[[str, str], None]
 
@@ -210,10 +218,10 @@ class ExecutionSession:
     ) -> PreparedRequest:
         """Reconstruct pinned V3 bytes; historical rendering keeps its old path."""
         assert self.prepared is not None
-        if self.prepared.manifest.schema_version in (3, 4, 5, 6, 7, 8):
+        if self.prepared.manifest.schema_version in (3, 4, 5, 6, 7, 8, 9):
             from judgmentllm.transport import physical_identity
 
-            if self.prepared.manifest.schema_version == 8:
+            if self.prepared.manifest.schema_version in (8, 9):
                 from judgmentllm.preparation.decisions import DecisionsPreparedRun
 
                 assert isinstance(self.prepared, DecisionsPreparedRun)
@@ -343,7 +351,7 @@ class ExecutionSession:
         while True:
             existing = next(self.existing, None)
             if existing is not None:
-                if self.prepared.manifest.schema_version in (3, 4, 5, 6, 7, 8):
+                if self.prepared.manifest.schema_version in (3, 4, 5, 6, 7, 8, 9):
                     self.verify_native_attempt(existing)
                 results = self.repository.get_results_for_attempt(
                     self.run_id, existing.attempt_id
@@ -382,7 +390,7 @@ class ExecutionSession:
                 dependency = next(self.dependencies, None)
                 if dependency is None:
                     return None
-                if self.prepared.manifest.schema_version in (3, 4, 5, 6, 7, 8):
+                if self.prepared.manifest.schema_version in (3, 4, 5, 6, 7, 8, 9):
                     raise IntegrityError("sealed native request was scheduled twice")
                 ordinal = self.ordinal
                 self.ordinal += 1
@@ -498,6 +506,7 @@ class ExecutionSession:
                     6,
                     7,
                     8,
+                    9,
                 ):
                     self.initial_submission(existing, prepared)
                     submission = self.repository.get_submission_for_attempt(
@@ -527,7 +536,7 @@ class ExecutionSession:
     def repair_committed(self, attempt: AttemptRecord, status: str) -> None:
         """Committed records are authoritative, including a lost final report."""
         assert self.prepared is not None
-        if self.prepared.manifest.schema_version in (3, 4, 5, 6, 7, 8):
+        if self.prepared.manifest.schema_version in (3, 4, 5, 6, 7, 8, 9):
             self.verify_native_attempt(attempt)
         for digest in (attempt.prompt_sha256, attempt.payload_sha256):
             self.prepared.store.verify(
@@ -654,8 +663,13 @@ class ExecutionSession:
     ) -> None:
         assert self.prepared is not None
         if isinstance(work.prepared, PreparedDecisionsRequestV1):
+            expected_ack = (
+                ProviderAcknowledgmentV3
+                if isinstance(work.prepared, PreparedDecisionsRequestV2)
+                else ProviderAcknowledgmentV2
+            )
             if (
-                not isinstance(acknowledgment, ProviderAcknowledgmentV2)
+                type(acknowledgment) is not expected_ack
                 or acknowledgment.response_evidence.request_uid
                 != work.prepared.request_uid
             ):
@@ -676,7 +690,11 @@ class ExecutionSession:
             observation_key=acknowledgment.observation_key,
         )
         receipt = (
-            AcknowledgmentReceiptV2.model_validate(
+            (
+                AcknowledgmentReceiptV3
+                if type(acknowledgment) is ProviderAcknowledgmentV3
+                else AcknowledgmentReceiptV2
+            ).model_validate(
                 {**values, "response_evidence": acknowledgment.response_evidence}
             )
             if isinstance(acknowledgment, ProviderAcknowledgmentV2)
@@ -914,10 +932,16 @@ class ExecutionSession:
             self.repository.get_submission(self.run_id, work.submission_id)
         )
         if isinstance(receipt, AcknowledgmentReceiptV2):
-            return ProviderAcknowledgmentV2(
-                remote_id=receipt.remote_id,
-                observation_key=receipt.observation_key,
-                response_evidence=receipt.response_evidence,
+            return (
+                ProviderAcknowledgmentV3
+                if type(receipt) is AcknowledgmentReceiptV3
+                else ProviderAcknowledgmentV2
+            ).model_validate(
+                dict(
+                    remote_id=receipt.remote_id,
+                    observation_key=receipt.observation_key,
+                    response_evidence=receipt.response_evidence,
+                )
             )
         return ProviderAcknowledgment(
             remote_id=receipt.remote_id, observation_key=receipt.observation_key
@@ -941,10 +965,23 @@ class ExecutionSession:
         self.verify_observation_key(work, receipt.observation_key)
         if receipt.capture == "minimal":
             return None
+        from judgmentllm.decisions.replay import OpenAIDecisionsReplayV1
+        from judgmentllm.persistence.evidence import DecisionsEvidenceReceiptV3
+
+        raw = self.prepared.store.read(receipt.raw)
+        replay = None
+        if (
+            isinstance(evidence, DecisionsEvidenceReceiptV3)
+            and evidence.retained_kind == "filtered_replay"
+        ):
+            replay = OpenAIDecisionsReplayV1.model_validate_json(raw)
+            if canonical_bytes(replay) != raw or replay.metadata != evidence.validation:
+                raise IntegrityError("retained replay differs from verified evidence")
         return ProviderResponse(
             observation_key=receipt.observation_key,
             kind=receipt.kind,
-            raw=self.prepared.store.read(receipt.raw),
+            raw=raw,
+            decisions_replay=replay,
         )
 
     def has_results(self, work: ExecutionWork) -> bool:
@@ -992,14 +1029,37 @@ class ExecutionSession:
             acknowledgment = read_acknowledgment(
                 self.prepared.store, work.submission_id
             )
+            replay = response.decisions_replay
+            if replay is not None:
+                from judgmentllm.persistence.evidence import (
+                    DecisionsEvidenceReceiptV3,
+                    read_evidence_receipt,
+                )
+
+                previous = read_evidence_receipt(
+                    self.prepared.store, work.submission_id
+                )
+                if (
+                    not isinstance(previous, DecisionsEvidenceReceiptV3)
+                    or previous.validation != replay.metadata
+                    or previous.retained is None
+                    or (previous.retained.sha256, previous.retained.byte_length)
+                    != (bytes_digest(response.raw), len(response.raw))
+                ):
+                    raise IntegrityError("replay has no matching immutable evidence")
+                self.evidence.verify(previous, work)
+            expected_response = (
+                (replay.metadata.original_sha256, replay.metadata.original_byte_length)
+                if replay is not None
+                else (bytes_digest(response.raw), len(response.raw))
+            )
             if not isinstance(acknowledgment, AcknowledgmentReceiptV2) or (
                 acknowledgment.response_evidence.request_uid,
                 acknowledgment.response_evidence.response_sha256,
                 acknowledgment.response_evidence.response_byte_length,
             ) != (
                 work.prepared.request_uid,
-                bytes_digest(response.raw),
-                len(response.raw),
+                *expected_response,
             ):
                 raise IntegrityError(
                     "Decisions complete response differs from acceptance evidence"
@@ -1079,7 +1139,11 @@ class ExecutionSession:
             parsed_decisions = parser(response, work.prepared)
             if not isinstance(
                 parsed_decisions, ParsedDecisionsResponseV1
-            ) or parsed_decisions.response_sha256 != bytes_digest(response.raw):
+            ) or parsed_decisions.response_sha256 != (
+                response.decisions_replay.metadata.original_sha256
+                if response.decisions_replay
+                else bytes_digest(response.raw)
+            ):
                 raise IntegrityError(
                     "Decisions parser lost its original response binding"
                 )
@@ -1167,6 +1231,7 @@ class ExecutionSession:
                 None
                 if raw.byte_length == 0
                 or (evidence is not None and evidence.response_retention == "omitted")
+                or getattr(evidence, "retained_kind", None) == "filtered_replay"
                 else raw.relative_path,
             )
             for result in interpreted.results
@@ -1185,10 +1250,13 @@ class ExecutionSession:
             vector = DecisionsOutcomeVectorV1(
                 identity=work.prepared.transport_commitment.identity,
                 observation_id=observation.observation_id,
-                response_sha256=bytes_digest(response.raw),
+                response_sha256=response.decisions_replay.metadata.original_sha256
+                if response.decisions_replay is not None
+                else bytes_digest(response.raw),
                 commitment_sha256=work.prepared.transport_commitment.commitment_sha256,
                 recognizable=interpreted.recognizable,
                 whole_response_valid=interpreted.recognizable
+                and not interpreted.envelope_findings
                 and not interpreted.unexpected_members
                 and not interpreted.unattributable_members
                 and all(r.status == "complete" for r in results),

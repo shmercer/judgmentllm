@@ -538,3 +538,20 @@ def test_synthetic_cost_cannot_claim_real_provider_billing(provider: str) -> Non
                 ),
             ),
         )
+
+
+def test_historical_chat_usage_cannot_be_relabelled_as_decisions_usage() -> None:
+    original = extract_openai_chat_usage(identity(), context(), OpenAIChatUsageInput())
+    assert ProviderUsage.model_validate_json(original.model_dump_json()) == original
+    data = original.model_dump(mode="json")
+    data["endpoint"] = "decisions"
+    with pytest.raises(ValidationError):
+        ProviderUsage.model_validate_json(json.dumps(data))
+    data["usage_source"] = "openai.decisions.usage"
+    checked = ProviderUsage.model_validate_json(json.dumps(data))
+    assert checked.provider == "openai" and checked.endpoint == "decisions"
+    assert checked.input_tokens is checked.output_tokens is None
+    decisions = checked.model_dump(mode="json")
+    decisions["endpoint"] = "chat.completions"
+    with pytest.raises(ValidationError):
+        ProviderUsage.model_validate_json(json.dumps(decisions))

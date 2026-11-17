@@ -157,8 +157,14 @@ def _parse_transport_commitment(
     if not isinstance(value, dict):
         raise ValueError("invalid transport commitment")
     if "decisions_commitment_version" in value:
-        from judgmentllm.decisions.transport import DecisionsCommitmentV1
+        from judgmentllm.decisions.transport import (
+            DecisionsCommitmentV1,
+            DecisionsCommitmentV2,
+        )
 
+        version = cast(dict[str, object], value)["decisions_commitment_version"]
+        if type(version) is int and version == 2:
+            return DecisionsCommitmentV2.model_validate_json(raw)
         return DecisionsCommitmentV1.model_validate_json(raw)
     version = cast(dict[str, object], value).get("transport_commitment_version", 1)
     if type(version) is int and version == 5:

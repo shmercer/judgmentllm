@@ -12,6 +12,8 @@ from judgmentllm.decisions._base import DecisionsModel
 from judgmentllm.decisions.records import (
     DecisionQuestionV1,
     DecisionsLimitsV1,
+    DecisionsLimitsV2,
+    OpenAIDecisionsContextV1,
     PreparedPairPresentationV1,
     QuestionCommitmentV1,
     question_key,
@@ -248,16 +250,24 @@ def serialize_request(
     shared: str,
     questions: Sequence[DecisionQuestionV1],
     spec: RunSpecV4,
-    context: DecisionsContextV1,
+    context: DecisionsContextV1 | OpenAIDecisionsContextV1,
 ) -> bytes:
     """B's own synthetic protocol, never vendor wire JSON or a schema projection."""
     from judgmentllm.providers.decisions_wire import serialize_synthetic_decisions
 
+    if isinstance(context, OpenAIDecisionsContextV1):
+        from judgmentllm.providers.openai_decisions import serialize_openai_decisions
+
+        return serialize_openai_decisions(shared, questions, spec)
     return serialize_synthetic_decisions(shared, questions, spec, context)
 
 
 def fits(
-    payload: bytes, count: int, context: DecisionsContextV1, *, strict: bool
+    payload: bytes,
+    count: int,
+    context: DecisionsContextV1 | OpenAIDecisionsContextV1,
+    *,
+    strict: bool,
 ) -> bool:
     limits = context.limits
     if limits.max_context_tokens is not None and limits.counter is None:
@@ -283,7 +293,7 @@ def plan_source(
     spec: RunSpecV4,
     record: ResponseItem | PairTask | PreparedPairPresentationV1,
     lookup: Callable[[str], ResponseItem],
-    context: DecisionsContextV1,
+    context: DecisionsContextV1 | OpenAIDecisionsContextV1,
     template: str | None,
     *,
     question_renderer_version: Literal[1, 2] = 2,
@@ -445,7 +455,7 @@ def prepare_request(
     spec: RunSpecV4,
     dependency: DecisionsDependencyV1,
     identity: PhysicalRequestIdentityV1,
-    context: DecisionsContextV1,
+    context: DecisionsContextV1 | OpenAIDecisionsContextV1,
     *,
     parent: DecisionsCommitmentV1 | None = None,
 ) -> PreparedDecisionsRequestV1:
@@ -483,52 +493,97 @@ def prepare_request(
         )
         for i, q in enumerate(dependency.questions)
     )
-    receipt = DecisionsCommitmentV1(
-        identity=identity,
-        provider=spec.provider,
-        endpoint=spec.endpoint,
-        requested_model=spec.model,
-        configuration_sha256=semantic_digest("run-configuration", spec),
-        context_sha256=semantic_digest("decisions-context-v1", context),
-        dependency_sha256=dependency.dependency_sha256,
-        membership_sha256=semantic_digest(
-            "attempt-membership", [q.task_id for q in dependency.questions]
-        ),
-        shared_input_sha256=bytes_digest(dependency.shared_input.encode("utf-8")),
-        shared_input_byte_length=len(dependency.shared_input.encode("utf-8")),
-        questions=commitments,
-        source_presentation_id=dependency.source_presentation_id,
-        presentation_id=dependency.presentation_id,
-        source_record_id=parent.source_record_id
-        if parent
-        else dependency.source_presentation_id
-        or (
-            dependency.request.response.item_id
-            if dependency.request.response
-            else dependency.request.pair.pair_uid
-            if dependency.request.pair
-            else ""
-        ),
-        prompt_sha256=bytes_digest(prompt),
-        prompt_byte_length=len(prompt),
-        payload_sha256=bytes_digest(payload),
-        payload_byte_length=len(payload),
-        limits=context.limits,
-        context_count=len(payload) if context.limits.counter else None,
-        parent_commitment_sha256=parent.commitment_sha256 if parent else None,
+    receipt_type = (
+        DecisionsCommitmentV2
+        if isinstance(context, OpenAIDecisionsContextV1)
+        else DecisionsCommitmentV1
+    )
+    receipt = receipt_type.model_validate(
+        dict(
+            **(
+                {
+                    "probability_sum_tolerance": spec.normalization.probability_sum_tolerance
+                }
+                if isinstance(context, OpenAIDecisionsContextV1)
+                else {}
+            ),
+            identity=identity,
+            provider=spec.provider,
+            endpoint=spec.endpoint,
+            requested_model=spec.model,
+            configuration_sha256=semantic_digest("run-configuration", spec),
+            context_sha256=semantic_digest("decisions-context-v1", context),
+            dependency_sha256=dependency.dependency_sha256,
+            membership_sha256=semantic_digest(
+                "attempt-membership", [q.task_id for q in dependency.questions]
+            ),
+            shared_input_sha256=bytes_digest(dependency.shared_input.encode("utf-8")),
+            shared_input_byte_length=len(dependency.shared_input.encode("utf-8")),
+            questions=commitments,
+            source_presentation_id=dependency.source_presentation_id,
+            presentation_id=dependency.presentation_id,
+            source_record_id=parent.source_record_id
+            if parent
+            else dependency.source_presentation_id
+            or (
+                dependency.request.response.item_id
+                if dependency.request.response
+                else dependency.request.pair.pair_uid
+                if dependency.request.pair
+                else ""
+            ),
+            prompt_sha256=bytes_digest(prompt),
+            prompt_byte_length=len(prompt),
+            payload_sha256=bytes_digest(payload),
+            payload_byte_length=len(payload),
+            limits=context.limits,
+            context_count=len(payload) if context.limits.counter else None,
+            parent_commitment_sha256=parent.commitment_sha256 if parent else None,
+        )
     )
     if identity.request_uid != dependency.request.request_uid:
         raise IntegrityError("Decisions identity differs from parent request")
-    return PreparedDecisionsRequestV1(
-        request_uid=identity.request_uid,
-        task_ids=tuple(q.task_id for q in dependency.questions),
-        dependency_sha256=dependency.dependency_sha256,
-        prompt_sha256=receipt.prompt_sha256,
-        payload_sha256=receipt.payload_sha256,
-        provider=spec.provider,
-        endpoint=spec.endpoint,
-        model=spec.model,
-        payload=payload,
-        rendered_text=text,
-        transport_commitment=receipt,
+    prepared_type = (
+        PreparedDecisionsRequestV2
+        if isinstance(context, OpenAIDecisionsContextV1)
+        else PreparedDecisionsRequestV1
     )
+    return prepared_type.model_validate(
+        dict(
+            request_uid=identity.request_uid,
+            task_ids=tuple(q.task_id for q in dependency.questions),
+            dependency_sha256=dependency.dependency_sha256,
+            prompt_sha256=receipt.prompt_sha256,
+            payload_sha256=receipt.payload_sha256,
+            provider=spec.provider,
+            endpoint=spec.endpoint,
+            model=spec.model,
+            payload=payload,
+            rendered_text=text,
+            transport_commitment=receipt,
+        )
+    )
+
+
+class DecisionsCommitmentV2(DecisionsCommitmentV1):
+    decisions_commitment_version: Literal[2] = 2  # pyright: ignore[reportIncompatibleVariableOverride]
+    provider: Literal["openai"] = "openai"  # pyright: ignore[reportIncompatibleVariableOverride]
+    endpoint: Literal["decisions"] = "decisions"  # pyright: ignore[reportIncompatibleVariableOverride]
+    limits: DecisionsLimitsV2  # pyright: ignore[reportIncompatibleVariableOverride]
+    probability_sum_tolerance: float = Field(default=1e-8, ge=0, lt=1)
+
+    @property
+    def commitment_sha256(self) -> str:
+        return semantic_digest("decisions-commitment-v2", self)
+
+
+class PreparedDecisionsRequestV2(PreparedDecisionsRequestV1):
+    preparation_version: Literal[9] = 9  # pyright: ignore[reportIncompatibleVariableOverride]
+    transport_commitment: DecisionsCommitmentV2  # pyright: ignore[reportIncompatibleVariableOverride]
+
+    @field_validator("preparation_version", mode="before")
+    @classmethod
+    def strict_preparation_version(cls, value: object) -> object:
+        if type(value) is not int or value != 9:
+            raise ValueError("preparation_version must be integer 9")
+        return value

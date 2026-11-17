@@ -107,3 +107,6 @@ cat("Grouped lifecycle interoperability passed: 8 results, 4 accepted physical s
 script <- sub("^--file=", "", grep("^--file=", commandArgs(), value = TRUE)[[1L]])
 source(file.path(dirname(script), "decisions_interoperability.R"))
 check_decisions_exports(file.path(root, "decisions"))
+
+source(file.path(dirname(script), "openai_decisions_interoperability.R"))
+check_openai_decisions_exports(file.path(root, "openai-decisions"))

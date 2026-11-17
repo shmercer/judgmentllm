@@ -16,6 +16,7 @@ from pydantic import Field, field_validator, model_validator
 
 from judgmentllm import gemini_types, vertex_types
 from judgmentllm.anthropic_assessment import AnthropicAssessmentDiagnosticV2
+from judgmentllm.decisions.replay import DecisionsReplayMetadataV1
 from judgmentllm.evidence._base import EvidenceIdentity, EvidenceModel
 from judgmentllm.evidence.assessment import AssessmentDiagnosticV1
 from judgmentllm.evidence.order import ProviderObservationMetadata
@@ -272,13 +273,58 @@ class DecisionsEvidenceReceiptV2(EvidenceReceipt):
         return self
 
 
+class DecisionsEvidenceReceiptV3(DecisionsEvidenceReceiptV2):
+    evidence_receipt_version: Literal[3] = 3  # pyright: ignore[reportIncompatibleVariableOverride]
+    validation: DecisionsReplayMetadataV1 | None = None
+    retained_kind: Literal["original", "filtered_replay", "omitted"] = "omitted"
+
+    @field_validator("evidence_receipt_version", mode="before")
+    @classmethod
+    def exact_version(cls, value: object) -> object:
+        if type(value) is not int or value != 3:
+            raise ValueError("unsupported production evidence version")
+        return value
+
+    @model_validator(mode="after")
+    def decisions_scope(self) -> DecisionsEvidenceReceiptV3:
+        if (
+            (self.usage.provider, self.usage.endpoint) != ("openai", "decisions")
+            or self.reasoning
+            or self.assessment_diagnostic
+            or self.service_tier
+        ):
+            raise ValueError("unsupported production Decisions evidence scope")
+        if self.identity.observation_id is not None:
+            v = self.validation
+            if (
+                v is None
+                or self.original is None
+                or v.identity != self.identity
+                or v.correlation_id != self.correlation_id
+                or v.payload_sha256 != self.payload_sha256
+                or (v.original_sha256, v.original_byte_length)
+                != (self.original.sha256, self.original.byte_length)
+                or self.retained_kind == "omitted"
+                or (self.retained_kind == "original")
+                != (self.response_retention == "exact")
+            ):
+                raise ValueError("production replay binding differs")
+        elif self.validation is not None or self.retained_kind != "omitted":
+            raise ValueError("invocation cannot invent a replay")
+        return self
+
+
 def parse_evidence_receipt(raw: bytes) -> EvidenceReceipt:
     from judgmentllm.config import parse_json
 
-    data = parse_json(raw.decode("utf-8"))
+    data = cast(dict[str, object], parse_json(raw.decode("utf-8")))
     model = (
-        DecisionsEvidenceReceiptV2
-        if isinstance(data, dict) and "evidence_receipt_version" in data
+        DecisionsEvidenceReceiptV3
+        if isinstance(cast(object, data), dict)
+        and type(data.get("evidence_receipt_version")) is int
+        and data["evidence_receipt_version"] == 3
+        else DecisionsEvidenceReceiptV2
+        if isinstance(cast(object, data), dict) and "evidence_receipt_version" in data
         else EvidenceReceipt
     )
     return model.model_validate_json(raw)

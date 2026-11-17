@@ -2,6 +2,13 @@
 
 **Design:** 0.5 (2026-11-02). **Implementation status:** Milestone 1 provides schema-version-1 contracts, synthetic normalization, structural planning, input/output, and offline prompt tools. Milestone 2 has durable persistence, generation configuration, and complete provider-free immutable source preparation with indexed access and independent-process reopening. Subphase 4 adds grouped outcomes, retry/cancellation and immutable exports; Subphase 5 exposes the shared public Python lifecycle and versioned CLI. Subphase 6 is merged in PR #11; its final implementation head `db198aeb0a6387e6a3030c584c34bdd0b41e890f` has retained local and hosted qualification evidence, with the historical six-configuration scope described below. Historical V1/V2 execution remains limited to the deterministic mock provider. Phase5A adds production OpenAI execution through explicit V3 configurations and independently identified production manifests, with offline acceptance separate from authorized live acceptance. Phase 5B adds independently versioned Anthropic Messages execution. The sections below describe the full approved direction; [data contracts](data-contracts.md) and [Python API](python-api.md) describe the implemented subset.
 
+## PR C implementation candidate
+
+[Native OpenAI Decisions](openai-decisions.md) adds the ordinary V4 official SDK
+lifecycle with additive production acceptance/provenance and privacy-filtered
+crash replay. Independent code review and final qualification remain pending;
+synthetic focused tests establish no live qualification.
+
 ## Issue #61: native Decisions planning extension (2026-11-15)
 
 The approved M4 scope now includes OpenAI Decisions, TypeSafe AI Jev and native
