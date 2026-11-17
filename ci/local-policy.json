@@ -89,7 +89,39 @@
   "serial": [
     {
       "dependencies": {
-        "tests/test_study_limits.py": "c773724f2d6fb8f5f8daaa1a6cb67cec491b536d7a8797cc2d7fa22e2a6791f5"
+        "src/judgmentllm/__init__.py": "330a12dc66605f0453e6dce5240d0fe2874fc9aadf382b2ead74b3c3c2b6b0df",
+        "src/judgmentllm/_lifecycle_store.py": "5a8272fb2946324c857a6d7eab3bffdb7aaa07c4aa7fb367059d4402ce20ef36",
+        "src/judgmentllm/anthropic_diagnostics.py": "87b74807c5e4dacc75e15cd652747025f75f706919fc12a1f3c21c884ddbdcf8",
+        "src/judgmentllm/cli.py": "62a42b27838d1827b6ccdb3a349b8999c0ac9caf71320417b99addcf55dd1000",
+        "src/judgmentllm/cli_controls.py": "4dae583f80091dc0077391fad9d996de04bde3d9bf62f868b11d16ed7361061c",
+        "src/judgmentllm/config.py": "32f723c9cee90fac3ee67c7cea4248fad239e84fe1ae9ec7eb6ff29526924012",
+        "src/judgmentllm/execution/core.py": "e6d17b7820c227435f1a74c4fe811a826eb273980b2ca3f572a19e48bd1b1a8f",
+        "src/judgmentllm/execution/durable_evidence.py": "600420814b745725e929520c7886dbc7935a02a481418bc91f85ad8911e2a5c6",
+        "src/judgmentllm/execution/retry.py": "20b01c35c31470ab38d008edb63d68ace098b39c1413e0313f789e4ec71e1567",
+        "src/judgmentllm/execution/session.py": "8b6e45cfc5528f682545a4b2328b198779120bb93721bc158304f0c14a39376d",
+        "src/judgmentllm/lifecycle.py": "f932bbe508a0bfa040ba98cf5b574b903c5a49d3180d610eebb8c9eac7f8b4f9",
+        "src/judgmentllm/lifecycle_models.py": "5a649bff78ecb494583cca8301e195803ef32c888cf8e6553cb403ef378e22f7",
+        "src/judgmentllm/openai_diagnostics.py": "f4530584e523d4cb03b58ac2bc7c4fc3885edf5ca1dd1cb8ca8b4993d13ca380",
+        "src/judgmentllm/persistence/evidence.py": "a4b531e120b2414411909677874623fd8c25119b0f7f0173e7ceb4ba5f254dfc",
+        "src/judgmentllm/persistence/receipts.py": "dc39ea8e7ff66e9f03bb4abcf41cbe83c582cc6b4d034a8bac6d8d3b33c41936",
+        "src/judgmentllm/persistence/repository.py": "b27e681865db65c2c3821bf7ae2b4661c34b71000a1d1f5a9ded79b10fb92779",
+        "src/judgmentllm/persistence/schema.py": "79039d78c7d433426db4e0c1324c027ec72bb4a3f46c7a3dc44f041b63970102",
+        "src/judgmentllm/persistence/sources.py": "04ad2fb1c9d62b43318ee3879f4b1967886ab2a40bad51f58abffd53cce5303d",
+        "src/judgmentllm/persistence/transport_receipts.py": "52c66031b03f02e30c2f3e0196f37cd4813b3da7db23c6684be78ef1766913f1",
+        "src/judgmentllm/planning.py": "efeba5a9e4622e3ee636a0d5728d35ceab0af1883ff514ab79cbce1fea3d1c1d",
+        "src/judgmentllm/preparation/__init__.py": "374e62a120e9ed8b8a8fe4f6facb81ee2a3874dfc54397429e3fd48f865fa0a1",
+        "src/judgmentllm/preparation/capture.py": "95268c11fc16b7c6ba0ada71b479c28a3c26aa4c092f9aa534023fff9490db8e",
+        "src/judgmentllm/preparation/manifest.py": "f8f5a816f1a25394053ae966427f135a91033b9a1a7712f1d757ce39fb3a4096",
+        "src/judgmentllm/preparation/session.py": "2993c3c88acc3ea6641ee0cb4279ea3b7717f59750cd58ca25c6edc0370cd151",
+        "src/judgmentllm/preview.py": "d974acd9c576e45635f3110c2e00261467da9eabb7b9bcc1084f5a2d1e162e0e",
+        "src/judgmentllm/providers/gemini.py": "6cb38056877da68b458a2956c6b798cc80db2d0904f156c39c52160f80348468",
+        "src/judgmentllm/providers/openai.py": "ad4a57e77b173da896532d5a93240517db990510a708b479d3b5a98685fc6bef",
+        "src/judgmentllm/providers/protocol.py": "ef15e18e3287e7f17e457a3afca50fc10d914d497426125e5d16ab7ead27c3e5",
+        "src/judgmentllm/providers/vertex.py": "c7dc0dc837da4356fb8909442c1a31586d26240599aefe29b7590e79cbdeaedc",
+        "src/judgmentllm/request_rendering.py": "60e733a0ac694d89006f59a7f9abb7a00c3b0e0c316acfad2a03cc08cb65d3e9",
+        "src/judgmentllm/study/sources.py": "abc8da320651c50a06fdd4c5dd667e650cc548b0fa22fd273f0f5aba35bf937d",
+        "tests/test_study_limits.py": "c773724f2d6fb8f5f8daaa1a6cb67cec491b536d7a8797cc2d7fa22e2a6791f5",
+        "tests/test_study_native.py": "39fb42c50c6877584b021bc64881f56357d4bd4f6af84cc6eea037eaed28801e"
       },
       "placement": "concurrency-safe-serial",
       "reason": "One pytest process; copied private stores, patched per-test campaign lock, synthetic transports; no child deadline. Reviewed in the retained controlled comparison; dependency changes restore exclusive isolation.",
@@ -97,6 +129,38 @@
     },
     {
       "dependencies": {
+        "src/judgmentllm/__init__.py": "330a12dc66605f0453e6dce5240d0fe2874fc9aadf382b2ead74b3c3c2b6b0df",
+        "src/judgmentllm/_lifecycle_store.py": "5a8272fb2946324c857a6d7eab3bffdb7aaa07c4aa7fb367059d4402ce20ef36",
+        "src/judgmentllm/anthropic_diagnostics.py": "87b74807c5e4dacc75e15cd652747025f75f706919fc12a1f3c21c884ddbdcf8",
+        "src/judgmentllm/cli.py": "62a42b27838d1827b6ccdb3a349b8999c0ac9caf71320417b99addcf55dd1000",
+        "src/judgmentllm/cli_controls.py": "4dae583f80091dc0077391fad9d996de04bde3d9bf62f868b11d16ed7361061c",
+        "src/judgmentllm/config.py": "32f723c9cee90fac3ee67c7cea4248fad239e84fe1ae9ec7eb6ff29526924012",
+        "src/judgmentllm/execution/core.py": "e6d17b7820c227435f1a74c4fe811a826eb273980b2ca3f572a19e48bd1b1a8f",
+        "src/judgmentllm/execution/durable_evidence.py": "600420814b745725e929520c7886dbc7935a02a481418bc91f85ad8911e2a5c6",
+        "src/judgmentllm/execution/retry.py": "20b01c35c31470ab38d008edb63d68ace098b39c1413e0313f789e4ec71e1567",
+        "src/judgmentllm/execution/session.py": "8b6e45cfc5528f682545a4b2328b198779120bb93721bc158304f0c14a39376d",
+        "src/judgmentllm/lifecycle.py": "f932bbe508a0bfa040ba98cf5b574b903c5a49d3180d610eebb8c9eac7f8b4f9",
+        "src/judgmentllm/lifecycle_models.py": "5a649bff78ecb494583cca8301e195803ef32c888cf8e6553cb403ef378e22f7",
+        "src/judgmentllm/openai_diagnostics.py": "f4530584e523d4cb03b58ac2bc7c4fc3885edf5ca1dd1cb8ca8b4993d13ca380",
+        "src/judgmentllm/persistence/evidence.py": "a4b531e120b2414411909677874623fd8c25119b0f7f0173e7ceb4ba5f254dfc",
+        "src/judgmentllm/persistence/receipts.py": "dc39ea8e7ff66e9f03bb4abcf41cbe83c582cc6b4d034a8bac6d8d3b33c41936",
+        "src/judgmentllm/persistence/repository.py": "b27e681865db65c2c3821bf7ae2b4661c34b71000a1d1f5a9ded79b10fb92779",
+        "src/judgmentllm/persistence/schema.py": "79039d78c7d433426db4e0c1324c027ec72bb4a3f46c7a3dc44f041b63970102",
+        "src/judgmentllm/persistence/sources.py": "04ad2fb1c9d62b43318ee3879f4b1967886ab2a40bad51f58abffd53cce5303d",
+        "src/judgmentllm/persistence/transport_receipts.py": "52c66031b03f02e30c2f3e0196f37cd4813b3da7db23c6684be78ef1766913f1",
+        "src/judgmentllm/planning.py": "efeba5a9e4622e3ee636a0d5728d35ceab0af1883ff514ab79cbce1fea3d1c1d",
+        "src/judgmentllm/preparation/__init__.py": "374e62a120e9ed8b8a8fe4f6facb81ee2a3874dfc54397429e3fd48f865fa0a1",
+        "src/judgmentllm/preparation/capture.py": "95268c11fc16b7c6ba0ada71b479c28a3c26aa4c092f9aa534023fff9490db8e",
+        "src/judgmentllm/preparation/manifest.py": "f8f5a816f1a25394053ae966427f135a91033b9a1a7712f1d757ce39fb3a4096",
+        "src/judgmentllm/preparation/session.py": "2993c3c88acc3ea6641ee0cb4279ea3b7717f59750cd58ca25c6edc0370cd151",
+        "src/judgmentllm/preview.py": "d974acd9c576e45635f3110c2e00261467da9eabb7b9bcc1084f5a2d1e162e0e",
+        "src/judgmentllm/providers/gemini.py": "6cb38056877da68b458a2956c6b798cc80db2d0904f156c39c52160f80348468",
+        "src/judgmentllm/providers/openai.py": "ad4a57e77b173da896532d5a93240517db990510a708b479d3b5a98685fc6bef",
+        "src/judgmentllm/providers/protocol.py": "ef15e18e3287e7f17e457a3afca50fc10d914d497426125e5d16ab7ead27c3e5",
+        "src/judgmentllm/providers/vertex.py": "c7dc0dc837da4356fb8909442c1a31586d26240599aefe29b7590e79cbdeaedc",
+        "src/judgmentllm/request_rendering.py": "60e733a0ac694d89006f59a7f9abb7a00c3b0e0c316acfad2a03cc08cb65d3e9",
+        "src/judgmentllm/study/sources.py": "abc8da320651c50a06fdd4c5dd667e650cc548b0fa22fd273f0f5aba35bf937d",
+        "tests/test_study_native.py": "39fb42c50c6877584b021bc64881f56357d4bd4f6af84cc6eea037eaed28801e",
         "tests/test_study_workflow.py": "ec1fead07bdfc3091b0944a8708fb3a7936f2b2261e8ebc6c4c06923e4e925bb"
       },
       "placement": "concurrency-safe-serial",
@@ -112,11 +176,1191 @@
       "ci/coverage-floor.json",
       "ci/test-contract.json",
       "ci/verification-map.json",
-      ".github/workflows/ci.yml"
+      ".github/workflows/ci.yml",
+      "docs/vertex-qualification-price-evidence.json"
     ],
     "dynamic_imports": {
+      "src/judgmentllm/__init__.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B; \u2205.** Eager public reexports include lifecycle, diagnostics, preparation-facing types, and Decisions provenance. Own initialization sets version/export lists; it invokes no service. Imported modules remain in closure. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "330a12dc66605f0453e6dce5240d0fe2874fc9aadf382b2ead74b3c3c2b6b0df",
+        "targets": []
+      },
+      "src/judgmentllm/_auth.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B; \u2205.** Frozen registration records and mapping proxy initialize locally. Calls inspect fixed environment names; ADC returns an unknown marker without discovery. Credential objects block serialization. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "2d2767b268d2fb2c42286494cebeaedf64da938ccf410f3018a0f2b6418dc912",
+        "targets": []
+      },
+      "src/judgmentllm/_lifecycle_store.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B.** Additional lazy target: `decisions.provenance.decisions_status`. Repository reads use contexts; inspection rolls back its snapshot in `finally`. Ownership checks, WAL behavior, and manifests belong to durability closure. Default store/environment selection requires private roots. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "5a8272fb2946324c857a6d7eab3bffdb7aaa07c4aa7fb367059d4402ce20ef36",
+        "targets": [
+          "src/judgmentllm/decisions/provenance.py"
+        ]
+      },
+      "src/judgmentllm/_verification.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B; \u2205. P.** Recursive tokens use local traversal state. `sys.modules` checks an existing repository class identity; it does not import a computed module. Cycle cleanup uses `finally`. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "e519638709eb7e85f0879a0b211da24f09c9956fa3ed30382353ac55191280b8",
+        "targets": []
+      },
+      "src/judgmentllm/anthropic_assessment.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P; targets []**. Three evidence models and their validators only. Artifact paths are validated data; no artifact publication or client ownership. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "d719ac3261958c7878157cb0fa1bc2330edc1d1ea062bc0dbc40782043c200aa",
+        "targets": []
+      },
+      "src/judgmentllm/anthropic_diagnostics.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68; cleanup-code-rereview-2fe2821.md sha256:ebbec6716eb221f3c27cfb3d132e5f3cc74d47b65a34ccdac171e4ff999b8b72. Scoped whole-module cleanup successor rereview passed; prior cleanup holds closed, with unchanged finite targets. **C; A**. Target `providers/anthropic.py`. Explicit invocation can perform one authenticated models read; bounded response and normal client/context cleanup. H1 applies. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "87b74807c5e4dacc75e15cd652747025f75f706919fc12a1f3c21c884ddbdcf8",
+        "targets": [
+          "src/judgmentllm/providers/anthropic.py"
+        ]
+      },
+      "src/judgmentllm/anthropic_prompts.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P; L**. Revalidates `anthropic_transport.py::OutputCommitmentV5`, then calls the shared renderer. No SDK/client creation; lookup can read files. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "7effb5461911902db16f9f91bf8c97b88afa0263a84dfdc0cc164e7805d41df0",
+        "targets": [
+          "src/judgmentllm/anthropic_transport.py",
+          "src/judgmentllm/native_prompts.py",
+          "src/judgmentllm/preparation/capture.py",
+          "src/judgmentllm/preparation/session.py"
+        ]
+      },
+      "src/judgmentllm/anthropic_qualification.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P/A**. Lazy targets include `anthropic_transport.py`, `preparation/__init__.py`, `transport.py`, `execution/__init__.py`, `execution/retry.py`, `lifecycle.py`, `providers/anthropic.py`, and `persistence/repository.py`. Callable paths write supplied-directory plans/intents/SQLite and run bounded Git subprocesses. Connections and execution adapters have explicit closing paths; no import-time execution. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "1b9ed9bf6de43b42e773a0282d5d114571b3e489a04f2ff75c97c49ec0318ae8",
+        "targets": [
+          "src/judgmentllm/anthropic_transport.py",
+          "src/judgmentllm/execution/__init__.py",
+          "src/judgmentllm/execution/retry.py",
+          "src/judgmentllm/lifecycle.py",
+          "src/judgmentllm/persistence/repository.py",
+          "src/judgmentllm/preparation/__init__.py",
+          "src/judgmentllm/providers/anthropic.py",
+          "src/judgmentllm/transport.py"
+        ]
+      },
+      "src/judgmentllm/anthropic_registry.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P; targets []**. Empty qualification tuple; capability construction and validated profile lookup only. No registration hook, file access, or client. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "3b730ce56698119fcccd7c1b826b4174a0b5a80668eb7f534e264299aca98633",
+        "targets": []
+      },
+      "src/judgmentllm/anthropic_transport.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P; L/S**. Targets `anthropic_prompts.py` and, through `native_schema_v2.py`, `providers/anthropic_schema.py`. Context, selection, body and receipt validation operate on detached values. `content_artifacts()` returns bytes; publication belongs to persistence callers. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "cb1fd88e8800097203b21a98dc7f566920910f7c325fd60e251c2e090444fac7",
+        "targets": [
+          "src/judgmentllm/anthropic_prompts.py",
+          "src/judgmentllm/native_prompts.py",
+          "src/judgmentllm/preparation/capture.py",
+          "src/judgmentllm/preparation/session.py",
+          "src/judgmentllm/providers/anthropic_schema.py",
+          "src/judgmentllm/study/admission.py",
+          "src/judgmentllm/study/execution.py"
+        ]
+      },
+      "src/judgmentllm/assessment_diagnostics.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B. P.** Lazy targets are canonical rubric/pairwise validators in `output_contracts.py`. Decorators enforce extraction metadata consistency. Gemini/Vertex function annotations are postponed; this function itself does not activate clients. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "08a5197f175d093fd9ec116480d300285992f5572940abba87f2abce8b81704b",
+        "targets": [
+          "src/judgmentllm/output_contracts.py"
+        ]
+      },
+      "src/judgmentllm/assessment_errors.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B; \u2205. P.** Fixed exception/validation-error classification only. No files, clients, registries, or mutable global counters. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "112422919321e32347db51de253a05a9dded3ad7fe58bc741bd938e5c25b8a80",
+        "targets": []
+      },
+      "src/judgmentllm/auth.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B. P.** Concrete status-model selection is V1/V2; credential inspection delegates to `_auth.py`. Wrap validators sanitize failures and reject unsafe construction/copy paths. No credential discovery or client ownership. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "754a386b3cdbad255359d2df55da530efa20613acfa6c85c1c1e64061e9473c2",
+        "targets": []
+      },
+      "src/judgmentllm/cache_policy.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B. P.** Lazy target: `native_schema.NativeProjectionScopeV1`. Import-time scope set is frozen; validation compares exact supported identities without SDK construction. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "b135a37e424aa5abd9ad95370f1d4b9556033f1b46b735672319b42658d45d33",
+        "targets": [
+          "src/judgmentllm/native_schema.py"
+        ]
+      },
+      "src/judgmentllm/cli.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B. T.** Import creates process-local Typer applications and registers commands through `providers.openai_cli.register_commands`. Registered alternatives reach concrete provider CLI/diagnostic modules; callbacks invoke lifecycle, preview, or provenance services only when selected. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "62a42b27838d1827b6ccdb3a349b8999c0ac9caf71320417b99addcf55dd1000",
+        "targets": [
+          "src/judgmentllm/anthropic_diagnostics.py",
+          "src/judgmentllm/gemini_diagnostics.py",
+          "src/judgmentllm/openai_diagnostics.py",
+          "src/judgmentllm/providers/anthropic_cli.py",
+          "src/judgmentllm/providers/gemini_cli.py",
+          "src/judgmentllm/providers/openai_cli.py",
+          "src/judgmentllm/providers/vertex_cli.py",
+          "src/judgmentllm/vertex_diagnostics.py"
+        ]
+      },
+      "src/judgmentllm/cli_controls.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B. P/T.** Supplied operation/presentation callbacks are the dispatch boundary. Invocation ContextVar resets in `finally`; Click contexts close through context managers. `perform` temporarily replaces process-wide warning presentation and writes stdout/stderr. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "4dae583f80091dc0077391fad9d996de04bde3d9bf62f868b11d16ed7361061c",
+        "targets": [
+          "src/judgmentllm/cli.py",
+          "src/judgmentllm/providers/anthropic_cli.py",
+          "src/judgmentllm/providers/gemini_cli.py",
+          "src/judgmentllm/providers/openai_cli.py",
+          "src/judgmentllm/providers/vertex_cli.py"
+        ]
+      },
+      "src/judgmentllm/config.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B. P/Y.** Finite root model selection: RunSpec V1\u2013V4. Document-reader callbacks reach `read_document`, preparation discovery/verification readers, and `SourceBuilder.document`. Reads referenced configuration files; SafeLoader subclass rejects duplicate keys. No global loader registration. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "32f723c9cee90fac3ee67c7cea4248fad239e84fe1ae9ec7eb6ff29526924012",
+        "targets": [
+          "src/judgmentllm/preparation/__init__.py",
+          "src/judgmentllm/preparation/capture.py",
+          "src/judgmentllm/preparation/decisions.py"
+        ]
+      },
+      "src/judgmentllm/decisions/__init__.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B; \u2205.** Reexports three presentation symbols from `records.py`; own initialization is an export list. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "a1cb086bfab3e3cd81abe7b8772b783a73b18e245ee7b362a56fa2f11c49f6ca",
+        "targets": []
+      },
+      "src/judgmentllm/decisions/_base.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B; \u2205. P.** Inherited version-token field validator checks integer versions. No runtime module selection or resources. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "ecc6d261ac50bbcee25a1348df8be0ef0b01b5747e437acb14291bf93f14e7f6",
+        "targets": []
+      },
+      "src/judgmentllm/decisions/interpretation.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B. P.** Targets: `execution.processing`, `execution.retry`, and result normalizers. Optional member callback binds to `ExecutionSession.checkpoint` at the repository caller. Attribution/results accumulate per invocation; no file/client ownership. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "a3fd9cf0a3bb9470369fef25e3239befd4998051e2950795d1116b5fcdf56796",
+        "targets": [
+          "src/judgmentllm/execution/processing.py",
+          "src/judgmentllm/execution/retry.py",
+          "src/judgmentllm/execution/session.py",
+          "src/judgmentllm/results.py"
+        ]
+      },
+      "src/judgmentllm/decisions/outcomes.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B. P.** Publishes through caller-owned `ArtifactStore`; bounded reads verify canonical bytes, submission identity, and artifact identity. Read stream closes via `with`; publication guarantees require artifact-store review. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "1361523acc4189ee0e5fd6be3dcaf7b180ca9e895c218d5113c1b116f0d4d554",
+        "targets": []
+      },
+      "src/judgmentllm/decisions/provenance.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B. P.** Targets include invocation/acknowledgment/transport/outcome readers and repository/artifact publication. Own temporary files and streams close; read transaction and `query_only` reset in `finally`. Totals are per-call; optional fault callback is caller-owned. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "7b59c4bdfcfbcefa0af56c099d1d9f437f989b57fa3a6c94a052abefe2ccd184",
+        "targets": [
+          "src/judgmentllm/decisions/outcomes.py",
+          "src/judgmentllm/persistence/artifacts.py",
+          "src/judgmentllm/persistence/decisions_invocations.py",
+          "src/judgmentllm/persistence/receipts.py",
+          "src/judgmentllm/persistence/repository.py",
+          "src/judgmentllm/persistence/transport_receipts.py"
+        ]
+      },
+      "src/judgmentllm/decisions/records.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B; \u2205 beyond imported validation/ID helpers. P.** Presentation generation owns a unique temporary SQLite index. Connection/directory cleanup follows generator exhaustion or explicit close; an abandoned live iterator retains that scope. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "0356bd1475537d0d16a704a560d651eddfdeda552447aae3886eff515fba7514",
+        "targets": []
+      },
+      "src/judgmentllm/decisions/responses.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B; \u2205. P.** Typed parsed-response fields only; no methods selecting implementations or acquiring resources. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "3392ed427efa90da020e9997fe73a718cb5598f7a30aabca81cc8ef73095b668",
+        "targets": []
+      },
+      "src/judgmentllm/decisions/transport.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B. P.** Serializer target is exactly `providers.decisions_wire.serialize_synthetic_decisions`. Lookup binds to prepared-run response access; rendering uses the shared bounded template compiler. Planning/commitment state is per call; it creates no provider client. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "11d437296a6888e0b2602c1e1bc486f2ab6b2525ef5148eab2f88c9a0e4584be",
+        "targets": [
+          "src/judgmentllm/preparation/__init__.py",
+          "src/judgmentllm/preparation/capture.py",
+          "src/judgmentllm/preparation/decisions.py",
+          "src/judgmentllm/preparation/index.py",
+          "src/judgmentllm/preparation/session.py",
+          "src/judgmentllm/prompts.py",
+          "src/judgmentllm/providers/decisions_wire.py"
+        ]
+      },
+      "src/judgmentllm/decisions_types.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B.** Exactly two allowed attributes dispatch to `decisions/transport.py`. Unknown names fail. The allowed-name set is process-local mutable state, not filesystem/shared authority. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "4d4f26d5e84956978c3ad49217828ed450423e10d32445d46a700d73bc1b9de9",
+        "targets": [
+          "src/judgmentllm/decisions/transport.py"
+        ]
+      },
+      "src/judgmentllm/evidence/__init__.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B; \u2205.** Eagerly reexports `_base`, order, reasoning, scope, and usage symbols. No extraction call runs during its own initialization. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "ea948f439bc6e2d1c3784684325d9959835c347b22f8e1833eadd13cddd886b8",
+        "targets": []
+      },
+      "src/judgmentllm/evidence/_base.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B; \u2205 beyond Pydantic handlers. P.** Schema/validation hooks sanitize failures. The bounded 256-entry process-local cache stores field TypeAdapters, not submitted values or validation results. File-parsing convenience paths are rejected. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "66eb1d81dc373c60eaf4827a26be5736957da25be0bedd677cfb0f9e422f2824",
+        "targets": []
+      },
+      "src/judgmentllm/evidence/assessment.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B; \u2205. P.** Diagnostic-version and consistency validators operate on supplied evidence fields. No provider selection, file access, or client acquisition. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "8d88a822c9caff2f3ecf6e7ab22d48a144bd566dca5f93313d5f61b058fbb59b",
+        "targets": []
+      },
+      "src/judgmentllm/evidence/order.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B. P.** Commitment versions select `output_commitments`, `transport`, `production_transport`, `anthropic_transport`, `gemini_transport`, or `vertex_transport` concrete models. Bounded output parsing produces metadata without retaining raw output globally. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "d4dd2086fe1e818583ddfe7e00a4826d8008fc400b3369e28dfbd6a0943c4d4a",
+        "targets": [
+          "src/judgmentllm/anthropic_transport.py",
+          "src/judgmentllm/gemini_transport.py",
+          "src/judgmentllm/output_commitments.py",
+          "src/judgmentllm/production_transport.py",
+          "src/judgmentllm/transport.py",
+          "src/judgmentllm/vertex_transport.py"
+        ]
+      },
+      "src/judgmentllm/evidence/reasoning.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B; \u2205. P.** Fixed field-kind mapping, retention authorization, and metadata iteration only. No artifact write or credential/client action occurs here. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "a271fe404c23706fdee7ec2b2b5cd30696de8b597e630c68289e803aa695dca6",
+        "targets": []
+      },
+      "src/judgmentllm/evidence/scope.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B; \u2205. P.** Generation/provenance scope validators compare typed fields and dates. Qualification labels are data; this module starts no qualification. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "71935c0a5203cd5a9543625d3dea56bc8013f2e8eafc89e1c341860ec5df4cea",
+        "targets": []
+      },
+      "src/judgmentllm/evidence/usage.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B; \u2205. P.** Provider-specific interpretation uses local functions and fixed semantics tables. `getattr` targets fixed normalized counters or typed counter literals; no computed module dispatch. Usage/context objects are invocation data. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "4483522e6610c2f824135db2748b86a5733330f924cda1264ad7b3374c7b47a3",
+        "targets": []
+      },
+      "src/judgmentllm/execution/__init__.py": {
+        "reason": "Independent whole-module evidence: durability.md sha256:77cecc2251c78898d2825d16b6975ca46a097073362d5c877301f79e94b00502. **Reviewed. Additional targets `[]`.** Only a literal core re-export and `__all__`; no independent initialization, resource ownership or implicit dispatch. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "25ef807aa6926ff50f6a2c704f81bb23334824a53a47326b0ea78f683dffa046",
+        "targets": []
+      },
+      "src/judgmentllm/execution/cancellation.py": {
+        "reason": "Independent whole-module evidence: durability.md sha256:77cecc2251c78898d2825d16b6975ca46a097073362d5c877301f79e94b00502. **Reviewed. Additional targets `[]`.** Calls explicit repository/ownership dependencies. Cancellation records conservative local states; `cancel_run` releases ownership in `finally` at line 75. No remote cancellation operation. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "75bede4bee9a23eef334faa867a2d1d4a1fbed76ddd91c3b8dab93efb4e2a465",
+        "targets": []
+      },
+      "src/judgmentllm/execution/core.py": {
+        "reason": "Independent whole-module evidence: durability.md sha256:77cecc2251c78898d2825d16b6975ca46a097073362d5c877301f79e94b00502. **Reviewed. Additional targets: study adapters.** Protocol methods and optional cancellation handoffs dispatch to those concrete instances for these placements. Dataclass initialization is local; queues and retained handoffs are bounded per invocation. Lines 353\u2013366 drain cancellation/closure and shut down the I/O executor. Adapter closure remains caller-owned. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "e6d17b7820c227435f1a74c4fe811a826eb273980b2ca3f572a19e48bd1b1a8f",
+        "targets": [
+          "src/judgmentllm/providers/anthropic.py",
+          "src/judgmentllm/providers/decisions_mock.py",
+          "src/judgmentllm/providers/gemini.py",
+          "src/judgmentllm/providers/mock.py",
+          "src/judgmentllm/providers/openai.py",
+          "src/judgmentllm/providers/vertex.py"
+        ]
+      },
+      "src/judgmentllm/execution/durable_evidence.py": {
+        "reason": "Independent whole-module evidence: durability.md sha256:77cecc2251c78898d2825d16b6975ca46a097073362d5c877301f79e94b00502. **Reviewed. Additional targets: `gemini_transport.py`, `vertex_transport.py`, `gemini_assessment.py`, `vertex_assessment.py`.** Concrete accesses occur at lines 196\u2013197 and 315\u2013359. Authorization precedes submission; safe extraction precedes retained response publication. Decisions forwarding facts use explicit imports at line 438 and remain separate from acceptance. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "600420814b745725e929520c7886dbc7935a02a481418bc91f85ad8911e2a5c6",
+        "targets": [
+          "src/judgmentllm/gemini_assessment.py",
+          "src/judgmentllm/gemini_transport.py",
+          "src/judgmentllm/vertex_assessment.py",
+          "src/judgmentllm/vertex_transport.py"
+        ]
+      },
+      "src/judgmentllm/execution/evidence.py": {
+        "reason": "Independent whole-module evidence: durability.md sha256:77cecc2251c78898d2825d16b6975ca46a097073362d5c877301f79e94b00502. **Reviewed. Additional targets `[]`.** The optional authorization is treated as a typed value, not a callable/import target. Capture, identity and positive-retention restrictions are checked before immutable store-local publication. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "bd7968daf973b53d75bfcbf9320eadfd970ed6970bdd71a8a232b97eb938e6a1",
+        "targets": []
+      },
+      "src/judgmentllm/execution/exports.py": {
+        "reason": "Independent whole-module evidence: durability.md sha256:77cecc2251c78898d2825d16b6975ca46a097073362d5c877301f79e94b00502. **Reviewed. Additional targets `[]`.** Four serializers are explicitly imported and selected by closed format/view/task branches. Export staging is inside the run directory, fsynced and context-cleaned; publication uses a fixed result high-water mark. R CSV generation does not launch R. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "b67ee8e4ff4758da8296d64d803ee2a2a2ad1ed7ede664d9a914ccee672bb738",
+        "targets": []
+      },
+      "src/judgmentllm/execution/processing.py": {
+        "reason": "Independent whole-module evidence: durability.md sha256:77cecc2251c78898d2825d16b6975ca46a097073362d5c877301f79e94b00502. **Reviewed. Additional target: `execution/session.py`.** The member-checkpoint callback comes from session processing. Dataclass creation, member indexing and normalization are in-memory; validation/normalization dependencies are explicit. No independent files, clients or processes. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "5285732afb16470fe3f219dd04961119750349e50a6f8decd32a85b5d90b3d32",
+        "targets": [
+          "src/judgmentllm/execution/session.py"
+        ]
+      },
+      "src/judgmentllm/execution/retry.py": {
+        "reason": "Independent whole-module evidence: durability.md sha256:77cecc2251c78898d2825d16b6975ca46a097073362d5c877301f79e94b00502. **Reviewed. Additional targets: study adapters and `preparation/decisions.py`.** These bound capability/preparation calls and the prepared-run subclass. Decisions subset/transport imports are explicit at lines 119 and 452. The default policy is a frozen model; durable retry authorization, lineage and prior outcomes are checked. This module does not submit provider work. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "20b01c35c31470ab38d008edb63d68ace098b39c1413e0313f789e4ec71e1567",
+        "targets": [
+          "src/judgmentllm/preparation/decisions.py",
+          "src/judgmentllm/providers/anthropic.py",
+          "src/judgmentllm/providers/decisions_mock.py",
+          "src/judgmentllm/providers/gemini.py",
+          "src/judgmentllm/providers/mock.py",
+          "src/judgmentllm/providers/openai.py",
+          "src/judgmentllm/providers/vertex.py"
+        ]
+      },
+      "src/judgmentllm/execution/session.py": {
+        "reason": "Independent whole-module evidence: durability.md sha256:77cecc2251c78898d2825d16b6975ca46a097073362d5c877301f79e94b00502. **Reviewed. Additional targets: study adapters, `study/execution.py`, `gemini_transport.py`, `vertex_transport.py`; `providers/decisions_mock.py` for the V4 parser branch.** Study attempt filtering occurs at line 132; lazy prepared types at lines 288\u2013289; Decisions parser dispatch at line 1074. Initialization failure closes resources. Close ordering releases prepared handles, executor ownership and bootstrap connection. Completed results are verified/repaired rather than forwarded again. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "8b6e45cfc5528f682545a4b2328b198779120bb93721bc158304f0c14a39376d",
+        "targets": [
+          "src/judgmentllm/gemini_transport.py",
+          "src/judgmentllm/providers/anthropic.py",
+          "src/judgmentllm/providers/decisions_mock.py",
+          "src/judgmentllm/providers/gemini.py",
+          "src/judgmentllm/providers/mock.py",
+          "src/judgmentllm/providers/openai.py",
+          "src/judgmentllm/providers/vertex.py",
+          "src/judgmentllm/study/execution.py",
+          "src/judgmentllm/vertex_transport.py"
+        ]
+      },
+      "src/judgmentllm/gemini_assessment.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P; targets []**. Versioned component/diagnostic models with validation decorators. No I/O; text is transient and excluded from normal serialization. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "25d3b3bc75a5eea66ac4097a57c5051a830aa3b246a37205b7c0946ec7914191",
+        "targets": []
+      },
+      "src/judgmentllm/gemini_diagnostics.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; GSDK/H**. Targets `providers/gemini.py` and `gemini_transport.py::model_path`. Explicit one-read network path; bounded retention. Cleanup handles both an assigned SDK client and an HTTP client left by failed construction, then resets logging context. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "7c1d90e1ac598abbc6e1330eee82a6be1edccd9829164a6bdca153123e102a44",
+        "targets": [
+          "src/judgmentllm/gemini_transport.py",
+          "src/judgmentllm/providers/gemini.py"
+        ]
+      },
+      "src/judgmentllm/gemini_prompts.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P; L**. Concrete commitment target `gemini_transport.py`; shared rendering and schema validation only. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "5f6f1f879b04e7343effc898f84a83dc50a590fdea28b6d70abb9e72b972a885",
+        "targets": [
+          "src/judgmentllm/gemini_transport.py",
+          "src/judgmentllm/native_prompts.py",
+          "src/judgmentllm/preparation/capture.py",
+          "src/judgmentllm/preparation/session.py"
+        ]
+      },
+      "src/judgmentllm/gemini_qualification.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P/GSDK metadata**. Lazy report/execute target `gemini_qualification_execution.py`. Builds and verifies caller-directory plans/preparation files; reconstruction lookup is a local fixed response map. `main()` is defined, not run on import. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "61af0e1690338a4766ec1a1602194edcb6b5689fce00574ba42a680a67f9428b",
+        "targets": [
+          "src/judgmentllm/gemini_qualification_execution.py"
+        ]
+      },
+      "src/judgmentllm/gemini_qualification_execution.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P/GSDK/H**. Lazy targets `execution/__init__.py`, `execution/retry.py`, `preparation/__init__.py`, `providers/gemini.py`, `transport.py`. Durable intents and SQLite are directory-relative; connections close and execution adapters close in `finally`. This callable executor is not authorized by its presence. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "85faa13b36b2ddd0788f3b6636dd4785fcc0e19855ca4e2c1bb54ea7bd1f8206",
+        "targets": [
+          "src/judgmentllm/execution/__init__.py",
+          "src/judgmentllm/execution/retry.py",
+          "src/judgmentllm/preparation/__init__.py",
+          "src/judgmentllm/providers/gemini.py",
+          "src/judgmentllm/transport.py"
+        ]
+      },
+      "src/judgmentllm/gemini_registry.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P; targets []**. Import constructs one fixed validated profile; lookup returns a revalidated value. No runtime registry writer or external operation. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "7ed53376771b7ee3f73303a169e8309a57b4c166785a3222ee4ca7e9c0d8c209",
+        "targets": []
+      },
+      "src/judgmentllm/gemini_transport.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P; L/S**. Targets `gemini_prompts.py` and `providers/google_schema.py` through `native_schema_v2.py`. Builds and validates exact body/commitment values; no SDK construction. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "f6bb4d913a3766a0d54c209e9c648bb1ab2c5ebeabc5b2ad91ffbb02c0a95c59",
+        "targets": [
+          "src/judgmentllm/gemini_prompts.py",
+          "src/judgmentllm/native_prompts.py",
+          "src/judgmentllm/preparation/capture.py",
+          "src/judgmentllm/preparation/session.py",
+          "src/judgmentllm/providers/google_schema.py",
+          "src/judgmentllm/study/admission.py",
+          "src/judgmentllm/study/execution.py"
+        ]
+      },
+      "src/judgmentllm/gemini_types.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; targets G**. Whole literal map reviewed. Import initializes the map; attribute access performs the listed normal imports and rejects unknown names. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "90295fdeb09e3f4f6d18eee913fa6982a152c91ecf0386766ed7b7a2d2dee8c8",
+        "targets": [
+          "src/judgmentllm/gemini_assessment.py",
+          "src/judgmentllm/gemini_prompts.py",
+          "src/judgmentllm/gemini_transport.py",
+          "src/judgmentllm/preparation/manifest.py"
+        ]
+      },
+      "src/judgmentllm/gemini_usage.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P; targets []**. Fixed counter mapping through `evidence/usage.py`; no inferred totals, mutable service state, or I/O. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "3560651f82e3c583347dc4d83b45d773199ab034701a1e5cf4d023e3ba8986a0",
+        "targets": []
+      },
+      "src/judgmentllm/generation.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B; \u2205. P.** Capability defaults and bounds/combination validators only. Default model construction acquires no external resource. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "0e966b9aedc8010166a70d6c6dd50ca3b11f32d2f1e2109f6157e295c84d5694",
+        "targets": []
+      },
+      "src/judgmentllm/io.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B. P.** Typed record/result validation is the dispatch boundary. Readers own generator-scoped streams; writers close streams but can leave partial caller-selected output. CSV parsing monotonically raises the process-wide field-size limit without restoring it. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "29bab64ccdc0b4a116ce0624227d4299d5ef1e531e898a7f3a91c3fc4eb2cf80",
+        "targets": []
+      },
+      "src/judgmentllm/keyring.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B; launcher additions pending.** Explicit calls can run `gdbus`/`secret-tool` with ten-second subprocess bounds. Credential context restores environment/SIGTERM handler in `finally`. `main` can replace the process with CLI or `judgmentllm.study`; import alone does not call it. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "ab000234450204920d7d748434da18c7cb6088470aa7a7d0c91ed2121dec3f61",
+        "targets": [
+          "src/judgmentllm/cli.py",
+          "src/judgmentllm/study/__main__.py"
+        ]
+      },
+      "src/judgmentllm/lifecycle.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B. P.** Adapter targets are OpenAI, Anthropic, Gemini, Vertex, Mock, and MockDecisions classes. Preparation/retry threads are shielded and awaited on cancellation; normal execution/resume closes adapters through `_close_adapter`. Stock production constructors leave clients uncreated before readiness. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "f932bbe508a0bfa040ba98cf5b574b903c5a49d3180d610eebb8c9eac7f8b4f9",
+        "targets": [
+          "src/judgmentllm/providers/anthropic.py",
+          "src/judgmentllm/providers/decisions_mock.py",
+          "src/judgmentllm/providers/gemini.py",
+          "src/judgmentllm/providers/mock.py",
+          "src/judgmentllm/providers/openai.py",
+          "src/judgmentllm/providers/vertex.py"
+        ]
+      },
+      "src/judgmentllm/lifecycle_models.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B; \u2205. P.** Public lifecycle records, error metadata, and retry-membership validation only. Progress is a callback type, not an initialized worker or process. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "5a649bff78ecb494583cca8301e195803ef32c888cf8e6553cb403ef378e22f7",
+        "targets": []
+      },
+      "src/judgmentllm/models.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B; \u2205. P.** Regex/type initialization and identifier/category/order validators only. Ambiguous numeric categories can emit a warning. Model instances may be mutable; this module supplies no shared run-state container. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "756764e6ccaf4021abda5f4871988288b3c304a68bfff7b6fa5a3f32c75aae5b",
+        "targets": []
+      },
+      "src/judgmentllm/native_prompts.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B. P/J.** Targets are shared prompt helpers/compiler and caller-supplied record lookup. Produces text/schema objects per call; no provider submission or durable output ownership. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "95666e798c4c94f187ef490ae1e5080f80dfd0551d7952d5b0d05df9f81fcf71",
+        "targets": [
+          "src/judgmentllm/preparation/__init__.py",
+          "src/judgmentllm/preparation/capture.py",
+          "src/judgmentllm/preparation/decisions.py",
+          "src/judgmentllm/preparation/index.py",
+          "src/judgmentllm/preparation/session.py",
+          "src/judgmentllm/prompts.py"
+        ]
+      },
+      "src/judgmentllm/native_schema.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B. P.** Projection validator lazily calls `providers.openai_schema._projection_parts`. Source snapshot temporarily changes warning filters under `catch_warnings`; projection/hash data remain local. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "b75da41177fa6e4cfb714735cd7bffa3ea65c3465150e4615ea3037155b51ef4",
+        "targets": [
+          "src/judgmentllm/providers/openai_schema.py"
+        ]
+      },
+      "src/judgmentllm/native_schema_v2.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B. P.** Frozen route records select Google, Anthropic, Together, or Ollama schema modules\u2019 `_projection_parts`. Module initialization constructs metadata, not SDK clients. Projection validators independently reconstruct representation. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "b6a4df9019928f943e73604306814c4bb39ed593c75d72e9c37bed013061d169",
+        "targets": [
+          "src/judgmentllm/providers/anthropic_schema.py",
+          "src/judgmentllm/providers/google_schema.py",
+          "src/judgmentllm/providers/ollama_schema.py",
+          "src/judgmentllm/providers/together_schema.py"
+        ]
+      },
+      "src/judgmentllm/native_selection.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B. P.** Both stock implementations call `providers.openai_schema.project_openai_schema`. Private injected translators are a caller-review boundary, not blanket-authorized by this module. Catalogs are frozen records; projection sink is per call. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "45c74bb4dc5e930e5463e17c1a605297eaa4f2ab94da8eb3b5b7c620c920c579",
+        "targets": [
+          "src/judgmentllm/providers/openai_schema.py"
+        ]
+      },
+      "src/judgmentllm/native_selection_v2.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B. P.** Concrete projector is `native_schema_v2.project_native_schema_v2`; default catalog contains finite route records. Profile/decision validation changes no remote or durable state. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "d1b5fefc46d2c4e86a9d9d504ee0bca7f31c70ff1feea87146dbc5f32a91d645",
+        "targets": [
+          "src/judgmentllm/native_schema_v2.py"
+        ]
+      },
+      "src/judgmentllm/openai_diagnostics.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68; cleanup-code-rereview-2fe2821.md sha256:ebbec6716eb221f3c27cfb3d132e5f3cc74d47b65a34ccdac171e4ff999b8b72. Scoped whole-module cleanup successor rereview passed; prior cleanup holds closed, with unchanged finite targets. **C; O**. Target `providers/openai.py`. Explicit one-read diagnostic, bounded body, no pagination. Normal cleanup resets logging context; H1 applies to failed SDK construction. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "f4530584e523d4cb03b58ac2bc7c4fc3885edf5ca1dd1cb8ca8b4993d13ca380",
+        "targets": [
+          "src/judgmentllm/providers/openai.py"
+        ]
+      },
+      "src/judgmentllm/output_commitments.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B. P.** Lazy consistency targets: `execution.processing._request_contract` and `preparation.session.RequestDependency`. Remaining work constructs/validates canonical contracts, orderings, and digests in memory. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "6391e6f04ccc2770eb1823cb2d033b5d439df57a38b94c27cb30f14322f54cf8",
+        "targets": [
+          "src/judgmentllm/execution/processing.py",
+          "src/judgmentllm/preparation/session.py"
+        ]
+      },
+      "src/judgmentllm/output_contracts.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B; \u2205 beyond imported result/error validators. P.** Local JSON hooks reject duplicate/nonfinite data; schema and output validation operate on supplied values. No module-name, client, or storage dispatch. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "d0719e8b92f0aa730da0f7a43094cf7235bce8571599a8ae3b7cf7194b83ddbd",
+        "targets": []
+      },
+      "src/judgmentllm/persistence/artifacts.py": {
+        "reason": "Independent whole-module evidence: durability.md sha256:77cecc2251c78898d2825d16b6975ca46a097073362d5c877301f79e94b00502. **Reviewed. Additional targets `[]`.** Dispatch stays within explicit helpers and stdlib filesystem calls. Root/path checks, digest verification and non-replacing hard-link publication remain intact. The context manager removes only its staging file; process-death leftovers are inert, unreferenced artifacts. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "b5fe99454aab742d3d284fefd393413f06297145fac6f692979d46dafbae612e",
+        "targets": []
+      },
+      "src/judgmentllm/persistence/decisions_invocations.py": {
+        "reason": "Independent whole-module evidence: durability.md sha256:77cecc2251c78898d2825d16b6975ca46a097073362d5c877301f79e94b00502. **Reviewed. Additional targets `[]`.** Validator reflection reads fixed fields of explicit usage/identity models. Bounded canonical receipts record forwarding without inventing observation or failure acceptance. Reads and publication stay inside the artifact store. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "26838666e6be46caf8ecb83227ccc92363c412571e9141b7eee799f99ea73c53",
+        "targets": []
+      },
+      "src/judgmentllm/persistence/evidence.py": {
+        "reason": "Independent whole-module evidence: durability.md sha256:77cecc2251c78898d2825d16b6975ca46a097073362d5c877301f79e94b00502. **Reviewed. Additional targets: `gemini_assessment.py`, `vertex_assessment.py`.** Pydantic diagnostic-field construction resolves these types. Decorated validators and the frozen verified-commit dataclass were examined. The authority sentinel is process-local; verified receipt/artifact links precede owner-checked append-only commits and usage revisions. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "a4b531e120b2414411909677874623fd8c25119b0f7f0173e7ceb4ba5f254dfc",
+        "targets": [
+          "src/judgmentllm/gemini_assessment.py",
+          "src/judgmentllm/vertex_assessment.py"
+        ]
+      },
+      "src/judgmentllm/persistence/generation.py": {
+        "reason": "Independent whole-module evidence: durability.md sha256:77cecc2251c78898d2825d16b6975ca46a097073362d5c877301f79e94b00502. **Reviewed. Additional targets `[]`.** Serializer and validators call explicit configuration/planning/hash dependencies. Sparse requested settings and compatibility checks are in-memory; no credentials, clients, files or environment-derived dispatch. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "bedb396907099c335bee20e75c84aad601942045a4272a36d661535af20a5a32",
+        "targets": []
+      },
+      "src/judgmentllm/persistence/hashing.py": {
+        "reason": "Independent whole-module evidence: durability.md sha256:77cecc2251c78898d2825d16b6975ca46a097073362d5c877301f79e94b00502. **Reviewed. Additional targets `[]`.** Known repository models revalidate through explicitly imported `io._revalidate_record`. Recursive canonicalization accepts finite JSON values and validated models; hashes and temporary containers are local. No loader or filesystem dispatch. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "0b44d2323eebccd5273d8e2bf299f8cee5d5fb7d03e0fbcd27ce5421b8cd56f4",
+        "targets": []
+      },
+      "src/judgmentllm/persistence/models.py": {
+        "reason": "Independent whole-module evidence: durability.md sha256:77cecc2251c78898d2825d16b6975ca46a097073362d5c877301f79e94b00502. **Reviewed. Additional targets `[]`.** Initialization defines Pydantic classes, validators, aliases and transition maps. UTC default factories execute when records are constructed. Maps are process-local; no mutation by the reviewed paths, resource creation or implicit imports were found. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "4efc63164e85f9e208311658cc22564e2b442aec626a511c598c39a646f7f0b0",
+        "targets": []
+      },
+      "src/judgmentllm/persistence/ownership.py": {
+        "reason": "Independent whole-module evidence: durability.md sha256:77cecc2251c78898d2825d16b6975ca46a097073362d5c877301f79e94b00502. **Reviewed. Additional targets `[]`.** Platform dispatch is stdlib `fcntl` versus `msvcrt`. Permanent store-local locks use noninheritable descriptors, owner tokens and a fork-process guard. Release never unlinks the lock. `socket.gethostname()` obtains diagnostics; it does not reserve a port. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "2017993071a0a45c604d60e11eab8decfef745ad14a0e794ac54d0f5e14faf10",
+        "targets": []
+      },
+      "src/judgmentllm/persistence/presentations.py": {
+        "reason": "Independent whole-module evidence: durability.md sha256:77cecc2251c78898d2825d16b6975ca46a097073362d5c877301f79e94b00502. **Reviewed. Additional targets `[]`.** Explicit models and repository methods validate source/member identities and perform ordered SQL operations. Connections and ownership remain with the caller; no independent handles or provider dispatch. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "1b2d46cdc98140d577e6b70534027d11e42584ba319cbb7936d051ef97a555cd",
+        "targets": []
+      },
+      "src/judgmentllm/persistence/receipts.py": {
+        "reason": "Independent whole-module evidence: durability.md sha256:77cecc2251c78898d2825d16b6975ca46a097073362d5c877301f79e94b00502. **Reviewed. Additional targets `[]`.** Version dispatch selects local acknowledgment classes; the JSON parser is an explicit lazy import. Bounded reads verify canonical bytes, submission identity and retained objects. Named references are immutable and store-local. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "dc39ea8e7ff66e9f03bb4abcf41cbe83c582cc6b4d034a8bac6d8d3b33c41936",
+        "targets": []
+      },
+      "src/judgmentllm/persistence/repository.py": {
+        "reason": "Independent whole-module evidence: durability.md sha256:77cecc2251c78898d2825d16b6975ca46a097073362d5c877301f79e94b00502. **Reviewed. Additional targets `[]`.** Evidence delegation and version-specific seal validation use explicit imports. Table dispatch is a fixed map. Connections, transaction nesting and ownership state are instance-local. Writable WAL, ordinary read-only coordination, private preservation snapshots and their cleanup were examined. Parent initializer reconciliation remains listed below. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "b27e681865db65c2c3821bf7ae2b4661c34b71000a1d1f5a9ded79b10fb92779",
+        "targets": []
+      },
+      "src/judgmentllm/persistence/schema.py": {
+        "reason": "Independent whole-module evidence: durability.md sha256:77cecc2251c78898d2825d16b6975ca46a097073362d5c877301f79e94b00502. **Reviewed. Additional targets `[]`.** Import-time work generates finite DDL/trigger strings and checksums only. Database operations require the caller\u2019s connection. Schema initialization/verification retains transaction rollback, version/checksum checks, immutable records and evidence constraints. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "79039d78c7d433426db4e0c1324c027ec72bb4a3f46c7a3dc44f041b63970102",
+        "targets": []
+      },
+      "src/judgmentllm/persistence/sources.py": {
+        "reason": "Independent whole-module evidence: durability.md sha256:77cecc2251c78898d2825d16b6975ca46a097073362d5c877301f79e94b00502. **Reviewed. Additional targets `[]`.** Decorated validators use explicit JSON and pair models. File-generation metadata is restricted to numeric identity fields; response index metadata cannot retain response content. The module itself performs no file I/O. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "04ad2fb1c9d62b43318ee3879f4b1967886ab2a40bad51f58abffd53cce5303d",
+        "targets": []
+      },
+      "src/judgmentllm/persistence/transport_receipts.py": {
+        "reason": "Independent whole-module evidence: durability.md sha256:77cecc2251c78898d2825d16b6975ca46a097073362d5c877301f79e94b00502. **Reviewed. Additional targets: `gemini_transport.py`, `vertex_transport.py`, `decisions/transport.py`.** Commitment versions select concrete models at lines 159\u2013174. Bounded receipt reads and directory traversal remain inside the run store; iterators close directory streams and reject unexpected entries. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "52c66031b03f02e30c2f3e0196f37cd4813b3da7db23c6684be78ef1766913f1",
+        "targets": [
+          "src/judgmentllm/decisions/transport.py",
+          "src/judgmentllm/gemini_transport.py",
+          "src/judgmentllm/vertex_transport.py"
+        ]
+      },
+      "src/judgmentllm/planning.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B. P.** Lazy targets include MockAdapter capabilities, cache-policy validation, and schema selection. Reads installed OpenAI metadata and source/template iterators where needed; stable IDs and grouping are local computations, with no submission. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "efeba5a9e4622e3ee636a0d5728d35ceab0af1883ff514ab79cbce1fea3d1c1d",
+        "targets": [
+          "src/judgmentllm/cache_policy.py",
+          "src/judgmentllm/native_selection.py",
+          "src/judgmentllm/native_selection_v2.py",
+          "src/judgmentllm/providers/mock.py"
+        ]
+      },
+      "src/judgmentllm/preparation/__init__.py": {
+        "reason": "Independent whole-module evidence: durability.md sha256:77cecc2251c78898d2825d16b6975ca46a097073362d5c877301f79e94b00502. **Reviewed. Additional targets: transport owners, study adapters for supplied capability resolvers, `preparation/manifest.py`, `preparation/decisions.py`.** Manifest/context dispatch and V4 reopening are concrete. Source hashing and configuration comparisons remain real reads. Ownership/ExitStack protect preparation; failure paths close the prepared session or repository. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "374e62a120e9ed8b8a8fe4f6facb81ee2a3874dfc54397429e3fd48f865fa0a1",
+        "targets": [
+          "src/judgmentllm/anthropic_transport.py",
+          "src/judgmentllm/gemini_transport.py",
+          "src/judgmentllm/preparation/decisions.py",
+          "src/judgmentllm/preparation/manifest.py",
+          "src/judgmentllm/production_transport.py",
+          "src/judgmentllm/providers/anthropic.py",
+          "src/judgmentllm/providers/decisions_mock.py",
+          "src/judgmentllm/providers/gemini.py",
+          "src/judgmentllm/providers/mock.py",
+          "src/judgmentllm/providers/openai.py",
+          "src/judgmentllm/providers/vertex.py",
+          "src/judgmentllm/transport.py",
+          "src/judgmentllm/vertex_transport.py"
+        ]
+      },
+      "src/judgmentllm/preparation/capture.py": {
+        "reason": "Independent whole-module evidence: durability.md sha256:77cecc2251c78898d2825d16b6975ca46a097073362d5c877301f79e94b00502. **Reviewed. Additional targets: `preparation/__init__.py`, `preparation/index.py`.** These bound the supplied checkpoint, memory-source and record-reader callbacks. Builder/dataclass state is per instance. Sources are read and independently verified; staging uses the caller\u2019s ExitStack and owned artifact directory. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "95268c11fc16b7c6ba0ada71b479c28a3c26aa4c092f9aa534023fff9490db8e",
+        "targets": [
+          "src/judgmentllm/preparation/__init__.py",
+          "src/judgmentllm/preparation/index.py"
+        ]
+      },
+      "src/judgmentllm/preparation/decisions.py": {
+        "reason": "Independent whole-module evidence: durability.md sha256:77cecc2251c78898d2825d16b6975ca46a097073362d5c877301f79e94b00502. **Reviewed. Additional targets `[]`.** Decisions planning/rendering and `MockDecisionsAdapter` are literal imports, not inferred provider names. Its default mock ledger is beneath the supplied store; ledger initialization closes its SQLite connection. V4 indexing, retry ancestry, source verification, sealing and failure cleanup were examined. V4 execution is outside the two selected tests. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "cb058dce5acee2256fd8e75db90704e596ad107d5c23a1e5b3046f7fe8727d63",
+        "targets": []
+      },
+      "src/judgmentllm/preparation/freezing.py": {
+        "reason": "Independent whole-module evidence: durability.md sha256:77cecc2251c78898d2825d16b6975ca46a097073362d5c877301f79e94b00502. **Reviewed. Additional targets `[]`.** Linux uses stat/fstat and bounded hashing. Windows has one process-local cached callable loading `kernel32.GetFileInformationByHandleEx` through stdlib ctypes/msvcrt. That native identity belongs to the OS/runtime evidence, not `uv.lock`. Opened probe/source handles are context-managed. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "108a655a14ae755f0535c1392cfc043e480f39d87ce800186c2c6412c80c5c13",
+        "targets": []
+      },
+      "src/judgmentllm/preparation/index.py": {
+        "reason": "Independent whole-module evidence: durability.md sha256:77cecc2251c78898d2825d16b6975ca46a097073362d5c877301f79e94b00502. **Reviewed. Additional targets `[]`.** Regex/model initialization and JSONL/CSV parser branches are explicit. The imported CSV helper monotonically raises a process-wide field limit without restoring it; it creates no shared-host state. Streams remain caller-owned. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "14f36a35c1fd6850bb7676e6c015c83dab97447e894b06779eee30480ac41eb2",
+        "targets": []
+      },
+      "src/judgmentllm/preparation/manifest.py": {
+        "reason": "Independent whole-module evidence: durability.md sha256:77cecc2251c78898d2825d16b6975ca46a097073362d5c877301f79e94b00502. **Reviewed. Additional targets `[]`.** All eight manifest variants are local concrete classes. Validators, serializers and TypeAdapter handlers use explicit field annotations and fixed JSON decoders. No provider-name loading, clients, files or environment inspection. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "f8f5a816f1a25394053ae966427f135a91033b9a1a7712f1d757ce39fb3a4096",
+        "targets": []
+      },
+      "src/judgmentllm/preparation/native.py": {
+        "reason": "Independent whole-module evidence: durability.md sha256:77cecc2251c78898d2825d16b6975ca46a097073362d5c877301f79e94b00502. **Reviewed. Additional targets: transport owners.** `prepare_request` returns their concrete wire objects; `content_artifacts()` executes those implementations. Initial request/task/attempt identities and transport-index comparisons remain intact. Publication uses owned stores and transactions; this module does not submit SDK calls. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "d5166ced969403018c71d9e17ac9d4490c63755745a7d2032159caa1b48fe1a7",
+        "targets": [
+          "src/judgmentllm/anthropic_transport.py",
+          "src/judgmentllm/gemini_transport.py",
+          "src/judgmentllm/production_transport.py",
+          "src/judgmentllm/transport.py",
+          "src/judgmentllm/vertex_transport.py"
+        ]
+      },
+      "src/judgmentllm/preparation/records.py": {
+        "reason": "Independent whole-module evidence: durability.md sha256:77cecc2251c78898d2825d16b6975ca46a097073362d5c877301f79e94b00502. **Reviewed. Additional targets `[]`.** The reader declaration is a type alias; helpers hash indexes, construct locators and validate explicit response/pair models. No callback invocation, resource allocation or loader behavior. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "7d44674162dad8ac445187cc1a7530f0a601ed0c3122ede66d7c47318b94201a",
+        "targets": []
+      },
+      "src/judgmentllm/preparation/session.py": {
+        "reason": "Independent whole-module evidence: durability.md sha256:77cecc2251c78898d2825d16b6975ca46a097073362d5c877301f79e94b00502. **Reviewed. Additional targets: transport owners, `gemini_prompts.py`, `vertex_prompts.py`, `decisions/transport.py`, `preparation/manifest.py`; supplied readers resolve through preparation/index code.** Concrete dispatch occurs at lines 478, 566, 688 and 1013\u20131035. Verified-context caches are instance-local and source guards precede reuse. ExitStack closes all retained source handles and the repository. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "2993c3c88acc3ea6641ee0cb4279ea3b7717f59750cd58ca25c6edc0370cd151",
+        "targets": [
+          "src/judgmentllm/anthropic_transport.py",
+          "src/judgmentllm/decisions/transport.py",
+          "src/judgmentllm/gemini_prompts.py",
+          "src/judgmentllm/gemini_transport.py",
+          "src/judgmentllm/preparation/__init__.py",
+          "src/judgmentllm/preparation/index.py",
+          "src/judgmentllm/preparation/manifest.py",
+          "src/judgmentllm/production_transport.py",
+          "src/judgmentllm/transport.py",
+          "src/judgmentllm/vertex_prompts.py",
+          "src/judgmentllm/vertex_transport.py"
+        ]
+      },
+      "src/judgmentllm/presentation.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B; \u2205. P.** Presentation-version alias and exact-integer validator only. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "e59cf4a40cce82602a2e34c0a889e4e7a87ee6faeb79c66071d9dcab9272f641",
+        "targets": []
+      },
+      "src/judgmentllm/presentation_blocks.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B; \u2205.** Rubric, criterion, essay, and pairwise instruction string construction only; ordering comes from supplied typed records. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "be90a1f52e4e780a1bc961be3d3279b08f906a2b8fc57122575a14805d320eab",
+        "targets": []
+      },
+      "src/judgmentllm/preview.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B.** Concrete production renderer/context alternatives cover all four providers; legacy uses `request_rendering`. Decisions preview owns a temporary preparation context. Lookup callbacks are local dictionaries/functions or prepared-run accessors. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "d974acd9c576e45635f3110c2e00261467da9eabb7b9bcc1084f5a2d1e162e0e",
+        "targets": [
+          "src/judgmentllm/anthropic_prompts.py",
+          "src/judgmentllm/anthropic_transport.py",
+          "src/judgmentllm/gemini_prompts.py",
+          "src/judgmentllm/gemini_transport.py",
+          "src/judgmentllm/native_prompts.py",
+          "src/judgmentllm/preparation/decisions.py",
+          "src/judgmentllm/production_prompts.py",
+          "src/judgmentllm/production_transport.py",
+          "src/judgmentllm/request_rendering.py",
+          "src/judgmentllm/transport.py",
+          "src/judgmentllm/vertex_prompts.py",
+          "src/judgmentllm/vertex_transport.py"
+        ]
+      },
+      "src/judgmentllm/production_prompts.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P; L**. Concrete commitment target `production_transport.py`; schema validation and shared rendering. No SDK/client ownership. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "35a93704f600f5c3fdb07800b71d0e05424e7b107e2a5086cbfc3a3bf9bda42a",
+        "targets": [
+          "src/judgmentllm/native_prompts.py",
+          "src/judgmentllm/preparation/capture.py",
+          "src/judgmentllm/preparation/session.py",
+          "src/judgmentllm/production_transport.py"
+        ]
+      },
+      "src/judgmentllm/production_registry.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P; targets []**. Empty fixed registry and validated lookup; no runtime registration or I/O. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "eebd4736692e667905ea4850ae32fab545d47ad6ebd1010678eb7a235d66e6db",
+        "targets": []
+      },
+      "src/judgmentllm/production_transport.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P; L/S**. Targets `production_prompts.py`, `providers/openai_schema.py`. Exact cache/service/reasoning/body/receipt validation; returned artifact bytes are published by callers. No SDK client here. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "d79d435e7b876ed85ada9f2ef0324908fe25eb0c27d506cf13bd3da31b1fa350",
+        "targets": [
+          "src/judgmentllm/native_prompts.py",
+          "src/judgmentllm/preparation/capture.py",
+          "src/judgmentllm/preparation/session.py",
+          "src/judgmentllm/production_prompts.py",
+          "src/judgmentllm/providers/openai_schema.py",
+          "src/judgmentllm/study/admission.py",
+          "src/judgmentllm/study/execution.py"
+        ]
+      },
+      "src/judgmentllm/prompts.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B; packaged-data additions pending. P/J.** Three preset names select nine finite resource paths. Template initialization uses exclusive creation. Each render builds a restricted environment; calls/attributes and unsupported AST operations are rejected. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "d40f8833b2f4fb57cf277b9d3b0ab0525baf6a3a3be77cdf094c9dc0d6f0f8fd",
+        "targets": []
+      },
+      "src/judgmentllm/provider_diagnostics.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B.** Four concrete diagnostic modules and four operation names form the dispatch set. Import defines wrappers; calling non-Vertex diagnostic implementations may acquire SDK/HTTP resources. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "5a45f682c2b712233655553752aebc64b559860ff6b0f3ddc935daf73a73b8b5",
+        "targets": [
+          "src/judgmentllm/anthropic_diagnostics.py",
+          "src/judgmentllm/gemini_diagnostics.py",
+          "src/judgmentllm/openai_diagnostics.py",
+          "src/judgmentllm/vertex_diagnostics.py"
+        ]
+      },
+      "src/judgmentllm/providers/__init__.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; targets []**. Reexports `ledger.py`, `mock.py`, and `protocol.py`; constructs no ledger or adapter. Their initialization remains part of the import closure. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "3384fc2228b125aae0680964ee3a3fcece1a8569f82954314eae5fb6ed9e103b",
+        "targets": []
+      },
+      "src/judgmentllm/providers/_assessment_schema.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P; targets []**. Local schema transformations and coverage-record construction. Nested helpers are local closures; no external callback, SDK, or I/O. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "0db809847e87eec204de556fbdbd630776f8765a5ce13ee8c8f2dd2ad7a56378",
+        "targets": []
+      },
+      "src/judgmentllm/providers/anthropic.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; A; S**. Lazy targets include `anthropic_transport.py`, `anthropic_registry.py`, `anthropic_qualification.py`, `providers/reasoning.py`. SDK imports are literal `anthropic`/`httpx2`. Instance-owned bounded handoff state; process-local persistent logging filters; response and normal client closure are explicit. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "42e5b7527c4e6dceef554c98ad23fde2b633d90c4d7420358ed767ab0de0b53f",
+        "targets": [
+          "src/judgmentllm/anthropic_qualification.py",
+          "src/judgmentllm/anthropic_registry.py",
+          "src/judgmentllm/anthropic_transport.py",
+          "src/judgmentllm/providers/reasoning.py",
+          "src/judgmentllm/study/admission.py",
+          "src/judgmentllm/study/execution.py"
+        ]
+      },
+      "src/judgmentllm/providers/anthropic_cli.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P/CLI; targets []**. Fixed presenter through `cli_controls.py`; output occurs only when called. It does not invoke diagnostics itself. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "d77037bf41e61c33d7eb315952bfb413e5b0a20ea7b3718d41e356688d960ea1",
+        "targets": []
+      },
+      "src/judgmentllm/providers/anthropic_response.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P; targets []**. Fixed Messages extraction, usage conversion, and safe-envelope checks. Module sets are read-only in these functions; no I/O/client state. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "5050200161ca0bae934dd486d7af8a419ece5218c9cba4dba6ecefb1f780dd56",
+        "targets": []
+      },
+      "src/judgmentllm/providers/anthropic_schema.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P; targets []**. Fixed call to `_assessment_schema.py::assessment_parts`, limits and provenance construction. SDK-free. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "baf49802a6574057f35cad53517a42d0c1f843feafc311e60c035748db281333",
+        "targets": []
+      },
+      "src/judgmentllm/providers/decisions_mock.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P**. Concrete targets `decisions/transport.py`, `providers/decisions_wire.py`. Constructor opens the supplied-path mock ledger; response state belongs to the instance. Shielded ledger tasks are awaited through cancellation. `receiver_observer` is an injected callback, not provider dispatch; neither selected V3 placement supplies it. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "113d94fb71a7c1b2ec6a427c7c637aa2e15706fd671fcf17e0da908d527276d0",
+        "targets": [
+          "src/judgmentllm/decisions/transport.py",
+          "src/judgmentllm/providers/decisions_wire.py"
+        ]
+      },
+      "src/judgmentllm/providers/decisions_wire.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P; targets []**. Fixed synthetic serializer/parser and imported Decisions models. No SDK, credentials, persistence, or background work. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "59457b5694f5e7d41dd363278fc420b749167ea8faee323948856718f21ec219",
+        "targets": []
+      },
+      "src/judgmentllm/providers/evidence.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P; G/V**. Facade-backed model types must remain represented. Evidence preparation computes permitted records/bytes; it does not publish files. Dataclass factories and validators introduce no client or process ownership. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "2f01249870b9438e54637f4631e85faaa2f5320cfed0a1c653a82a226dd2d720",
+        "targets": [
+          "src/judgmentllm/gemini_assessment.py",
+          "src/judgmentllm/gemini_prompts.py",
+          "src/judgmentllm/gemini_transport.py",
+          "src/judgmentllm/preparation/manifest.py",
+          "src/judgmentllm/vertex_assessment.py",
+          "src/judgmentllm/vertex_prompts.py",
+          "src/judgmentllm/vertex_transport.py"
+        ]
+      },
+      "src/judgmentllm/providers/gemini.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68; cleanup-code-rereview-2fe2821.md sha256:ebbec6716eb221f3c27cfb3d132e5f3cc74d47b65a34ccdac171e4ff999b8b72. Scoped whole-module cleanup successor rereview passed; prior cleanup holds closed, with unchanged finite targets. **R; GSDK/H; G/S**. Additional targets `gemini_registry.py`, `gemini_qualification_execution.py`, `providers/reasoning.py`. Literal SDK imports; TLS root-file read during client construction. Owns injected async and denying sync clients. Main cleanup explicitly closes both; ContextVars reset and filters persist locally. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "6cb38056877da68b458a2956c6b798cc80db2d0904f156c39c52160f80348468",
+        "targets": [
+          "src/judgmentllm/gemini_assessment.py",
+          "src/judgmentllm/gemini_prompts.py",
+          "src/judgmentllm/gemini_qualification_execution.py",
+          "src/judgmentllm/gemini_registry.py",
+          "src/judgmentllm/gemini_transport.py",
+          "src/judgmentllm/preparation/manifest.py",
+          "src/judgmentllm/providers/reasoning.py",
+          "src/judgmentllm/study/admission.py",
+          "src/judgmentllm/study/execution.py"
+        ]
+      },
+      "src/judgmentllm/providers/gemini_cli.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P/CLI; targets []**. Fixed diagnostic presentation only; no diagnostic or provider call on import. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "f60981eb98ca6e520186c9c553950caaceccc3fd95797562b227734ef6ee8ec1",
+        "targets": []
+      },
+      "src/judgmentllm/providers/gemini_response.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P; targets []**. Calls imported Google response helper with its own `_mapping` and `_blocked_ratings`; fixed Gemini assessment/usage models. No I/O. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "efd5ab07f222f3fffcfe5b40ed05d67d08b32fa0cb8c16ea6ed65e588a620ca5",
+        "targets": []
+      },
+      "src/judgmentllm/providers/google_response.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R**. Callback targets are specifically `_mapping` and `_blocked_ratings` in `providers/gemini_response.py` and `providers/vertex_response.py`. Shared extraction is otherwise local; no SDK or I/O. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "e2eb2ff16e941346c08ef8fbe84bbf0ac5085d4b1cd7e29c74b1426290f38c7f",
+        "targets": [
+          "src/judgmentllm/providers/gemini_response.py",
+          "src/judgmentllm/providers/vertex_response.py"
+        ]
+      },
+      "src/judgmentllm/providers/google_schema.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P; targets []**. SDK-free cloud/JSON schema conversion, local recursive helpers and fresh coverage objects. Pinned field-order constants are data, not SDK dispatch. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "ceeacfee133ac513ac29de43fcb15d2b9517df045baba934012d9675e8d9fd2f",
+        "targets": []
+      },
+      "src/judgmentllm/providers/ledger.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P; targets []**. Real SQLite/WAL and directory-fsync effects begin at construction, under the supplied path. Every operation owns and closes its connection; transactions preserve immutable acceptance records. No module-global connection or fixed path. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "b8ffa9e4e206262a99e8bb11cac19d25744d32fb8acde0f1718371c98c93df8e",
+        "targets": []
+      },
+      "src/judgmentllm/providers/mock.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P; targets []**. Fixed V1/V2 payload/model choices; supplied-path ledger and instance-local scenarios/counters. Ledger tasks are shielded and drained on cancellation. `_checkpoint` is locally defined and inert by default. No SDK/provider routing. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "c2e82992e0659c26b0e7caab63e2cadb001d10ef1a066218fd9d5c9a9e2258da",
+        "targets": []
+      },
+      "src/judgmentllm/providers/ollama_schema.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P; targets []**. Fixed schema projection through `assessment_parts`; no Ollama SDK/client/socket. Scope constant matches locked `ollama==0.6.3`. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "a51ee7d813fe529f384bf0d58eb7edf414775c2945c64317dbd3cdb1cb4906e2",
+        "targets": []
+      },
+      "src/judgmentllm/providers/openai.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68; cleanup-code-rereview-2fe2821.md sha256:ebbec6716eb221f3c27cfb3d132e5f3cc74d47b65a34ccdac171e4ff999b8b72. Scoped whole-module cleanup successor rereview passed; prior cleanup holds closed, with unchanged finite targets. **C; O; S**. Lazy targets `production_transport.py`, `production_registry.py`, `qualification.py`, `providers/reasoning.py`. Literal SDK imports; bounded instance handoffs and invocation-context reset. Normal response/client closure exists; H1 remains. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "ad4a57e77b173da896532d5a93240517db990510a708b479d3b5a98685fc6bef",
+        "targets": [
+          "src/judgmentllm/production_registry.py",
+          "src/judgmentllm/production_transport.py",
+          "src/judgmentllm/providers/reasoning.py",
+          "src/judgmentllm/qualification.py",
+          "src/judgmentllm/study/admission.py",
+          "src/judgmentllm/study/execution.py"
+        ]
+      },
+      "src/judgmentllm/providers/openai_cli.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; CLI**. Finite alternate targets: `anthropic_diagnostics.py`/`providers/anthropic_cli.py`, `gemini_diagnostics.py`/`providers/gemini_cli.py`, `vertex_diagnostics.py`/`providers/vertex_cli.py`. Typer decorators register nested callbacks only when `register_commands()` runs; diagnostic calls require command invocation. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "a31e5f50dfe62b8af5316ce85983afc4f7f7da2faf614626ac6b970c736df36c",
+        "targets": [
+          "src/judgmentllm/anthropic_diagnostics.py",
+          "src/judgmentllm/gemini_diagnostics.py",
+          "src/judgmentllm/openai_diagnostics.py",
+          "src/judgmentllm/providers/anthropic_cli.py",
+          "src/judgmentllm/providers/gemini_cli.py",
+          "src/judgmentllm/providers/vertex_cli.py",
+          "src/judgmentllm/vertex_diagnostics.py"
+        ]
+      },
+      "src/judgmentllm/providers/openai_response.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P; targets []**. Endpoint choice selects exactly the two imported usage models/converters. Extraction and envelope screening have no I/O or mutable service state. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "a3abc34262ce49ae966002fdc5f7fd7e4b2d5eda8448e556f39e6373fe8e6f6a",
+        "targets": []
+      },
+      "src/judgmentllm/providers/openai_schema.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P; targets []**. Schema snapshot/deep-copy, bounded traversal and local helpers. No OpenAI SDK import or execution. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "3a78e0c2090d362c6c0d982b39d114e7117807c3e3dff43bfe20588cd18f1d31",
+        "targets": []
+      },
+      "src/judgmentllm/providers/protocol.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P; targets []**. Models, validating exception constructors and protocol method declarations. No adapter creation, client, lock, or task launch. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "ef15e18e3287e7f17e457a3afca50fc10d914d497426125e5d16ab7ead27c3e5",
+        "targets": []
+      },
+      "src/judgmentllm/providers/reasoning.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P; targets []**. Finite provider/model control branches and dictionaries. `getattr` selects validated capability fields; documentation URLs are never fetched. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "e3f02d1577f24bb410c5ba118d70ccb500299b418c0fc9c6a4cec5aeaafe384d",
+        "targets": []
+      },
+      "src/judgmentllm/providers/together_schema.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P; targets []**. Fixed projection through `assessment_parts`; no Together SDK/client. Scope constant matches locked `together==3.0.0`. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "3f86a85d79b3fa4f9ab458652ae3fba217d800f885a04040060e46ac8855f5f5",
+        "targets": []
+      },
+      "src/judgmentllm/providers/vertex.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68; cleanup-code-rereview-2fe2821.md sha256:ebbec6716eb221f3c27cfb3d132e5f3cc74d47b65a34ccdac171e4ff999b8b72. Scoped whole-module cleanup successor rereview passed; prior cleanup holds closed, with unchanged finite targets. **R; GSDK/H; V**. Additional targets `vertex_registry.py`, `vertex_qualification_execution.py`, including `_verify_quota_project`. ADC mode can discover/refresh credentials through the SDK when executed; it is not an inert module-wide path. Owns async/sync HTTP clients; normal cleanup closes them. Logging filters and handoffs remain process-local. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "c7dc0dc837da4356fb8909442c1a31586d26240599aefe29b7590e79cbdeaedc",
+        "targets": [
+          "src/judgmentllm/preparation/manifest.py",
+          "src/judgmentllm/vertex_assessment.py",
+          "src/judgmentllm/vertex_prompts.py",
+          "src/judgmentllm/vertex_qualification_execution.py",
+          "src/judgmentllm/vertex_registry.py",
+          "src/judgmentllm/vertex_transport.py"
+        ]
+      },
+      "src/judgmentllm/providers/vertex_cli.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P/CLI; targets []**. Fixed unsupported-result presentation through CLI controls; stdout/stderr/exit behavior only when called. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "88d67a9c8fd76fee50648e3b1dae1c223a9cc8b43f053dc11c51461a4e223911",
+        "targets": []
+      },
+      "src/judgmentllm/providers/vertex_response.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P; targets []**. Fixed Google-helper callbacks, Vertex assessment and usage models. No SDK/client/file effects. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "ac15a5e979f9493778f2d76c91e280eb9482dc0f6374089be97c6afe45a09177",
+        "targets": []
+      },
+      "src/judgmentllm/qualification.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B. P.** Explicit paths reach OpenAIAdapter, preparation, execute/recover, retries, and exports. Git subprocesses have ten-second bounds; SQLite connections close; immutable intents are fsynced. Explicit live execution closes its adapter in `finally`. No execution runs at import. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "b642577e516c16e33210a3a6d925306338be2901c830bb0d8a9a62531a6b6475",
+        "targets": [
+          "src/judgmentllm/execution/__init__.py",
+          "src/judgmentllm/execution/exports.py",
+          "src/judgmentllm/execution/retry.py",
+          "src/judgmentllm/preparation/__init__.py",
+          "src/judgmentllm/providers/openai.py"
+        ]
+      },
+      "src/judgmentllm/r_exports.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B; \u2205 beyond result revalidation. P.** Writes caller-selected CSV paths with context-managed streams. It neither launches R nor owns R processes. Failure can leave partial utility output. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "220c6b076a549d542ec52d4fae6a2176ed12ce961cfa0b6eb51554b7e023b7aa",
+        "targets": []
+      },
+      "src/judgmentllm/reasoning.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B; \u2205. P.** Reasoning capability/policy validators and control compatibility checks only. No SDK activation or mutable global execution state. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "e759a8cd912d5ef28c484f3cc74e1fa5a64b4a3a79e55096d34b07a4ad568199",
+        "targets": []
+      },
+      "src/judgmentllm/request_rendering.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B.** Targets: output commitment builder, `prompts.render_prompt`, and supplied lookup. Concrete repository lookup sources are `PreparedRun._get`, `SourceBuilder.lookup`, and preview-local functions. V4 is explicitly rejected here. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "60e733a0ac694d89006f59a7f9abb7a00c3b0e0c316acfad2a03cc08cb65d3e9",
+        "targets": [
+          "src/judgmentllm/output_commitments.py",
+          "src/judgmentllm/preparation/__init__.py",
+          "src/judgmentllm/preparation/capture.py",
+          "src/judgmentllm/preparation/decisions.py",
+          "src/judgmentllm/preparation/index.py",
+          "src/judgmentllm/preparation/session.py",
+          "src/judgmentllm/prompts.py"
+        ]
+      },
+      "src/judgmentllm/results.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B; \u2205. P.** Rubric/pairwise normalization, distributions, ordering, and result consistency use local numeric/model operations. No persistence or provider dispatch. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "8295219df11f47d33de3671ce90956ae906e1f70fa608e4a34a7637cce64197a",
+        "targets": []
+      },
+      "src/judgmentllm/service_tiers.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B. P.** Finite tier/default maps and local policy/observation checks. Lazy targets are `config.RunSpecV3` and canonical output decoding; no entitlement lookup or network request. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "d2f37240ec978439dd57111c3c2bf3a86c798ff2a04d5e07ee2fb2aad5ead8a7",
+        "targets": [
+          "src/judgmentllm/config.py",
+          "src/judgmentllm/output_contracts.py"
+        ]
+      },
+      "src/judgmentllm/study/__main__.py": {
+        "reason": "Independent whole-module evidence: integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4. | `src/judgmentllm/study/__main__.py` | `eb3bbeedc3e547b2dfb2dae84d596e7f0f5bd7a3b49085d33028f9a77f0590cd` | Already fingerprinted, but executable review/traversal is required. Add it to `keyring.py`\u2019s targets. Whole module imports `study.cli.main` and immediately invokes it; additional targets `[]` beyond that literal import. | Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "eb3bbeedc3e547b2dfb2dae84d596e7f0f5bd7a3b49085d33028f9a77f0590cd",
+        "targets": []
+      },
+      "src/judgmentllm/study/admission.py": {
+        "reason": "Independent whole-module evidence: study.md sha256:7a8f4989ee516767b89e2532a47500200b7b1d0875b2dc0fc848fedc59d493eb. **Decision: bounded static review complete.** Additional targets, from the literal map at lines 82\u201389: ```text src/judgmentllm/production_transport.py src/judgmentllm/anthropic_transport.py src/judgmentllm/gemini_transport.py ``` Initialization defines functions and imports their dependencies; it creates no client or filesystem state. Candidate creation calls the selected module\u2019s `_qualification_context` and `_checked_context`. Guard admission requires the exact `_StudyGuard` type, imported explicitly from `study.execution` at lines 101 and 116. Configuration, generation, native-schema, reasoning and hashing dependencies remain in the closure. External model construction uses locked Pydantic. No additional unresolved dispatch originated here. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "5b80321efb048659b281347d78480e34dace0fa71d0dc45db601fa0d2a98c889",
+        "targets": [
+          "src/judgmentllm/anthropic_transport.py",
+          "src/judgmentllm/gemini_transport.py",
+          "src/judgmentllm/production_transport.py"
+        ]
+      },
+      "src/judgmentllm/study/budget.py": {
+        "reason": "Independent whole-module evidence: study.md sha256:7a8f4989ee516767b89e2532a47500200b7b1d0875b2dc0fc848fedc59d493eb. **Decision: bounded static review complete; private-path fixture dependency is essential.** Additional targets: `[]`. Whole-module inspection found fixed imports, Pydantic records, context-manager decorators and filesystem operations; no computed module lookup or executable loading from journal contents. `_held` is instance state. Persistent shared state normally includes the home-level lock, source/root bindings and checkpoint directories, plus campaign files under the supplied root. Both locks are acquired at lines 193\u2013202. `_exclusive` unlocks and closes through nested `finally` blocks; lock files deliberately retain their identities. Publication uses immutable writes and directory synchronization. Inventory, hash-chain, forwarding-intent and reservation checks remain real reads. Dependencies include `persistence.ownership`, `persistence.artifacts` and `qualification._immutable`; external validation uses Pydantic. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "ace257cadc494bc6c116209e088113ac4b3fbe193a669c502314a56af647a8be",
+        "targets": []
+      },
+      "src/judgmentllm/study/cli.py": {
+        "reason": "Independent whole-module evidence: study.md sha256:7a8f4989ee516767b89e2532a47500200b7b1d0875b2dc0fc848fedc59d493eb. **Decision: bounded static review complete.** Additional targets, from `eligibility_matrix`, lines 100\u2013108: ```text src/judgmentllm/providers/openai.py src/judgmentllm/providers/anthropic.py src/judgmentllm/providers/gemini.py ``` Importing this module does not parse arguments or execute commands. Eligibility constructs adapters and runs local validation; the reviewed constructors leave `_client=None`, and those validation methods do not create execution clients. Command effects vary: `configure` writes the supplied package, `plan` writes its output directory, execution/recovery can reach credentials and adapters, and cancellation acquires campaign locks. Preview uses nested temporary-directory/prepared-run contexts. Thus these findings cannot authorize arbitrary CLI operations alongside ordinary work. The limits test invokes `status`, which reads retained state. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "da7c9d57bdf2e8a4a10b8f10e216686bff114ad97affc3413eaeb98ba90347f9",
+        "targets": [
+          "src/judgmentllm/providers/anthropic.py",
+          "src/judgmentllm/providers/gemini.py",
+          "src/judgmentllm/providers/openai.py"
+        ]
+      },
+      "src/judgmentllm/study/definitions.py": {
+        "reason": "Independent whole-module evidence: study.md sha256:7a8f4989ee516767b89e2532a47500200b7b1d0875b2dc0fc848fedc59d493eb. **Decision: bounded static review complete.** Additional targets: `[]`. Route/scenario/control tables contain data; YAML uses `safe_load`; historical `.py.txt` files are hashed as bytes and never executed here. Initialization creates process-local constants and mutable dictionaries, with no filesystem access. Calls to `configuration` perform `source_inventory` again at line 147. Complete inventory comparisons, symlink checks and original hashes remain intact. `write_library` writes 50 configurations and their index to its supplied package; it has no automatic cleanup. The inspected test caller uses a private copied package. Dependencies are configuration validation/hashing, Pydantic and PyYAML. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "26ee0d8919d52a2ede1179dd4d5bb470b0752d270a3d4820553784aa39b32cb5",
+        "targets": []
+      },
+      "src/judgmentllm/study/execution.py": {
+        "reason": "Independent whole-module evidence: study.md sha256:7a8f4989ee516767b89e2532a47500200b7b1d0875b2dc0fc848fedc59d493eb. **Decision: bounded static review complete with an open downstream cleanup hazard.** Additional targets, from `adapter_for`, lines 203\u2013209: ```text src/judgmentllm/providers/openai.py src/judgmentllm/providers/anthropic.py src/judgmentllm/providers/gemini.py ``` The proposal\u2019s typed selection and study route/context checks bound the authorized study choices to those three adapters. `_STUDY_TOKEN` is process-local; guards and adapters are per case. Execution holds campaign ownership across case processing, uses `RetryPolicy(max_attempts=1)`, skips terminal cases and closes each returned adapter in `finally` at lines 593\u2013609. Reporting uses context-managed `ReadOnlyRepository(..., preserve_files=True)`. Exports retain exactly three formats/views per case at lines 648\u2013665. Connected dependencies include execution-session ownership, preparation, receipts/artifacts, exports, `_auth` and keyring. Keyring temporarily changes process environment and SIGTERM handling, restoring both in `finally`. This requires the intended dedicated pytest process and main-thread event loop. The OpenAI initialization exception path is discussed below. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "83f666455c638e0d2290abbf4ea8a28613c2fab9df9f22f7314d6a0a4e034095",
+        "targets": [
+          "src/judgmentllm/providers/anthropic.py",
+          "src/judgmentllm/providers/gemini.py",
+          "src/judgmentllm/providers/openai.py"
+        ]
+      },
+      "src/judgmentllm/study/plans.py": {
+        "reason": "Independent whole-module evidence: study.md sha256:7a8f4989ee516767b89e2532a47500200b7b1d0875b2dc0fc848fedc59d493eb. **Decision: bounded static review complete.** Additional targets: `[]`. `importlib.metadata.version` reads distribution metadata; it does not select a repository module. Context dispatch belongs to reviewed `admission.py`; transport/prepared-run dispatch remains in its explicit dependencies. Initialization has no filesystem action. Preparation chooses `prepare_run` or `open_prepared_run`; all callers here context-manage the returned session. Proposal creation/reopening performs actual inventory, configuration and wire comparisons. The pilot remains six models \u00d7 seven selections = **42 cases**. Proposal files and preparation stores intentionally persist. `_source_commit` normally runs two bounded Git subprocesses; the selected fixtures replace it. SDK metadata checks require the exact route versions below. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "beca24bd44d5c185cd38d85f5072e9c879e6cdbb37335afb69384505c74a7200",
+        "targets": []
+      },
+      "src/judgmentllm/study/records.py": {
+        "reason": "Independent whole-module evidence: study.md sha256:7a8f4989ee516767b89e2532a47500200b7b1d0875b2dc0fc848fedc59d493eb. **Decision: bounded static review complete.** Additional targets: `[]`. I inspected every model, validator, property and the `exclude_if` lambda. Their behavior is validation, arithmetic, hashing and serialization; no names select executable modules. Import-time effects are Pydantic class/schema construction and immutable Decimal defaults. `NativeModel` inherits frozen evidence configuration. Validators preserve exact integer/boolean controls, case commitments, suite counts and authorization binding. Wall-clock reads occur during authorization verification. There are no owned files, locks, ports or clients. External identities are Pydantic/Pydantic-core. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "f7e857bf8a6ae9ed1e07a668ccfd0b5d355e193bd0e1f67f34adf2a63ca90b49",
+        "targets": []
+      },
+      "src/judgmentllm/study/sources.py": {
+        "reason": "Independent whole-module evidence: study.md sha256:7a8f4989ee516767b89e2532a47500200b7b1d0875b2dc0fc848fedc59d493eb. **Decision: bounded static review complete.** Additional targets: `[]`. Archives decode to JSON records; original programs remain data. Configuration loading and preview rendering use fixed imports. Importing the module performs no archive or inventory reads. Invoked verification reads both inventories and checks all **312** preview/schema pairs; this module writes nothing. File helpers close their own descriptors. Preview/configuration dependencies remain subject to core review, including their renderer and YAML/template libraries. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "abc8da320651c50a06fdd4c5dd667e650cc548b0fa22fd273f0f5aba35bf937d",
+        "targets": []
+      },
+      "src/judgmentllm/transport.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B. P.** Projector/resolver targets are OpenAI and V2 native implementations plus `native_prompts`; lookup follows reviewed callers. Tokens, detached snapshots, and projection reuse are call-scoped. Import captures stock function/code identities; it creates no client or durable cache. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "ae15d0d9db2a018e977f2a651f5b0f35aebeaac9973a484e4788474b83bcf36e",
+        "targets": [
+          "src/judgmentllm/native_prompts.py",
+          "src/judgmentllm/native_schema_v2.py",
+          "src/judgmentllm/native_selection.py",
+          "src/judgmentllm/native_selection_v2.py",
+          "src/judgmentllm/preparation/__init__.py",
+          "src/judgmentllm/preparation/capture.py",
+          "src/judgmentllm/preparation/decisions.py",
+          "src/judgmentllm/preparation/index.py",
+          "src/judgmentllm/preparation/session.py",
+          "src/judgmentllm/providers/openai_schema.py"
+        ]
+      },
+      "src/judgmentllm/transport_dispatch.py": {
+        "reason": "Independent whole-module evidence: core.md sha256:fc14bc4790b285556cba6f8c7bc6e47d53ee2f1e6a0a3ca1b4395998eb5c8484. **B.** Concrete targets are five transport families, five matching renderer modules, and preparation manifest types. It validates protocol/commitment compatibility and forwards caller-owned lookup/state; it owns no client, file, lock, or process. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "9ca4f448ecc941ad956e3e5c522d9996d17238f4c8555c51ca44d8e97c1a8dc2",
+        "targets": [
+          "src/judgmentllm/anthropic_prompts.py",
+          "src/judgmentllm/anthropic_transport.py",
+          "src/judgmentllm/gemini_prompts.py",
+          "src/judgmentllm/gemini_transport.py",
+          "src/judgmentllm/native_prompts.py",
+          "src/judgmentllm/preparation/manifest.py",
+          "src/judgmentllm/production_prompts.py",
+          "src/judgmentllm/production_transport.py",
+          "src/judgmentllm/transport.py",
+          "src/judgmentllm/vertex_prompts.py",
+          "src/judgmentllm/vertex_transport.py"
+        ]
+      },
+      "src/judgmentllm/vertex_assessment.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P; targets []**. Version-4 evidence models and validators; no I/O, client, or background work. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "7a4ccd6d1038e990f9cb0d805c547c352c5e8394109a74dd58036b0f0c6e654a",
+        "targets": []
+      },
+      "src/judgmentllm/vertex_config.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; targets []**. Explicit process-environment routing read through `_auth.py`; frozen runtime object and route hashing. No environment mutation, ADC discovery, or SDK construction. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "6aa18a09d7a1beefa4b0b9eeadaa52ea75b00be321514ad3e122a6147adbe843",
+        "targets": []
+      },
+      "src/judgmentllm/vertex_diagnostics.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P; targets []**. Returns unsupported using local model construction and time. No SDK/authentication/catalog operation, including in async wrappers. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "981dec654c3f0e10559b31020f5ba00a49844ebac523ee8c91549eb36fac8f08",
+        "targets": []
+      },
+      "src/judgmentllm/vertex_prompts.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P; L**. Concrete commitment target `vertex_transport.py`; shared rendering and schema checks only. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "f4b95642accd73c972af5c14c1a9386e439d14a7b01f2f3b94a2ab78ca92a33e",
+        "targets": [
+          "src/judgmentllm/native_prompts.py",
+          "src/judgmentllm/preparation/capture.py",
+          "src/judgmentllm/preparation/session.py",
+          "src/judgmentllm/vertex_transport.py"
+        ]
+      },
+      "src/judgmentllm/vertex_qualification.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P/GSDK**. Target `vertex_qualification_sdk.py`; local reconstruction callback uses fixed records. Callable paths read pricing/SDK evidence, create an external plan tree and change its file permissions. These data dependencies are listed separately below. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "de6a6a86eed4771db9dde3f08572109d5721a4884d6f7235fa9865cf55c0e77c",
+        "targets": [
+          "src/judgmentllm/vertex_qualification_sdk.py"
+        ]
+      },
+      "src/judgmentllm/vertex_qualification_execution.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P/GSDK/H**. Lazy targets `execution/__init__.py`, `execution/retry.py`, `preparation/__init__.py`, `providers/vertex.py`, `transport.py`, `io.py`, `planning.py`. Owns sibling `.execution` state, authorization anchor, SQLite and `executor.lock`. Context manager unlocks/closes in `finally`; adapters close in `finally`. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "e7bcd9f9dc6ca44c294fd0ffdf84552187f3cea45655e8e5428f0010804ac1a2",
+        "targets": [
+          "src/judgmentllm/execution/__init__.py",
+          "src/judgmentllm/execution/retry.py",
+          "src/judgmentllm/io.py",
+          "src/judgmentllm/planning.py",
+          "src/judgmentllm/preparation/__init__.py",
+          "src/judgmentllm/providers/vertex.py",
+          "src/judgmentllm/transport.py"
+        ]
+      },
+      "src/judgmentllm/vertex_qualification_sdk.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; GSDK**. Local target `providers/vertex.py::_sdk_arguments`; external targets are `google.genai` converters/types/request builder. Import-time `ROOT.resolve()` touches path metadata. Callable evidence verification reads the profile and installed SDK source; serialization uses an inert route object and constructs no SDK client. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "90f73d2202fa59d155f4f4b566fdf5348649a1034f85ba8ec52d39fe251bfb9b",
+        "targets": [
+          "src/judgmentllm/providers/vertex.py"
+        ]
+      },
+      "src/judgmentllm/vertex_registry.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P; targets []**. Import constructs two fixed validated route/authentication profiles. Lookup validates complete route identity; no registration hook, credentials, or I/O. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "0fe9107d5afdc8c0dd164833546fb60e3c9b181a518bbc2419d1b77648e98b64",
+        "targets": []
+      },
+      "src/judgmentllm/vertex_transport.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P; L**. Targets `vertex_prompts.py`, `vertex_config.py::runtime_configuration`, and `providers/google_schema.py` through `native_schema_v2.py`. Context creation may read routing environment; body/commitment construction creates no SDK client. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "869d1eb1dba953448b35f5ece8c8c1fdad69d332392fe2108a254774eda7dd1f",
+        "targets": [
+          "src/judgmentllm/native_prompts.py",
+          "src/judgmentllm/preparation/capture.py",
+          "src/judgmentllm/preparation/session.py",
+          "src/judgmentllm/providers/google_schema.py",
+          "src/judgmentllm/vertex_config.py",
+          "src/judgmentllm/vertex_prompts.py"
+        ]
+      },
+      "src/judgmentllm/vertex_types.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; targets V**. Complete literal attribute map reviewed; unknown names fail. No provider-name inference. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "896ddde85c126e6215e261010ce3c3215bd2291a0d81023cafd9ea12f78fb8a8",
+        "targets": [
+          "src/judgmentllm/preparation/manifest.py",
+          "src/judgmentllm/vertex_assessment.py",
+          "src/judgmentllm/vertex_prompts.py",
+          "src/judgmentllm/vertex_transport.py"
+        ]
+      },
+      "src/judgmentllm/vertex_usage.py": {
+        "reason": "Independent whole-module evidence: provider_runtime.md sha256:7daffe4293487ff28d98cc722fff9ef3f8aa1b358d6d516043b4f74146dfff68. **R; P; targets []**. Fixed reported-counter mapping through `evidence/usage.py`; no I/O, inferred totals, or shared service state. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "f0aa1220d0462d4767ac31c0cb84f6a9778b344734277dfc9091dc8264a1b1f3",
+        "targets": []
+      },
+      "tests/anthropic_fixture.py": {
+        "reason": "Independent whole-module evidence: tests_helpers.md sha256:2078aaeab5c1c6548d3c07c8f41d5d1abccfd042e06b82745fc5c6efeb7b76b7. **Reviewed; additional=[]**. Calls the literal `assessment_fixture` and Anthropic transport dependencies. `wire_for` supplies its local lookup callback to request preparation. Initialization defines helpers only; this module creates no SDK client, lock, process, or file. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "0a2da66f855156b48dd90c4634380b5813fd683cd5e664eadd584c7efdc8287c",
+        "targets": []
+      },
+      "tests/assessment_fixture.py": {
+        "reason": "Independent whole-module evidence: tests_helpers.md sha256:2078aaeab5c1c6548d3c07c8f41d5d1abccfd042e06b82745fc5c6efeb7b76b7. **Reviewed; additional=[]**. Constructs fresh synthetic records/configuration and calls validation/planning. The conditional OpenAI capability path at lines 119\u2013126 uses a literal adapter import. Paths are configuration values here; the helper does not write them or construct an execution client. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "05bbda44f373f46b68d3724131e2b4328d5c701493ff3bee6756473c6362c79c",
+        "targets": []
+      },
+      "tests/conftest.py": {
+        "reason": "Independent whole-module evidence: tests_helpers.md sha256:2078aaeab5c1c6548d3c07c8f41d5d1abccfd042e06b82745fc5c6efeb7b76b7. **Reviewed; additional=[]**. Registers session-scoped `pilot`, `tier`, and parametrized control fixtures; only `pilot` serves these nodes. Literal dependencies include supplemental `study_fixture`, `study.plans`, and `fixture_artifacts`. Proposal construction uses a temporary root, restores its temporary source-commit patch immediately, and verifies tree bytes/model serialization at teardown. No autouse fixture or child launch is defined here. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "588cce7bb07a60ab29a0f837a439944fd516d8f9b91aefbeedfa5d62a76cb6dc",
+        "targets": []
+      },
+      "tests/durable_evidence_fixture.py": {
+        "reason": "Independent whole-module evidence: tests_helpers.md sha256:2078aaeab5c1c6548d3c07c8f41d5d1abccfd042e06b82745fc5c6efeb7b76b7. **Reviewed; additional=[]**. Subclasses the literal mock adapter; transformation callbacks and response wrapping operate on supplied synthetic bytes. Construction delegates ledger ownership to `MockAdapter`; `specification` writes only beneath its caller-supplied directory. No eager ledger, credential lookup, SDK, or process is created during import. These adapter bodies are not invoked by the selected study nodes. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "c13e12618fca2c5cdbdeba3969e9c766ad999367a61a90280dc7f90d512cb39d",
+        "targets": []
+      },
+      "tests/fixture_artifacts.py": {
+        "reason": "Independent whole-module evidence: tests_helpers.md sha256:2078aaeab5c1c6548d3c07c8f41d5d1abccfd042e06b82745fc5c6efeb7b76b7. **Reviewed; additional=[]**. `snapshot` reads and hashes tree files. The context-manager decorator registers `immutable_exports`; its caller callback runs only when that context is entered, with comparison in `finally`. These nodes reach `snapshot`, not `immutable_exports`. No retained handles or module-global mutable artifact state. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "d6e63c6057af805bbbf27301cd33fe278ff79d20270784d09d65804309e5beeb",
+        "targets": []
+      },
+      "tests/gemini_fixture.py": {
+        "reason": "Independent whole-module evidence: tests_helpers.md sha256:2078aaeab5c1c6548d3c07c8f41d5d1abccfd042e06b82745fc5c6efeb7b76b7. **Reviewed; additional=[]**. Uses literal assessment/Gemini transport dependencies and a local lookup callback. Request preparation produces fresh objects; this helper itself creates no SDK client, network operation, file, lock, or process. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "fb24dc9f036665e35be5aa304f2411c977b9de93954ecb9d75a4525a9834a1f8",
+        "targets": []
+      },
+      "tests/gemini_offline.py": {
+        "reason": "Independent whole-module evidence: tests_helpers.md sha256:2078aaeab5c1c6548d3c07c8f41d5d1abccfd042e06b82745fc5c6efeb7b76b7. **Reviewed; additional=[]**. `isolate` explicitly installs environment/socket/auth patches through the supplied `MonkeyPatch`; `authorize_fixture` similarly patches the Gemini registry. Neither runs merely by importing this module. The selected response path calls only `envelope`, which returns a fresh dictionary. Google auth imports are literal external dependencies, not provider-name dispatch. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "d0f840c77875994e490dead8cb5b44722e1f21e5ca915ebda4530f5f5f5dea12",
+        "targets": []
+      },
+      "tests/native_transport_fixture.py": {
+        "reason": "Independent whole-module evidence: tests_helpers.md sha256:2078aaeab5c1c6548d3c07c8f41d5d1abccfd042e06b82745fc5c6efeb7b76b7. **Reviewed; additional=[]**. Initialization expands the finite `_ROUTES_V2` tuple into `MECHANISMS`. `context_for` uses imported OpenAI/provider catalog helpers and copies catalog/profile objects. Adapter construction creates the caller-path acceptance ledger; its explicit SQLite read connection uses `closing`, and acceptance mutation is synchronous. No SDK or child process. The selected nodes import this transitively without constructing this adapter. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "b2520e785da43961aee771a492642a011020bb8956795d036a2b26b60fb4956a",
+        "targets": []
+      },
       "tests/reasoning_fixture.py": {
-        "reason": "Complete declared provider alternatives, including Gemini offline response and transport/registry dispatch; changed helper bytes invalidate this declaration.",
+        "reason": "Independent whole-module evidence: tests_helpers.md sha256:2078aaeab5c1c6548d3c07c8f41d5d1abccfd042e06b82745fc5c6efeb7b76b7. **Reviewed with the 13 concrete additional targets listed below.** Initialization defines the fixed model tuple and helpers. `case` writes caller-root inputs; authorization patches a registry through supplied `MonkeyPatch`. The selected nodes use `response_body`: Gemini returns the literal `gemini_offline.envelope`; OpenAI/Anthropic load their exact lifecycle envelope modules. No client or process is created here. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
         "source_sha256": "3c757a328886ba3d6a27828bf09f7924cbf7dff3bd4b89d6de023d0ae95ace76",
         "targets": [
           "src/judgmentllm/anthropic_registry.py",
@@ -136,7 +1380,7 @@
         ]
       },
       "tests/study_fixture.py": {
-        "reason": "Complete declared provider alternatives, including Gemini offline response and transport/registry dispatch; changed helper bytes invalidate this declaration.",
+        "reason": "Independent whole-module evidence: tests_helpers.md sha256:2078aaeab5c1c6548d3c07c8f41d5d1abccfd042e06b82745fc5c6efeb7b76b7. **Reviewed with additional targets:** `src/judgmentllm/providers/openai.py`, `src/judgmentllm/providers/anthropic.py`, `src/judgmentllm/providers/gemini.py`, from line 218. `seal` writes synthetic proof records beneath its supplied root; copying helpers use caller destinations. `sdk_bytes` injects mock HTTP, owns its HTTP context, and closes provider clients in `finally`, including Gemini\u2019s explicit close helper. That SDK-byte helper is not directly called by the two selected nodes. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
         "source_sha256": "72c54422eeb482131d67f27446e237dbe9afb7911479a286083e89c43db93a61",
         "targets": [
           "src/judgmentllm/providers/anthropic.py",
@@ -144,17 +1388,84 @@
           "src/judgmentllm/providers/openai.py"
         ]
       },
+      "tests/study_limit_process.py": {
+        "reason": "Independent whole-module evidence: integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4. | `tests/study_limit_process.py` | `ca383636213ddfc46e8efe8cd0c25f6cb9a4b2e8d17650bcabe5b6deaa6f5c67` | Whole-module review completed here. Add to `test_study_limits.py`\u2019s targets and give it its own declaration, additional `[]`. Historical fingerprint exists, but the scoped dependency report currently omits it. | Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "ca383636213ddfc46e8efe8cd0c25f6cb9a4b2e8d17650bcabe5b6deaa6f5c67",
+        "targets": []
+      },
+      "tests/test_anthropic_lifecycle.py": {
+        "reason": "Independent whole-module evidence: tests_helpers.md sha256:2078aaeab5c1c6548d3c07c8f41d5d1abccfd042e06b82745fc5c6efeb7b76b7. **Reviewed; additional=[]**. The selected path calls `envelope`, a fresh synthetic response builder. Literal imports retain lifecycle/preparation/native-fixture dependencies. Import does not invoke the module\u2019s autouse fixture or test bodies. `setup_case` transfers adapter ownership to its caller; execution/recovery test bodies contain their own close paths and are not scheduling-approved by this review. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "c74e3c6fc2286663c4fe9af43acc2049e433839af713471e7fa6c40215994cb2",
+        "targets": []
+      },
+      "tests/test_anthropic_transport.py": {
+        "reason": "Independent whole-module evidence: tests_helpers.md sha256:2078aaeab5c1c6548d3c07c8f41d5d1abccfd042e06b82745fc5c6efeb7b76b7. **Reviewed; additional=[]**. `_reviewed_profile` constructs fresh synthetic qualification records. Other dispatch uses literal Anthropic transport/registry imports and supplied local lookup callbacks. Socket and registry patches occur only inside fixtures/test bodies and use `MonkeyPatch`. Import registers decorators without issuing requests or creating clients. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "507500bad298f7149e9affdaca93993edb63307a3894e4fc820173eff40e906a",
+        "targets": []
+      },
+      "tests/test_auth_cli.py": {
+        "reason": "Independent whole-module evidence: tests_helpers.md sha256:2078aaeab5c1c6548d3c07c8f41d5d1abccfd042e06b82745fc5c6efeb7b76b7. **Reviewed; additional=[]**. Import constructs a `CliRunner` and imports the CLI, including its command registration. `private_failure` decorators create wrappers; they do not execute commands. Its environment/chdir fixture is module-local and is not activated in the study modules. CLI invocations, warnings capture, and credential assertions remain in unselected bodies. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "b14925337429ea2e352dd5b1de790646c8e935dd194c8da68c254d63167ac87d",
+        "targets": []
+      },
+      "tests/test_gemini_transport.py": {
+        "reason": "Independent whole-module evidence: tests_helpers.md sha256:2078aaeab5c1c6548d3c07c8f41d5d1abccfd042e06b82745fc5c6efeb7b76b7. **Reviewed; additional=[]**. Fresh profile construction and literal Gemini transport/registry dependencies. The module\u2019s network fixture and registry mutations execute only when its tests run; supplied `MonkeyPatch` owns restoration. No import-time SDK client or external operation. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "e40a1df3ff35090060dfbb7531e00fc2980129f88eb3063e9d1fea9ff7803af0",
+        "targets": []
+      },
+      "tests/test_native_schema.py": {
+        "reason": "Independent whole-module evidence: tests_helpers.md sha256:2078aaeab5c1c6548d3c07c8f41d5d1abccfd042e06b82745fc5c6efeb7b76b7. **Reviewed; additional=[]**. Helpers construct schemas/contracts, recursively inspect values, and manipulate JSON in memory. Fixture files are read inside test bodies. Projector replacements use local callbacks and `MonkeyPatch`; type-based validation remains within imported model classes. No SDK/client/process creation or shared output path. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "9dd03128adeb07d2524085945c93e7d124893c14b66557a6fd8139cb1c446f3c",
+        "targets": []
+      },
+      "tests/test_native_selection.py": {
+        "reason": "Independent whole-module evidence: tests_helpers.md sha256:2078aaeab5c1c6548d3c07c8f41d5d1abccfd042e06b82745fc5c6efeb7b76b7. **Reviewed; additional=[]**. Literal imports include `test_auth_cli` wrappers and OpenAI selection/schema code. Profile construction reads and checks the fixture digest; catalog construction copies `_DEFAULT_CATALOG`. Replacement translators are locally defined functions, not module-name dispatch. No provider execution or mutable default-catalog update. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "3d4a689dcc9b5f75503b9c66dd02eaee7fe0c1c2e4278cb5662f1b2e8e579d96",
+        "targets": []
+      },
+      "tests/test_native_v2.py": {
+        "reason": "Independent whole-module evidence: tests_helpers.md sha256:2078aaeab5c1c6548d3c07c8f41d5d1abccfd042e06b82745fc5c6efeb7b76b7. **Reviewed; additional=[]**. Uses the finite seven-route schema tuple and imported schema/selection helpers. Parametrization eagerly allocates bounded fixture data, including the million-character string at line 575. Profile reads and projector callbacks remain local/literal dependencies. Schema routing is concrete\u2014see below\u2014and does not instantiate those providers\u2019 SDK clients. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "18df72d7bbba570d74bb737ca93e7e2b632c5cb29d6f6385ab70434ed73eb86e",
+        "targets": []
+      },
+      "tests/test_openai_lifecycle.py": {
+        "reason": "Independent whole-module evidence: tests_helpers.md sha256:2078aaeab5c1c6548d3c07c8f41d5d1abccfd042e06b82745fc5c6efeb7b76b7. **Reviewed; additional=[]**. The selected path calls the fresh `envelope` builder. Import retains literal lifecycle/native-fixture dependencies but does not activate this module\u2019s autouse fixture or execute its lifecycle tests. `setup_case` returns caller-owned adapters; its response callback uses `MockTransport`. No import-time client, child, or socket. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "88aafe6a563271c0888edd4b768a7ad00f20695c7fa60ec74bba21d91c8a0641",
+        "targets": []
+      },
+      "tests/test_production_transport.py": {
+        "reason": "Independent whole-module evidence: tests_helpers.md sha256:2078aaeab5c1c6548d3c07c8f41d5d1abccfd042e06b82745fc5c6efeb7b76b7. **Reviewed; additional=[]**. `case`, `wire_for`, and `_reviewed_profile` use literal assessment/OpenAI dependencies and local callbacks. Actual SDK serialization is confined to a separate test body, with explicit mock HTTP and nested client contexts. The autouse socket fixture is not inherited by importing its helpers. No client is created during import. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "c0c3a9db437ca7dc151cf27a5c3cf99f0a3974cb139a061c529a0c086ea5cac4",
+        "targets": []
+      },
+      "tests/test_study_limits.py": {
+        "reason": "Independent whole-module evidence: tests_helpers.md sha256:2078aaeab5c1c6548d3c07c8f41d5d1abccfd042e06b82745fc5c6efeb7b76b7. **Pending whole-module declaration: additional=`[tests/study_limit_process.py]`**. `prepared` copies the session proposal into `tmp_path`, writes private proofs, and patches adapter/keyring functions. The selected node retains 42 distinct handoffs, completed/recovery reopening, immutable identity checks, and 126 exports. Other bodies launch the named helper with 120/180-second deadlines and an inline R program with 60 seconds; none is called by this selected node. The child target requires integrator disposition. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "c773724f2d6fb8f5f8daaa1a6cb67cec491b536d7a8797cc2d7fa22e2a6791f5",
+        "targets": [
+          "tests/study_limit_process.py"
+        ]
+      },
       "tests/test_study_native.py": {
-        "reason": "Complete declared provider alternatives, including Gemini offline response and transport/registry dispatch; changed helper bytes invalidate this declaration.",
-        "source_sha256": "3dfe2cf6e66df9039d81f048bff88097197524c8b3d83e02c9d187a314a2a4f0",
+        "reason": "Independent whole-module evidence: tests_helpers.md sha256:2078aaeab5c1c6548d3c07c8f41d5d1abccfd042e06b82745fc5c6efeb7b76b7. **Reviewed with bounded additional targets:** `src/judgmentllm/providers/openai.py`, `src/judgmentllm/providers/anthropic.py`, `src/judgmentllm/providers/gemini.py`\u2014the exact import/class map at lines 469\u2013477. Import eagerly builds `SDK_SELECTIONS` through `library(PACKAGE)` at line 209, including real source-inventory reads. The explicitly imported `offline` fixture redirects the campaign lock to `tmp_path`, installs synthetic keys/DNS guards, and patches source identity through function-scoped `MonkeyPatch`. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "39fb42c50c6877584b021bc64881f56357d4bd4f6af84cc6eea037eaed28801e",
         "targets": [
           "src/judgmentllm/providers/anthropic.py",
           "src/judgmentllm/providers/gemini.py",
           "src/judgmentllm/providers/openai.py"
         ]
+      },
+      "tests/test_study_workflow.py": {
+        "reason": "Independent whole-module evidence: tests_helpers.md sha256:2078aaeab5c1c6548d3c07c8f41d5d1abccfd042e06b82745fc5c6efeb7b76b7. **Reviewed; additional=[]**. The selected node copies the pilot store and seals private proofs, patches `load_proposal` and adapter construction, checks 42 handoffs, and recovers without forwarding again. Its HTTP callback checks committed request bytes. The `load_proposal` substitution is an existing test limitation; this node does not independently exercise the real loader or assert 126 exports. Other bodies\u2019 temporary directories and patches are not selected-node effects. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "ec1fead07bdfc3091b0944a8708fb3a7936f2b2261e8ebc6c4c06923e4e925bb",
+        "targets": []
+      },
+      "tests/transport_contract.py": {
+        "reason": "Independent whole-module evidence: tests_helpers.md sha256:2078aaeab5c1c6548d3c07c8f41d5d1abccfd042e06b82745fc5c6efeb7b76b7. **Reviewed; additional=[]**. Import loads concrete OpenAI, Anthropic, Gemini, and Vertex request types and evaluates their union. Assertion helpers call supplied preparation functions/local lookup callbacks; they perform no work merely by being imported. Literal transport/retry imports retain the relevant closure, including Vertex. No client/process/lock ownership originates here. Finite targets reconciled in integrated-review.md sha256:65062d6b5ab967606bdeae1a4302cf543e97ca005b841787fa440d3975d4e7c4; final integration and scheduling admission remain pending.",
+        "source_sha256": "99ba2be18514598a2600bddb2055717d9259d2f7feabef63dd217b39545ae6ad",
+        "targets": []
       }
     },
-    "reason": "Candidate conservative closure: retain all runtime sources/assets/controls and actual helper dispatch. Existing reviewed digests remain unchanged; stale or unrecorded dependencies require independent exact-source requalification.",
+    "reason": "Exact-source whole-module declarations are individually authorized from pinned partition/integration reports and specifically reviewed cleanup successors. Historical shared entries are retained; authorized src/tests successor overrides and reviewed new identities are explicit. Eleven changed CI inputs, unsupported successor bindings, final metadata integration and scheduling/runtime evidence remain pending. This candidate grants no overlap or qualification authority.",
     "roots": [
       "src/judgmentllm",
       "scripts",
@@ -168,6 +1479,7 @@
   },
   "serial_shared_dependencies": {
     ".gitattributes": "3196281f2725c13078e65ca474703153bc800b65a014419f0b263aa29ee97637",
+    ".github/workflows/ci.yml": "8c49782d25977509782f6df7ffff52bd485828042041fa7f013d590fe5bd64ea",
     "benchmarks/evidence/benchmark.coveragerc": "52d463fdace059892e1a59466830532c0c2bdc43378ea73dbed505cf3d8d7bb9",
     "benchmarks/evidence/execution-parity.json": "7708a345a0ffce5197239a604fc1f743910f7f433d16359803cd0caa4d946d6b",
     "benchmarks/evidence/execution-performance.json": "2f4299d3b0193a3044089f1cb04adfcad6e6cdacce3bfee1abbbc2c9658ce098",
@@ -246,6 +1558,7 @@
     "ci/test-inventory.json": "8a5025dad0a3e44621a229469ef4f79485e9f31f43efc0beca1956aa22ab74f5",
     "ci/test-profiles.json": "637a52b67b34d275a66fb277f4c7d3dd0cc21b23b4fca09102c8f45439827f9b",
     "ci/verification-map.json": "b581834e13cb7b47bce84fcb02f749a14dca60db6959a84385984a97a68268c5",
+    "docs/vertex-qualification-price-evidence.json": "41971545b42e73cced88208ab0f0086540f43a0938a06e0813e1bd117e10481d",
     "examples/advanced.yaml": "00f05dd45d682040b700dff1ca2c5e0873d7f4bc57423c655528399190646066",
     "examples/advanced_prompt.j2": "313d9c7a76f9dbfb187e74e38010df96f6bb437c7f3e13df4591c3cb3d87252f",
     "examples/anthropic/pairs.jsonl": "da0b37ce850b5f39995c4bcc22dc5ec9cc7bc7b415db76428f5d797b0e755265",
@@ -1068,6 +2381,8 @@
     "scripts/cli_lifecycle_r_gate.py": "a044165267ddff88151c2b090c7c198745436fc3f62d056156ba1992903017d5",
     "scripts/cli_process_supervisor.py": "861fd31c039aa1da5930df95d065ceae42a9041ba734a4e23b70d7a65ea9672e",
     "scripts/cli_process_windows.py": "ce9545edcc529db63d77a23eff0de89db2e25c9c8347be1c4172bea3b5a097ed",
+    "scripts/decisions_memory_fixture.py": "e030e4ac77aa068cb51e229419f735d17e6722757769b3bfd421f96d81a5266a",
+    "scripts/decisions_r_fixture.py": "b7ea4b39a9071fe1c033e76f39c4368c5e6abf3a4d7fe4f6ebaa01478af53f9f",
     "scripts/execution_memory_fixture.py": "57b3a2cd48d9f87a881b72fa31eb826cc11d5b0fb8d34b88a09b2f3f36630b1e",
     "scripts/execution_r_fixture.py": "ddd419a37aff4ecb180621ccca5da742e3003436f2f2aaf16ae6eb99003cd017",
     "scripts/gemini_offline_fixture.py": "c424dc940432bdf7e50acd3cb200fd379424eb62034314caf15223fc7ff0f484",
@@ -1106,6 +2421,16 @@
     "src/judgmentllm/cli.py": "c1e5ca72bd902619d12363d2cd81ad5f057df7d4f41acc5902fee0cf57e87eff",
     "src/judgmentllm/cli_controls.py": "0793c90e37cec71945a95d60aadd262fe1552999ea872a325561438f418b5b79",
     "src/judgmentllm/config.py": "a3358ce9b5da23f59f4858ef257911b07c1f2f9106daf7fb405cc34a22cad65e",
+    "src/judgmentllm/decisions/__init__.py": "a1cb086bfab3e3cd81abe7b8772b783a73b18e245ee7b362a56fa2f11c49f6ca",
+    "src/judgmentllm/decisions/_base.py": "ecc6d261ac50bbcee25a1348df8be0ef0b01b5747e437acb14291bf93f14e7f6",
+    "src/judgmentllm/decisions/interpretation.py": "a3fd9cf0a3bb9470369fef25e3239befd4998051e2950795d1116b5fcdf56796",
+    "src/judgmentllm/decisions/outcomes.py": "1361523acc4189ee0e5fd6be3dcaf7b180ca9e895c218d5113c1b116f0d4d554",
+    "src/judgmentllm/decisions/provenance.py": "7b59c4bdfcfbcefa0af56c099d1d9f437f989b57fa3a6c94a052abefe2ccd184",
+    "src/judgmentllm/decisions/records.py": "0356bd1475537d0d16a704a560d651eddfdeda552447aae3886eff515fba7514",
+    "src/judgmentllm/decisions/responses.py": "3392ed427efa90da020e9997fe73a718cb5598f7a30aabca81cc8ef73095b668",
+    "src/judgmentllm/decisions/transport.py": "11d437296a6888e0b2602c1e1bc486f2ab6b2525ef5148eab2f88c9a0e4584be",
+    "src/judgmentllm/decisions_types.py": "4d4f26d5e84956978c3ad49217828ed450423e10d32445d46a700d73bc1b9de9",
+    "src/judgmentllm/decisions_types.pyi": "c817c174c4bd0de4a6d3e829c3df42f828cce257e319d96370ae8953cd5e4df5",
     "src/judgmentllm/evidence/__init__.py": "ea948f439bc6e2d1c3784684325d9959835c347b22f8e1833eadd13cddd886b8",
     "src/judgmentllm/evidence/_base.py": "66eb1d81dc373c60eaf4827a26be5736957da25be0bedd677cfb0f9e422f2824",
     "src/judgmentllm/evidence/assessment.py": "8d88a822c9caff2f3ecf6e7ab22d48a144bd566dca5f93313d5f61b058fbb59b",
@@ -1148,11 +2473,13 @@
     "src/judgmentllm/output_contracts.py": "d0719e8b92f0aa730da0f7a43094cf7235bce8571599a8ae3b7cf7194b83ddbd",
     "src/judgmentllm/persistence/__init__.py": "fef7ac7144c3d2ff0afb73bd01cd7c81c0af6072155eb808af749bedd36d01ce",
     "src/judgmentllm/persistence/artifacts.py": "b5fe99454aab742d3d284fefd393413f06297145fac6f692979d46dafbae612e",
+    "src/judgmentllm/persistence/decisions_invocations.py": "26838666e6be46caf8ecb83227ccc92363c412571e9141b7eee799f99ea73c53",
     "src/judgmentllm/persistence/evidence.py": "114e44fba2a8ab45739c841f77b9bfc00553e1e6ad1143a983c32d1673425bed",
     "src/judgmentllm/persistence/generation.py": "bedb396907099c335bee20e75c84aad601942045a4272a36d661535af20a5a32",
     "src/judgmentllm/persistence/hashing.py": "0b44d2323eebccd5273d8e2bf299f8cee5d5fb7d03e0fbcd27ce5421b8cd56f4",
     "src/judgmentllm/persistence/models.py": "4efc63164e85f9e208311658cc22564e2b442aec626a511c598c39a646f7f0b0",
     "src/judgmentllm/persistence/ownership.py": "2017993071a0a45c604d60e11eab8decfef745ad14a0e794ac54d0f5e14faf10",
+    "src/judgmentllm/persistence/presentations.py": "1b2d46cdc98140d577e6b70534027d11e42584ba319cbb7936d051ef97a555cd",
     "src/judgmentllm/persistence/receipts.py": "d310b4e65b998b5fa1b7cb058f08a3976573f542561084bcff0578c58d6ae7c5",
     "src/judgmentllm/persistence/repository.py": "9d134ba23e1c9dee4a5d2db7c5937f2e066c6bb5d2a5d5f89f87099ad808dcc7",
     "src/judgmentllm/persistence/schema.py": "dc7b20c3d4c10d2d47903ad503e439daccb994957a4b2066367a1cc86e6f4f66",
@@ -1161,6 +2488,7 @@
     "src/judgmentllm/planning.py": "88e947a9efa57abf5ae88fe54de29a1ba50d8dc6a62557843545ad23d9cf0660",
     "src/judgmentllm/preparation/__init__.py": "c63492520d2711beaee40681e5296de269adc45176c5e192bfefae659b2ca9e3",
     "src/judgmentllm/preparation/capture.py": "a938b543ddea2d4ea9335457eac6526b6fbc30650f5651d7a8fa288127df7633",
+    "src/judgmentllm/preparation/decisions.py": "cb058dce5acee2256fd8e75db90704e596ad107d5c23a1e5b3046f7fe8727d63",
     "src/judgmentllm/preparation/freezing.py": "108a655a14ae755f0535c1392cfc043e480f39d87ce800186c2c6412c80c5c13",
     "src/judgmentllm/preparation/index.py": "14f36a35c1fd6850bb7676e6c015c83dab97447e894b06779eee30480ac41eb2",
     "src/judgmentllm/preparation/manifest.py": "f884dd5d88161c4049d470b50d7d5a7e0141bdc486ef2be95288ca6aa3a3863a",
@@ -1182,6 +2510,8 @@
     "src/judgmentllm/providers/anthropic_cli.py": "d77037bf41e61c33d7eb315952bfb413e5b0a20ea7b3718d41e356688d960ea1",
     "src/judgmentllm/providers/anthropic_response.py": "5050200161ca0bae934dd486d7af8a419ece5218c9cba4dba6ecefb1f780dd56",
     "src/judgmentllm/providers/anthropic_schema.py": "baf49802a6574057f35cad53517a42d0c1f843feafc311e60c035748db281333",
+    "src/judgmentllm/providers/decisions_mock.py": "113d94fb71a7c1b2ec6a427c7c637aa2e15706fd671fcf17e0da908d527276d0",
+    "src/judgmentllm/providers/decisions_wire.py": "59457b5694f5e7d41dd363278fc420b749167ea8faee323948856718f21ec219",
     "src/judgmentllm/providers/evidence.py": "2f01249870b9438e54637f4631e85faaa2f5320cfed0a1c653a82a226dd2d720",
     "src/judgmentllm/providers/gemini.py": "5b3d65e06a67cddf87c8f0091e8d0a9ebab5376829407853ee5e991b7796185a",
     "src/judgmentllm/providers/gemini_cli.py": "f60981eb98ca6e520186c9c553950caaceccc3fd95797562b227734ef6ee8ec1",
@@ -1254,6 +2584,15 @@
     "tests/fixtures/cache-history/producer.py.txt": "569512a3a921971055fd1a7a82c942e6db620a0b56059050df76f25f62bf8758",
     "tests/fixtures/cache-history/provenance.json": "119ce6aa73bfc8ab7f947d1073d24b613eb041481fa83dcbfac093aa6585eb91",
     "tests/fixtures/cache-history/store.tar.gz.base64": "e52525dd38fec09afefc8f5b2049ca4327b32e22d539a9b0045aad88c91bb3e6",
+    "tests/fixtures/decisions/legacy-status-v1.json": "d85dfcd65219795ff1c8929f02d9ee97902e6dbf5082431c8e00e77caa8e0dfa",
+    "tests/fixtures/decisions/question-renderer-v1-portable.json": "c5303e76465a255ab7d29125b0c32223da0aedc4c09f03dcf7e11f9977769ff4",
+    "tests/fixtures/decisions/question-renderer-v1-portable.producer.py.txt": "6c87246b556fe43afe483e701c603931fd00a5fdabe0a9b69bdda0567c6a54fc",
+    "tests/fixtures/decisions/question-renderer-v1-portable.tar.gz.base64": "74c66bcca75e1b521a11f6de812781cb66444d11e4f7b5b1f9bd2a7668c271ce",
+    "tests/fixtures/decisions/question-renderer-v1.json": "55ee716c1b0c4956ec6c23759c1b832f9a238c18ee9b21c4dd7a09393686fa50",
+    "tests/fixtures/decisions/question-renderer-v1.md": "0ad96ee9fd28050fe0dc57c285c784dd40845aa8dad4d29d9d5aeb02f3ae4980",
+    "tests/fixtures/decisions/question-renderer-v1.tar.gz.base64": "445dd985706598a6961e721da7090a9909887908e4cab27e1d82d332661e0903",
+    "tests/fixtures/decisions/sched1.json": "4a5e08f7d65b45b932ae4dc91d1681729bb63ec78f3c296dc09d75009042a503",
+    "tests/fixtures/decisions/vectors.json": "106a6648597a639368106210000a6adb380e527c9c378d94cedf99745a11517b",
     "tests/fixtures/google_response/baseline.json": "8ae82c1aa14a9ea9d37e4aee7f465ae17b0b00aeb8671562f5dcdb014222b77f",
     "tests/fixtures/native_anthropic/.gitattributes": "8e41095bad402528e813d6242cfea092c9e84922b0f0d30aab34f6116cad0bc4",
     "tests/fixtures/native_anthropic/documentation.json": "27cf6618ce095a22d983802a59027dbbc8574614277d8e2fce2e8810a827034c",

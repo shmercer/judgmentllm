@@ -186,6 +186,19 @@ teardown, exclusive serial/resource barriers and owned cleanup must be reviewed
 separately from protected acceptance. The existing suite R switch runs all seven
 gates within that barrier graph; a separately launched gate cannot replace it.
 
+The metadata integration records 175 individually reviewed whole-module inputs:
+72 finite target lists and 103 separately justified empty lists. Review reasons
+retain the pinned report identities; the review packet links each source row to
+its individual findings. The original 1,367 shared fingerprint values remain
+unchanged, with 28 reviewed new identities appended and authorized `src/`/`tests/`
+successors recorded as per-placement overrides. The four sibling type stubs stay
+data identities; the exact Vertex pricing JSON is a data control, never an
+executable target. Eleven CI inputs and final metadata still need independent
+integration review. Four authorized non-`src`/`tests` successors also await a
+schema-compatible binding that preserves the historical map. These pending
+fingerprints retain exclusive fallback and block scheduling admission; module
+review alone grants neither overlap nor qualification.
+
 Only independently admitted **merged** slice commits subsequently recorded by
 the supervisor become trusted policy SHAs. No future SHA is assumed. Changes in
 slices B–E must reestablish their affected scheduling closures rather than inherit
