@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -22,6 +23,8 @@ from judgmentllm.decisions.provenance import (
 from judgmentllm.decisions.transport import DecisionsDependencyV1
 from judgmentllm.execution import execute_run, recover_run
 from judgmentllm.execution.retry import authorize_subset_retry
+from judgmentllm.lifecycle import aresume_run
+from judgmentllm.lifecycle_models import RetrySelection
 from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.evidence import (
     DecisionsEvidenceReceiptV2,
@@ -37,7 +40,7 @@ from judgmentllm.providers.openai_decisions import (
     OpenAIDecisionsAdapter,
     decisions_context,
 )
-from judgmentllm.providers.protocol import ProviderError
+from judgmentllm.providers.protocol import PreparedRequest, ProviderError
 
 
 @pytest.mark.parametrize(
@@ -362,4 +365,129 @@ def test_complete_trait_instructions_and_examples_are_question_local(
         assert (
             "EXAMPLE_A_COMPLETE" not in dependency.shared_input
             and "EXAMPLE_B_COMPLETE" not in dependency.shared_input
+        )
+
+
+@pytest.mark.asyncio
+async def test_public_resume_preserves_eight_worker_capacity_across_burst_and_retry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    data = spec_for(tmp_path, traits=17, maximum=1).model_dump()
+    data["execution"]["concurrency"] = 8
+    spec = RunSpecV4.model_validate(data)
+    store = tmp_path / "store"
+    with prepare_run(spec, store=store, run_id="001") as prepared:
+        keys: list[str] = []
+        for dependency in prepared.iter_request_dependencies():
+            assert isinstance(dependency, DecisionsDependencyV1)
+            keys.extend(q.key for q in dependency.questions)
+    assert len(keys) == 17
+
+    burst = asyncio.Event()
+    handoff_full = asyncio.Event()
+    ninth_forwarded = asyncio.Event()
+    forwarded: list[str] = []
+    submitted: set[str] = set()
+    capacities: list[int] = []
+    buffered: list[int] = []
+    first_drained = False
+    retrying = False
+
+    async def respond(request: httpx2.Request) -> httpx2.Response:
+        body = json.loads(request.content)
+        name = body["questions"][0]["name"]
+        forwarded.append(name)
+        if not retrying:
+            if len(forwarded) == 8:
+                burst.set()
+            if len(forwarded) <= 8:
+                await burst.wait()
+            else:
+                ninth_forwarded.set()
+        doc = envelope(body)
+        if not retrying and name == keys[0]:
+            doc["answers"][0].pop("score")
+        return httpx2.Response(200, json=doc)
+
+    original_init = OpenAIDecisionsAdapter.__init__
+    original_submit = OpenAIDecisionsAdapter.submit
+    original_retrieve = OpenAIDecisionsAdapter.retrieve
+
+    def initialize(self: OpenAIDecisionsAdapter, *args: Any, **kwargs: Any) -> None:
+        original_init(
+            self, *args, **{**kwargs, "http_transport": httpx2.MockTransport(respond)}
+        )
+        capacities.append(self.concurrency)
+
+    async def submit(
+        self: OpenAIDecisionsAdapter,
+        prepared: PreparedRequest,
+        *,
+        submission_id: str,
+        correlation_id: str,
+    ):
+        ack = await original_submit(
+            self, prepared, submission_id=submission_id, correlation_id=correlation_id
+        )
+        assert submission_id not in submitted
+        submitted.add(submission_id)
+        buffered.append(len(self._responses))  # pyright: ignore[reportPrivateUsage]
+        if len(submitted) == 8:
+            handoff_full.set()
+        return ack
+
+    async def retrieve(
+        self: OpenAIDecisionsAdapter,
+        prepared: PreparedRequest,
+        *,
+        submission_id: str,
+        correlation_id: str,
+    ):
+        nonlocal first_drained
+        if not retrying:
+            await handoff_full.wait()
+            if not first_drained:
+                first_drained = True
+                response = await original_retrieve(
+                    self,
+                    prepared,
+                    submission_id=submission_id,
+                    correlation_id=correlation_id,
+                )
+                assert len(self._responses) == 7  # pyright: ignore[reportPrivateUsage]
+                return response
+            await ninth_forwarded.wait()
+        return await original_retrieve(
+            self, prepared, submission_id=submission_id, correlation_id=correlation_id
+        )
+
+    monkeypatch.setattr(OpenAIDecisionsAdapter, "__init__", initialize)
+    monkeypatch.setattr(OpenAIDecisionsAdapter, "submit", submit)
+    monkeypatch.setattr(OpenAIDecisionsAdapter, "retrieve", retrieve)
+    initial = await asyncio.wait_for(aresume_run("001", store=store), 20)
+    assert initial.results == 17 and initial.successful_results == 16
+    assert Counter(forwarded) == Counter(keys)
+    assert max(buffered) == 8 and ninth_forwarded.is_set()
+    with Repository(store) as repo:
+        failed = next(r for r in repo.iter_results("001") if r.status == "invalid")
+    retrying = True
+    selection = RetrySelection(task_ids=(failed.task_id,), operation_id="retry-001")
+    retried = await asyncio.wait_for(
+        aresume_run("001", store=store, retry=selection), 20
+    )
+    assert retried.results == 18 and retried.successful_results == 17
+    recovered = await asyncio.wait_for(
+        aresume_run("001", store=store, retry=selection), 20
+    )
+    assert recovered.results == 18 and not recovered.recovery_required
+    assert Counter(forwarded) == Counter([*keys, keys[0]])
+    assert len(submitted) == 18 and capacities == [8, 8, 8]
+    with Repository(store) as repo:
+        assert len(list(repo.iter_submissions("001"))) == 18
+        assert len(list(repo.iter_evidence("001"))) == 18
+        assert (
+            repo.connection.execute("SELECT count(*) FROM usage_revisions").fetchone()[
+                0
+            ]
+            == 18
         )

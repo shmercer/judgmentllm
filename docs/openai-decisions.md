@@ -32,6 +32,8 @@ IDs remain subject to validation and provider acceptance. Ordinary `validate`,
 `plan`, `templates preview`, `run`, `resume`, `runs status`, `results export` and
 `results provenance` use the same configuration. `run` can incur provider charges
 when an operator explicitly executes it; no such operation was part of PR C tests.
+Resume, including explicit retries, sizes the adapter's HTTP and response handoff
+capacity from the frozen run's `execution.concurrency`.
 
 One shared essay can carry independently complete trait questions. Explicit
 `pair_presentations` support several independent criterion choices over one

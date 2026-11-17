@@ -980,20 +980,10 @@ async def aresume_run(
                 ).schema_version
                 in (8, 9)
             )
-        adapter = _execution_adapter(
-            run.provider,
-            run.endpoint,
-            run.model,
-            root,
-            mock,
-            resume=True,
-            decisions=decisions,
-        )
+        decisions_manifest = None
         if decisions and run.provider == "openai":
             from judgmentllm.preparation.manifest import ExecutableRunManifestV9
-            from judgmentllm.providers.openai_decisions import OpenAIDecisionsAdapter
 
-            assert isinstance(adapter, OpenAIDecisionsAdapter)
             with ReadOnlyRepository(root) as repository:
                 manifest = _load_manifest(
                     repository, identifier, unsealed=run.manifest_sha256 is None
@@ -1002,7 +992,24 @@ async def aresume_run(
                     raise LifecycleError(
                         "execution", "OpenAI Decisions manifest differs"
                     )
-                adapter.transport_context = manifest.production_context
+                decisions_manifest = manifest
+        adapter = _execution_adapter(
+            run.provider,
+            run.endpoint,
+            run.model,
+            root,
+            mock,
+            resume=True,
+            concurrency=decisions_manifest.execution.concurrency
+            if decisions_manifest is not None
+            else 4,
+            decisions=decisions,
+        )
+        if decisions_manifest is not None:
+            from judgmentllm.providers.openai_decisions import OpenAIDecisionsAdapter
+
+            assert isinstance(adapter, OpenAIDecisionsAdapter)
+            adapter.transport_context = decisions_manifest.production_context
         try:
             _progress(progress, "started", identifier, root)
             if retry is not None:

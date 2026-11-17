@@ -1279,6 +1279,7 @@
       "test_exact_endpoint_and_user_splitting": {"[1-32-groups0]": [], "[12-32-groups2]": [], "[13-1-groups3]": [], "[2-32-groups1]": [], "[4-3-groups6]": [], "[400-500-groups4]": [], "[401-500-groups5]": []},
       "test_invalid_controls_and_sdk_version_precede_credentials": {"": []},
       "test_multi_criterion_orientation_repetition_and_subset_retry": {"": []},
+      "test_public_resume_preserves_eight_worker_capacity_across_burst_and_retry": {"": []},
       "test_received_failures_are_not_repaired_or_hidden": {"[bad_index-expected7]": [], "[bad_label-expected6]": [], "[bad_sum-expected5]": [], "[bad_type-expected8]": [], "[bad_usage-expected14]": [], "[duplicate-expected1]": [], "[duplicate_json-expected11]": [], "[extra_field-expected4]": [], "[missing-expected0]": [], "[order-expected10]": [], "[refusal-expected9]": [], "[triple_duplicate-expected2]": [], "[unexpected-expected3]": [], "[unknown_root-expected13]": [], "[utf8-expected12]": []},
       "test_score_limits_cannot_be_overridden_or_become_neutral_limits": {"[10]": [], "[11]": [], "[2]": []}
     },
