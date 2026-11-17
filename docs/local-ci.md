@@ -190,17 +190,19 @@ The metadata integration records 175 individually reviewed whole-module inputs:
 72 finite target lists and 103 separately justified empty lists. Review reasons
 retain the pinned report identities; the review packet links each source row to
 its individual findings. The original 1,367 shared fingerprint values remain
-unchanged, with 28 reviewed new identities appended and authorized `src/`/`tests/`
-successors recorded as per-placement overrides. The four sibling type stubs stay
-data identities; the exact Vertex pricing JSON is a data control, never an
-executable target. The nonactivating metadata integration has passed independent
-review. Per-placement dependency keys use the existing canonical repository-relative
+unchanged, with 30 individually reviewed new identities appended. Each placement
+has 46 fingerprint entries, including explicit reviewed source, CI and control-file
+successors. The four sibling type stubs stay data identities; the exact Vertex
+pricing JSON is a data control, never an executable target. The predecessor
+metadata and validator have passed independent review. Per-placement dependency
+keys use the existing canonical repository-relative
 `safe_path` rule; values must be lowercase 64-character SHA-256 strings. Syntax
 acceptance changes neither dependency scope nor execution-review requirements.
-The validator checkpoint retains the existing fingerprints. Its new bytes need
-independent code review before separately reviewed successor hashes are integrated.
-Pending fingerprints retain exclusive fallback and block scheduling admission;
-syntax acceptance grants neither overlap nor qualification.
+This final metadata integration still requires independent review at its committed
+source and an externally bound ledger. Zero static closure differences provide
+neither observed child/case overlap and cleanup evidence nor authority to launch,
+activate scheduling or qualify the candidate. Those remain separate supervised
+stages; the candidate mechanism cannot qualify itself.
 
 Only independently admitted **merged** slice commits subsequently recorded by
 the supervisor become trusted policy SHAs. No future SHA is assumed. Changes in

@@ -89,6 +89,19 @@
   "serial": [
     {
       "dependencies": {
+        ".gitattributes": "88f6c994e22994fb0e47d1a10b89221340a07e83c0cdfa8f4654ca7c74a0eca1",
+        "benchmarks/focused_execution.py": "2c7a69cd22c6549369bc68536629c41f184b242e446253fcc713150211f76d19",
+        "ci/acceptance.py": "f7cd3dfeec5f7f16c3b98e061a88b1fac43e751648c74c2069de5a0ddb540d4f",
+        "ci/check.py": "30e683df0e74fca1b58319b569b4ff8823af5f79fe9abf56ead780f42db14986",
+        "ci/local/coverage_equivalence.py": "6db4a0ad71655cf5ae639d3ef72ca8799fb4d5e2d3c45189e08d375c464ae699",
+        "ci/local/gates.py": "c8824d2dd2b9c128c610ac1cb5292100780f92e0ebf0fa9591b599701b5c6933",
+        "ci/local/grid.py": "2d1d10494fd80d0888062586495657b554f606cad59278ea3e3790924de70ffe",
+        "ci/local/policy.py": "d06737ab690925ce993f169072173444c0295e637e2dbc8fc41fea86f461cf54",
+        "ci/local/selection_fixture.py": "7fb0a7948666617922a478b4315a287dac88ddbc9c94dc4913b487a9e0d2fca9",
+        "ci/local/suite.py": "d1abd693a8551457813a7d84921d3b63824a9c72d377bf797be3ce87a96bf2ec",
+        "ci/risk.py": "3197bcfe11629b75229ca5865aab1256f4237cdddf29029fe5edb99ef3e73e13",
+        "ci/suite_evidence.py": "7319ca0d08ab7d0aacd2a83d531d6cdcae3c4f17bb7255d2963e8290f5657100",
+        "scripts/grouped_lifecycle_r_fixture.py": "84cc2af86d98a4d4cc163506a703aa062af774056cc9806c0694dc13df91ee61",
         "src/judgmentllm/__init__.py": "330a12dc66605f0453e6dce5240d0fe2874fc9aadf382b2ead74b3c3c2b6b0df",
         "src/judgmentllm/_lifecycle_store.py": "5a8272fb2946324c857a6d7eab3bffdb7aaa07c4aa7fb367059d4402ce20ef36",
         "src/judgmentllm/anthropic_diagnostics.py": "87b74807c5e4dacc75e15cd652747025f75f706919fc12a1f3c21c884ddbdcf8",
@@ -129,6 +142,19 @@
     },
     {
       "dependencies": {
+        ".gitattributes": "88f6c994e22994fb0e47d1a10b89221340a07e83c0cdfa8f4654ca7c74a0eca1",
+        "benchmarks/focused_execution.py": "2c7a69cd22c6549369bc68536629c41f184b242e446253fcc713150211f76d19",
+        "ci/acceptance.py": "f7cd3dfeec5f7f16c3b98e061a88b1fac43e751648c74c2069de5a0ddb540d4f",
+        "ci/check.py": "30e683df0e74fca1b58319b569b4ff8823af5f79fe9abf56ead780f42db14986",
+        "ci/local/coverage_equivalence.py": "6db4a0ad71655cf5ae639d3ef72ca8799fb4d5e2d3c45189e08d375c464ae699",
+        "ci/local/gates.py": "c8824d2dd2b9c128c610ac1cb5292100780f92e0ebf0fa9591b599701b5c6933",
+        "ci/local/grid.py": "2d1d10494fd80d0888062586495657b554f606cad59278ea3e3790924de70ffe",
+        "ci/local/policy.py": "d06737ab690925ce993f169072173444c0295e637e2dbc8fc41fea86f461cf54",
+        "ci/local/selection_fixture.py": "7fb0a7948666617922a478b4315a287dac88ddbc9c94dc4913b487a9e0d2fca9",
+        "ci/local/suite.py": "d1abd693a8551457813a7d84921d3b63824a9c72d377bf797be3ce87a96bf2ec",
+        "ci/risk.py": "3197bcfe11629b75229ca5865aab1256f4237cdddf29029fe5edb99ef3e73e13",
+        "ci/suite_evidence.py": "7319ca0d08ab7d0aacd2a83d531d6cdcae3c4f17bb7255d2963e8290f5657100",
+        "scripts/grouped_lifecycle_r_fixture.py": "84cc2af86d98a4d4cc163506a703aa062af774056cc9806c0694dc13df91ee61",
         "src/judgmentllm/__init__.py": "330a12dc66605f0453e6dce5240d0fe2874fc9aadf382b2ead74b3c3c2b6b0df",
         "src/judgmentllm/_lifecycle_store.py": "5a8272fb2946324c857a6d7eab3bffdb7aaa07c4aa7fb367059d4402ce20ef36",
         "src/judgmentllm/anthropic_diagnostics.py": "87b74807c5e4dacc75e15cd652747025f75f706919fc12a1f3c21c884ddbdcf8",
@@ -1465,7 +1491,7 @@
         "targets": []
       }
     },
-    "reason": "Exact-source whole-module declarations are individually authorized from pinned partition/integration reports and specifically reviewed cleanup successors. Historical shared entries are retained; authorized src/tests successor overrides and reviewed new identities are explicit. Eleven changed CI inputs, unsupported successor bindings, final metadata integration and scheduling/runtime evidence remain pending. This candidate grants no overlap or qualification authority.",
+    "reason": "Individually reviewed exact-source whole-module declarations and CI/control successor identities are integrated from pinned independent reports, including the specifically reviewed validator successor. Historical shared values are retained with explicit per-placement overrides. Final committed-source metadata review, an independent external ledger and observed runtime scheduling evidence remain pending. Static closure agreement grants no overlap or qualification authority.",
     "roots": [
       "src/judgmentllm",
       "scripts",
@@ -1529,7 +1555,9 @@
     "ci/local/resource_specs.py": "745636b0823e585f79fdc97c0317398361a0761bff0f5bd1744ed997da41f6bb",
     "ci/local/resource_vm.py": "6cc19960fc96a288ac7abe16d63d69354749dbb513013aa36a06fef46c931702",
     "ci/local/scheduling.py": "33a4cb717f55b00c15ee8e9473ba8a30e10e2d98c2e52075d7626c76a5c962f6",
+    "ci/local/scheduling_contract.py": "4ac74ff84cf151c8aea89c6b07c31306ecd8b88598467f598ee92b1145ea1c81",
     "ci/local/selection_fixture.py": "17f3bc32d2409cdbd0abc7e1d749bb5252a1aef48ec78cf49c9723391a4dcf3b",
+    "ci/local/serial_dependencies.py": "b02ee9e4b5b6adf2f7cee0830b3f9ec6526e4e1f4e0b4cdfbf9afbb773b2d365",
     "ci/local/source.py": "6834cc9e277db54901a5b5b0973b1007f420d6d8dbaaa94c8457fbef0d34eca1",
     "ci/local/suite.py": "a8a3fafa6944b3328d59a7cd45d9d38c892482a3d9b9eacdd60fa46a0d5e2eb5",
     "ci/local/targeted_coverage.py": "90f0823c79016c230dc4154b776adaec24bfea5a95565b391d6a3dfc0704971e",
