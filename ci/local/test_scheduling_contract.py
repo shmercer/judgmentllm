@@ -11,6 +11,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -21,6 +22,7 @@ import risk
 import selection
 from local import policy as local_policy
 from local import scheduling_contract as contract
+from local.policy import read as read_policy
 from local.serial_dependencies import closure, snapshot
 from test_risk import freeze
 
@@ -214,6 +216,123 @@ def test_all_levels_block_stale_evidence_when_safe_test_is_unselected(
     ]
     assert not (output / "suite").exists()
     assert local_policy.serial_groups([SAFE], policy, source)[
+        "globally-exclusive-serial"
+    ] == [SAFE]
+
+
+@pytest.mark.parametrize("level", range(5))
+@pytest.mark.parametrize("fault", ["changed", "missing", "nonregular"])
+def test_reviewed_control_overrides_block_stale_admission_at_all_levels(
+    project: Any,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    level: int,
+    fault: str,
+) -> None:
+    import process
+    import suite
+
+    source, _, policy, known = project
+    name = "ci/reviewed-control.json"
+    control = source / name
+    control.write_text('{"value": 1}\n')
+    policy["serial_dependency_scope"]["controls"].append(name)
+    policy["serial_shared_dependencies"][name] = checksum(control)
+    historical = copy.deepcopy(policy["serial_shared_dependencies"])
+    control.write_text('{"value": 2}\n')
+    expected = checksum(control)
+    policy["serial"][0]["dependencies"][name] = expected
+    (source / "ci/local-policy.json").write_text(json.dumps(policy))
+    # Planning and require must use the real, validated disk policy.
+    monkeypatch.setattr(local_policy, "read", read_policy)
+    validated = read_policy(source / "ci")
+    reviewed = freeze(source)
+    assert (
+        contract.build(source, reviewed, reviewed, validated, known)["status"]
+        == "passed"
+    )
+    if fault == "changed":
+        control.write_text('{"value": 3}\n')
+    elif fault == "missing":
+        control.unlink()
+    else:
+        control.unlink()
+        control.mkdir()
+        (control / "payload.txt").write_text("A directory is not the reviewed file\n")
+        assert control.is_dir()
+    # Only unrelated prose changes in the planned interval, even at Level 0.
+    base = freeze(source)
+    (source / "README.md").write_text("Unrelated narrative\n")
+    plan = risk.make_plan(source, base, freeze(source), minimum=level)
+    assert plan["risk"] == level
+    assert plan["local_policy"] == validated == read_policy(source / "ci")
+    assert validated["serial_shared_dependencies"] == historical
+    assert "tests/test_safe.py" not in plan["impact"]
+    assert "scheduling-contract" in risk.required_steps(
+        plan, "linux-3.11", execution_scope="local"
+    )
+    assert plan["scheduling_contract"]["status"] == "requalification-required"
+    row = plan["scheduling_contract"]["placements"][SAFE]
+    assert row["placement"] == "globally-exclusive-serial"
+    assert row["differences"] == [
+        {
+            "path": name,
+            "expected_sha256": expected,
+            "actual_sha256": checksum(control) if fault == "changed" else None,
+            "reason": "changed-dependency"
+            if fault == "changed"
+            else "missing-or-nonregular",
+        }
+    ]
+    with pytest.raises(ValueError, match="requalification-required"):
+        contract.require(plan, source)
+    plan["lanes"][0].update(current_synthetic_lane())
+
+    def unexpected(*arguments: object, **options: object) -> Any:
+        pytest.fail("Stale scheduling reached suite allocation or child dispatch")
+
+    monkeypatch.setattr(suite, "read_resources", unexpected)
+    monkeypatch.setattr(process, "run", unexpected)
+    monkeypatch.setattr(
+        acceptance,
+        "subprocess",
+        SimpleNamespace(
+            run=unexpected,
+            STDOUT=subprocess.STDOUT,
+            SubprocessError=subprocess.SubprocessError,
+        ),
+    )
+    suite_output = tmp_path / "suite"
+    with pytest.raises(ValueError, match="requalification-required"):
+        suite.run(
+            source=source,
+            output=suite_output,
+            targets=["tests"],
+            workers=1,
+            coverage=False,
+            plan=plan,
+            local_schedule="conservative",
+        )
+    assert not suite_output.exists()
+    lane_output = tmp_path / "lane"
+    assert (
+        acceptance.run_lane(
+            plan,
+            source,
+            lane_output,
+            "linux-3.11",
+            "synthetic-control",
+            execution_scope="local",
+            local_schedule="conservative",
+        )
+        == 1
+    )
+    receipt = json.loads((lane_output / "receipt.json").read_text())
+    assert receipt["steps"] == [
+        {"name": "scheduling-contract", "exit_code": 1, "error": receipt["error"]}
+    ]
+    assert not (lane_output / "suite").exists()
+    assert local_policy.serial_groups([SAFE], validated, source)[
         "globally-exclusive-serial"
     ] == [SAFE]
 

@@ -14,9 +14,11 @@ from typing import Any
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+import risk
 from environment import clean_environment
 from local import policy as local_policy
 from local import scheduling_contract as contract
+from local.policy import read as read_policy
 from local.serial_dependencies import closure, snapshot
 from test_risk import freeze
 from test_scheduling_contract import SAFE, checksum, review_execution
@@ -301,3 +303,173 @@ def test_reviewed_helper_paths_cannot_escape_or_alias_the_source(
     (tmp_path / "local-policy.json").write_text(json.dumps(policy))
     with pytest.raises(ValueError, match="Invalid shared serial dependency"):
         local_policy.read(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ".gitattributes",
+        "ci/acceptance.py",
+        "benchmarks/focused_execution.py",
+        "scripts/grouped_lifecycle_r_fixture.py",
+        "docs/vertex-qualification-price-evidence.json",
+        "src/judgmentllm/study/plans.py",
+        "tests/test_study_workflow.py",
+    ],
+)
+def test_serial_dependency_overrides_accept_canonical_control_paths(
+    tmp_path: Path, path: str
+) -> None:
+    policy = json.loads(
+        (Path(__file__).resolve().parents[1] / "local-policy.json").read_text()
+    )
+    historical = copy.deepcopy(policy["serial_shared_dependencies"])
+    policy["serial"][0]["dependencies"][path] = "ab" * 32
+    (tmp_path / "local-policy.json").write_text(json.dumps(policy))
+    loaded = read_policy(tmp_path)
+    assert loaded == policy
+    assert loaded["serial_shared_dependencies"] == historical
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "",
+        ".",
+        "..",
+        "../policy.py",
+        "/ci/policy.py",
+        "C:/ci/policy.py",
+        "C:\\ci\\policy.py",
+        "ci\\policy.py",
+        "ci:policy.py",
+        "tests/../policy.py",
+        "./tests/policy.py",
+        "tests//policy.py",
+        "src/./policy.py",
+        "tests/policy.py/",
+    ],
+)
+def test_serial_dependency_override_paths_are_canonical(
+    tmp_path: Path, path: str
+) -> None:
+    policy = json.loads(
+        (Path(__file__).resolve().parents[1] / "local-policy.json").read_text()
+    )
+    policy["serial"][0]["dependencies"][path] = "0" * 64
+    (tmp_path / "local-policy.json").write_text(json.dumps(policy))
+    with pytest.raises(ValueError, match="Invalid serial placement"):
+        read_policy(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "",
+        "a" * 63,
+        "a" * 65,
+        "A" * 64,
+        "g" * 64,
+        " " * 64,
+        "0" * 63 + "\n",
+        "0" * 63 + " ",
+        "\uff10" * 64,
+        None,
+        False,
+        int("1" * 64),
+        ["0"] * 64,
+        {"value": "0"},
+    ],
+)
+def test_serial_dependency_overrides_require_lowercase_sha256_strings(
+    tmp_path: Path, value: object
+) -> None:
+    policy = json.loads(
+        (Path(__file__).resolve().parents[1] / "local-policy.json").read_text()
+    )
+    policy["serial"][0]["dependencies"]["tests/test_study_workflow.py"] = value
+    (tmp_path / "local-policy.json").write_text(json.dumps(policy))
+    with pytest.raises(ValueError, match="Invalid serial placement"):
+        read_policy(tmp_path)
+
+
+def test_serial_dependency_overrides_remain_nonempty(tmp_path: Path) -> None:
+    policy = json.loads(
+        (Path(__file__).resolve().parents[1] / "local-policy.json").read_text()
+    )
+    policy["serial"][0]["dependencies"] = {}
+    (tmp_path / "local-policy.json").write_text(json.dumps(policy))
+    with pytest.raises(ValueError, match="Invalid serial placement"):
+        read_policy(tmp_path)
+
+
+def test_serial_dependency_control_overrides_are_per_placement_and_source_bound(
+    project: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source, _, policy, known = project
+    second = "tests/test_other.py::test_other"
+    other = source / "tests/test_other.py"
+    other.write_text(
+        "import pytest\n\n\n@pytest.mark.serial\ndef test_other():\n    assert True\n"
+    )
+    known["modules"]["tests/test_other.py"]["test_other"][""] = ["serial"]
+    (source / "ci/test-inventory.json").write_text(json.dumps(known))
+    policy["serial"].append(
+        {
+            "selector": second,
+            "placement": "concurrency-safe-serial",
+            "reason": "Second disposable private-store placement",
+            "dependencies": {"tests/test_other.py": checksum(other)},
+        }
+    )
+    policy["isolation_reasons"][second] = "Second disposable private-store case"
+    review_execution(policy, source, "tests/test_other.py", [])
+    control = source / ".gitattributes"
+    control.write_text("*.txt text eol=lf\n")
+    policy["serial_dependency_scope"]["controls"].append(".gitattributes")
+    policy["serial_shared_dependencies"][".gitattributes"] = checksum(control)
+    historical = copy.deepcopy(policy["serial_shared_dependencies"])
+    control.write_text("*.txt text eol=crlf\n")
+    policy["serial"][0]["dependencies"][".gitattributes"] = checksum(control)
+    (source / "ci/local-policy.json").write_text(json.dumps(policy))
+    # The imported callable predates project's deepcopy-reader monkeypatch.
+    monkeypatch.setattr(local_policy, "read", read_policy)
+    loaded = read_policy(source / "ci")
+    rows = local_policy.serial_placement_report([SAFE, second], loaded, source)
+    assert rows[SAFE]["status"] == "passed"
+    assert rows[SAFE]["dependencies"][".gitattributes"] == checksum(control)
+    assert rows[second]["status"] == "requalification-required"
+    assert rows[second]["differences"] == [
+        {
+            "path": ".gitattributes",
+            "expected_sha256": historical[".gitattributes"],
+            "actual_sha256": checksum(control),
+            "reason": "changed-dependency",
+        }
+    ]
+    groups = local_policy.serial_groups([SAFE, second], loaded, source)
+    assert groups["concurrency-safe-serial"] == [SAFE]
+    assert groups["globally-exclusive-serial"] == [second]
+    assert loaded["serial_shared_dependencies"] == historical
+
+    loaded["serial"][1]["dependencies"][".gitattributes"] = checksum(control)
+    (source / "ci/local-policy.json").write_text(json.dumps(loaded))
+    validated = read_policy(source / "ci")
+    base = freeze(source)
+    plan = risk.make_plan(source, base, base)
+    assert plan["local_policy"] == validated
+    assert contract.require(plan, source)["status"] == "passed"
+    before = plan["scheduling_contract"]["placements"]
+    assert all(row["status"] == "passed" for row in before.values())
+    assert validated["serial_shared_dependencies"] == historical
+
+    (source / "tests/test_added.py").write_text("def test_added(): assert True\n")
+    added = copy.deepcopy(known)
+    added["modules"]["tests/test_added.py"] = {"test_added": {"": []}}
+    (source / "ci/test-inventory.json").write_text(json.dumps(added))
+    after = contract.build(source, base, freeze(source), validated, known)
+    assert after["status"] == "passed"
+    assert all(
+        row["dependency_sha256"] == before[selector]["dependency_sha256"]
+        for selector, row in after["placements"].items()
+    )

@@ -55,9 +55,9 @@ def read(root: Path) -> dict[str, Any]:
             or not item["reason"]
             or not item["dependencies"]
             or any(
-                not path.startswith(("src/", "tests/"))
-                or ".." in Path(path).parts
-                or len(value) != 64
+                not safe_path(path)
+                or not isinstance(value, str)
+                or re.fullmatch(r"[0-9a-f]{64}", value) is None
                 for path, value in item["dependencies"].items()
             )
         ):

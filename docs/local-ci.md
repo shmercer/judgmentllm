@@ -193,11 +193,14 @@ its individual findings. The original 1,367 shared fingerprint values remain
 unchanged, with 28 reviewed new identities appended and authorized `src/`/`tests/`
 successors recorded as per-placement overrides. The four sibling type stubs stay
 data identities; the exact Vertex pricing JSON is a data control, never an
-executable target. Eleven CI inputs and final metadata still need independent
-integration review. Four authorized non-`src`/`tests` successors also await a
-schema-compatible binding that preserves the historical map. These pending
-fingerprints retain exclusive fallback and block scheduling admission; module
-review alone grants neither overlap nor qualification.
+executable target. The nonactivating metadata integration has passed independent
+review. Per-placement dependency keys use the existing canonical repository-relative
+`safe_path` rule; values must be lowercase 64-character SHA-256 strings. Syntax
+acceptance changes neither dependency scope nor execution-review requirements.
+The validator checkpoint retains the existing fingerprints. Its new bytes need
+independent code review before separately reviewed successor hashes are integrated.
+Pending fingerprints retain exclusive fallback and block scheduling admission;
+syntax acceptance grants neither overlap nor qualification.
 
 Only independently admitted **merged** slice commits subsequently recorded by
 the supervisor become trusted policy SHAs. No future SHA is assumed. Changes in
