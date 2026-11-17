@@ -532,6 +532,15 @@ uv run --offline --no-sync python scripts/grouped_lifecycle_r_fixture.py --phase
 JUDGMENTLLM_R_STRICT=1 Rscript --vanilla examples/grouped_lifecycle_interoperability.R /tmp/judgmentllm-grouped-lifecycle-r
 ```
 
+The default grouped producer includes the historical, synthetic Decisions and
+OpenAI Decisions fixtures; this three-command pipeline remains complete. Only
+the pytest generator uses `--historical-only`, composing historical persist,
+OpenAI persist under `openai-decisions/`, historical export, and OpenAI export as
+four separate processes with the existing 60-second phase limits. The OpenAI
+inner CLI calls retain their 30-second limits. Both readers share the complete
+byte-immutable tree, and the combined R consumer retains its 30-second limit and
+all assertions, including exactly four OpenAI rubric/pairwise full/minimal variants.
+
 All five earlier strict gates remain required. This sixth gate uses only base R
 and jsonlite. At this stage installed-CLI lifecycle testing was assigned to
 Subphase 5; the next section documents that implemented seventh gate.

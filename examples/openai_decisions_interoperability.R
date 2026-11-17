@@ -2,6 +2,8 @@
 check_openai_decisions_exports <- function(root) {
 stopifnot(requireNamespace("jsonlite", quietly = TRUE))
 runs <- jsonlite::fromJSON(file.path(root, "exports.json"), simplifyVector = FALSE)
+variants <- vapply(runs, function(run) paste(run$kind, run$capture, sep = "/"), character(1))
+stopifnot(length(runs) == 4L, identical(sort(variants), c("pairwise/full", "pairwise/minimal", "rubric/full", "rubric/minimal")))
 read_lines <- function(path) lapply(readLines(path, warn = FALSE, encoding = "UTF-8"), function(x) jsonlite::fromJSON(x, simplifyVector = FALSE))
 for (run in runs) {
   rows <- read_lines(run$canonical$files[[1L]]$path)

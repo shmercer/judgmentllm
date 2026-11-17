@@ -974,8 +974,13 @@
       "test_unrecognizable_structure_and_strict_public_group_validator": {"": []}
     },
     "tests/test_grouped_lifecycle_r.py": {
+      "test_grouped_fixture_default_complete_and_explicit_historical_only": {"[False]": [], "[True]": []},
       "test_grouped_lifecycle_passes_required_r_assertions": {"": ["r_interop"]},
-      "test_grouped_lifecycle_survives_independent_processes": {"": []}
+      "test_grouped_lifecycle_survives_independent_processes": {"": []},
+      "test_pytest_generator_has_four_independently_bounded_phases": {"": []},
+      "test_pytest_generator_rejects_incomplete_openai_exports": {"[duplicate]": [], "[empty]": [], "[missing]": [], "[partial]": []},
+      "test_pytest_generator_stops_before_sharing_failed_phase": {"[exit-0]": [], "[exit-1]": [], "[exit-2]": [], "[exit-3]": [], "[timeout-0]": [], "[timeout-1]": [], "[timeout-2]": [], "[timeout-3]": []},
+      "test_shared_fixture_detects_openai_artifact_mutation": {"": []}
     },
     "tests/test_grouped_resources.py": {
       "test_grouped_memory_and_buffers_ignore_total_pending_product": {"": ["resource"]}
