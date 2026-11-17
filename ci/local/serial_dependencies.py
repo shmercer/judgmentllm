@@ -8,7 +8,6 @@ import io
 import stat
 import subprocess
 import tarfile
-from importlib.util import resolve_name
 from pathlib import Path
 from typing import Any, cast
 
@@ -68,201 +67,104 @@ def snapshot(source: Path, ref: str | None = None) -> dict[str, bytes | None]:
     return result
 
 
-def import_dispatch(tree: ast.Module) -> tuple[list[tuple[str, bool]], bool]:
-    """Resolve literal calls and simple aliases; escaped/rebound loaders need review."""
-    modules: set[str] = set()
-    loaders = {"__import__": "builtin"}
-    other_bindings: set[str] = set()
-    writes: dict[str, list[ast.expr]] = {}
-    parents = {
-        child: node for node in ast.walk(tree) for child in ast.iter_child_nodes(node)
+def import_dispatch(tree: ast.Module) -> bool:
+    """Recognize review boundaries, never infer Python loader bindings or targets."""
+    modules = {"builtins", "importlib"}
+    references = {
+        "__builtins__",
+        "__import__",
+        "import_module",
+        "exec_module",
+        "load_module",
+        "spec_from_file_location",
+        "module_from_spec",
+        "getattr",
+        "setattr",
+        "delattr",
+        "globals",
+        "locals",
+        "vars",
+        "eval",
+        "exec",
+        "compile",
+        "__dict__",
+        "__getattribute__",
+        "__getattr__",
+        "__setattr__",
+        "__delattr__",
+        "__globals__",
+        "f_globals",
+        "f_locals",
+        "_getframe",
+        "currentframe",
+        "attrgetter",
+        "methodcaller",
     }
     for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            for alias in node.names:
-                if (
-                    alias.name == "importlib"
-                    or alias.name.startswith("importlib.")
-                    and not alias.asname
-                ):
-                    modules.add(alias.asname or "importlib")
-                else:
-                    other_bindings.add(alias.asname or alias.name.split(".", 1)[0])
-        elif isinstance(node, ast.ImportFrom):
-            for alias in node.names:
-                if (
-                    not node.level
-                    and node.module == "importlib"
-                    and alias.name == "import_module"
-                ):
-                    loaders[alias.asname or alias.name] = "module"
-                elif (
-                    not node.level
-                    and node.module == "builtins"
-                    and alias.name == "__import__"
-                ):
-                    loaders[alias.asname or alias.name] = "builtin"
-                else:
-                    other_bindings.add(alias.asname or alias.name)
-                    if alias.name in {"import_module", "__import__"}:
-                        loaders.setdefault(alias.asname or alias.name, "unknown")
-        elif isinstance(node, (ast.Assign, ast.AnnAssign)) and node.value is not None:
-            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
-            for target in targets:
-                if isinstance(target, (ast.Name, ast.Attribute)):
-                    writes.setdefault(ast.unparse(target), []).append(node.value)
-        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            other_bindings.add(node.name)
-        if isinstance(node, (ast.Name, ast.Attribute)) and isinstance(
-            node.ctx, ast.Store
+        if isinstance(node, ast.Import) and any(
+            alias.name.split(".", 1)[0] in modules for alias in node.names
         ):
-            parent = parents.get(node)
-            if not (
-                isinstance(parent, ast.Assign)
-                and node in parent.targets
-                or isinstance(parent, ast.AnnAssign)
-                and parent.target is node
-            ):
-                other_bindings.add(ast.unparse(node))
-    while True:
-        previous = (set(modules), dict(loaders))
-        loaders.update({name + ".import_module": "module" for name in modules})
-        for target, values in writes.items():
-            for value in values:
-                name = ast.unparse(value)
-                if name in modules:
-                    modules.add(target)
-                if name in loaders:
-                    loaders.setdefault(target, loaders[name])
-        if previous == (modules, loaders):
-            break
-    uncertain = {
-        target
-        for target, values in writes.items()
-        if target in modules | set(loaders)
-        and any(
-            ast.unparse(value) not in (modules if target in modules else loaders)
-            or target in loaders
-            and loaders.get(ast.unparse(value)) != loaders[target]
-            for value in values
-        )
-    }
-    other_bindings.update(
-        node.arg for node in ast.walk(tree) if isinstance(node, ast.arg)
-    )
-    uncertain.update(other_bindings & (modules | set(loaders)))
-    while True:
-        inherited = {
-            target
-            for target, values in writes.items()
-            if target in modules | set(loaders)
-            and any(ast.unparse(value) in uncertain for value in values)
-        }
-        if inherited <= uncertain:
-            break
-        uncertain.update(inherited)
+            return True
+        if isinstance(node, ast.ImportFrom) and (
+            (node.module or "").split(".", 1)[0] in modules
+            or any(
+                alias.name == "*" or alias.name in references for alias in node.names
+            )
+        ):
+            return True
+        if isinstance(node, ast.Name) and node.id in modules | references:
+            return True
+        if isinstance(node, ast.Attribute) and node.attr in references:
+            return True
+        if (
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and node.value in modules | references
+        ):
+            return True
+    return False
 
-    def literal(node: ast.expr | None) -> str | None:
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            return node.value
-        return None
 
-    names: list[tuple[str, bool]] = []
-    unresolved = False
+def plugin_dispatch(tree: ast.Module) -> tuple[list[str], bool]:
+    """Only one top-level literal declaration is automatic; every other use escapes."""
+    allowed: set[ast.AST] = set()
+    plugins: list[str] = []
+    declarations = 0
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target = node.targets[0]
+        elif isinstance(node, ast.AnnAssign):
+            target = node.target
+        else:
+            continue
+        if not isinstance(target, ast.Name) or target.id != "pytest_plugins":
+            continue
+        declarations += 1
+        try:
+            value = ast.literal_eval(node.value) if node.value is not None else None
+        except (ValueError, TypeError):
+            continue
+        values = [value] if isinstance(value, str) else value
+        if isinstance(values, (tuple, list)) and all(
+            isinstance(value, str)
+            for value in cast(list[object] | tuple[object, ...], values)
+        ):
+            plugins.extend(cast(list[str] | tuple[str, ...], values))
+            allowed.add(target)
+    if declarations > 1:
+        return plugins, True
     for node in ast.walk(tree):
-        if isinstance(node, ast.Call):
-            name = ast.unparse(node.func)
-            kind = loaders.get(name)
-            if kind is not None:
-                if kind == "unknown":
-                    unresolved = True
-                    continue
-                if name in uncertain or any(
-                    name.startswith(module + ".") for module in uncertain
-                ):
-                    unresolved = True
-                kwargs = {item.arg: item.value for item in node.keywords}
-                if (
-                    any(isinstance(value, ast.Starred) for value in node.args)
-                    or None in kwargs
-                ):
-                    unresolved = True
-                    continue
-                if kind == "builtin" and (len(node.args) != 1 or kwargs):
-                    unresolved = True
-                    continue
-                if kind == "module" and (
-                    len(node.args) > 2
-                    or set(kwargs) - {"name", "package"}
-                    or node.args
-                    and "name" in kwargs
-                    or len(node.args) > 1
-                    and "package" in kwargs
-                ):
-                    unresolved = True
-                    continue
-                target = literal(node.args[0] if node.args else kwargs.get("name"))
-                if not target:
-                    unresolved = True
-                    continue
-                relative = target.startswith(".")
-                if relative:
-                    package = literal(
-                        node.args[1] if len(node.args) > 1 else kwargs.get("package")
-                    )
-                    try:
-                        if package is None:
-                            raise ValueError("Unknown package")
-                        target = resolve_name(target, package)
-                    except (ValueError, ImportError):
-                        unresolved = True
-                        continue
-                if not all(part.isidentifier() for part in target.split(".")):
-                    unresolved = True
-                    continue
-                names.append((target, relative))
-            elif isinstance(node.func, ast.Attribute) and node.func.attr in {
-                "import_module",
-                "exec_module",
-                "spec_from_file_location",
-                "module_from_spec",
-            }:
-                unresolved = True
-        if isinstance(node, (ast.Name, ast.Attribute)) and isinstance(
-            node.ctx, ast.Load
-        ):
-            name = ast.unparse(node)
-            if name not in modules | set(loaders):
-                if isinstance(node, ast.Attribute) and node.attr in {
-                    "import_module",
-                    "__import__",
-                    "exec_module",
-                    "spec_from_file_location",
-                    "module_from_spec",
-                }:
-                    unresolved = True
-                continue
-            parent = parents.get(node)
-            if isinstance(parent, ast.Call) and parent.func is node:
-                continue
-            if (
-                name in modules
-                and isinstance(parent, ast.Attribute)
-                and parent.value is node
+        if node in allowed:
+            continue
+        for _, value in ast.iter_fields(node):
+            if isinstance(value, str) and value == "pytest_plugins":
+                return plugins, True
+            if isinstance(value, list) and any(
+                isinstance(item, str) and item == "pytest_plugins"
+                for item in cast(list[object], value)
             ):
-                continue
-            if isinstance(parent, (ast.Assign, ast.AnnAssign)) and parent.value is node:
-                targets = (
-                    parent.targets
-                    if isinstance(parent, ast.Assign)
-                    else [parent.target]
-                )
-                if all(
-                    ast.unparse(target) in modules | set(loaders) for target in targets
-                ):
-                    continue
-            unresolved = True
-    return names, unresolved
+                return plugins, True
+    return plugins, False
 
 
 def closure(
@@ -337,7 +239,8 @@ def closure(
         except (SyntaxError, UnicodeError):
             problems.append(f"{path}: helper imports cannot be assessed")
             continue
-        dynamic_names, dynamic = import_dispatch(tree)
+        plugins, dynamic = plugin_dispatch(tree)
+        dynamic = import_dispatch(tree) or dynamic
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
@@ -368,39 +271,8 @@ def closure(
                         path,
                         relative=bool(node.level),
                     )
-            elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)) and any(
-                isinstance(target, ast.Name) and target.id == "pytest_plugins"
-                for target in (
-                    node.targets if isinstance(node, ast.Assign) else [node.target]
-                )
-            ):
-                try:
-                    if node.value is None or isinstance(node, ast.AugAssign):
-                        raise ValueError("Unresolved plugin assignment")
-                    plugins = ast.literal_eval(node.value)
-                except (ValueError, TypeError):
-                    problems.append(
-                        f"{path}: pytest plugin dispatch needs independent review"
-                    )
-                else:
-                    plugins = [plugins] if isinstance(plugins, str) else plugins
-                    if isinstance(plugins, (list, tuple)) and all(
-                        isinstance(plugin, str)
-                        for plugin in cast(list[object] | tuple[object, ...], plugins)
-                    ):
-                        for name in cast(list[str] | tuple[str, ...], plugins):
-                            if not local_module(name, path):
-                                problems.append(
-                                    f"{path}: plugin {name} is not repository-local; independent review required"
-                                )
-                    else:
-                        problems.append(
-                            f"{path}: pytest plugin dispatch needs independent review"
-                        )
-        for name, relative in dynamic_names:
-            if not local_module(name, path) and (
-                relative or local_module(name.split(".", 1)[0], path)
-            ):
+        for name in plugins:
+            if not local_module(name, path):
                 dynamic = True
         if dynamic:
             binding = scope["dynamic_imports"].get(path)

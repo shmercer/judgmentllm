@@ -503,6 +503,13 @@ def test_helper_packages_plugins_and_literal_dispatch_are_transitive(
         "tests/plugin_dependency.py": b"",
         "tests/test_unrelated.py": b"",
     }
+    policy["serial_dependency_scope"]["dynamic_imports"]["tests/pkg/helper.py"] = {
+        "source_sha256": hashlib.sha256(
+            files["tests/pkg/helper.py"] or b""
+        ).hexdigest(),
+        "targets": ["tests/choice.py"],
+        "reason": "Synthetic reviewed dispatch only",
+    }
     required, problems = closure(files, SAFE, policy["serial_dependency_scope"])
     assert not problems
     assert set(files) - {"tests/test_unrelated.py"} <= required

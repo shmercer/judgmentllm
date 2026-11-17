@@ -396,13 +396,23 @@ Review helpers transitively, parent package initializers, autouse fixtures,
 applicable root/ancestor conftests, pytest plugins and dynamic dispatch. The
 runner bounds conftest discovery to the candidate source with `--confcutdir`.
 Repository-local plugins and helpers outside `tests/` are traversed too, including
-their package initializers. Relative `import_module` calls with literal package
-and module names and simple loader aliases are resolved. Variable packages,
-escaped/rebound loaders and unsupported module names require independent review.
-Nonliteral helper imports need a finite
-explicit target list bound to the exact helper source hash in
+their package initializers. Non-star static imports are followed automatically.
+Python loader bindings and targets are not inferred: references to
+`importlib`/`builtins`, wildcard imports, loader APIs, and reflection/namespace
+APIs require independent review even when a call has a literal-looking target.
+Match captures, exception handlers and module aliases can rebind those names;
+literal text alone cannot establish the actual import.
+
+Only one top-level literal `pytest_plugins` declaration is automatic. Mutations,
+aliasing, passing/returning the list, reflective access and any other escaped
+reference require review. These unknown forms use the same finite explicit
+target list bound to the exact declaring/helper source hash in
 `serial_dependency_scope.dynamic_imports`; an unknown or edited dispatch fails
-closed. Keep all real source-inventory reads at their existing call sites.
+closed. The reviewed targets are traversed through their local helpers, so a
+later plugin or transitive helper byte change still invalidates placement.
+These checks are scoped to the reviewed test/setup/helper closure; an unrelated
+ordinary addition does not become a dependency merely for containing reflection.
+Keep all real source-inventory reads at their existing call sites.
 Neither a setup optimization nor a diagnostic timing permits caching those reads,
 removing assertions, reducing the 42-case pilot or relaxing recovery/deadlines.
 

@@ -156,6 +156,11 @@ def test_local_plugins_aliases_and_relative_dispatch_follow_all_helpers(
         path.write_text(text)
         policy["serial_shared_dependencies"][name] = checksum(path)
     policy["serial"][0]["dependencies"]["tests/test_safe.py"] = checksum(test)
+    policy["serial_dependency_scope"]["dynamic_imports"]["plugins/plugin.py"] = {
+        "source_sha256": checksum(source / "plugins/plugin.py"),
+        "targets": ["plugins/choice.py"],
+        "reason": "Synthetic reviewed dispatch; literal-looking calls are not authority",
+    }
     (source / "ci/local-policy.json").write_text(json.dumps(policy))
     base = freeze(source)
     row = contract.build(source, base, base, policy, known)["placements"][SAFE]
