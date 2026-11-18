@@ -765,6 +765,7 @@
     "tests/test_gemini_boundaries.py": {
       "test_context_is_descriptive_and_never_cloud_or_old_configuration": {"": []},
       "test_credential_echo_screening_precedes_component_capture": {"[\\xff-False]": [], "[\\xff{\"text\":\"\\\\u0053ECRET\"}-True]": [], "[\\xff{\"text\":\"\\u0053ECRET\"}-True]": [], "[not JSON-False]": [], "[{\"a\":[true,1,{\"x\":\"safe\"}]}-False]": [], "[{\"text\":\"\\\\u0053\\\\u0045\\\\u0043\\\\u0052\\\\u0045\\\\u0054\"}-True]": [], "[{\"text\":\"\\u0053\\u0045\\u0043\\u0052\\u0045\\u0054\"}-True]": []},
+      "test_credential_screening_at_escape_depth_limit": {"[backslash-in-key]": [], "[finished-without-key]": [], "[key-at-limit]": [], "[key-beyond-limit]": [], "[literal-run-at-limit]": [], "[literal-run-beyond-limit]": [], "[quote-in-key]": [], "[slash-in-key]": []},
       "test_credential_screening_respects_string_boundaries_in_malformed_bodies": {"": []},
       "test_frozen_native_selection_cannot_acquire_new_authority": {"[native]": [], "[text]": []},
       "test_inline_preparation_cannot_resolve_foreign_or_pair_identifiers": {"": []},
@@ -799,7 +800,7 @@
       "test_guarded_unsafe_body_keeps_transport_uncertain": {"[ambiguous_400]": [], "[credential_echo]": [], "[oversized]": []},
       "test_integer_decoding_preserves_ordinary_numeric_scores": {"[exponent]": [], "[integer]": [], "[oversized-negative]": []},
       "test_invalid_scope_precedes_credentials": {"[change0]": [], "[change1]": [], "[change2]": []},
-      "test_malformed_credential_echo_has_no_acknowledgment_or_original_hash": {"[escaped]": [], "[nested]": [], "[unicode]": [], "[unrelated]": []},
+      "test_malformed_credential_echo_has_no_acknowledgment_or_original_hash": {"[deep]": [], "[escaped]": [], "[nested]": [], "[unicode]": [], "[unrelated]": []},
       "test_refusal_cancellation_after_complete_bytes": {"[200-refused]": [], "[400-errored]": []},
       "test_score_level_bounds": {"[10]": [], "[11]": [], "[255]": [], "[256]": [], "[2]": []},
       "test_score_precision": {"[0-0-1.5500019-0.65-True]": [], "[0-5e-07-1.55-0.65-False]": [], "[None-0-1.55-0.6500011-False]": [], "[None-0-1.5500021-0.65-False]": [], "[None-0.01-1.55-0.65-False]": [], "[None-5e-07-1.5500019-0.6500009-True]": []},

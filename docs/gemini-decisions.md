@@ -70,8 +70,10 @@ a context limit, run, status and resume advise starting a new run with fewer
 grouped questions or smaller shared input. Receipts preserve a typed reason,
 body hash and byte count. Conflicting HTTP and error metadata leave the
 submission unresolved. Before hashing, credential screening decodes JSON string
-escapes independently of the enclosing response. It covers escaped quotes and
-backslashes even in malformed UTF-8. Retries require explicit selection.
+escapes independently of the enclosing response, including malformed UTF-8.
+After four passes, further Unicode escapes or escape sequences that could still
+hide a credential leave the submission unresolved. Literal backslash runs can
+pass screening. Retries require explicit selection.
 [Google response reference](https://aistudio.google.com/api-reference/decisions)
 
 The same pinned 3.5.0 extra supports existing Developer and Vertex generative

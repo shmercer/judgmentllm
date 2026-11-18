@@ -30,6 +30,7 @@ from judgmentllm.lifecycle import (
 )
 from judgmentllm.models import ResponseItem
 from judgmentllm.persistence.artifacts import ArtifactStore
+from judgmentllm.persistence.evidence import DecisionsEvidenceReceiptV5
 from judgmentllm.persistence.hashing import bytes_digest
 from judgmentllm.persistence.receipts import read_acknowledgment
 from judgmentllm.persistence.repository import Repository
@@ -118,6 +119,9 @@ async def test_sdk_exact_bytes_and_grouped_usage(
     tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     spec = gemini_spec(native_spec(tmp_path, traits=3, maximum=8))
+    assert spec.rubric is not None
+    description = "Directory C:" + "\\" * 32 + "files"
+    spec.rubric.traits[0].levels[0].description = description
     forwards: list[bytes] = []
 
     def respond(request: httpx2.Request) -> httpx2.Response:
@@ -128,7 +132,11 @@ async def test_sdk_exact_bytes_and_grouped_usage(
         assert request.headers["x-goog-api-key"] == "SYNTHETIC_SELECTED_GEMINI_KEY"
         assert "authorization" not in request.headers
         forwards.append(request.content)
-        return httpx2.Response(200, json=envelope(json.loads(request.content)))
+        body = envelope(json.loads(request.content))
+        assert any(
+            description in score["legend"]["0"] for score in body["answers"].values()
+        )
+        return httpx2.Response(200, json=body)
 
     store = tmp_path / "store"
     with prepare_run(spec, store=store, run_id="001") as prepared:
@@ -141,7 +149,8 @@ async def test_sdk_exact_bytes_and_grouped_usage(
             result = await asyncio.wait_for(
                 execute_run("001", store=store, adapter=adapter), timeout=20
             )
-        assert result.summary.results == 3 and len(forwards) == 1
+        assert not result.recovery_required and result.summary.results == 3
+        assert len(forwards) == adapter.actual_call_count == 1
         assert "SYNTHETIC_SELECTED_GEMINI_KEY" not in caplog.text
         with Repository(store) as repository:
             rows = list(repository.iter_results("001"))
@@ -155,6 +164,15 @@ async def test_sdk_exact_bytes_and_grouped_usage(
                 for row in rows
             )
             (receipt,) = repository.iter_evidence("001")
+            assert isinstance(receipt, DecisionsEvidenceReceiptV5)
+            assert receipt.retained_kind == "original"
+            assert (
+                read_acknowledgment(
+                    ArtifactStore(repository.run_directory("001")),
+                    receipt.identity.submission_id,
+                )
+                is not None
+            )
             assert (
                 receipt.usage.input_tokens,
                 receipt.usage.output_tokens,
@@ -350,7 +368,9 @@ async def test_guarded_unsafe_body_keeps_transport_uncertain(
         await adapter.aclose()
 
 
-@pytest.mark.parametrize("encoding", ["escaped", "nested", "unicode", "unrelated"])
+@pytest.mark.parametrize(
+    "encoding", ["escaped", "nested", "unicode", "unrelated", "deep"]
+)
 @pytest.mark.asyncio
 async def test_malformed_credential_echo_has_no_acknowledgment_or_original_hash(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, encoding: str
@@ -364,6 +384,12 @@ async def test_malformed_credential_echo_has_no_acknowledgment_or_original_hash(
         encoded = r'"SYNTHETIC_\u0022\u005cKEY"'
     elif encoding == "unrelated":
         encoded = json.dumps('SYNTHETIC_"\\OTHER')
+    elif encoding == "deep":
+        encoded = (
+            '"'
+            + "".join("\\" + "u005c" * 4 + f"u{ord(char):04x}" for char in credential)
+            + '"'
+        )
     raw = b'\xff{"detail":' + encoded.encode() + b"}"
     echoed = encoding != "unrelated"
     forwards = 0

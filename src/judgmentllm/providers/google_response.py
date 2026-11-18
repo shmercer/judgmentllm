@@ -53,6 +53,9 @@ _TOOL_FIELDS = {
     "codeExecutionResult",
 }
 _JSON_STRING_TOKEN = re.compile(r'\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4})|["\\]')
+_UNICODE_ESCAPE = re.compile(r"\\u[0-9a-fA-F]{4}")
+_BACKSLASH_RUN = re.compile(r"\\{2,}")
+_SHORT_ESCAPES = tuple(zip('"/bfnrt', '"/\b\f\n\r\t', strict=True))
 
 
 def _decoded_fragments(text: str) -> Iterator[str]:
@@ -74,11 +77,27 @@ def _decoded_fragments(text: str) -> Iterator[str]:
         yield cast(str, json.loads(f'"{text[start:]}"', strict=False))
 
 
+def _credential_escape_remains(text: str, key: str) -> bool:
+    # Deeper Unicode escapes are opaque at the limit, even after a slash run.
+    if _UNICODE_ESCAPE.search(text):
+        return True
+    if len(text) < len(key):
+        return False
+    if any(char in key and "\\" + code in text for code, char in _SHORT_ESCAPES):
+        return True
+    # A bare run can only shorten. Compare the surrounding text as well.
+    return (
+        r"\\" in text
+        and "\\" in key
+        and _BACKSLASH_RUN.sub(r"\\", key) in _BACKSLASH_RUN.sub(r"\\", text)
+    )
+
+
 def _contains_escaped_credential(text: str, key: str, layers: int) -> bool:
+    if layers == 0:
+        return _credential_escape_remains(text, key)
     return any(
-        key in decoded
-        or layers == 1  # An envelope still being unescaped at the bound is unsafe.
-        or _contains_escaped_credential(decoded, key, layers - 1)
+        key in decoded or _contains_escaped_credential(decoded, key, layers - 1)
         for decoded in _decoded_fragments(text)
     )
 
