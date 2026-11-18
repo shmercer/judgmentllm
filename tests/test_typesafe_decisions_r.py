@@ -23,15 +23,15 @@ def test_strict_jev_exports_in_real_r(tmp_path: Path) -> None:
     rscript = shutil.which("Rscript")
     assert rscript is not None, "Required for strict local Jev R acceptance"
     exports: dict[str, dict[str, Any]] = {}
-    for case in ("single", "grouped", "pairwise"):
+    for case in ("single", "grouped", "pairwise", "score_precision"):
         root = tmp_path / case
         base = (
             pair_spec(root / "input", criteria=2)
             if case == "pairwise"
             else native_spec(
                 root / "input",
-                traits=1 if case == "single" else 3,
-                maximum=None if case == "single" else 32,
+                traits=3 if case == "grouped" else 1,
+                maximum=32 if case == "grouped" else None,
                 capture="minimal" if case == "single" else "full",
             )
         )
@@ -41,7 +41,10 @@ def test_strict_jev_exports_in_real_r(tmp_path: Path) -> None:
                 "run",
                 "--config",
                 config_path(root, jev_spec(base)),
-                response="filtered" if case == "grouped" else "clean",
+                response={
+                    "grouped": "filtered",
+                    "score_precision": "score_precision",
+                }.get(case, "clean"),
             )
         )
         selection = ("--run", result["run_id"])

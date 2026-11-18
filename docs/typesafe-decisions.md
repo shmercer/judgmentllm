@@ -48,9 +48,21 @@ stay unresolved. An explicit subset retry
 requires a prior failed member from a recognizable accepted response.
 
 Score answers preserve the complete distribution, native expected index,
-mapped numeric mean, derived mode and reported confidence. Choice answers
-preserve the returned selection and full probabilities in original and
-presented order. Response maps are matched by committed question key.
+mapped numeric mean, derived mode and reported confidence. For three-level
+`jev-1.14.0` Scores on System One, the fallback allows an in-range reported
+index to differ from the index computed from the returned probabilities by at
+most 0.01. The index and all three probabilities must be on the hundredths grid,
+and the probabilities must sum to exactly one. The usual consistency check
+runs first. With conserved probability mass, rounding
+each probability to the nearest hundredth can move the three-level expected
+index (`1 + p[2] - p[0]`) by at most 0.01. Separately rounding the index adds
+at most 0.005, so values on the hundredths grid can differ by at most 0.01.
+The observed discrepancies fit this bound. Jev's internal precision is unknown.
+The mapped mean uses the original probabilities and rubric values. Recovery
+honors invalid members in existing filtered receipts.
+
+Choice answers preserve the returned selection and full probabilities in
+original and presented order. Response maps are matched by committed question key.
 Usage is reported once per physical attempt. Full capture retains permitted
 originals or filtered replay, and minimal capture retains hashes and safe metadata.
 A conflicting served model raises an integrity error after the physical evidence

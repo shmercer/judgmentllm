@@ -68,12 +68,17 @@ class ChoiceAnswerV1(StrictModel):
     confidence: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
 
 
+ScoreIndexFallback = Callable[[float, list[IndexedProbabilityV1]], bool]
+
+
 def normalize_answer(
     answer: object,
     question: DecisionQuestionV1,
     spec: RunSpecV4,
     wire: PreparedDecisionsRequestV1,
     item_id: str | None,
+    *,
+    score_index_fallback: ScoreIndexFallback | None = None,
 ) -> Result:
     identity = wire.transport_commitment.identity
     if question.trait is not None:
@@ -91,6 +96,12 @@ def normalize_answer(
             checked.expected_index is not None
             and abs(expected - checked.expected_index)
             > spec.normalization.probability_sum_tolerance
+            and (
+                score_index_fallback is None
+                or not score_index_fallback(
+                    checked.expected_index, checked.probabilities
+                )
+            )
         ):
             raise ValueError("native expected index conflicts with distribution")
         if checked.selected_index is not None and checked.selected_index >= len(levels):
@@ -158,6 +169,7 @@ def interpret_decisions(
     wire: PreparedDecisionsRequestV1,
     *,
     member_checkpoint: Callable[[], None] | None = None,
+    score_index_fallback: ScoreIndexFallback | None = None,
 ) -> InterpretedDecisionsResponse:
     """Only a complete, bound envelope permits independently validated salvage."""
     response = _revalidate_record(response)
@@ -268,6 +280,7 @@ def interpret_decisions(
                         spec,
                         wire,
                         selected.request.tasks[0].item_id,
+                        score_index_fallback=score_index_fallback,
                     )
                 except ValueError:
                     pass

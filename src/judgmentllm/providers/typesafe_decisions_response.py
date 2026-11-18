@@ -9,7 +9,11 @@ from typing import Any, Literal, cast
 from pydantic import JsonValue
 
 from judgmentllm.assessment_errors import AssessmentOutputError
-from judgmentllm.decisions.interpretation import ChoiceAnswerV1, ScoreAnswerV1
+from judgmentllm.decisions.interpretation import (
+    ChoiceAnswerV1,
+    IndexedProbabilityV1,
+    ScoreAnswerV1,
+)
 from judgmentllm.decisions.replay import (
     DecisionsReplayMetadataV1,
     ReplayMemberV1,
@@ -124,6 +128,24 @@ def rejected(
     return TypeSafeRequestRejected(receipt, usage=usage_from(fields)[0])
 
 
+def matches_rounded_score(
+    index: float, probabilities: list[IndexedProbabilityV1]
+) -> bool:
+    # shortcut: Three-level hundredths only, revisit with a documented precision contract.
+    if len(probabilities) != 3 or index > 2:
+        return False
+    index_cents = round(index * 100)
+    cents = [round(p.probability * 100) for p in probabilities]
+    return (
+        index == index_cents / 100
+        and all(
+            p.probability == c / 100 for p, c in zip(probabilities, cents, strict=True)
+        )
+        and sum(cents) == 100
+        and abs(index_cents - (cents[1] + 2 * cents[2])) <= 1
+    )
+
+
 def canonical_answer(
     name: str, answer: object, question: dict[str, Any], tolerance: float
 ) -> dict[str, JsonValue]:
@@ -159,13 +181,13 @@ def canonical_answer(
                 legend=[dict(index=i, **level) for i, level in enumerate(criteria)],
             )
         )
-        if (
-            checked.expected_index is None
-            or abs(
+        if checked.expected_index is None or (
+            abs(
                 math.fsum(p.index * p.probability for p in checked.probabilities)
                 - checked.expected_index
             )
             > tolerance
+            and not matches_rounded_score(checked.expected_index, checked.probabilities)
         ):
             raise ValueError("score conflicts with distribution")
     else:

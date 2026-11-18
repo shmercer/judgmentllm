@@ -24,6 +24,15 @@ def forbidden(*_args: Any, **_kwargs: Any) -> Any:
 socket.getaddrinfo = forbidden
 socket.create_connection = forbidden
 
+if scenario == "legacy_score_precision":
+    from judgmentllm.providers import typesafe_decisions_response
+
+    # Run the old strict check with the same receipt and transport implementation.
+    def no_precision_fallback(*_args: object, **_kwargs: object) -> bool:
+        return False
+
+    typesafe_decisions_response.matches_rounded_score = no_precision_fallback
+
 
 def respond(request: httpx2.Request) -> httpx2.Response:
     assert str(request.url) == "https://api.typesafe.ai/v1/systemone"
@@ -60,6 +69,10 @@ def respond(request: httpx2.Request) -> httpx2.Response:
                 probabilities={"essay_01": 0.2, "essay_02": 0.8},
             )
         )
+        if scenario in {"score_precision", "legacy_score_precision"} and i == 0:
+            answers[key].update(
+                score=1.95, probabilities={"0": 0.01, "1": 0.02, "2": 0.97}
+            )
         if scenario == "filtered" and i == 1:
             answers[key]["extra"] = "UNSAFE_JEV_CANARY"
     return httpx2.Response(
