@@ -53,6 +53,11 @@ class DecisionsInvocationV3(DecisionsInvocationV1):
     invocation_evidence_version: Literal[3] = 3  # pyright: ignore[reportIncompatibleVariableOverride]
 
 
+class DecisionsInvocationV4(DecisionsInvocationV1):
+    _route: ClassVar[tuple[str, str]] = ("gemini", "decisions")
+    invocation_evidence_version: Literal[4] = 4  # pyright: ignore[reportIncompatibleVariableOverride]
+
+
 def invocation_reference(submission_id: str) -> str:
     return f"decisions-invocations/{bytes_digest(submission_id.encode('utf-8'))}.json"
 
@@ -90,7 +95,9 @@ def read_invocation(
             else None
         )
         model = (
-            DecisionsInvocationV3
+            DecisionsInvocationV4
+            if type(version) is int and version == 4
+            else DecisionsInvocationV3
             if type(version) is int and version == 3
             else DecisionsInvocationV2
             if type(version) is int and version == 2

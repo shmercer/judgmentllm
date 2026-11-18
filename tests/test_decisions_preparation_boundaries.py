@@ -13,6 +13,7 @@ from typing import Any, cast
 
 import pytest
 import yaml
+from pydantic import BaseModel
 from test_decisions_contracts import pair_spec, presentation
 from test_decisions_lifecycle import native_spec
 from test_decisions_validation import native_request
@@ -311,15 +312,13 @@ def test_ordinary_preparation_reports_controls_safely_and_keeps_legacy_builder_c
     with pytest.raises(PreparationError) as invalid:
         prepare_decisions_run(spec, store=tmp_path / "malformed", run_id="001")
     assert "PRIVATE_CANARY" not in str(invalid.value)
-    unimplemented = RunSpecV4.model_validate(
-        {
-            **spec.model_dump(),
-            "provider": "gemini",
-            "endpoint": "decisions",
-            "model": "gemini-decision-1",
-        }
+    unimplemented = cast(
+        RunSpecV4,
+        BaseModel.model_copy(
+            spec, update={"provider": "vertex", "endpoint": "decisions"}
+        ),
     )
-    with pytest.raises(PreparationError, match="not implemented"):
+    with pytest.raises(PreparationError, match="configuration validation failed"):
         prepare_decisions_run(
             unimplemented, store=tmp_path / "unsupported", run_id="001"
         )

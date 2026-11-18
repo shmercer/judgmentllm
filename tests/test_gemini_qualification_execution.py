@@ -16,6 +16,7 @@ from typing import Any, cast
 import httpx2
 import pytest
 from gemini_offline import envelope, isolate
+from google_historical import gemini_pin
 
 from judgmentllm import gemini_qualification as q
 from judgmentllm import gemini_qualification_execution as e
@@ -26,6 +27,7 @@ from judgmentllm.providers import gemini
 @pytest.fixture(autouse=True)
 def offline(monkeypatch: pytest.MonkeyPatch) -> None:
     isolate(monkeypatch)
+    gemini_pin(monkeypatch)
     monkeypatch.setattr(q, "_source_commit", lambda: "a" * 40)
     monkeypatch.setattr(e, "_source_commit", lambda: "a" * 40)
 
@@ -656,11 +658,13 @@ from pathlib import Path
 import pytest
 sys.path.insert(0, str(Path.cwd() / 'tests'))
 from gemini_offline import isolate
+from google_historical import gemini_pin
 from test_gemini_qualification_execution import install
 from judgmentllm import gemini_qualification as q, gemini_qualification_execution as e
 from judgmentllm import execution
 m=pytest.MonkeyPatch()
 isolate(m)
+gemini_pin(m)
 q._source_commit=e._source_commit=lambda:'a'*40
 directory=Path(sys.argv[1])
 boundary, mode=sys.argv[2:]

@@ -17,6 +17,7 @@ from judgmentllm.decisions.outcomes import AnswerAttributionV1, read_outcomes
 from judgmentllm.decisions.records import (
     DecisionsLimitsV1,
     DecisionsLimitsV2,
+    GeminiDecisionsLimitsV4,
     QuestionCommitmentV1,
     TypeSafeDecisionsLimitsV3,
 )
@@ -30,11 +31,14 @@ from judgmentllm.persistence.decisions_invocations import (
     DecisionsInvocationV1,
     DecisionsInvocationV2,
     DecisionsInvocationV3,
+    DecisionsInvocationV4,
     read_invocation,
 )
 from judgmentllm.persistence.evidence import (
     DecisionsEvidenceReceiptV3,
     DecisionsEvidenceReceiptV4,
+    DecisionsEvidenceReceiptV5,
+    DecisionsEvidenceWithRejection,
     authoritative_usage,
     usage_high_water_mark,
 )
@@ -51,9 +55,12 @@ from judgmentllm.persistence.models import (
 from judgmentllm.persistence.receipts import (
     AcknowledgmentReceiptV2,
     AcknowledgmentReceiptV4,
+    AcknowledgmentReceiptV5,
     CompleteResponseEvidenceV1,
     CompleteResponseEvidenceV2,
     CompleteResponseEvidenceV3,
+    CompleteResponseEvidenceV4,
+    GeminiDecisionsRejectionEvidenceV1,
     TypeSafeRejectionEvidenceV1,
     read_acknowledgment,
 )
@@ -64,6 +71,7 @@ from judgmentllm.preparation.manifest import (
     ExecutableRunManifestV8,
     ExecutableRunManifestV9,
     ExecutableRunManifestV10,
+    ExecutableRunManifestV11,
 )
 from judgmentllm.transport import PhysicalRequestIdentityV1, physical_identity
 
@@ -108,6 +116,13 @@ class PhysicalProvenanceV3(PhysicalProvenanceV2):
     limits: TypeSafeDecisionsLimitsV3  # pyright: ignore[reportIncompatibleVariableOverride]
     complete_response_evidence: CompleteResponseEvidenceV3 | None  # pyright: ignore[reportIncompatibleVariableOverride]
     rejection: TypeSafeRejectionEvidenceV1 | None
+
+
+class PhysicalProvenanceV4(PhysicalProvenanceV2):
+    physical_provenance_version: Literal[4] = 4  # pyright: ignore[reportIncompatibleVariableOverride]
+    limits: GeminiDecisionsLimitsV4  # pyright: ignore[reportIncompatibleVariableOverride]
+    complete_response_evidence: CompleteResponseEvidenceV4 | None  # pyright: ignore[reportIncompatibleVariableOverride]
+    rejection: GeminiDecisionsRejectionEvidenceV1 | None
 
 
 class QuestionProvenanceV1(DecisionsModel):
@@ -184,6 +199,16 @@ class DecisionsProvenanceReportV3(DecisionsProvenanceReportV2):
     manifest: DecisionsProvenanceManifestV3  # pyright: ignore[reportIncompatibleVariableOverride]
 
 
+class DecisionsProvenanceManifestV4(DecisionsProvenanceManifestV2):
+    provenance_manifest_version: Literal[4] = 4  # pyright: ignore[reportIncompatibleVariableOverride]
+    physical_row_version: Literal[4] = 4  # pyright: ignore[reportIncompatibleVariableOverride]
+
+
+class DecisionsProvenanceReportV4(DecisionsProvenanceReportV2):
+    provenance_report_version: Literal[4] = 4  # pyright: ignore[reportIncompatibleVariableOverride]
+    manifest: DecisionsProvenanceManifestV4  # pyright: ignore[reportIncompatibleVariableOverride]
+
+
 def _parse_manifest(raw: bytes) -> DecisionsProvenanceManifestV1:
     from judgmentllm.config import parse_json
 
@@ -194,7 +219,9 @@ def _parse_manifest(raw: bytes) -> DecisionsProvenanceManifestV1:
         else None
     )
     model = (
-        DecisionsProvenanceManifestV3
+        DecisionsProvenanceManifestV4
+        if type(version) is int and version == 4
+        else DecisionsProvenanceManifestV3
         if type(version) is int and version == 3
         else DecisionsProvenanceManifestV2
         if type(version) is int and version == 2
@@ -216,6 +243,24 @@ _TYPE_SAFE_MESSAGES = {
         "The original attempt is terminal."
     ),
 }
+_GEMINI_MESSAGES = {
+    "max_tokens_exceeded": (
+        "Gemini Decisions rejected this request because it exceeded the context limit. "
+        "Start a new run with fewer grouped questions or smaller shared input."
+    ),
+    "payload_too_large": (
+        "Gemini Decisions rejected the request body size. "
+        "Start a new run with fewer grouped questions or smaller shared input."
+    ),
+    "safety_refusal": "Gemini Decisions refused the request before evaluating its questions.",
+    "request_rejected": (
+        "Gemini Decisions rejected the request before evaluation. "
+        "If context size was the cause, start a new run with fewer grouped questions or smaller shared input."
+    ),
+}
+_RejectionCode = Literal[
+    "max_tokens_exceeded", "payload_too_large", "safety_refusal", "request_rejected"
+]
 
 
 @dataclass
@@ -231,12 +276,12 @@ class _Totals:
     cost_missing: int = 0
     currency: str | None = None
     currency_conflict: bool = False
-    rejections: dict[Literal["max_tokens_exceeded", "payload_too_large"], int] = field(
-        default_factory=dict[Literal["max_tokens_exceeded", "payload_too_large"], int]
+    rejections: dict[_RejectionCode, int] = field(
+        default_factory=dict[_RejectionCode, int]
     )
 
     def add(self, row: PhysicalProvenanceV1) -> None:
-        if isinstance(row, PhysicalProvenanceV3):
+        if isinstance(row, (PhysicalProvenanceV3, PhysicalProvenanceV4)):
             self.record_rejection(row.rejection)
         self.record(
             row.selected_usage,
@@ -245,8 +290,15 @@ class _Totals:
             observed=row.observation_id is not None,
         )
 
-    def record_rejection(self, rejection: TypeSafeRejectionEvidenceV1 | None) -> None:
-        if rejection is not None and rejection.reason != "request_rejected":
+    def record_rejection(
+        self,
+        rejection: TypeSafeRejectionEvidenceV1
+        | GeminiDecisionsRejectionEvidenceV1
+        | None,
+    ) -> None:
+        if isinstance(rejection, GeminiDecisionsRejectionEvidenceV1) or (
+            rejection is not None and rejection.reason != "request_rejected"
+        ):
             self.rejections[rejection.reason] = (
                 self.rejections.get(rejection.reason, 0) + 1
             )
@@ -280,6 +332,11 @@ class _Totals:
             self.currency = cost.currency
 
     def detail(self, manifest: ExecutableRunManifestV8) -> DecisionsStatusV1:
+        messages = (
+            _GEMINI_MESSAGES
+            if isinstance(manifest, ExecutableRunManifestV11)
+            else _TYPE_SAFE_MESSAGES
+        )
         unknown = bool(self.unknown)
         missing = self.input_missing + self.output_missing
         usage_state = (
@@ -332,7 +389,7 @@ class _Totals:
                 diagnostics=tuple(
                     DecisionsRejectionDiagnostic(
                         code=code,
-                        message=_TYPE_SAFE_MESSAGES[code],
+                        message=messages[code],
                         rejected_attempts=count,
                     )
                     for code, count in sorted(self.rejections.items())
@@ -347,6 +404,8 @@ def physical_rows(
 ) -> Iterator[PhysicalProvenanceV1]:
     run_id = manifest.run_id
     artifacts = ArtifactStore(repository.run_directory(run_id), create=False)
+    gemini = isinstance(manifest, ExecutableRunManifestV11)
+    typesafe = isinstance(manifest, ExecutableRunManifestV10)
     for attempt in repository.iter_attempts(run_id):
         commitment = read_transport_commitment(artifacts, attempt.attempt_id)
         if (
@@ -378,8 +437,10 @@ def physical_rows(
         )
         if fact is not None:
             expected_fact = (
-                DecisionsInvocationV3
-                if isinstance(manifest, ExecutableRunManifestV10)
+                DecisionsInvocationV4
+                if gemini
+                else DecisionsInvocationV3
+                if typesafe
                 else DecisionsInvocationV2
                 if isinstance(manifest, ExecutableRunManifestV9)
                 else DecisionsInvocationV1
@@ -405,8 +466,9 @@ def physical_rows(
         if ack is not None:
             assert submission is not None
             ack.verify_submission(submission)
-            if isinstance(ack, AcknowledgmentReceiptV4) != isinstance(
-                manifest, ExecutableRunManifestV10
+            if (
+                isinstance(ack, AcknowledgmentReceiptV4) != typesafe
+                or isinstance(ack, AcknowledgmentReceiptV5) != gemini
             ):
                 raise IntegrityError("Decisions acknowledgment scope differs")
         usage = (
@@ -426,10 +488,9 @@ def physical_rows(
             if submission and submission.state != "prepared"
             else "not_started"
         )
-        typesafe = isinstance(manifest, ExecutableRunManifestV10)
-        if (
-            evidence is not None
-            and isinstance(evidence, DecisionsEvidenceReceiptV4) != typesafe
+        if evidence is not None and (
+            isinstance(evidence, DecisionsEvidenceReceiptV4) != typesafe
+            or isinstance(evidence, DecisionsEvidenceReceiptV5) != gemini
         ):
             raise IntegrityError("Decisions evidence scope differs")
         production = isinstance(manifest, ExecutableRunManifestV9)
@@ -437,7 +498,9 @@ def physical_rows(
             evidence if isinstance(evidence, DecisionsEvidenceReceiptV3) else None
         )
         row_type = (
-            PhysicalProvenanceV3
+            PhysicalProvenanceV4
+            if gemini
+            else PhysicalProvenanceV3
             if typesafe
             else PhysicalProvenanceV2
             if production
@@ -448,10 +511,10 @@ def physical_rows(
                 **(
                     {
                         "rejection": evidence.rejection
-                        if isinstance(evidence, DecisionsEvidenceReceiptV4)
+                        if isinstance(evidence, DecisionsEvidenceWithRejection)
                         else None
                     }
-                    if typesafe
+                    if typesafe or gemini
                     else {}
                 ),
                 **(
@@ -567,7 +630,9 @@ def decisions_status(
                 ).fetchone()
                 if registered is not None:
                     expected_fact = (
-                        DecisionsInvocationV3
+                        DecisionsInvocationV4
+                        if isinstance(manifest, ExecutableRunManifestV11)
+                        else DecisionsInvocationV3
                         if isinstance(manifest, ExecutableRunManifestV10)
                         else DecisionsInvocationV2
                         if isinstance(manifest, ExecutableRunManifestV9)
@@ -577,15 +642,20 @@ def decisions_status(
                         raise IntegrityError("Decisions forwarding protocol differs")
                     known, usage = True, fact.usage
         if (
-            isinstance(manifest, ExecutableRunManifestV10)
+            isinstance(manifest, (ExecutableRunManifestV10, ExecutableRunManifestV11))
             and row["receipt_sha256"] is not None
             and row["certainty"] == "not_submitted"
         ):
             evidence = repository.get_evidence_for_submission(
                 manifest.run_id, row["submission_id"]
             )
-            if not isinstance(evidence, DecisionsEvidenceReceiptV4):
-                raise IntegrityError("TypeSafe rejection lacks its evidence receipt")
+            expected_receipt = (
+                DecisionsEvidenceReceiptV5
+                if isinstance(manifest, ExecutableRunManifestV11)
+                else DecisionsEvidenceReceiptV4
+            )
+            if not isinstance(evidence, expected_receipt):
+                raise IntegrityError("Decisions rejection lacks its evidence receipt")
             totals.record_rejection(evidence.rejection)
         totals.record(
             usage,
@@ -731,7 +801,9 @@ def read_decisions_provenance(
     ):
         raise IntegrityError("Decisions provenance manifest is inconsistent")
     expected = semantic_digest(
-        "decisions-provenance-v3"
+        "decisions-provenance-v4"
+        if isinstance(manifest, DecisionsProvenanceManifestV4)
+        else "decisions-provenance-v3"
         if isinstance(manifest, DecisionsProvenanceManifestV3)
         else "decisions-provenance-v2"
         if isinstance(manifest, DecisionsProvenanceManifestV2)
@@ -764,7 +836,9 @@ def read_decisions_provenance(
             raise IntegrityError("Decisions companion publication metadata differs")
         artifacts.verify(file.artifact)
     report_type = (
-        DecisionsProvenanceReportV3
+        DecisionsProvenanceReportV4
+        if isinstance(manifest, DecisionsProvenanceManifestV4)
+        else DecisionsProvenanceReportV3
         if isinstance(manifest, DecisionsProvenanceManifestV3)
         else DecisionsProvenanceReportV2
         if isinstance(manifest, DecisionsProvenanceManifestV2)
@@ -807,7 +881,9 @@ def export_decisions_provenance(
                 (run_id,),
             ).fetchone()[0]
             bundle_id = semantic_digest(
-                "decisions-provenance-v3"
+                "decisions-provenance-v4"
+                if isinstance(manifest, ExecutableRunManifestV11)
+                else "decisions-provenance-v3"
                 if isinstance(manifest, ExecutableRunManifestV10)
                 else "decisions-provenance-v2"
                 if isinstance(manifest, ExecutableRunManifestV9)
@@ -850,7 +926,9 @@ def export_decisions_provenance(
                     )
                     question_writer.writerow(QuestionProvenanceV1.model_fields)
                     physical_type = (
-                        PhysicalProvenanceV3
+                        PhysicalProvenanceV4
+                        if isinstance(manifest, ExecutableRunManifestV11)
+                        else PhysicalProvenanceV3
                         if isinstance(manifest, ExecutableRunManifestV10)
                         else PhysicalProvenanceV2
                         if isinstance(manifest, ExecutableRunManifestV9)
@@ -906,7 +984,9 @@ def export_decisions_provenance(
             repository.connection.execute("ROLLBACK")
             repository.connection.execute("PRAGMA query_only=OFF")
         manifest_type = (
-            DecisionsProvenanceManifestV3
+            DecisionsProvenanceManifestV4
+            if isinstance(manifest, ExecutableRunManifestV11)
+            else DecisionsProvenanceManifestV3
             if isinstance(manifest, ExecutableRunManifestV10)
             else DecisionsProvenanceManifestV2
             if isinstance(manifest, ExecutableRunManifestV9)

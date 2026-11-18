@@ -532,7 +532,9 @@ async def test_pinned_sdk_permission_denial_has_integer_http_code() -> None:
             }
         },
     )
-    assert p.vertex_sdk_version() == "2.34.0"
+    from judgmentllm.google_sdk import GOOGLE_SDK_RUNTIME
+
+    assert p.vertex_sdk_version() == GOOGLE_SDK_RUNTIME
     with pytest.raises(errors.ClientError) as failure:
         await cast(Any, errors.APIError).raise_for_async_response(response)
     assert type(failure.value.code) is int and failure.value.code == 403

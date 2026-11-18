@@ -17,6 +17,7 @@ import pytest
 from native_schema_test_validator import accepts
 from native_v2_cases import CANARY, cases
 
+from judgmentllm.google_sdk import GOOGLE_SDK_RUNTIME
 from judgmentllm.native_schema import NativeProjectionScopeV1
 from judgmentllm.native_schema_v2 import (
     NativeMechanismV2,
@@ -371,7 +372,7 @@ def test_pinned_google_converters_under_self_tested_offline_guards() -> None:
         pytest.skip(
             "optional google-genai SDK absent; qualification installs locked all-extras"
         )
-    assert installed == "2.34.0"
+    assert installed in ("2.34.0", GOOGLE_SDK_RUNTIME)
     records: list[dict[str, Any]] = []
     for provider in PROVIDERS:
         for route in ROUTES:
@@ -386,7 +387,11 @@ def test_pinned_google_converters_under_self_tested_offline_guards() -> None:
                 )
     env = {**os.environ, "PYTHONDONTWRITEBYTECODE": "1"}
     run = subprocess.run(
-        [sys.executable, str(Path(__file__).with_name("google_converter_probe.py"))],
+        [
+            sys.executable,
+            str(Path(__file__).with_name("google_converter_probe.py")),
+            installed,
+        ],
         input=json.dumps(records),
         text=True,
         capture_output=True,
@@ -404,10 +409,22 @@ def test_pinned_google_converters_under_self_tested_offline_guards() -> None:
     )
     doc = json.loads((FIXTURES / "documentation.json").read_text())
     dist = importlib.metadata.distribution("google-genai")
-    for name, source in doc["source_files"].items():
+    if installed == "2.34.0":
+        expected = {name: row["sha256"] for name, row in doc["source_files"].items()}
+    else:
+        parity = json.loads(
+            (FIXTURES.parent / "gemini_decisions/sdk-profile.json").read_text()
+        )
+        assert (
+            parity["sdk_version"] == installed
+            and parity["scope"] == "offline wire parity"
+        )
+        assert doc["sdk_version"] == "2.34.0"
+        expected = parity["source_sha256"]
+    for name, digest in expected.items():
         assert (
             sha256(
                 Path(str(dist.locate_file("google/genai/" + name))).read_bytes()
             ).hexdigest()
-            == source["sha256"]
+            == digest
         )

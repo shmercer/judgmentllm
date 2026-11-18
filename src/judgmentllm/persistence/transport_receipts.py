@@ -161,9 +161,12 @@ def _parse_transport_commitment(
             DecisionsCommitmentV1,
             DecisionsCommitmentV2,
             DecisionsCommitmentV3,
+            DecisionsCommitmentV4,
         )
 
         version = cast(dict[str, object], value)["decisions_commitment_version"]
+        if type(version) is int and version == 4:
+            return DecisionsCommitmentV4.model_validate_json(raw)
         if type(version) is int and version == 3:
             return DecisionsCommitmentV3.model_validate_json(raw)
         if type(version) is int and version == 2:

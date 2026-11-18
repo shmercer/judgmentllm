@@ -37,6 +37,7 @@ from judgmentllm.persistence.models import (
 )
 from judgmentllm.persistence.receipts import (
     AcknowledgmentReceipt,
+    GeminiDecisionsRejectionEvidenceV1,
     ResponseReceipt,
     TypeSafeRejectionEvidenceV1,
     read_acknowledgment,
@@ -316,24 +317,17 @@ class DecisionsEvidenceReceiptV3(DecisionsEvidenceReceiptV2):
         return self
 
 
-class DecisionsEvidenceReceiptV4(DecisionsEvidenceReceiptV3):
-    evidence_receipt_version: Literal[4] = 4  # pyright: ignore[reportIncompatibleVariableOverride]
-    _route: ClassVar[tuple[str, str]] = ("typesafe", "systemone")
-    rejection: TypeSafeRejectionEvidenceV1 | None = None
-
-    @field_validator("evidence_receipt_version", mode="before")
-    @classmethod
-    def exact_version(cls, value: object) -> object:
-        if type(value) is not int or value != 4:
-            raise ValueError("unsupported TypeSafe Decisions evidence version")
-        return value
+class DecisionsEvidenceWithRejection(DecisionsEvidenceReceiptV3):
+    rejection: (
+        TypeSafeRejectionEvidenceV1 | GeminiDecisionsRejectionEvidenceV1 | None
+    ) = None
 
     @model_validator(mode="after")
-    def rejection_binding(self) -> DecisionsEvidenceReceiptV4:
+    def rejection_binding(self) -> DecisionsEvidenceWithRejection:
         rejection = self.rejection
         if rejection is None:
             if self.identity.observation_id is None:
-                raise ValueError("TypeSafe failure requires a complete rejection")
+                raise ValueError("Decisions failure requires a complete rejection")
         elif (
             self.identity.observation_id is not None
             or self.invocation_acceptance is not None
@@ -348,8 +342,34 @@ class DecisionsEvidenceReceiptV4(DecisionsEvidenceReceiptV3):
                 for key in ("run_id", "request_uid", "attempt_id", "submission_id")
             )
         ):
-            raise ValueError("TypeSafe rejection differs from the invocation")
+            raise ValueError("Decisions rejection differs from the invocation")
         return self
+
+
+class DecisionsEvidenceReceiptV4(DecisionsEvidenceWithRejection):
+    evidence_receipt_version: Literal[4] = 4  # pyright: ignore[reportIncompatibleVariableOverride]
+    _route: ClassVar[tuple[str, str]] = ("typesafe", "systemone")
+    rejection: TypeSafeRejectionEvidenceV1 | None = None  # pyright: ignore[reportIncompatibleVariableOverride]
+
+    @field_validator("evidence_receipt_version", mode="before")
+    @classmethod
+    def exact_version(cls, value: object) -> object:
+        if type(value) is not int or value != 4:
+            raise ValueError("unsupported TypeSafe Decisions evidence version")
+        return value
+
+
+class DecisionsEvidenceReceiptV5(DecisionsEvidenceWithRejection):
+    evidence_receipt_version: Literal[5] = 5  # pyright: ignore[reportIncompatibleVariableOverride]
+    _route: ClassVar[tuple[str, str]] = ("gemini", "decisions")
+    rejection: GeminiDecisionsRejectionEvidenceV1 | None = None  # pyright: ignore[reportIncompatibleVariableOverride]
+
+    @field_validator("evidence_receipt_version", mode="before")
+    @classmethod
+    def exact_version(cls, value: object) -> object:
+        if type(value) is not int or value != 5:
+            raise ValueError("unsupported Gemini Decisions evidence version")
+        return value
 
 
 def parse_evidence_receipt(raw: bytes) -> EvidenceReceipt:
@@ -362,7 +382,9 @@ def parse_evidence_receipt(raw: bytes) -> EvidenceReceipt:
         else None
     )
     model = (
-        DecisionsEvidenceReceiptV4
+        DecisionsEvidenceReceiptV5
+        if type(version) is int and version == 5
+        else DecisionsEvidenceReceiptV4
         if type(version) is int and version == 4
         else DecisionsEvidenceReceiptV3
         if type(version) is int and version == 3

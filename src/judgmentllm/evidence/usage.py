@@ -25,6 +25,7 @@ UsageSource = Literal[
     "typesafe.systemone.usage",
     "anthropic.messages.usage",
     "gemini.generate_content.usageMetadata",
+    "gemini.decisions.usage",
     "vertex.generate_content.usageMetadata",
     "synthetic.reported_usage",
 ]
@@ -58,6 +59,9 @@ UsageField = Literal[
     "cachedContentTokenCount",
     "totalTokenCount",
     "toolUsePromptTokenCount",
+    "total_input_tokens",
+    "total_output_tokens",
+    "input_tokens_by_modality.text",
 ]
 UsageRelationship = Literal["reported", "included_in", "excluded_from", "unknown"]
 Currency = Literal["USD", "EUR", "GBP", "CAD", "JPY"]
@@ -106,6 +110,13 @@ class UsageBreakdown(_UsageSemantics):
 _SEMANTICS: dict[
     tuple[UsageSource, UsageField], tuple[UsageRelationship, UsageCounter | None]
 ] = {
+    ("gemini.decisions.usage", "total_input_tokens"): ("reported", None),
+    ("gemini.decisions.usage", "total_output_tokens"): ("reported", None),
+    ("gemini.decisions.usage", "total_tokens"): ("reported", None),
+    ("gemini.decisions.usage", "input_tokens_by_modality.text"): (
+        "included_in",
+        "input_tokens",
+    ),
     ("gemini.generate_content.usageMetadata", "promptTokenCount"): ("reported", None),
     ("gemini.generate_content.usageMetadata", "candidatesTokenCount"): (
         "reported",
@@ -394,6 +405,8 @@ class ReportedUsageInput(_UsageSemantics):
             "prompt_tokens": "input_tokens",
             "completion_tokens": "output_tokens",
             "total_tokens": "total_tokens",
+            "total_input_tokens": "input_tokens",
+            "total_output_tokens": "output_tokens",
             "input_tokens": "input_tokens",
             "output_tokens": "output_tokens",
             "prompt_tokens_details.cached_tokens": "cache_read_tokens",
@@ -447,6 +460,11 @@ class ProviderUsage(EvidenceIdentity, UsageContext, ReportedUsageInput):
 
     @model_validator(mode="after")
     def provider_source(self) -> ProviderUsage:
+        if self.usage_source == "gemini.decisions.usage" and (
+            self.provider,
+            self.endpoint,
+        ) != ("gemini", "decisions"):
+            raise ValueError("usage source does not match provider endpoint")
         if self.usage_source == "gemini.generate_content.usageMetadata" and (
             self.provider,
             self.endpoint,

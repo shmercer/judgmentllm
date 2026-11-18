@@ -789,6 +789,26 @@
       "test_cancellation_drains_received_response_and_preserves_real_usage": {"[after_acknowledgment-models.generate_content]": [], "[after_evidence_artifacts-models.generate_content]": [], "[after_evidence_commit-models.generate_content]": [], "[after_evidence_extraction-models.generate_content]": [], "[after_evidence_receipt-models.generate_content]": [], "[after_submit-models.generate_content]": [], "[before_parsing-models.generate_content]": [], "[before_validation-models.generate_content]": [], "[queued_response-models.generate_content]": []},
       "test_transport_self_cancellation_propagates_without_deadlock": {"[models.generate_content]": []}
     },
+    "tests/test_gemini_decisions.py": {
+      "test_body_cap_and_multi_question_plan": {"": []},
+      "test_choice_precision_and_returned_selection": {"[None-0.5-0.5-0.5-False]": [], "[essay_01-0.2-0.8-0.8-False]": [], "[essay_01-0.5-0.5-0.5-True]": [], "[essay_02-0.5-0.5-0.5-True]": [], "[essay_02-0.5000004-0.4999996-0.5-True]": [], "[essay_02-0.5000004-0.4999996-0.5000013-False]": [], "[essay_02-0.500002-0.499998-0.5-False]": []},
+      "test_gemini_endpoint_and_user_grouping": {"[1000-1001-sizes0]": [], "[1001-1001-sizes1]": [], "[4-3-sizes2]": []},
+      "test_guarded_unsafe_body_keeps_transport_uncertain": {"[ambiguous_400]": [], "[credential_echo]": [], "[oversized]": []},
+      "test_invalid_scope_precedes_credentials": {"[change0]": [], "[change1]": [], "[change2]": []},
+      "test_refusal_cancellation_after_complete_bytes": {"[200-refused]": [], "[400-errored]": []},
+      "test_score_level_bounds": {"[10]": [], "[11]": [], "[255]": [], "[256]": [], "[2]": []},
+      "test_score_precision": {"[0-0-1.5500019-0.65-True]": [], "[0-5e-07-1.55-0.65-False]": [], "[None-0-1.55-0.6500011-False]": [], "[None-0-1.5500021-0.65-False]": [], "[None-0.01-1.55-0.65-False]": [], "[None-5e-07-1.5500019-0.6500009-True]": []},
+      "test_sdk_exact_bytes_and_grouped_usage": {"": []},
+      "test_thirteen_criteria_preserve_presentation_groups": {"": []}
+    },
+    "tests/test_gemini_decisions_processes.py": {
+      "test_actual_sdk_diagnostics_through_cli": {"": []},
+      "test_context_and_validation_first_forward_and_reopen": {"[context-max_tokens_exceeded-statuses0]": [], "[truncated-None-statuses2]": [], "[unknown-request_rejected-statuses1]": []},
+      "test_refusal_and_grouped_results_recover_in_fresh_process": {"[200-refusal-after_evidence_receipt-statuses3-1]": [], "[400-refusal-after_failure_evidence_receipt-statuses4-1]": [], "[clean-forward-statuses0-0]": [], "[filtered-after_evidence_receipt-statuses1-1]": [], "[filtered-during_result_transaction-statuses2-1]": []}
+    },
+    "tests/test_gemini_decisions_r.py": {
+      "test_strict_gemini_exports_in_real_r": {"": ["r_interop", "serial"]}
+    },
     "tests/test_gemini_diagnostics.py": {
       "test_cli_reports_safe_failures_with_established_exit_codes": {"[credentials_rejected]": [], "[inconclusive]": [], "[unsupported]": []},
       "test_diagnostic_cancellation_closes_owned_transport": {"": []},
@@ -1327,6 +1347,7 @@
       "test_sdk_hidden_second_forward_preserves_the_first_response": {"": []},
       "test_sdk_lifecycle_and_versioned_provenance": {"[full]": [], "[minimal]": []},
       "test_sdk_wrong_route_is_rejected_before_forwarding": {"": []},
+      "test_sealed_openai_precision_through_replay_and_retry": {"[0-False-0-1e-09-invalid]": [], "[1e-08-False-5e-07-0-invalid]": [], "[None-False-0-1.1e-05-invalid]": [], "[None-False-1.1e-06-0-invalid]": [], "[None-False-5e-07-8e-06-complete]": [], "[None-True-5e-07-0-invalid]": []},
       "test_submission_identity_and_handoff_capacity_do_not_lose_responses": {"": []},
       "test_wire_faults_preserve_content_free_findings_and_named_siblings": {"[choice_count]": [], "[choice_entry]": [], "[choice_mapping]": [], "[choice_not_list]": [], "[model]": [], "[nameless]": [], "[nonobject]": [], "[score_count]": [], "[score_mean]": [], "[score_not_list]": [], "[unrecognized]": []}
     },

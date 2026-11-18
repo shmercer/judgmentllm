@@ -1,5 +1,13 @@
 # R interoperability: explicit audit and analysis views
 
+## PR E Gemini Decisions
+
+The strict local Gemini test reads installed CLI JSONL, lossless CSV,
+R audit CSV and versioned provenance through R/jsonlite. It covers leading-zero
+IDs, score and confidence values, independent grouped retry ancestry, unequal
+Choice probabilities in both orientations, context rejection and physical
+usage. [Gemini Decisions](gemini-decisions.md)
+
 ## PR D TypeSafe Decisions
 
 The strict local Jev test reopens installed CLI runs to export single and

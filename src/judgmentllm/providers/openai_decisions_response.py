@@ -23,7 +23,11 @@ from judgmentllm.providers.protocol import ProviderIntegrityError
 
 
 def canonical_answer(
-    entry: dict[str, Any], question: dict[str, Any], tolerance: float
+    entry: dict[str, Any],
+    question: dict[str, Any],
+    tolerance: float,
+    *,
+    score_tolerance: float,
 ) -> dict[str, JsonValue]:
     if question["type"] == "score":
         if (
@@ -73,7 +77,7 @@ def canonical_answer(
                 math.fsum(p.index * p.probability for p in checked.probabilities)
                 - checked.expected_index
             )
-            > tolerance
+            > score_tolerance
         ):
             raise ValueError("score conflicts with distribution")
     else:
@@ -191,6 +195,9 @@ def analyze(
                         entry,
                         question,
                         wire.transport_commitment.probability_sum_tolerance,
+                        score_tolerance=wire.transport_commitment.index_tolerance(
+                            len(question.get("levels", ()))
+                        ),
                     )
                 except (ValueError, TypeError, KeyError, OverflowError):
                     failure = "invalid_output"

@@ -1,0 +1,13 @@
+{
+  "sdk_version": "3.5.0",
+  "scope": "offline wire parity",
+  "source_sha256": {
+    "_api_client.py": "8b72beb951b8bb8c056371460fc3c763d509fdcfaa25e35b31ffdf6fb0adadd4",
+    "_common.py": "8a45f980cfd1c4fcef967a5f5618490d611637bb7772fd42bdad0cb63050ba2a",
+    "_transformers.py": "5b6f1071c5cdca480a05e64f7449df5dac09da8176f5ffc54c2437d23bf7cd7e",
+    "client.py": "a89952d76f5dceb6bfa55c41d044a7bfb75d7f1bdc8f8ce47f64cd135c595e29",
+    "decisions.py": "a0febd6ae2788c566d5b5e23481751b33a2f1ab96bd220b69ea412e3d0bad448",
+    "models.py": "05c76a1a782a0d4a2fe670af18efc89fd2a0b8211eb368c8cc6a46878ff85344",
+    "types.py": "936829be66b88158bd1ed2792a4bc1ef03ecff760a6b6192dcdf02083860612d"
+  }
+}

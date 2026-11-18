@@ -14,6 +14,8 @@ from typing import Any
 
 import httpx2
 import psutil
+import pytest
+from google_historical import study_pin
 from reasoning_fixture import response_body
 from study_fixture import KEY, SOURCE, assessment, authorization
 
@@ -23,6 +25,7 @@ from judgmentllm.study.records import Proposal
 
 
 async def main(root: Path, mode: str) -> None:
+    study_pin(pytest.MonkeyPatch())
     execution._source_commit = plans._source_commit = lambda: SOURCE
     budget._global_lock_path = lambda: root / "study-global.lock"
     for name in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY"):

@@ -314,6 +314,12 @@ conduct paid calls as part of this design task.
 
 ## Milestone 4 - Native decision/score adapters
 
+**PR E candidate:** [Gemini Decisions](gemini-decisions.md) adds the Developer
+v1beta route and the reviewed 256 KiB non-strict text admission rule. The
+3.5.0 Google SDK migration requires separate Developer and Vertex offline
+parity with retained 2.34.0 scope. The protected offline gates, bounded Gemini
+live grid and gap-driven installed M4 closeout stay separate.
+
 **PR D candidate:** [TypeSafe Jev](typesafe-decisions.md) implements the pinned
 System One SDK with the approved non-strict context policy, durable terminal
 context and body rejection diagnostics, and synthetic Python/CLI/R checks.
@@ -356,7 +362,7 @@ Material recommendations D1–D4 require independent high-reasoning review befor
 | B | Provider-neutral preparation, explicit pair-presentation membership, deterministic grouping/splitting, durable named-member outcomes, acknowledgment/crosswalk versions, once-per-physical usage, retry/crash recovery and shared synthetic/R fixtures. |
 | C | Official OpenAI Decisions SDK mapping, 1–400 question cap, score/choice semantics, exact model/cache controls and independent offline SDK/lifecycle/R acceptance. |
 | D | Official `typesafe-sdk` System One mapping and distributions; no invented hard question cap; independently verify context/body/cache constraints and offline SDK/lifecycle/R acceptance. |
-| E | Native Gemini Developer v1beta Decisions, 1–1,000 keys, endpoint-specific levels/context/unsupported modes; resolve `google-genai>=3.2` versus current `>=2.34,<3` with Developer/Vertex compatibility gates before migration/integration. |
+| E | Native Gemini Developer v1beta Decisions, 1–1,000 keys, endpoint-specific limits and controls, plus pinned `google-genai[httpx]==3.5.0` with Developer/Vertex wire parity. Preserve prior live scope and use original pins for historical reconstruction. |
 | F | Cross-provider installed Python/CLI/R parity, partial/error/restart/orientation and bounded-resource evidence; prepare separate small synthetic-data live proposals for later explicit authorization. No implicit live calls or alpha. |
 
 Each native builder keeps shared essay/presented-pair evidence separate from

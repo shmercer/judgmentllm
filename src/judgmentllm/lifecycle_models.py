@@ -9,8 +9,11 @@ from typing import Annotated, Literal
 from pydantic import ConfigDict, Field, model_validator
 
 from judgmentllm.decisions.records import (
+    GEMINI_DECISIONS_CONTEXT_WARNING,
+    GEMINI_DECISIONS_PROTOCOL,
     TYPESAFE_CONTEXT_WARNING,
     TYPESAFE_PROTOCOL,
+    GeminiDecisionsLimitsV4,
     TypeSafeDecisionsLimitsV3,
 )
 from judgmentllm.models import ID, StrictModel
@@ -149,6 +152,17 @@ class TypeSafeDecisionsExecutionPlanV2(DecisionsExecutionPlanV1):
     warnings: tuple[str, ...] = (TYPESAFE_CONTEXT_WARNING,)
 
 
+class GeminiDecisionsExecutionPlanV3(DecisionsExecutionPlanV1):
+    plan_version: Literal[3] = 3  # pyright: ignore[reportIncompatibleVariableOverride]
+    pricing: Literal["unknown"] = "unknown"  # pyright: ignore[reportIncompatibleVariableOverride]
+    transport_protocol: Literal["gemini-decisions-production-v1"] = (  # pyright: ignore[reportIncompatibleVariableOverride]
+        GEMINI_DECISIONS_PROTOCOL
+    )
+    limits: GeminiDecisionsLimitsV4
+    max_serialized_body_bytes: Count
+    warnings: tuple[str, ...] = (GEMINI_DECISIONS_CONTEXT_WARNING,)
+
+
 class ExecutionPlan(ExecutionModel):
     """Exact prepared structural counts, with unknown estimates explicit."""
 
@@ -266,7 +280,9 @@ class RunStatus(ExecutionModel):
 
 
 class DecisionsRejectionDiagnostic(PublicModel):
-    code: Literal["max_tokens_exceeded", "payload_too_large"]
+    code: Literal[
+        "max_tokens_exceeded", "payload_too_large", "safety_refusal", "request_rejected"
+    ]
     message: str
     rejected_attempts: int = Field(gt=0)
 

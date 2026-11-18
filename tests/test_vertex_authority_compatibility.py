@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
+from google_historical import vertex_pin
 from test_vertex_lifecycle import production_spec
 from test_vertex_production_acceptance import MODEL, prepare
 from test_vertex_qualification_execution import files, install
@@ -144,6 +145,7 @@ async def test_historical_executed_report_requires_original_source_authority(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, qualified: str
 ) -> None:
     # This is an intercepted synthetic execution, never the external live store.
+    vertex_pin(monkeypatch)
     from test_vertex_qualification_execution import PROJECT, adc
 
     from judgmentllm.vertex_config import VertexRuntimeConfiguration

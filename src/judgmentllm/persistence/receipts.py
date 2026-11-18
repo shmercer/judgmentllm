@@ -215,8 +215,35 @@ class AcknowledgmentReceiptV4(AcknowledgmentReceiptV3):
         return value
 
 
-class TypeSafeRejectionEvidenceV1(ExecutionModel):
-    """A complete direct TypeSafe rejection without retained provider error text."""
+class CompleteResponseEvidenceV4(CompleteResponseEvidenceV2):
+    acceptance_evidence_version: Literal[4] = 4  # pyright: ignore[reportIncompatibleVariableOverride]
+    protocol: Literal["gemini-decisions-production-v1"] = (  # pyright: ignore[reportIncompatibleVariableOverride]
+        "gemini-decisions-production-v1"
+    )
+    http_status: Literal[200] = 200  # pyright: ignore[reportIncompatibleVariableOverride]
+
+    @field_validator("acceptance_evidence_version", mode="before")
+    @classmethod
+    def strict_evidence_version(cls, value: object) -> object:
+        if type(value) is not int or value != 4:
+            raise ValueError("unsupported Gemini Decisions acceptance evidence version")
+        return value
+
+
+class AcknowledgmentReceiptV5(AcknowledgmentReceiptV3):
+    acknowledgment_version: Literal[5] = 5  # pyright: ignore[reportIncompatibleVariableOverride]
+    response_evidence: CompleteResponseEvidenceV4  # pyright: ignore[reportIncompatibleVariableOverride]
+
+    @field_validator("acknowledgment_version", mode="before")
+    @classmethod
+    def strict_ack_version(cls, value: object) -> object:
+        if type(value) is not int or value != 5:
+            raise ValueError("unsupported Gemini Decisions acknowledgment version")
+        return value
+
+
+class DecisionsRejectionEvidence(ExecutionModel):
+    """The identity of a complete rejection without provider error text."""
 
     run_id: ID
     request_uid: ID
@@ -226,6 +253,9 @@ class TypeSafeRejectionEvidenceV1(ExecutionModel):
     payload_sha256: SHA256
     response_sha256: SHA256
     response_byte_length: int = Field(ge=0, le=8_388_608)
+
+
+class TypeSafeRejectionEvidenceV1(DecisionsRejectionEvidence):
     http_status: Literal[400, 401, 413, 415, 422, 429]
     reason: Literal["max_tokens_exceeded", "payload_too_large", "request_rejected"]
 
@@ -235,6 +265,24 @@ class TypeSafeRejectionEvidenceV1(ExecutionModel):
             self.reason == "max_tokens_exceeded" and self.http_status != 400
         ):
             raise ValueError("TypeSafe rejection reason conflicts with HTTP status")
+        return self
+
+
+class GeminiDecisionsRejectionEvidenceV1(DecisionsRejectionEvidence):
+    http_status: Literal[400, 401, 403, 404, 413, 429]
+    reason: Literal[
+        "max_tokens_exceeded", "payload_too_large", "safety_refusal", "request_rejected"
+    ]
+
+    @model_validator(mode="after")
+    def status_matches_reason(self) -> GeminiDecisionsRejectionEvidenceV1:
+        if (self.http_status == 413) != (self.reason == "payload_too_large") or (
+            self.reason in {"max_tokens_exceeded", "safety_refusal"}
+            and self.http_status != 400
+        ):
+            raise ValueError(
+                "Gemini Decisions rejection reason conflicts with HTTP status"
+            )
         return self
 
 
@@ -248,7 +296,9 @@ def publish_acknowledgment(
     """Durably bind accepted identities before the registry acknowledgment."""
     try:
         receipt_type = (
-            AcknowledgmentReceiptV4
+            AcknowledgmentReceiptV5
+            if type(receipt) is AcknowledgmentReceiptV5
+            else AcknowledgmentReceiptV4
             if type(receipt) is AcknowledgmentReceiptV4
             else AcknowledgmentReceiptV3
             if type(receipt) is AcknowledgmentReceiptV3
@@ -289,7 +339,9 @@ def read_acknowledgment(
             else None
         )
         receipt_type = (
-            AcknowledgmentReceiptV4
+            AcknowledgmentReceiptV5
+            if type(version) is int and version == 5
+            else AcknowledgmentReceiptV4
             if type(version) is int and version == 4
             else AcknowledgmentReceiptV3
             if type(version) is int and version == 3

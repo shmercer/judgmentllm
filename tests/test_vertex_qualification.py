@@ -16,6 +16,7 @@ from typing import Any, Literal, cast
 
 import httpx2
 import pytest
+from google_historical import vertex_pin
 from vertex_offline import adc, envelope, isolate
 
 from judgmentllm import _auth, gemini_qualification_execution
@@ -53,6 +54,7 @@ def _deny(*args: Any, **kwargs: Any) -> Any:
 @pytest.fixture(autouse=True)
 def offline(monkeypatch: pytest.MonkeyPatch) -> None:
     isolate(monkeypatch)
+    vertex_pin(monkeypatch)
     monkeypatch.setattr(q, "_source_commit", lambda: SOURCE)
     monkeypatch.setattr(executor, "_source_commit", lambda: SOURCE)
 
@@ -609,11 +611,27 @@ def test_source_and_sdk_identity_must_remain_exact(
         )()
 
     monkeypatch.setattr(sdk_probe.importlib.metadata, "distribution", changed)
+    monkeypatch.setattr(q, "installed_sdk_evidence", sdk_probe.installed_sdk_evidence)
     with pytest.raises(ValueError):
         q.verify_plan(plan, expected_plan_sha256=_digest(plan))
 
 
 def test_sdk_source_corruption_fails(monkeypatch: pytest.MonkeyPatch) -> None:
+    distribution = sdk_probe.importlib.metadata.distribution("google-genai")
+    if distribution.version != "2.34.0":
+        with pytest.raises(ValueError, match="requires the pinned SDK"):
+            sdk_probe.installed_sdk_evidence()
+
+        def legacy_distribution(_name: str) -> Any:
+            from types import SimpleNamespace
+
+            return SimpleNamespace(
+                version="2.34.0", locate_file=distribution.locate_file
+            )
+
+        monkeypatch.setattr(
+            sdk_probe.importlib.metadata, "distribution", legacy_distribution
+        )
     original = Path.read_bytes
 
     def changed(path: Path) -> bytes:

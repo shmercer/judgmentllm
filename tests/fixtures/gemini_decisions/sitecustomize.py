@@ -1,0 +1,133 @@
+"""Block provider sockets and intercept the real SDK in fresh CLI processes."""
+
+from __future__ import annotations
+
+import json
+import os
+import socket
+from pathlib import Path
+from typing import Any
+
+import httpx2
+
+from judgmentllm.execution.session import ExecutionSession
+
+root = Path(os.environ["JLLM_GEMINI_DECISIONS_ROOT"])
+fault = os.environ["JLLM_GEMINI_DECISIONS_FAULT"]
+scenario = os.environ["JLLM_GEMINI_DECISIONS_SCENARIO"]
+
+
+def forbidden(*_args: Any, **_kwargs: Any) -> Any:
+    raise AssertionError("Provider sockets are blocked in the CLI fixture")
+
+
+socket.getaddrinfo = forbidden
+socket.create_connection = forbidden
+_connect = socket.socket.connect
+
+
+def connect(sock: socket.socket, address: Any) -> Any:
+    if sock.family in (socket.AF_INET, socket.AF_INET6):
+        return forbidden()
+    return _connect(sock, address)
+
+
+socket.socket.connect = connect
+
+
+def respond(request: httpx2.Request) -> httpx2.Response:
+    if scenario == "diagnostics":
+        assert request.method == "GET"
+        page_size = request.url.params["pageSize"]
+        assert page_size in ("1", "1000")
+        assert (
+            str(request.url)
+            == f"https://generativelanguage.googleapis.com/v1beta/models?pageSize={page_size}"
+        )
+        assert request.headers["x-goog-api-key"] == "SYNTHETIC_CLI_GEMINI_KEY"
+        with (root / "forwards").open("a", encoding="utf-8") as stream:
+            stream.write(f"models-{page_size}\n")
+        return httpx2.Response(200, json={"models": [{"name": "models/visible"}]})
+    assert (
+        str(request.url) == "https://generativelanguage.googleapis.com/v1beta/decisions"
+    )
+    assert request.headers["x-goog-api-key"] == "SYNTHETIC_CLI_GEMINI_KEY"
+    assert len(request.content) < 262_144
+    with (root / "forwards").open("a", encoding="utf-8") as stream:
+        stream.write("decisions\n")
+    if fault == "forward":
+        os._exit(79)
+    if scenario in {"context", "unknown", "truncated", "400-refusal"}:
+        error = (
+            dict(code="safety", message="GEMINI_UNSAFE_CANARY")
+            if scenario == "400-refusal"
+            else dict(
+                code=400,
+                status="INVALID_ARGUMENT",
+                message=(
+                    "GEMINI_UNSAFE_CANARY mentioned context window in question text."
+                    if scenario == "unknown"
+                    else "The input token count (262145) exceeds the maximum number of tokens allowed (262144)."
+                ),
+            )
+        )
+        encoded = json.dumps({"error": error}).encode()
+        return httpx2.Response(
+            400,
+            content=encoded,
+            headers={"content-length": str(len(encoded) + 1)}
+            if scenario == "truncated"
+            else {},
+        )
+    if scenario == "200-refusal":
+        return httpx2.Response(
+            200,
+            json={
+                "answers": {},
+                "prompt_feedback": {
+                    "block_reason": "safety",
+                    "block_reason_message": "GEMINI_UNSAFE_CANARY",
+                },
+            },
+        )
+    body = json.loads(request.content)
+    answers: dict[str, dict[str, Any]] = {}
+    for i, (key, question) in enumerate(body["questions"].items()):
+        answers[key] = (
+            dict(
+                type="score",
+                score=1.55 + (0.000001 if scenario == "filtered" else 0),
+                confidence=0.65,
+                probabilities={"2": 0.65, "0": 0.1, "1": 0.25},
+                legend={str(k): v for k, v in enumerate(question["criteria"])},
+            )
+            if question["type"] == "score"
+            else dict(
+                type="choice",
+                choice="essay_02",
+                confidence=0.8,
+                probabilities={"essay_02": 0.8, "essay_01": 0.2},
+            )
+        )
+        if i == 1 and scenario == "filtered":
+            answers[key]["unknown"] = "GEMINI_UNSAFE_CANARY"
+    return httpx2.Response(
+        200,
+        json=dict(
+            answers=dict(reversed(tuple(answers.items()))),
+            usage={"total_input_tokens": 120, "total_output_tokens": 0},
+        ),
+    )
+
+
+httpx2.AsyncHTTPTransport = lambda **_kwargs: httpx2.MockTransport(respond)  # type: ignore[assignment]
+_checkpoint = ExecutionSession.checkpoint
+
+
+def checkpoint(self: ExecutionSession, stage: str, *args: Any) -> None:
+    if stage == fault:
+        os._exit(79)
+    _checkpoint(self, stage, *args)
+
+
+ExecutionSession.checkpoint = checkpoint  # pyright: ignore[reportAttributeAccessIssue]

@@ -29,6 +29,7 @@ def isolate(monkeypatch: pytest.MonkeyPatch) -> None:
         "GOOGLE_GENAI_CLIENT_MODE": "record",
         "GOOGLE_GENAI_REPLAYS_DIRECTORY": "/forbidden/replays",
         "GOOGLE_GENAI_REPLAY_ID": "synthetic-replay",
+        "GOOGLE_GENAI_HTTP_CLIENT": "httpx",
         "SSL_CERT_FILE": "/forbidden/ca.pem",
         "SSL_CERT_DIR": "/forbidden/certs",
         "HTTPS_PROXY": "http://forbidden.invalid:8080",

@@ -8,6 +8,7 @@ from typing import Any
 
 import pytest
 from gemini_offline import isolate
+from google_historical import gemini_pin
 from test_gemini_lifecycle import production_spec
 from test_gemini_production_acceptance import MODEL, prepare
 from test_gemini_qualification_execution import files, install
@@ -134,6 +135,7 @@ async def test_historical_executed_report_requires_original_source_authority(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # This is an intercepted synthetic execution, never the external live store.
+    gemini_pin(monkeypatch)
     profiles = registry._QUALIFIED_PROFILES
     monkeypatch.setattr(registry, "_QUALIFIED_PROFILES", ())
     monkeypatch.setattr(q, "_source_commit", lambda: "a" * 40)

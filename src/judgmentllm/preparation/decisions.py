@@ -24,7 +24,9 @@ from judgmentllm.config import (
     validate_run_spec,
 )
 from judgmentllm.decisions.records import (
+    GEMINI_DECISIONS_ROUTE,
     TYPESAFE_ROUTE,
+    GeminiDecisionsContextV1,
     PairPresentationInputV1,
     PreparedPairPresentationV1,
     TypeSafeDecisionsContextV1,
@@ -86,6 +88,7 @@ from judgmentllm.preparation.manifest import (
     ExecutableRunManifestV8,
     ExecutableRunManifestV9,
     ExecutableRunManifestV10,
+    ExecutableRunManifestV11,
     ExemplarCommitment,
     SourceFormat,
     TemplateCommitment,
@@ -650,17 +653,25 @@ def prepare_decisions_run(
         )
         assert isinstance(spec, RunSpecV4)
         route = spec.provider, spec.endpoint
-        if route in {("openai", "decisions"), TYPESAFE_ROUTE}:
-            if route == TYPESAFE_ROUTE:
-                from judgmentllm.providers.typesafe_decisions import (
-                    decisions_context as build_context,
-                )
-            else:
-                from judgmentllm.providers.openai_decisions import (
-                    decisions_context as build_context,
+        if route in {("openai", "decisions"), TYPESAFE_ROUTE, GEMINI_DECISIONS_ROUTE}:
+            if route == GEMINI_DECISIONS_ROUTE:
+                from judgmentllm.providers.gemini_decisions import (
+                    decisions_context as gemini_context,
                 )
 
-            current_context = build_context(spec)
+                current_context = gemini_context(spec)
+            elif route == TYPESAFE_ROUTE:
+                from judgmentllm.providers.typesafe_decisions import (
+                    decisions_context as typesafe_context,
+                )
+
+                current_context = typesafe_context(spec)
+            else:
+                from judgmentllm.providers.openai_decisions import (
+                    decisions_context as openai_context,
+                )
+
+                current_context = openai_context(spec)
             if context is not None and context != current_context:
                 raise PreparationError(
                     "Production Decisions context differs from configuration"
@@ -676,6 +687,7 @@ def prepare_decisions_run(
             ("mock", "synthetic"),
             ("openai", "decisions"),
             TYPESAFE_ROUTE,
+            GEMINI_DECISIONS_ROUTE,
         }:
             raise PreparationError(
                 "production Decisions adapters are not implemented in PR B"
@@ -746,7 +758,9 @@ def prepare_decisions_run(
             repository.register_artifact(run_id, specification)
             traits, exemplars = assessment_commitments(spec)
             manifest_type = (
-                ExecutableRunManifestV10
+                ExecutableRunManifestV11
+                if isinstance(context, GeminiDecisionsContextV1)
+                else ExecutableRunManifestV10
                 if isinstance(context, TypeSafeDecisionsContextV1)
                 else ExecutableRunManifestV9
                 if isinstance(context, OpenAIDecisionsContextV1)

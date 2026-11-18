@@ -114,7 +114,7 @@ class VertexReadinessError(ProviderError):
         messages = {
             "missing_credentials": "Set JUDGMENTLLM_VERTEX_API_KEY for explicitly selected Vertex api_key mode; ADC never falls back to a key",
             "missing_extra": "Install judgmentllm[google] before Vertex execution",
-            "sdk_scope_mismatch": "The installed Vertex SDK differs from the qualified transport version; install google-genai==2.34.0",
+            "sdk_scope_mismatch": "The installed Vertex SDK differs from the qualified transport version; use the pinned Google extra for this source or the original environment for historical runs",
         }
         super().__init__(messages[code])
         self.diagnostic_code = code
@@ -541,7 +541,7 @@ class VertexAdapter:
             installed = vertex_sdk_version()
         except ProviderError:
             raise VertexReadinessError("missing_extra") from None
-        if installed != self.transport_context.scope.sdk_version:
+        if installed != self.transport_context.required_sdk_version:
             raise VertexReadinessError("sdk_scope_mismatch")
 
     def _check_authority(self) -> None:
@@ -754,12 +754,13 @@ class VertexAdapter:
         from judgmentllm.vertex_transport import production_context_digest
 
         if (
-            prepared.transport_commitment.context_kind != self.transport_context.kind
+            prepared.transport_commitment.google_wire_runtime
+            != self.transport_context.google_wire_runtime
+            or prepared.transport_commitment.context_kind != self.transport_context.kind
             or prepared.transport_commitment.context_sha256
             != production_context_digest(self.transport_context)
             or prepared.transport_plan.identity.submission_id != submission_id
             or prepared.transport_plan.identity.correlation_id != correlation_id
-            or vertex_sdk_version() != self.transport_context.scope.sdk_version
         ):
             raise ProviderIntegrityError(
                 "Vertex sealed transport scope or invocation identity differs"
@@ -792,6 +793,8 @@ class VertexAdapter:
             raise ProviderIntegrityError(
                 "Vertex invocation identity was reused or handoff capacity exceeded"
             )
+        if vertex_sdk_version() != self.transport_context.required_sdk_version:
+            raise VertexReadinessError("sdk_scope_mismatch")
         self._invoked.append(submission_id)
         logging_token = _SDK_LOGGING.set(True)
         try:

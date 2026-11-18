@@ -353,7 +353,7 @@ def prepare_subset_retry(
         ):
             raise RetryAuthorizationError("retry operation selection conflicts")
         # Rendering and artifact verification stay outside write transactions.
-        if prepared_run.manifest.schema_version in (3, 4, 5, 6, 7, 8, 9, 10):
+        if prepared_run.manifest.schema_version in (3, 4, 5, 6, 7, 8, 9, 10, 11):
             from judgmentllm.transport import physical_identity
 
             wire = prepared_run.prepare_transport_attempt(
@@ -426,15 +426,26 @@ def prepare_subset_retry(
                     raise RetryAuthorizationError(
                         "retry of completed tasks requires explicit permission"
                     )
-    if prepared_run.manifest.schema_version == 10:
-        from judgmentllm.persistence.evidence import DecisionsEvidenceReceiptV4
+    if prepared_run.manifest.schema_version in (10, 11):
+        from judgmentllm.persistence.evidence import (
+            DecisionsEvidenceReceiptV4,
+            DecisionsEvidenceReceiptV5,
+        )
+
+        is_gemini = prepared_run.manifest.schema_version == 11
+        receipt_type = (
+            DecisionsEvidenceReceiptV5 if is_gemini else DecisionsEvidenceReceiptV4
+        )
+        message = (
+            "Gemini Decisions retry requires a response-backed failed member"
+            if is_gemini
+            else "Jev retry requires a response-backed failed member"
+        )
 
         checked: set[str] = set()
         for outcome in prior:
             if outcome.status != "invalid":
-                raise RetryAuthorizationError(
-                    "Jev retry requires a response-backed failed member"
-                )
+                raise RetryAuthorizationError(message)
             if outcome.attempt_id not in checked:
                 submission = repository.get_submission_for_attempt(
                     run_id, outcome.attempt_id
@@ -447,13 +458,11 @@ def prepare_subset_retry(
                     else None
                 )
                 if (
-                    not isinstance(receipt, DecisionsEvidenceReceiptV4)
+                    not isinstance(receipt, receipt_type)
                     or receipt.validation is None
                     or not receipt.validation.recognizable
                 ):
-                    raise RetryAuthorizationError(
-                        "Jev retry requires a response-backed failed member"
-                    )
+                    raise RetryAuthorizationError(message)
                 checked.add(outcome.attempt_id)
     checkpoint("before_retry_preparation", request_uid)
     prepared_run.verify_compatibility(
@@ -463,7 +472,7 @@ def prepare_subset_retry(
     attempt_id = stable_id("attempt", run_id, request_uid, attempt_number)
     version = prepared_run.manifest.schema_version
     native_artifacts = ()
-    if version in (3, 4, 5, 6, 7, 8, 9, 10):
+    if version in (3, 4, 5, 6, 7, 8, 9, 10, 11):
         from judgmentllm.transport import physical_identity
 
         original = repository.get_attempt_for_request(
@@ -485,7 +494,7 @@ def prepare_subset_retry(
             native_artifacts = publish_decisions_request(
                 repository, prepared_run.store, wire, prepared_run.spec.capture
             )
-        elif version != 10:
+        elif version not in (10, 11):
             from judgmentllm.decisions.transport import PreparedDecisionsRequestV1
             from judgmentllm.preparation.native import publish_prepared_transport
 
@@ -518,15 +527,24 @@ def prepare_subset_retry(
     ):
         raise IntegrityError("retry preparation differs from its frozen subset")
     store = prepared_run.store
-    if version == 10:
-        from judgmentllm.decisions.transport import PreparedDecisionsRequestV3
+    if version in (10, 11):
+        from judgmentllm.decisions.transport import (
+            PreparedDecisionsRequestV3,
+            PreparedDecisionsRequestV4,
+        )
         from judgmentllm.preparation.decisions import publish_decisions_request
+        from judgmentllm.providers.gemini_decisions import GeminiDecisionsAdapter
         from judgmentllm.providers.typesafe_decisions import TypeSafeDecisionsAdapter
 
-        if not isinstance(wire, PreparedDecisionsRequestV3) or not isinstance(
-            adapter, TypeSafeDecisionsAdapter
+        if not (
+            version == 10
+            and isinstance(wire, PreparedDecisionsRequestV3)
+            and isinstance(adapter, TypeSafeDecisionsAdapter)
+            or version == 11
+            and isinstance(wire, PreparedDecisionsRequestV4)
+            and isinstance(adapter, GeminiDecisionsAdapter)
         ):
-            raise IntegrityError("TypeSafe retry lacks its sealed request or adapter")
+            raise IntegrityError("Decisions retry lacks its sealed request or adapter")
         adapter.validate_credentials()
         native_artifacts = publish_decisions_request(
             repository, store, wire, prepared_run.spec.capture

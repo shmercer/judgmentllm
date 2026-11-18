@@ -248,6 +248,11 @@ def _manifest(
         from judgmentllm.service_tiers import service_policy
 
         manifest_data["service_policy"] = service_policy(spec)
+    if isinstance(
+        transport_context,
+        (gemini_types.GeminiProductionContext, vertex_types.VertexProductionContext),
+    ):
+        manifest_data["google_wire_runtime"] = transport_context.google_wire_runtime
     return manifest_type.model_validate(manifest_data)
 
 
@@ -543,7 +548,7 @@ def _load_manifest(
         raise PreparationError("published manifest conflicts with the database seal")
     run = repository.get_run(run_id)
     if (repository.decisions_version(run_id) == 4) != (
-        manifest.schema_version in (8, 9, 10)
+        manifest.schema_version in (8, 9, 10, 11)
     ):
         raise PreparationError("Decisions marker differs from frozen manifest")
     if (run.task_kind, run.provider, run.endpoint, run.model, run.capture) != (

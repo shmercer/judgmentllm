@@ -123,7 +123,7 @@ class GeminiReadinessError(ProviderError):
         messages = {
             "missing_credentials": "Set a valid GOOGLE_API_KEY or GEMINI_API_KEY process environment value before execution",
             "missing_extra": "Install judgmentllm[google] before Gemini execution",
-            "sdk_scope_mismatch": "The installed Gemini SDK differs from the qualified transport version; install google-genai==2.34.0",
+            "sdk_scope_mismatch": "The installed Gemini SDK differs from the qualified transport version; use the pinned Google extra for this source or the original environment for historical runs",
         }
         super().__init__(messages[code])
         self.diagnostic_code = code
@@ -156,6 +156,7 @@ def _sdk() -> tuple[Any, Any]:
     # without changing logging for unrelated SDK users in this process.
     for name in (
         "google_genai",
+        "google.genai",
         "google_genai._api_client",
         "google_genai.models",
         "google_genai.types",
@@ -566,7 +567,7 @@ class GeminiAdapter:
             installed = gemini_sdk_version()
         except ProviderError:
             raise GeminiReadinessError("missing_extra") from None
-        if installed != self.transport_context.scope.sdk_version:
+        if installed != self.transport_context.required_sdk_version:
             raise GeminiReadinessError("sdk_scope_mismatch")
 
     def _check_authority(self) -> None:
@@ -752,17 +753,20 @@ class GeminiAdapter:
         from judgmentllm.gemini_transport import production_context_digest
 
         if (
-            prepared.transport_commitment.context_kind != self.transport_context.kind
+            prepared.transport_commitment.google_wire_runtime
+            != self.transport_context.google_wire_runtime
+            or prepared.transport_commitment.context_kind != self.transport_context.kind
             or prepared.transport_commitment.context_sha256
             != production_context_digest(self.transport_context)
             or prepared.transport_plan.identity.submission_id != submission_id
             or prepared.transport_plan.identity.correlation_id != correlation_id
-            or gemini_sdk_version() != self.transport_context.scope.sdk_version
         ):
             raise ProviderIntegrityError(
                 "Gemini sealed transport scope or invocation identity differs"
             )
         self._check_authority()
+        if gemini_sdk_version() != self.transport_context.required_sdk_version:
+            raise GeminiReadinessError("sdk_scope_mismatch")
         if submission_id in self._invoked or len(self._responses) >= self._concurrency:
             raise ProviderIntegrityError(
                 "Gemini invocation identity was reused or handoff capacity exceeded"

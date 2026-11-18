@@ -5,12 +5,13 @@ remains scoped to revision 1. New `auto` requests use text until separately
 qualified for revision 2; explicit `native` and strict unknown `auto` fail before
 submission. Historical sealed requests keep their original commitments.
 
-Vertex single-run execution uses **google-genai 2.34.0**,
+Vertex single-run execution uses **google-genai 3.5.0**,
 `models.generate_content`, **v1beta1**. The [2026-11-11 acceptance](vertex-live-qualification-acceptance.md)
 independently verifies separate ADC and API-key evidence and promotes only
 `gemini-3.1-flash-lite` / `global` / the respective qualified private-project route /
 `vertex.generate_content.response_json_schema`, for one-trait scores and forced-choice
-winners. Every other scope remains unqualified. This promotion makes no provider
+winners. That live evidence is scoped to its original **google-genai 2.34.0**.
+Every other scope remains unqualified. This promotion makes no provider
 calls, reads no credentials/keyring and authorizes no additional qualification or
 package publication.
 
@@ -22,10 +23,11 @@ results confer no Vertex authority.
 Install the Google extra from reviewed source, retaining the existing lock:
 
 ```bash
-pip install '.[google]' 'google-genai==2.34.0'
+pip install '.[google]'
 ```
 
-Another installed SDK version fails execution readiness. Ordinary imports, status,
+The current lock records offline wire parity. Use the original pinned checkout
+for historical reconstruction or forwarding. Ordinary imports, status,
 validation, planning and preview construct no SDK client. Copy
 [the synthetic configurations](../examples/vertex/) and replace `YOUR_EXACT_MODEL`
 with a bare Google publisher model ID. Unknown IDs remain valid configuration;

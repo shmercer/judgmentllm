@@ -331,6 +331,20 @@ class PreparedRun:
             verify_protocol(self.manifest, self.transport_context)
 
             if (
+                isinstance(
+                    self.transport_context,
+                    (
+                        gemini_types.GeminiProductionContext,
+                        vertex_types.VertexProductionContext,
+                    ),
+                )
+                and getattr(self.manifest, "google_wire_runtime", None)
+                != self.transport_context.google_wire_runtime
+            ):
+                raise PreparationError(
+                    "committed Google SDK runtime differs; use the original source and pins"
+                )
+            if (
                 self.transport_context is None
                 or context_digest(self.transport_context)
                 != self.manifest.transport_context_sha256
