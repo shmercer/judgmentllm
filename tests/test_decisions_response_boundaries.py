@@ -70,6 +70,8 @@ class AnswerBoundaryAdapter(MockDecisionsAdapter):
             data["answers"].extend([first.copy(), first.copy()])
         elif self.fault == "expected":
             first["expected_index"] = 0
+        elif self.fault == "expected_one_cent":
+            first["expected_index"] = 1.54
         elif self.fault == "selected":
             first["selected_index"] = 7
         elif self.fault == "explicit_selected":
@@ -99,6 +101,7 @@ class AnswerBoundaryAdapter(MockDecisionsAdapter):
         "nameless",
         "triplicate",
         "expected",
+        "expected_one_cent",
         "selected",
         "explicit_selected",
         "choice_order",

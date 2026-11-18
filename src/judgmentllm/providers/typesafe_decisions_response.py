@@ -9,7 +9,11 @@ from typing import Any, Literal, cast
 from pydantic import JsonValue
 
 from judgmentllm.assessment_errors import AssessmentOutputError
-from judgmentllm.decisions.interpretation import ChoiceAnswerV1, ScoreAnswerV1
+from judgmentllm.decisions.interpretation import (
+    ChoiceAnswerV1,
+    IndexedProbabilityV1,
+    ScoreAnswerV1,
+)
 from judgmentllm.decisions.replay import (
     DecisionsReplayMetadataV1,
     ReplayMemberV1,
@@ -124,6 +128,46 @@ def rejected(
     return TypeSafeRequestRejected(receipt, usage=usage_from(fields)[0])
 
 
+def matches_rounded_score(
+    index: float, probabilities: list[IndexedProbabilityV1]
+) -> bool:
+    levels = len(probabilities)
+    if not 2 <= levels <= 10 or not 0 <= index <= levels - 1:
+        return False
+    index_cents = round(index * 100)
+    cents = [round(p.probability * 100) for p in probabilities]
+    if (
+        index != index_cents / 100
+        or sum(cents) != 100
+        or any(
+            p.probability != c / 100 for p, c in zip(probabilities, cents, strict=True)
+        )
+    ):
+        return False
+
+    # shortcut: Nearest-hundredth compatibility cells, revisit when TypeSafe specifies precision.
+    # Half-cent units make contact at either endpoint exact.
+    bounds = [(max(0, 2 * c - 1), min(200, 2 * c + 1)) for c in cents]
+    remaining_mass = 200 - sum(lower for lower, _ in bounds)
+    lower_moment = sum(i * lower for i, (lower, _) in enumerate(bounds))
+
+    def extremum(order: range) -> int:
+        remaining = remaining_mass
+        moment = lower_moment
+        for i in order:
+            lower, upper = bounds[i]
+            assigned = min(remaining, upper - lower)
+            moment += i * assigned
+            remaining -= assigned
+        return moment
+
+    reported = 2 * index_cents
+    return (
+        extremum(range(levels)) <= reported + 1
+        and extremum(range(levels - 1, -1, -1)) >= reported - 1
+    )
+
+
 def canonical_answer(
     name: str, answer: object, question: dict[str, Any], tolerance: float
 ) -> dict[str, JsonValue]:
@@ -159,13 +203,13 @@ def canonical_answer(
                 legend=[dict(index=i, **level) for i, level in enumerate(criteria)],
             )
         )
-        if (
-            checked.expected_index is None
-            or abs(
+        if checked.expected_index is None or (
+            abs(
                 math.fsum(p.index * p.probability for p in checked.probabilities)
                 - checked.expected_index
             )
             > tolerance
+            and not matches_rounded_score(checked.expected_index, checked.probabilities)
         ):
             raise ValueError("score conflicts with distribution")
     else:

@@ -23,6 +23,7 @@ from test_typesafe_decisions import (
     jev_envelope,
     jev_spec,
     native_spec,
+    ten_level_jev_spec,
 )
 
 from judgmentllm.config import RunSpecV4
@@ -275,6 +276,119 @@ def run_partial_jev(
     result = run_live(spec, store=root / "store")
     assert not result.recovery_required and len(forwards) == 1
     return spec, result.run_id, forwards
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        pytest.param("score_precision", id="current"),
+        pytest.param("legacy_score_precision", id="pre-fix"),
+        pytest.param("filtered_score_precision", id="filtered"),
+        pytest.param("ten_level_score_precision", id="filtered-ten-levels"),
+    ],
+)
+def test_jev_score_precision_replays_receipt_before_member_commit(
+    tmp_path: Path, response: str
+) -> None:
+    legacy = response == "legacy_score_precision"
+    ten_levels = response == "ten_level_score_precision"
+    filtered = ten_levels or response == "filtered_score_precision"
+    base = native_spec(tmp_path / "input", traits=2)
+    spec = ten_level_jev_spec(base) if ten_levels else jev_spec(base)
+    index, probabilities, codes, mapped_mean = (
+        (4.63, [0.10] * 10, [i**2 for i in range(10)], 28.5)
+        if ten_levels
+        else (1.95, [0.01, 0.02, 0.97], [1, 2, 7], 6.84)
+    )
+    crash = cli(
+        tmp_path,
+        "run",
+        "--config",
+        config_path(tmp_path, spec),
+        fault="after_evidence_receipt",
+        response=response,
+    )
+    assert crash.returncode == 79, crash.stderr
+    store = tmp_path / "store"
+    with ReadOnlyRepository(store) as repository:
+        run_id = str(
+            repository.connection.execute("SELECT run_id FROM runs").fetchone()[0]
+        )
+        (submission,) = repository.iter_submissions(run_id)
+        assert submission.certainty == "accepted"
+        assert list(repository.iter_results(run_id)) == []
+        assert repository.usage_high_water_mark(run_id) == 0
+        artifacts = ArtifactStore(repository.run_directory(run_id), create=False)
+        receipt = read_evidence_receipt(artifacts, submission.submission_id)
+        assert isinstance(receipt, DecisionsEvidenceReceiptV4)
+        assert receipt.usage.input_tokens == 120
+        assert receipt.retained is not None and receipt.validation is not None
+        assert receipt.original is not None
+        if legacy or filtered:
+            assert receipt.retained_kind == "filtered_replay"
+            assert receipt.original.sha256 != receipt.retained.sha256
+            first_answer, second_answer = json.loads(artifacts.read(receipt.retained))[
+                "answers"
+            ]
+            if legacy:
+                assert first_answer is None and second_answer["expected_index"] == 1.55
+                assert receipt.validation.members[0].failure == "invalid_output"
+            else:
+                assert first_answer["expected_index"] == index and second_answer is None
+                assert [
+                    p["probability"] for p in first_answer["probabilities"]
+                ] == probabilities
+                assert [m.failure for m in receipt.validation.members] == [
+                    None,
+                    "invalid_output",
+                ]
+        else:
+            assert receipt.retained_kind == "original"
+            assert receipt.original.sha256 == receipt.retained.sha256
+
+    for _ in range(2):
+        reopened = control(cli(tmp_path, "resume", "--run", run_id, response="clean"))
+        assert not reopened["data"]["recovery_required"]
+        with ReadOnlyRepository(store) as repository:
+            first, second = repository.iter_results(run_id)
+            assert first.task_kind == "rubric"
+            assert second.task_kind == "rubric"
+            if legacy:
+                assert (
+                    first.status == "invalid" and first.error_kind == "invalid_output"
+                )
+                assert first.provider_expected_index is None
+            else:
+                assert (
+                    first.status == "complete"
+                    and first.provider_expected_index == index
+                )
+                assert [
+                    p.probability for p in first.probabilities or []
+                ] == probabilities
+                assert [level.numeric_value for level in first.resolved_levels] == codes
+                assert (
+                    first.primary_score
+                    == first.expected_value
+                    == pytest.approx(mapped_mean, rel=0, abs=1e-12)
+                )
+            if filtered:
+                assert (
+                    second.status == "invalid" and second.error_kind == "invalid_output"
+                )
+                assert second.provider_expected_index is None
+                assert second.probabilities is None and second.primary_score is None
+            else:
+                assert (
+                    second.status == "complete"
+                    and second.provider_expected_index == 1.55
+                )
+            assert list(repository.iter_evidence(run_id)) == [receipt]
+            assert repository.usage_high_water_mark(run_id) == 1
+            assert list(repository.iter_submissions(run_id)) == [
+                submission.model_copy(update={"state": "resolved"})
+            ]
+    assert (tmp_path / "forwards").read_text().splitlines() == ["systemone"]
 
 
 def test_python_jev_retry_requires_valid_credentials_and_preserves_sibling_ancestry(

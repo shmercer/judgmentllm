@@ -1202,6 +1202,13 @@ class ExecutionSession:
                 raise IntegrityError(
                     "Decisions parser lost its original response binding"
                 )
+            score_index_fallback = None
+            if isinstance(work.prepared, PreparedDecisionsRequestV3):
+                from judgmentllm.providers.typesafe_decisions_response import (
+                    matches_rounded_score,
+                )
+
+                score_index_fallback = matches_rounded_score
             interpreted = interpret_decisions(
                 parsed_decisions,
                 self.spec,
@@ -1210,6 +1217,7 @@ class ExecutionSession:
                 member_checkpoint=lambda: self.checkpoint(
                     "during_member_validation", work.prepared.request_uid
                 ),
+                score_index_fallback=score_index_fallback,
             )
         else:
             try:

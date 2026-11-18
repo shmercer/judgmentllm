@@ -11,7 +11,7 @@ from typing import Any
 
 import pytest
 from test_decisions_contracts import pair_spec
-from test_typesafe_decisions import jev_spec, native_spec
+from test_typesafe_decisions import jev_spec, native_spec, ten_level_jev_spec
 from test_typesafe_decisions_processes import HOOK, cli, config_path, control
 
 from judgmentllm.persistence.repository import Repository
@@ -23,25 +23,40 @@ def test_strict_jev_exports_in_real_r(tmp_path: Path) -> None:
     rscript = shutil.which("Rscript")
     assert rscript is not None, "Required for strict local Jev R acceptance"
     exports: dict[str, dict[str, Any]] = {}
-    for case in ("single", "grouped", "pairwise"):
+    for case in (
+        "single",
+        "grouped",
+        "pairwise",
+        "score_precision",
+        "ten_level_score_precision",
+    ):
         root = tmp_path / case
         base = (
             pair_spec(root / "input", criteria=2)
             if case == "pairwise"
             else native_spec(
                 root / "input",
-                traits=1 if case == "single" else 3,
-                maximum=None if case == "single" else 32,
+                traits=3 if case == "grouped" else 1,
+                maximum=32 if case == "grouped" else None,
                 capture="minimal" if case == "single" else "full",
             )
+        )
+        spec = (
+            ten_level_jev_spec(base)
+            if case == "ten_level_score_precision"
+            else jev_spec(base)
         )
         result = control(
             cli(
                 root,
                 "run",
                 "--config",
-                config_path(root, jev_spec(base)),
-                response="filtered" if case == "grouped" else "clean",
+                config_path(root, spec),
+                response={
+                    "grouped": "filtered",
+                    "score_precision": "score_precision",
+                    "ten_level_score_precision": "ten_level_score_precision",
+                }.get(case, "clean"),
             )
         )
         selection = ("--run", result["run_id"])

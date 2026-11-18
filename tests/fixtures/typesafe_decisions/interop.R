@@ -1,6 +1,7 @@
 stopifnot(requireNamespace("jsonlite", quietly = TRUE))
 runs <- jsonlite::fromJSON(commandArgs(trailingOnly = TRUE)[[1]], simplifyVector = FALSE)
-stopifnot(identical(names(runs), c("single", "grouped", "pairwise")))
+stopifnot(identical(names(runs), c("single", "grouped", "pairwise", "score_precision", "ten_level_score_precision")))
+precision_cases <- c("score_precision", "ten_level_score_precision")
 
 read_jsonl <- function(path) {
   lapply(readLines(path, warn = FALSE, encoding = "UTF-8"),
@@ -10,11 +11,14 @@ read_jsonl <- function(path) {
 for (case in names(runs)) {
   run <- runs[[case]]
   rows <- read_jsonl(run$canonical$files[[1]]$path)
-  expected <- c(single = 1L, grouped = 4L, pairwise = 8L)[[case]]
-  calls <- c(single = 1L, grouped = 2L, pairwise = 4L)[[case]]
+  expected <- c(single = 1L, grouped = 4L, pairwise = 8L, score_precision = 1L,
+                ten_level_score_precision = 1L)[[case]]
+  calls <- c(single = 1L, grouped = 2L, pairwise = 4L, score_precision = 1L,
+             ten_level_score_precision = 1L)[[case]]
   r <- read.csv(run$r$files[[1]]$path, colClasses = "character")
   stopifnot(length(rows) == expected, nrow(r) == expected)
   stopifnot(nrow(read.csv(run$csv$files[[1]]$path, colClasses = "character")) == expected)
+  if (case %in% precision_cases) stopifnot(rows[[1]]$status == "complete")
   for (row in rows) {
     stopifnot(row$provider == "typesafe", row$endpoint == "systemone",
               row$model == "jev-1.14.0", is.null(row$input_tokens))
@@ -24,6 +28,22 @@ for (case in names(runs)) {
                 row$winner_id == row$presented_order[[2]], row$confidence == 0.7,
                 row$p_left == if (row$presented_order[[1]] == "001") 0.2 else 0.8,
                 row$p_left + row$p_right == 1)
+    } else if (case == "score_precision") {
+      stopifnot(row$item_id == "000", row$trait_id == "00",
+                abs(row$primary_score - 6.84) < 1e-12,
+                abs(row$expected_value - 6.84) < 1e-12,
+                row$provider_expected_index == 1.95, row$confidence == 0.8,
+                is.null(row$category_label), row$modal_category_label == "02",
+                identical(vapply(row$probabilities, function(p) p$probability, numeric(1)), c(0.01, 0.02, 0.97)),
+                identical(vapply(row$resolved_levels, function(level) level$numeric_value, numeric(1)), c(1, 2, 7)))
+    } else if (case == "ten_level_score_precision") {
+      stopifnot(row$item_id == "000", row$trait_id == "00",
+                abs(row$primary_score - 28.5) < 1e-12,
+                abs(row$expected_value - 28.5) < 1e-12,
+                row$provider_expected_index == 4.63, row$confidence == 0.8,
+                is.null(row$category_label),
+                identical(vapply(row$probabilities, function(p) p$probability, numeric(1)), rep(0.1, 10)),
+                identical(vapply(row$resolved_levels, function(level) level$numeric_value, numeric(1)), (0:9)^2))
     } else {
       stopifnot(row$item_id == "000", abs(row$expected_value - 5.15) < 1e-12,
                 row$provider_expected_index == 1.55, row$confidence == 0.8,
@@ -53,6 +73,7 @@ for (case in names(runs)) {
               attempt$selected_usage$input_tokens == 120L,
               is.null(attempt$selected_usage$output_tokens), is.null(attempt$selected_usage$reported_cost))
     if (case == "single") stopifnot(is.null(attempt$retained_response$relative_path))
+    if (case %in% precision_cases) stopifnot(attempt$retained_kind == "original")
   }
   csv <- read.csv(bundle_file("physical.csv"), colClasses = "character")
   stopifnot(nrow(csv) == calls, all(csv$physical_provenance_version == "3"))
