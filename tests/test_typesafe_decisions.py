@@ -6,7 +6,7 @@ import asyncio
 import json
 import logging
 import socket
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from hashlib import sha256
 from pathlib import Path
 from typing import Any, cast
@@ -20,10 +20,14 @@ from typer.testing import CliRunner
 
 from judgmentllm.cli import app
 from judgmentllm.config import RunSpecV4
+from judgmentllm.decisions.transport import PreparedDecisionsRequestV3
+from judgmentllm.execution import execute_run
 from judgmentllm.execution.session import ExecutionSession
 from judgmentllm.lifecycle import (
     LifecycleError,
+    MockExecutionOptions,
     RetrySelection,
+    aresume_run,
     arun_live,
     estimate_run,
     get_run,
@@ -37,8 +41,17 @@ from judgmentllm.persistence.decisions_invocations import (
     read_invocation,
 )
 from judgmentllm.persistence.evidence import DecisionsEvidenceReceiptV4
+from judgmentllm.persistence.receipts import read_acknowledgment
 from judgmentllm.persistence.repository import Repository
 from judgmentllm.preparation import PreparationError, prepare_run
+from judgmentllm.providers import typesafe_decisions
+from judgmentllm.providers.protocol import (
+    PreparedRequest,
+    ProviderError,
+    ProviderIntegrityError,
+    RetrievalUnavailable,
+)
+from judgmentllm.providers.typesafe_decisions import TypeSafeDecisionsAdapter
 
 CONTEXT_MESSAGE = (
     "TypeSafe Jev rejected the request because it exceeded a context limit. "
@@ -80,6 +93,25 @@ def answer_map(body: dict[str, Any]) -> dict[str, Any]:
         )
         for key, question in reversed(tuple(body["questions"].items()))
     }
+
+
+def jev_envelope(request: httpx2.Request) -> dict[str, Any]:
+    body = json.loads(request.content)
+    return dict(
+        model=body["model"],
+        answers=answer_map(body),
+        usage=dict(input_tokens=120, output_tokens=0),
+    )
+
+
+def intercept_jev(
+    monkeypatch: pytest.MonkeyPatch,
+    respond: Callable[[httpx2.Request], httpx2.Response],
+) -> None:
+    def transport(**_kwargs: object) -> httpx2.MockTransport:
+        return httpx2.MockTransport(respond)
+
+    monkeypatch.setattr(httpx2, "AsyncHTTPTransport", transport)
 
 
 @pytest.fixture(autouse=True)
@@ -612,3 +644,531 @@ def test_jev_body_splits_reuse_exact_shared_state(tmp_path: Path) -> None:
     )
     with pytest.raises(ValueError, match="oversized Decisions member"):
         next(plan_source(spec, item, unexpected_item, too_small, None))
+
+
+@pytest.mark.parametrize(
+    "field,diagnostic",
+    [
+        ("model", "TypeSafe Jev requires exact model jev-1.14.0."),
+        ("execution.tier", "TypeSafe Jev requires the default service tier."),
+        ("rubric", "TypeSafe Jev supports at most ten score levels per trait."),
+    ],
+)
+def test_jev_validation_and_admission_refuse_unsupported_controls(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str, diagnostic: str
+) -> None:
+    base = jev_spec(native_spec(tmp_path))
+    values = base.model_dump()
+    if field == "model":
+        values["model"] = "jev-latest"
+    elif field == "execution.tier":
+        values["execution"]["tier"] = "priority"
+    else:
+        values["rubric"]["traits"][0]["levels"] = [
+            {"label": str(i), "description": f"Level {i}"} for i in range(11)
+        ]
+    spec = RunSpecV4.model_validate(values)
+
+    def forbidden(*_args: Any, **_kwargs: Any) -> Any:
+        pytest.fail("unapproved Jev scope reached credentials or transport")
+
+    monkeypatch.setattr(typesafe_decisions, "_resolve_credentials", forbidden)
+    monkeypatch.setattr(httpx2, "AsyncHTTPTransport", forbidden)
+    report = validate_inputs(spec)
+    assert not report.valid
+    assert any(
+        issue.field == field and issue.code == "unsupported" for issue in report.issues
+    )
+    with pytest.raises(PreparationError) as preparation:
+        prepare_run(spec, store=tmp_path / "prepare", run_id="001")
+    assert str(preparation.value) == diagnostic
+    with pytest.raises(LifecycleError) as execution:
+        run_live(spec, store=tmp_path / "store")
+    assert execution.value.category == "unsupported_capability"
+    assert execution.value.message == diagnostic
+
+
+def test_jev_cannot_use_mock_controls_or_legacy_adapter_entrypoints(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def forbidden(*_args: Any, **_kwargs: Any) -> Any:
+        pytest.fail("unapproved Jev operation reached credentials or transport")
+
+    monkeypatch.setattr(typesafe_decisions, "_resolve_credentials", forbidden)
+    monkeypatch.setattr(httpx2, "AsyncHTTPTransport", forbidden)
+    base = native_spec(tmp_path)
+    spec = jev_spec(base)
+    adapter = TypeSafeDecisionsAdapter(spec.model)
+    with pytest.raises(
+        LifecycleError, match="TypeSafe Jev does not accept mock controls"
+    ) as rejected:
+        run_live(spec, store=tmp_path / "store", mock=MockExecutionOptions())
+    assert rejected.value.category == "validation"
+    with pytest.raises(
+        typesafe_decisions.TypeSafeConfigurationError, match="endpoint systemone"
+    ):
+        typesafe_decisions.decisions_context(base)
+    with pytest.raises(ProviderIntegrityError, match="runtime scope differs"):
+        adapter.validate(jev_spec(base, account_scope="foreign"))
+    with pytest.raises(ProviderError, match="sealed preparation"):
+        adapter.prepare()
+    with pytest.raises(ProviderError, match="named-member interpretation"):
+        adapter.parse()
+
+
+@pytest.mark.parametrize(
+    "case,category,diagnostic",
+    [
+        (
+            "sdk",
+            "unsupported_capability",
+            "TypeSafe Jev requires typesafe-sdk==0.7.5 from the typesafe extra.",
+        ),
+        (
+            "missing",
+            "validation",
+            "TypeSafe Jev requires the selected TYPESAFE_API_KEY credential.",
+        ),
+        (
+            "invalid",
+            "validation",
+            "TypeSafe Jev requires a TYPESAFE_API_KEY with printable ASCII and no whitespace.",
+        ),
+    ],
+)
+def test_jev_readiness_refusal_leaves_initial_work_without_submission_intent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: str,
+    category: str,
+    diagnostic: str,
+) -> None:
+    from importlib.metadata import PackageNotFoundError
+
+    def forbidden(*_args: Any, **_kwargs: Any) -> Any:
+        pytest.fail("refused readiness reached the credential resolver or transport")
+
+    def package_missing(name: str) -> str:
+        assert name == "typesafe-sdk"
+        raise PackageNotFoundError(name)
+
+    def key_missing(provider: str) -> Any:
+        assert provider == "typesafe"
+        raise ValueError("UNSAFE_JEV_CANARY")
+
+    monkeypatch.setattr(httpx2, "AsyncHTTPTransport", forbidden)
+    if case == "sdk":
+        monkeypatch.setattr(typesafe_decisions, "version", package_missing)
+        monkeypatch.setattr(typesafe_decisions, "_resolve_credentials", forbidden)
+    elif case == "missing":
+        monkeypatch.setattr(typesafe_decisions, "_resolve_credentials", key_missing)
+    else:
+        monkeypatch.setenv("TYPESAFE_API_KEY", "UNSAFE_JEV_CANARY-é")
+
+    store = tmp_path / "store"
+    with pytest.raises(LifecycleError) as refused:
+        run_live(jev_spec(native_spec(tmp_path)), store=store)
+    assert refused.value.category == category
+    assert refused.value.message == diagnostic
+    run_id = refused.value.run_id
+    assert run_id is not None
+    with Repository(store) as repository:
+        (attempt,) = repository.iter_attempts(run_id)
+        assert attempt.state == "prepared"
+        assert list(repository.iter_submissions(run_id)) == []
+        assert repository.usage_high_water_mark(run_id) == 0
+
+
+def sealed_jev(root: Path) -> PreparedDecisionsRequestV3:
+    from judgmentllm.preparation.decisions import DecisionsPreparedRun
+    from judgmentllm.transport import physical_identity
+
+    with prepare_run(
+        jev_spec(native_spec(root)), store=root / "store", run_id="001"
+    ) as prepared:
+        assert isinstance(prepared, DecisionsPreparedRun)
+        (dependency,) = prepared.iter_request_dependencies()
+        (attempt,) = prepared.repository.iter_attempts("001")
+        wire = prepared.prepare_transport_attempt(
+            dependency,
+            physical_identity("001", attempt.request_uid, attempt.attempt_id),
+        )
+    assert isinstance(wire, PreparedDecisionsRequestV3)
+    return wire
+
+
+@pytest.mark.asyncio
+async def test_jev_submit_requires_native_wire_identity_and_bound_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def forbidden(*_args: Any, **_kwargs: Any) -> Any:
+        pytest.fail("unadmitted Jev submission reached credentials or transport")
+
+    monkeypatch.setattr(typesafe_decisions, "_resolve_credentials", forbidden)
+    monkeypatch.setattr(httpx2, "AsyncHTTPTransport", forbidden)
+    wire = sealed_jev(tmp_path)
+    identity = wire.transport_commitment.identity
+    generic = PreparedRequest.model_validate(
+        wire.model_dump(include=set(PreparedRequest.model_fields))
+    )
+    adapter = TypeSafeDecisionsAdapter(wire.model)
+    try:
+        with pytest.raises(
+            ProviderIntegrityError, match="requires production preparation 10"
+        ):
+            await adapter.submit(
+                generic,
+                submission_id=identity.submission_id,
+                correlation_id=identity.correlation_id,
+            )
+        with pytest.raises(ProviderIntegrityError, match="invocation identity differs"):
+            await adapter.submit(
+                wire,
+                submission_id=identity.submission_id,
+                correlation_id="foreign-correlation",
+            )
+        with pytest.raises(
+            ProviderIntegrityError, match="SDK credential was not validated"
+        ):
+            await adapter.submit(
+                wire,
+                submission_id=identity.submission_id,
+                correlation_id=identity.correlation_id,
+            )
+    finally:
+        await adapter.aclose()
+
+
+@pytest.mark.parametrize("tamper", ["request_bytes", "second_invocation"])
+@pytest.mark.asyncio
+async def test_jev_guard_refuses_extra_or_altered_sdk_forward(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, tamper: str
+) -> None:
+    from typesafe_sdk import AsyncTypeSafeClient
+
+    wire = sealed_jev(tmp_path)
+    identity = wire.transport_commitment.identity
+    forwards: list[bytes] = []
+    actual = cast(Any, AsyncTypeSafeClient.system_one)  # pyright: ignore[reportUnknownMemberType]
+
+    async def sdk(client: AsyncTypeSafeClient, **kwargs: Any) -> Any:
+        if tamper == "request_bytes":
+            return await actual(client, **{**kwargs, "state": "altered state"})
+        await actual(client, **kwargs)
+        return await actual(client, **kwargs)
+
+    def respond(request: httpx2.Request) -> httpx2.Response:
+        forwards.append(request.content)
+        return httpx2.Response(200, json=jev_envelope(request))
+
+    monkeypatch.setattr(AsyncTypeSafeClient, "system_one", sdk)
+    adapter = TypeSafeDecisionsAdapter(
+        wire.model, http_transport=httpx2.MockTransport(respond)
+    )
+    adapter.validate_credentials()
+    ids = dict(
+        submission_id=identity.submission_id, correlation_id=identity.correlation_id
+    )
+    try:
+        if tamper == "request_bytes":
+            with pytest.raises(
+                ProviderIntegrityError, match="forwarding differs from sealed request"
+            ):
+                await adapter.submit(wire, **ids)
+            assert forwards == []
+        else:
+            ack = await adapter.submit(wire, **ids)
+            response = await adapter.retrieve(wire, **ids)
+            assert (
+                ack.response_evidence.response_sha256
+                == sha256(response.raw).hexdigest()
+            )
+            assert len(adapter.parse_decisions(response, wire).answers) == 3
+            assert forwards == [wire.payload]
+    finally:
+        await adapter.aclose()
+
+
+@pytest.mark.asyncio
+async def test_jev_retrieval_requires_the_original_pending_handoff(
+    tmp_path: Path,
+) -> None:
+    wire = sealed_jev(tmp_path)
+    identity = wire.transport_commitment.identity
+    forwards: list[bytes] = []
+
+    def respond(request: httpx2.Request) -> httpx2.Response:
+        forwards.append(request.content)
+        return httpx2.Response(200, json=jev_envelope(request))
+
+    adapter = TypeSafeDecisionsAdapter(
+        wire.model, http_transport=httpx2.MockTransport(respond)
+    )
+    adapter.validate_credentials()
+    ids = dict(
+        submission_id=identity.submission_id, correlation_id=identity.correlation_id
+    )
+    try:
+        await adapter.submit(wire, **ids)
+        with pytest.raises(ProviderIntegrityError, match="retrieval identity differs"):
+            await adapter.retrieve(wire, **{**ids, "correlation_id": "foreign"})
+        with pytest.raises(RetrievalUnavailable):
+            await adapter.retrieve(wire, **ids)
+        assert forwards == [wire.payload]
+    finally:
+        await adapter.aclose()
+
+
+@pytest.mark.parametrize("boundary", ["encoding", "raw_size", "filtered_size"])
+def test_jev_response_guard_leaves_nonretained_response_unresolved(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, boundary: str
+) -> None:
+    store = tmp_path / "store"
+    raw = b'{"model":"jev-1.14.0","answers":{},"private":"UNSAFE_JEV_CANARY"}'
+    if boundary != "encoding":
+        # The raw response fits only in the filtered-size case. Its bound
+        # derivative includes the immutable replay metadata and is larger.
+        monkeypatch.setattr(
+            typesafe_decisions,
+            "_RESPONSE_LIMIT",
+            len(raw) - int(boundary == "raw_size"),
+        )
+    forwards: list[bytes] = []
+
+    def respond(request: httpx2.Request) -> httpx2.Response:
+        forwards.append(request.content)
+        headers = {"content-encoding": "gzip"} if boundary == "encoding" else None
+        return httpx2.Response(200, stream=httpx2.ByteStream(raw), headers=headers)
+
+    intercept_jev(monkeypatch, respond)
+    initial = run_live(jev_spec(native_spec(tmp_path)), store=store)
+    assert initial.recovery_required
+    resumed = resume_run(initial.run_id, store=store)
+    assert resumed.recovery_required
+    assert len(forwards) == 1
+    with Repository(store) as repository:
+        (submission,) = repository.iter_submissions(initial.run_id)
+        artifacts = ArtifactStore(
+            repository.run_directory(initial.run_id), create=False
+        )
+        fact = read_invocation(artifacts, submission.submission_id)
+        assert isinstance(fact, DecisionsInvocationV3)
+        assert fact.payload_sha256 == sha256(forwards[0]).hexdigest()
+        assert submission.certainty == "unknown"
+        assert read_acknowledgment(artifacts, submission.submission_id) is None
+        assert (
+            repository.get_evidence_for_submission(
+                initial.run_id, submission.submission_id
+            )
+            is None
+        )
+        assert list(repository.iter_results(initial.run_id)) == []
+        assert repository.usage_high_water_mark(initial.run_id) == 0
+
+
+@pytest.mark.parametrize("status", [200, 529])
+@pytest.mark.asyncio
+async def test_jev_cancellation_after_transport_eof_preserves_only_established_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, status: int
+) -> None:
+    spec = jev_spec(native_spec(tmp_path))
+    store = tmp_path / "store"
+    with prepare_run(spec, store=store, run_id="001"):
+        pass
+
+    closing = asyncio.Event()
+    forwards: list[bytes] = []
+
+    class ClosingStream(httpx2.AsyncByteStream):
+        def __init__(self, raw: bytes) -> None:
+            self.raw = raw
+
+        async def __aiter__(self) -> AsyncIterator[bytes]:
+            yield self.raw
+
+        async def aclose(self) -> None:
+            closing.set()
+            await asyncio.Event().wait()
+
+    def respond(request: httpx2.Request) -> httpx2.Response:
+        forwards.append(request.content)
+        document = jev_envelope(request)
+        first = next(iter(json.loads(request.content)["questions"]))
+        document["answers"][first]["confidence"] = None
+        raw = (
+            json.dumps(document).encode() if status == 200 else b'{"detail":"overload"}'
+        )
+        return httpx2.Response(status, stream=ClosingStream(raw))
+
+    adapter = TypeSafeDecisionsAdapter(
+        spec.model, http_transport=httpx2.MockTransport(respond)
+    )
+    task = asyncio.create_task(execute_run("001", store=store, adapter=adapter))
+    try:
+        await asyncio.wait_for(closing.wait(), 10)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(task, 10)
+    finally:
+        if not task.done():
+            task.cancel()
+            await asyncio.gather(task, return_exceptions=True)
+        await adapter.aclose()
+
+    def forbidden(*_args: Any, **_kwargs: Any) -> Any:
+        pytest.fail("recovery of cancelled work reached credentials or transport")
+
+    monkeypatch.setattr(typesafe_decisions, "_resolve_credentials", forbidden)
+    monkeypatch.setattr(httpx2, "AsyncHTTPTransport", forbidden)
+    resumed = await aresume_run("001", store=store)
+    assert resumed.recovery_required == (status == 529)
+    assert len(forwards) == 1
+    with Repository(store) as repository:
+        assert repository.get_owner("001") is None
+        (submission,) = repository.iter_submissions("001")
+        artifacts = ArtifactStore(repository.run_directory("001"), create=False)
+        rows = list(repository.iter_results("001"))
+        evidence = repository.get_evidence_for_submission(
+            "001", submission.submission_id
+        )
+        if status == 200:
+            assert submission.certainty == "accepted"
+            assert read_acknowledgment(artifacts, submission.submission_id) is not None
+            assert isinstance(evidence, DecisionsEvidenceReceiptV4)
+            assert evidence.usage.input_tokens == 120
+            assert [row.status for row in rows] == ["invalid", "complete", "complete"]
+        else:
+            assert submission.certainty == "unknown"
+            fact = read_invocation(artifacts, submission.submission_id)
+            assert isinstance(fact, DecisionsInvocationV3)
+            assert fact.payload_sha256 == sha256(forwards[0]).hexdigest()
+            assert read_acknowledgment(artifacts, submission.submission_id) is None
+            assert evidence is None and rows == []
+        assert repository.usage_high_water_mark("001") == int(status == 200)
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "answer",
+        "kind",
+        "probabilities",
+        "legend",
+        "expected_index",
+        "probability_sum",
+        "choice_keys",
+        "envelope",
+        "usage",
+    ],
+)
+def test_jev_response_validation_binds_partial_outcomes_and_filtered_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    base = (
+        pair_spec(tmp_path, criteria=2)
+        if case == "choice_keys"
+        else native_spec(tmp_path)
+    )
+    store = tmp_path / "store"
+    sent: dict[str, bytes] = {}
+
+    def respond(request: httpx2.Request) -> httpx2.Response:
+        wire = json.loads(request.content)
+        key = next(iter(wire["questions"]))
+        doc = jev_envelope(request)
+        answer = doc["answers"][key]
+        if case == "answer":
+            doc["answers"][key] = "UNSAFE_JEV_CANARY"
+        elif case == "kind":
+            answer["type"] = "choice"
+        elif case == "probabilities":
+            answer["probabilities"] = [0.10, 0.25, 0.65]
+        elif case == "legend":
+            answer["legend"]["0"]["label"] = "UNSAFE_JEV_CANARY"
+        elif case == "expected_index":
+            answer["score"] = 1.6
+        elif case == "probability_sum":
+            answer["probabilities"]["0"] = 0.15
+        elif case == "choice_keys":
+            del answer["probabilities"]["essay_02"]
+        elif case == "envelope":
+            doc["answers"] = ["UNSAFE_JEV_CANARY"]
+        elif case == "usage":
+            doc["usage"] = "UNSAFE_JEV_CANARY"
+        raw = json.dumps(doc).encode()
+        sent[sha256(raw).hexdigest()] = raw
+        return httpx2.Response(200, content=raw)
+
+    intercept_jev(monkeypatch, respond)
+    result = run_live(jev_spec(base), store=store)
+    assert not result.recovery_required
+    with Repository(store) as repository:
+        receipts = list(repository.iter_evidence(result.run_id))
+        assert len(receipts) == len(sent) == (4 if case == "choice_keys" else 1)
+        assert repository.usage_high_water_mark(result.run_id) == len(receipts)
+        artifacts = ArtifactStore(repository.run_directory(result.run_id), create=False)
+        for receipt in receipts:
+            assert isinstance(receipt, DecisionsEvidenceReceiptV4)
+            assert receipt.validation is not None and receipt.retained is not None
+            assert receipt.original is not None
+            raw = sent[receipt.original.sha256]
+            assert receipt.original.byte_length == len(raw)
+            assert receipt.retained_kind == "filtered_replay"
+            assert b"UNSAFE_JEV_CANARY" not in artifacts.read(receipt.retained)
+            rows = repository.get_results_for_attempt(
+                result.run_id, receipt.identity.attempt_id
+            )
+            if case == "envelope":
+                assert receipt.validation.findings == ("unrecognized_envelope",)
+                assert not receipt.validation.recognizable
+                assert [row.status for row in rows] == ["invalid"] * 3
+            elif case == "usage":
+                assert receipt.validation.findings == ("unknown_field",)
+                assert (
+                    receipt.usage.input_tokens is None
+                    and receipt.usage.output_tokens is None
+                )
+                assert [row.status for row in rows] == ["complete"] * 3
+            else:
+                assert receipt.validation.recognizable
+                assert receipt.validation.members[0].failure == "invalid_output"
+                assert [row.status for row in rows] == ["invalid"] + ["complete"] * (
+                    1 if case == "choice_keys" else 2
+                )
+                assert receipt.usage.input_tokens == 120
+
+
+@pytest.mark.parametrize("fault", ["protocol", "correlation"])
+def test_jev_replay_requires_the_sealed_protocol_and_invocation(
+    tmp_path: Path, fault: str
+) -> None:
+    from judgmentllm.decisions.replay import OpenAIDecisionsReplayV1
+    from judgmentllm.providers.protocol import ProviderResponse
+    from judgmentllm.providers.typesafe_decisions_response import (
+        analyze,
+        observation_key,
+    )
+
+    wire = sealed_jev(tmp_path)
+    body = json.loads(wire.payload)
+    raw = json.dumps({"model": wire.model, "answers": answer_map(body)}).encode()
+    replay, safe, _ = analyze(raw, wire)
+    assert safe
+    if fault == "protocol":
+        other = OpenAIDecisionsReplayV1(
+            metadata=replay.metadata, answers=replay.answers
+        )
+        diagnostic = "replay protocol differs"
+    else:
+        metadata = replay.metadata.model_copy(update={"correlation_id": "foreign"})
+        other = replay.model_copy(update={"metadata": metadata})
+        diagnostic = "replay differs from committed invocation"
+    response = ProviderResponse(
+        observation_key=observation_key(wire),
+        kind="response",
+        raw=raw,
+        decisions_replay=other,
+    )
+    assert type(response.decisions_replay) is type(other)
+    with pytest.raises(ProviderIntegrityError, match=diagnostic):
+        TypeSafeDecisionsAdapter(wire.model).parse_decisions(response, wire)

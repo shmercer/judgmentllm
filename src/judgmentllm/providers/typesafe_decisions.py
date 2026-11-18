@@ -11,7 +11,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
 from threading import Lock
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import Any, Literal, cast
 
 from pydantic_core import to_json
 
@@ -56,10 +56,6 @@ from judgmentllm.providers.typesafe_decisions_response import (
     rejected,
     verify_replay,
 )
-
-if TYPE_CHECKING:
-    import httpx2
-    from typesafe_sdk import AsyncTypeSafeClient
 
 _RESPONSE_LIMIT = 8_388_608
 _REJECTIONS = (400, 401, 413, 415, 422, 429)
@@ -171,14 +167,14 @@ class TypeSafeDecisionsAdapter:
         *,
         concurrency: int = 4,
         context: TypeSafeDecisionsContextV1 | None = None,
-        http_transport: httpx2.AsyncBaseTransport | None = None,
+        http_transport: object | None = None,
     ):
         self.model = model
         self.transport_context = context or TypeSafeDecisionsContextV1()
         self.concurrency = concurrency
         self.http_transport = http_transport
         self._validated_key: str | None = None
-        self._client: AsyncTypeSafeClient | None = None
+        self._client: Any = None
         self._responses: dict[
             str, tuple[ProviderAcknowledgmentV4, ProviderResponse]
         ] = {}
@@ -221,7 +217,7 @@ class TypeSafeDecisionsAdapter:
     def prepare(self, *_args: Any, **_kwargs: Any) -> PreparedRequest:
         raise ProviderError("TypeSafe Decisions requires sealed preparation")
 
-    def _execution_client(self) -> AsyncTypeSafeClient:
+    def _execution_client(self) -> Any:
         if self._client is not None:
             return self._client
         key = self._validated_key
@@ -236,9 +232,9 @@ class TypeSafeDecisionsAdapter:
         limits = httpx2.Limits(
             max_connections=self.concurrency, max_keepalive_connections=self.concurrency
         )
-        underlying = self.http_transport or httpx2.AsyncHTTPTransport(
-            retries=0, limits=limits, trust_env=False
-        )
+        underlying = cast(
+            httpx2.AsyncBaseTransport | None, self.http_transport
+        ) or httpx2.AsyncHTTPTransport(retries=0, limits=limits, trust_env=False)
         context = self.transport_context
 
         class Guarded(httpx2.AsyncBaseTransport):
@@ -348,7 +344,7 @@ class TypeSafeDecisionsAdapter:
             )
         self._invoked.append(submission_id)
         client = self._execution_client()
-        from typesafe_sdk import Choice, Score
+        from typesafe_sdk import AsyncTypeSafeClient, Choice, Score
 
         questions = {
             name: (Score if q["type"] == "score" else Choice)(
@@ -361,7 +357,7 @@ class TypeSafeDecisionsAdapter:
         cancelled = False
         try:
             async with asyncio.timeout(90):
-                await client.system_one(  # pyright: ignore[reportUnknownMemberType]
+                await cast(AsyncTypeSafeClient, client).system_one(  # pyright: ignore[reportUnknownMemberType]
                     model=wire.model, state=request["state"], questions=questions
                 )
         except asyncio.CancelledError:

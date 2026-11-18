@@ -12,23 +12,46 @@ from collections.abc import AsyncIterator, Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, cast
 
 import httpx2
 import pytest
-from test_typesafe_decisions import CONTEXT_MESSAGE, jev_spec, native_spec
+from test_typesafe_decisions import (
+    CONTEXT_MESSAGE,
+    intercept_jev,
+    jev_envelope,
+    jev_spec,
+    native_spec,
+)
 
 from judgmentllm.config import RunSpecV4
+from judgmentllm.decisions.replay import DecisionsReplayMetadataV1
+from judgmentllm.decisions.transport import DecisionsCommitmentV3
 from judgmentllm.execution import core, execute_run
+from judgmentllm.execution.retry import authorize_subset_retry
+from judgmentllm.execution.session import ExecutionSession
+from judgmentllm.lifecycle import LifecycleError, RetrySelection, resume_run, run_live
 from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.evidence import (
     DecisionsEvidenceReceiptV4,
     read_evidence_receipt,
 )
-from judgmentllm.persistence.models import IntegrityError
-from judgmentllm.persistence.repository import Repository
+from judgmentllm.persistence.models import (
+    IntegrityError,
+    RetryAuthorizationError,
+    SubmissionRecord,
+)
+from judgmentllm.persistence.repository import ReadOnlyRepository, Repository
+from judgmentllm.persistence.transport_receipts import read_transport_commitment
 from judgmentllm.preparation import prepare_run
-from judgmentllm.providers.protocol import PreparedRequest, ProviderAcknowledgmentV4
+from judgmentllm.providers import typesafe_decisions, typesafe_decisions_response
+from judgmentllm.providers.protocol import (
+    PreparedRequest,
+    ProviderAcknowledgmentV4,
+    ProviderAdapter,
+    ProviderIntegrityError,
+)
 from judgmentllm.providers.typesafe_decisions import TypeSafeDecisionsAdapter
 
 HOOK = Path(__file__).parent / "fixtures/typesafe_decisions"
@@ -102,6 +125,66 @@ def config_path(root: Path, spec: RunSpecV4) -> str:
     return str(path)
 
 
+def test_cold_offline_jev_admission_needs_neither_sdk_nor_http_client(
+    tmp_path: Path,
+) -> None:
+    config = config_path(tmp_path, jev_spec(native_spec(tmp_path / "input")))
+    script = """
+import importlib.abc
+import socket
+import sys
+
+blocked = {"typesafe_sdk", "httpx2"}
+assert not (blocked | {"judgmentllm"}) & sys.modules.keys()
+attempts = []
+
+class BlockSDK(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        if fullname.split(".")[0] in blocked:
+            attempts.append(fullname)
+            raise ModuleNotFoundError(fullname)
+
+def forbidden(*args, **kwargs):
+    raise AssertionError("offline admission reached the network or credential resolver")
+
+sys.meta_path.insert(0, BlockSDK())
+socket.getaddrinfo = forbidden
+socket.create_connection = forbidden
+
+from judgmentllm import load_run_spec
+from judgmentllm.lifecycle import LifecycleError, estimate_run, run_live, validate_inputs
+from judgmentllm.providers import typesafe_decisions
+
+typesafe_decisions._resolve_credentials = forbidden
+spec = load_run_spec(sys.argv[1])
+assert validate_inputs(spec).valid
+limits = estimate_run(spec).model_dump()["limits"]
+assert limits["request_context_fit"] == limits["question_context_fit"] == "unverified"
+try:
+    run_live(spec.model_copy(update={"strict_capabilities": True}), store=sys.argv[2])
+except LifecycleError as error:
+    assert error.category == "unsupported_capability"
+    assert error.message == "TypeSafe Jev context fit is unverified under strict capabilities."
+else:
+    raise AssertionError("strict Jev admission unexpectedly succeeded")
+assert not attempts and not blocked & sys.modules.keys()
+"""
+    store = tmp_path / "store"
+    result = subprocess.run(
+        [sys.executable, "-I", "-B", "-c", script, config, str(store)],
+        env={
+            name: os.environ[name]
+            for name in ("PATH", "SystemRoot", "WINDIR", "TEMP", "TMP", "TMPDIR")
+            if name in os.environ
+        },
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    assert not store.exists()
+
+
 @pytest.mark.parametrize(
     "fault,capture,statuses",
     [
@@ -153,6 +236,279 @@ def test_fresh_process_recovery(
             if path.is_file():
                 assert b"UNSAFE_JEV_CANARY" not in path.read_bytes()
     assert (tmp_path / "forwards").read_text().splitlines() == ["systemone"]
+
+
+def jev_ledger_counts(store: Path, run_id: str) -> tuple[int, ...]:
+    with ReadOnlyRepository(store) as repository:
+        return tuple(
+            repository.connection.execute(
+                f"SELECT count(*) FROM {table} WHERE run_id=?", (run_id,)
+            ).fetchone()[0]
+            for table in (
+                "retry_operations",
+                "attempts",
+                "submissions",
+                "usage_revisions",
+            )
+        )
+
+
+def run_partial_jev(
+    root: Path, monkeypatch: pytest.MonkeyPatch, *, recognizable: bool = True
+) -> tuple[RunSpecV4, str, list[bytes]]:
+    spec = jev_spec(native_spec(root / "input"))
+    forwards: list[bytes] = []
+
+    def respond(request: httpx2.Request) -> httpx2.Response:
+        forwards.append(request.content)
+        doc = jev_envelope(request)
+        if len(forwards) == 1:
+            if recognizable:
+                for key in tuple(json.loads(request.content)["questions"])[:2]:
+                    doc["answers"][key]["confidence"] = None
+            else:
+                doc["answers"] = []
+        return httpx2.Response(200, json=doc)
+
+    monkeypatch.setenv("TYPESAFE_API_KEY", "synthetic-jev-key")
+    intercept_jev(monkeypatch, respond)
+    result = run_live(spec, store=root / "store")
+    assert not result.recovery_required and len(forwards) == 1
+    return spec, result.run_id, forwards
+
+
+def test_python_jev_retry_requires_valid_credentials_and_preserves_sibling_ancestry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _, run_id, forwards = run_partial_jev(tmp_path, monkeypatch)
+    store = tmp_path / "store"
+    with Repository(store) as repository:
+        rows = list(repository.iter_results(run_id))
+        assert [row.status for row in rows] == ["invalid", "invalid", "complete"]
+        failed = (rows[0].task_id, rows[1].task_id)
+        original_id = rows[0].attempt_id
+    selection = RetrySelection(
+        task_ids=failed[::-1], operation_id="correct-failed-members"
+    )
+    assert jev_ledger_counts(store, run_id) == (0, 1, 1, 1)
+    monkeypatch.setenv("TYPESAFE_API_KEY", "UNSAFE_JEV_CANARY-é")
+    with pytest.raises(LifecycleError) as invalid:
+        resume_run(run_id, store=store, retry=selection)
+    assert invalid.value.category == "validation"
+    assert "printable ASCII" in invalid.value.message
+    assert len(forwards) == 1 and jev_ledger_counts(store, run_id) == (0, 1, 1, 1)
+
+    monkeypatch.setenv("TYPESAFE_API_KEY", "synthetic-jev-valid-retry")
+    resumed = resume_run(run_id, store=store, retry=selection)
+    assert (
+        resumed.retry_operation_id == selection.operation_id
+        and not resumed.recovery_required
+    )
+    assert len(forwards) == 2 and jev_ledger_counts(store, run_id) == (1, 2, 2, 2)
+    original_questions, retry_questions = (
+        list(json.loads(raw)["questions"]) for raw in forwards
+    )
+    assert retry_questions == original_questions[:2]
+    with Repository(store) as repository:
+        (first, retry) = repository.iter_attempts(run_id)
+        assert (
+            first.attempt_id == original_id
+            and retry.authorization_id == selection.operation_id
+        )
+        assert retry.request_uid == first.request_uid
+        assert repository.attempt_task_ids(run_id, retry.attempt_id) == failed
+        assert list(repository.get_results_for_attempt(run_id, original_id)) == rows
+        recovered = list(repository.get_results_for_attempt(run_id, retry.attempt_id))
+        assert [(r.task_id, r.status) for r in recovered] == [
+            (task, "complete") for task in failed
+        ]
+        artifacts = ArtifactStore(repository.run_directory(run_id), create=False)
+        parent = read_transport_commitment(artifacts, first.attempt_id)
+        child = read_transport_commitment(artifacts, retry.attempt_id)
+        assert isinstance(parent, DecisionsCommitmentV3)
+        assert isinstance(child, DecisionsCommitmentV3)
+        assert child.parent_commitment_sha256 == parent.commitment_sha256
+
+
+def _advertised_jev(adapter: TypeSafeDecisionsAdapter) -> ProviderAdapter:
+    def forbidden() -> None:
+        pytest.fail("wrong concrete adapter reached credential validation")
+
+    return cast(
+        ProviderAdapter,
+        SimpleNamespace(
+            transport_context=adapter.transport_context,
+            capabilities=adapter.capabilities,
+            validate=adapter.validate,
+            validate_credentials=forbidden,
+        ),
+    )
+
+
+def test_initial_jev_intent_requires_the_concrete_adapter(tmp_path: Path) -> None:
+    spec = jev_spec(native_spec(tmp_path / "input"))
+    store = tmp_path / "store"
+    with prepare_run(spec, store=store, run_id="001"):
+        pass
+    claimed = _advertised_jev(TypeSafeDecisionsAdapter(spec.model))
+    assert jev_ledger_counts(store, "001") == (0, 1, 0, 0)
+    session = ExecutionSession("001", store, claimed, spec, False, None)
+    try:
+        with pytest.raises(
+            IntegrityError, match="TypeSafe request lacks its execution adapter"
+        ):
+            session.next_work()
+    finally:
+        session.close()
+    assert jev_ledger_counts(store, "001") == (0, 1, 0, 0)
+
+
+@pytest.mark.parametrize(
+    "basis", ["unrecognizable", "missing_submission", "wrong_adapter"]
+)
+def test_jev_subset_retry_rejects_unbound_parent_or_wrong_concrete_adapter(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, basis: str
+) -> None:
+    spec, run_id, forwards = run_partial_jev(
+        tmp_path, monkeypatch, recognizable=basis != "unrecognizable"
+    )
+    store = tmp_path / "store"
+    with Repository(store) as repository:
+        row = next(repository.iter_results(run_id))
+        assert row.status == "invalid"
+        (receipt,) = repository.iter_evidence(run_id)
+        assert (
+            isinstance(receipt, DecisionsEvidenceReceiptV4)
+            and receipt.validation is not None
+        )
+        assert receipt.validation.recognizable == (basis != "unrecognizable")
+    original_lookup = Repository.get_submission_for_attempt
+    omitted: list[str] = []
+
+    def lookup(
+        repository: Repository, identifier: str, attempt_id: str
+    ) -> SubmissionRecord | None:
+        if identifier == run_id and attempt_id == row.attempt_id:
+            omitted.append(attempt_id)
+            return None
+        return original_lookup(repository, identifier, attempt_id)
+
+    def forbidden(*_args: Any, **_kwargs: Any) -> Any:
+        pytest.fail("unauthorized Jev retry reached credentials")
+
+    monkeypatch.setattr(typesafe_decisions, "_resolve_credentials", forbidden)
+    if basis == "missing_submission":
+        monkeypatch.setattr(Repository, "get_submission_for_attempt", lookup)
+    adapter = TypeSafeDecisionsAdapter(spec.model)
+    if basis == "wrong_adapter":
+        subject = _advertised_jev(adapter)
+        error = IntegrityError
+        diagnostic = "TypeSafe retry lacks its sealed request or adapter"
+    else:
+        subject = adapter
+        error = RetryAuthorizationError
+        diagnostic = "Jev retry requires a response-backed failed member"
+    with pytest.raises(error, match=diagnostic):
+        authorize_subset_retry(
+            run_id,
+            store=store,
+            adapter=subject,
+            task_ids=(row.task_id,),
+            operation_id="refused",
+        )
+    assert omitted == ([row.attempt_id] if basis == "missing_submission" else [])
+    assert len(forwards) == 1 and jev_ledger_counts(store, run_id) == (0, 1, 1, 1)
+
+
+@pytest.mark.asyncio
+async def test_owned_minimal_jev_reopen_commits_usage_before_model_integrity_guard(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spec = jev_spec(native_spec(tmp_path / "input", capture="minimal"))
+    store = tmp_path / "store"
+    with prepare_run(spec, store=store, run_id="001"):
+        pass
+    monkeypatch.setenv("TYPESAFE_API_KEY", "synthetic-jev-key")
+    forwards: list[bytes] = []
+    raw = b'{"model":"foreign-model","answers":{},"usage":{"input_tokens":120}}'
+
+    def respond(request: httpx2.Request) -> httpx2.Response:
+        forwards.append(request.content)
+        return httpx2.Response(200, content=raw)
+
+    def stop(stage: str, _request: str) -> None:
+        if stage == "after_evidence_receipt":
+            raise RuntimeError("interrupted after evidence publication")
+
+    adapter = TypeSafeDecisionsAdapter(
+        spec.model, http_transport=httpx2.MockTransport(respond)
+    )
+    session = ExecutionSession("001", store, adapter, spec, False, stop)
+    try:
+        work = session.next_work()
+        assert work is not None and session.boundary(work)
+        ids = dict(submission_id=work.submission_id, correlation_id=work.correlation_id)
+        session.acknowledge(work, await adapter.submit(work.prepared, **ids))
+        response = await adapter.retrieve(work.prepared, **ids)
+        with pytest.raises(
+            RuntimeError, match="interrupted after evidence publication"
+        ):
+            session.process(work, response)
+        assert session.prepared is not None
+        saved = read_evidence_receipt(session.prepared.store, work.submission_id)
+        assert isinstance(saved, DecisionsEvidenceReceiptV4)
+        assert (
+            saved.original is not None
+            and saved.original.sha256 == sha256(raw).hexdigest()
+        )
+        assert saved.retained is not None and saved.retained.relative_path is None
+        assert session.repository.usage_high_water_mark("001") == 0
+    finally:
+        session.close()
+        await adapter.aclose()
+
+    def forbidden(*_args: Any, **_kwargs: Any) -> Any:
+        pytest.fail("saved response reached credentials or transport")
+
+    monkeypatch.setattr(typesafe_decisions, "_resolve_credentials", forbidden)
+    monkeypatch.setattr(httpx2, "AsyncHTTPTransport", forbidden)
+    real_guard = typesafe_decisions_response.verify_reported_model
+    guarded: list[str] = []
+
+    def check_committed_usage(metadata: DecisionsReplayMetadataV1) -> None:
+        assert metadata == saved.validation
+        # A separate connection can only see the committed restore transaction.
+        with ReadOnlyRepository(store) as reader:
+            assert reader.usage_high_water_mark("001") == 1
+            assert (
+                reader.get_evidence_for_submission("001", work.submission_id) == saved
+            )
+            assert (
+                reader.get_observation_for_submission("001", work.submission_id)
+                is not None
+            )
+            assert list(reader.iter_results("001")) == []
+        guarded.append(metadata.original_sha256)
+        real_guard(metadata)
+
+    monkeypatch.setattr(
+        typesafe_decisions_response, "verify_reported_model", check_committed_usage
+    )
+    fresh = TypeSafeDecisionsAdapter(spec.model)
+    reopened = ExecutionSession("001", store, fresh, spec, False, None)
+    try:
+        recovered = reopened.next_work()
+        assert recovered is not None and recovered == work
+        assert not reopened.boundary(recovered)
+        with pytest.raises(
+            ProviderIntegrityError, match="reported model conflicts with invocation"
+        ):
+            reopened.saved_response(recovered)
+        assert guarded == [sha256(raw).hexdigest()]
+    finally:
+        reopened.close()
+        await fresh.aclose()
+    assert len(forwards) == 1 and jev_ledger_counts(store, "001") == (0, 1, 1, 1)
 
 
 def test_installed_cli_context_rejection_preserves_diagnostic(tmp_path: Path) -> None:
