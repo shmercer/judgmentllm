@@ -131,7 +131,12 @@ from a generative model's window. Unknown provider ceilings remain unknown;
 bounded local transport ceilings still apply. Unknown/estimated context follows
 the existing explicit diagnostic/strict-capabilities policy and cannot be
 advertised as proven to fit. A known ceiling without a trustworthy counter or
-safe upper bound blocks submission. No hidden token-count API call is permitted.
+safe upper bound blocks submission. The approved PR D exception admits only
+non-strict, text-only `jev-1.14.0` on the direct TypeSafe System One route.
+Both context checks remain unverified. Apply the existing byte safeguards and
+user grouping maximum. A complete TypeSafe size rejection is terminal, and
+lost responses stay unresolved. Strict admission remains closed for Jev.
+See [Jev admission and provenance](typesafe-decisions.md).
 
 On overflow, close the prefix and start the next request, repeating the complete
 shared input. If one question plus shared input cannot fit, fail before submission
@@ -432,7 +437,7 @@ cannot qualify an exact model. Generic generative controls never transfer.
 | Native route | Documented request/answer shape and bounds | Implementation owner |
 |---|---|---|
 | `openai / decisions`, `POST /v1/decisions` | `client.decisions.create`; shared `input`, 1–400 ordered named questions and ordered answers. Score 2–10 levels; choice returns explicit selection and probabilities. Current model `gpt-6-luna`. [Guide](https://developers.openai.com/api/docs/guides/decisions), [Python reference](https://developers.openai.com/api/reference/python/resources/decisions/methods/create). | PR C: separate score/choice builder, parser and SDK-byte fixtures. |
-| `typesafe / systemone`, `POST /v1/systemone` | Official `typesafe-sdk`, `TypeSafeClient.system_one(state=..., questions=...)`; named map of `Score`/`Choice` and named answers. Score maximum 10 levels; at least two recommended (neutral rubric already requires two). **Question-count hard cap not established.** [System One](https://docs.typesafe.ai/api/system-one), [SDK](https://docs.typesafe.ai/sdk/python/), [Score](https://docs.typesafe.ai/primitives/score), [Choice](https://docs.typesafe.ai/primitives/choice). | PR D: verify pinned SDK, context/body constraints, alias versus reported exact model and distinct score-index/choice maps. |
+| `typesafe / systemone`, `POST /v1/systemone` | Official `typesafe-sdk`, named map of `Score`/`Choice` and named answers. Score maximum 10 levels. TypeSafe documents separate per-request and per-question context limits and a 32 MiB body limit. [System One](https://docs.typesafe.ai/api/system-one) · [Limits](https://docs.typesafe.ai/models#context-length) | [PR D](typesafe-decisions.md) pins `jev-1.14.0` and records the non-strict admission decision. |
 | `gemini / decisions`, Developer `POST /v1beta/decisions` | `client.decisions.create(model="gemini-decision-1", input=..., questions={...})`; 1–1,000 keys, `[A-Za-z0-9_-]{1,64}`; score 2–255 levels (2–10 recommended), choice 2–255 options, overall 262,144 tokens. Questions are text-only; shared-input media is documented but outside this issue. [Endpoint/limits](https://aistudio.google.com/docs/decisions-api), [model](https://aistudio.google.com/docs/models/gemini-decision-1). | PR E after SDK compatibility gates below; never Developer `generateContent` or Vertex. |
 
 OpenAI's [cache contract](https://developers.openai.com/api/docs/guides/decisions#reuse-shared-input-with-prompt-caching)

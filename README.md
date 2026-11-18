@@ -42,9 +42,9 @@ billable network operations and require the provider's explicit V3 configuration
 | Vertex AI Gemini / `models.generate_content` | `live`, V3 | Implemented generative adapter; separate ADC/API-key routing and SDK/lifecycle fixtures |
 | Together / `chat.completions` | Planned live runner | Offline schema-projection/private transport fixtures; no production run/resume adapter |
 | Local Ollama / `chat` | Planned live runner | Offline schema-projection/private transport fixtures; no production run/resume adapter |
-| OpenAI / `decisions` | Implemented V4 official SDK adapter | Live orchestration; synthetic offline tests, live qualification pending |
-| TypeSafe Jev / `systemone` | Planned V4 adapter, PR D | Not executable through production run/resume |
-| Gemini Developer / `decisions` | Planned V4 adapter, PR E | Not executable through production run/resume; separate from `generate_content` |
+| OpenAI / `decisions` | Implemented V4 official SDK adapter | PR #64 offline acceptance and maintainer-confirmed bounded `gpt-6-luna` smoke |
+| TypeSafe Jev / `systemone` | Implemented V4 official SDK adapter, PR D candidate | Offline SDK and recovery fixtures; exact-source qualification and the bounded `jev-1.14.0` smoke pending |
+| Gemini Developer / `decisions` | Planned V4 adapter, PR E | Separate route from `generate_content` |
 
 Native provider batch and managed bulk-live are **Milestone 5 targets**, not
 implemented modes in these adapters. Generative JSON Schema (`structured_output:
@@ -263,7 +263,7 @@ optional complete campaign, not a prerequisite for routine PRs.
 
 ## Optional dependencies and later milestones
 
-Extras remain `openai`, `anthropic`, `google`, `together`, `ollama`, `typesafe`, `parquet`, `api`, and `all`. An installed extra alone establishes neither an executable adapter nor live qualification; use the implemented-route table above. TypeSafe/Gemini Decisions adapters, Together/Ollama live runners, M5 batch/bulk-live, the M6 CLI-first `rubricLLM` wrapper and M7 optional local FastAPI remain later work under the [implementation plan](docs/implementation-plan.md). R calls operate on runs/files or sized task groups, not one Python process per judgment.
+Extras remain `openai`, `anthropic`, `google`, `together`, `ollama`, `typesafe`, `parquet`, `api`, and `all`. Use the route table above for implementation and qualification. Gemini Decisions, Together/Ollama live runners, M5 batch/bulk-live, the M6 CLI-first `rubricLLM` wrapper and M7 optional local FastAPI remain later work under the [implementation plan](docs/implementation-plan.md). R calls operate on runs/files or sized task groups, not one Python process per judgment.
 
 The repository is [shmercer/judgmentllm](https://github.com/shmercer/judgmentllm), licensed under [MIT](https://github.com/shmercer/judgmentllm/blob/main/LICENSE), and not yet published to PyPI. The core does not implement Bradley–Terry fitting, adaptive pairing, or rubric calibration; these remain in `pairwiseLLM`.
 
@@ -291,11 +291,14 @@ account eligibility, billable-token bounds and prices remain independent gates.
 Ordinary production qualification and the existing service/reasoning rules stay
 unchanged. No student-writing study or live provider request is authorized here.
 
-### Native OpenAI Decisions
+### Native Decisions
 
 RunSpec V4 now supports native OpenAI score/choice requests through the ordinary
 installed Python/CLI lifecycle, including shared-input trait/criterion grouping.
 See [configuration, constraints and filtered recovery](docs/openai-decisions.md).
-The official SDK adapter is tested with synthetic offline HTTP; live support is
-unqualified. Jev, Gemini Decisions and the later integration/release work remain
-separate.
+PR #64 passed protected offline acceptance and a bounded smoke, confirmed by
+the maintainer. [Protected hosted evidence](https://github.com/shmercer/judgmentllm/actions/runs/44201369404)
+
+[TypeSafe Jev](docs/typesafe-decisions.md) uses the same V4 lifecycle with the
+pinned official SDK and a Jev-specific non-strict context policy. Both context
+checks remain unverified. The provider can reject a request after forwarding.

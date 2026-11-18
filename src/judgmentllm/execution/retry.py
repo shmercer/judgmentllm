@@ -353,7 +353,7 @@ def prepare_subset_retry(
         ):
             raise RetryAuthorizationError("retry operation selection conflicts")
         # Rendering and artifact verification stay outside write transactions.
-        if prepared_run.manifest.schema_version in (3, 4, 5, 6, 7, 8, 9):
+        if prepared_run.manifest.schema_version in (3, 4, 5, 6, 7, 8, 9, 10):
             from judgmentllm.transport import physical_identity
 
             wire = prepared_run.prepare_transport_attempt(
@@ -426,6 +426,35 @@ def prepare_subset_retry(
                     raise RetryAuthorizationError(
                         "retry of completed tasks requires explicit permission"
                     )
+    if prepared_run.manifest.schema_version == 10:
+        from judgmentllm.persistence.evidence import DecisionsEvidenceReceiptV4
+
+        checked: set[str] = set()
+        for outcome in prior:
+            if outcome.status != "invalid":
+                raise RetryAuthorizationError(
+                    "Jev retry requires a response-backed failed member"
+                )
+            if outcome.attempt_id not in checked:
+                submission = repository.get_submission_for_attempt(
+                    run_id, outcome.attempt_id
+                )
+                receipt = (
+                    repository.get_evidence_for_submission(
+                        run_id, submission.submission_id
+                    )
+                    if submission is not None
+                    else None
+                )
+                if (
+                    not isinstance(receipt, DecisionsEvidenceReceiptV4)
+                    or receipt.validation is None
+                    or not receipt.validation.recognizable
+                ):
+                    raise RetryAuthorizationError(
+                        "Jev retry requires a response-backed failed member"
+                    )
+                checked.add(outcome.attempt_id)
     checkpoint("before_retry_preparation", request_uid)
     prepared_run.verify_compatibility(
         capabilities=adapter.capabilities(prepared_run.spec)
@@ -433,7 +462,7 @@ def prepare_subset_retry(
     adapter.validate(prepared_run.spec)
     attempt_id = stable_id("attempt", run_id, request_uid, attempt_number)
     native_artifacts = ()
-    if prepared_run.manifest.schema_version in (3, 4, 5, 6, 7, 8, 9):
+    if prepared_run.manifest.schema_version in (3, 4, 5, 6, 7, 8, 9, 10):
         from judgmentllm.preparation.native import publish_prepared_transport
         from judgmentllm.transport import physical_identity
 
@@ -448,7 +477,7 @@ def prepare_subset_retry(
             parent=prepared_run.transport_for_attempt(original.attempt_id),
         )
         prompt_bytes = wire.rendered_text.encode("utf-8")
-        if prepared_run.manifest.schema_version in (8, 9):
+        if prepared_run.manifest.schema_version in (8, 9, 10):
             from judgmentllm.decisions.transport import PreparedDecisionsRequestV1
             from judgmentllm.preparation.decisions import publish_decisions_request
 

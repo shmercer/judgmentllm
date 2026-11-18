@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal, cast
+from typing import ClassVar, Literal, cast
 
 from pydantic import model_validator
 
@@ -19,6 +19,7 @@ from judgmentllm.transport import PhysicalRequestIdentityV1
 
 
 class DecisionsInvocationV1(DecisionsModel):
+    _route: ClassVar[tuple[str, str]] = ("mock", "synthetic")
     invocation_evidence_version: Literal[1] = 1
     identity: PhysicalRequestIdentityV1
     payload_sha256: SHA256
@@ -36,19 +37,20 @@ class DecisionsInvocationV1(DecisionsModel):
             or self.usage.observation_kind != "invocation"
             or self.usage.definitive_failure_id is not None
             or self.usage.invocation_failure_code is not None
-            or (self.usage.provider, self.usage.endpoint)
-            != (
-                ("openai", "decisions")
-                if type(self) is DecisionsInvocationV2
-                else ("mock", "synthetic")
-            )
+            or (self.usage.provider, self.usage.endpoint) != self._route
         ):
             raise ValueError("forwarding fact cannot claim acceptance or failure")
         return self
 
 
 class DecisionsInvocationV2(DecisionsInvocationV1):
+    _route: ClassVar[tuple[str, str]] = ("openai", "decisions")
     invocation_evidence_version: Literal[2] = 2  # pyright: ignore[reportIncompatibleVariableOverride]
+
+
+class DecisionsInvocationV3(DecisionsInvocationV1):
+    _route: ClassVar[tuple[str, str]] = ("typesafe", "systemone")
+    invocation_evidence_version: Literal[3] = 3  # pyright: ignore[reportIncompatibleVariableOverride]
 
 
 def invocation_reference(submission_id: str) -> str:
@@ -82,11 +84,16 @@ def read_invocation(
         from judgmentllm.config import parse_json
 
         value = cast(dict[str, object], parse_json(raw.decode("utf-8")))
-        model = (
-            DecisionsInvocationV2
+        version = (
+            value.get("invocation_evidence_version")
             if isinstance(cast(object, value), dict)
-            and type(value.get("invocation_evidence_version")) is int
-            and value["invocation_evidence_version"] == 2
+            else None
+        )
+        model = (
+            DecisionsInvocationV3
+            if type(version) is int and version == 3
+            else DecisionsInvocationV2
+            if type(version) is int and version == 2
             else DecisionsInvocationV1
         )
         fact = model.model_validate_json(raw)

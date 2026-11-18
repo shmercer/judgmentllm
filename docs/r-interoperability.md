@@ -1,5 +1,14 @@
 # R interoperability: explicit audit and analysis views
 
+## PR D TypeSafe Decisions
+
+The strict local Jev test reopens installed CLI runs to export single and
+grouped rubric scores and grouped CJ choices. R/jsonlite checks canonical JSONL,
+lossless CSV, R audit CSV, and question and physical provenance. The test verifies
+leading-zero IDs, grouped retry ancestry, reversal orientation, native and
+mapped scores, missing values, and usage once per physical attempt.
+See the [Jev contract](typesafe-decisions.md).
+
 ## PR C production Decisions addition
 
 [Native OpenAI Decisions](openai-decisions.md) now uses the ordinary V4 installed

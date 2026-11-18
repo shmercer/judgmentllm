@@ -35,7 +35,10 @@ from judgmentllm.providers import (
     TransientNotSubmitted,
     TransportNotSubmitted,
 )
-from judgmentllm.providers.protocol import ProviderInvocationCancelled
+from judgmentllm.providers.protocol import (
+    ProviderInvocationCancelled,
+    TypeSafeRequestRejected,
+)
 
 
 @dataclass
@@ -309,6 +312,9 @@ async def execute_run(
                         invoked=True,
                         usage=exc.usage,
                         diagnostic_code=exc.diagnostic_code,
+                        rejection=exc.rejection
+                        if isinstance(exc, TypeSafeRequestRejected)
+                        else None,
                     )
                     cancellation_work.pop(work.submission_id, None)
                 except SubmissionUncertain as exc:

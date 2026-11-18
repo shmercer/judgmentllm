@@ -37,6 +37,10 @@ from judgmentllm.config import (
     parse_json,
     validate_run_spec,
 )
+from judgmentllm.decisions.records import (
+    TYPESAFE_ROUTE,
+    TypeSafeDecisionsContextV1,
+)
 from judgmentllm.execution import execute_run, recover_run
 from judgmentllm.execution.exports import export_run
 from judgmentllm.execution.retry import authorize_subset_retry
@@ -56,6 +60,7 @@ from judgmentllm.lifecycle_models import (
     RunPage,
     RunStatus,
     RunSummary,
+    TypeSafeDecisionsExecutionPlanV2,
 )
 from judgmentllm.models import VersionedModel
 from judgmentllm.output_commitments import resolve_schema_selection
@@ -74,7 +79,11 @@ from judgmentllm.planning import (
     validate_run,
 )
 from judgmentllm.preparation import PreparationError, prepare_run
-from judgmentllm.preparation.manifest import ExecutableRunManifestV8
+from judgmentllm.preparation.manifest import (
+    ExecutableRunManifestV8,
+    ExecutableRunManifestV9,
+    ExecutableRunManifestV10,
+)
 from judgmentllm.providers import MockAdapter, MockScenario, ProviderError
 
 if TYPE_CHECKING:
@@ -188,6 +197,16 @@ def _execution_adapter(
             from judgmentllm.providers.openai_decisions import OpenAIDecisionsAdapter
 
             return OpenAIDecisionsAdapter(model, concurrency=concurrency)
+        if (provider, endpoint) == TYPESAFE_ROUTE:
+            if options is not None:
+                raise LifecycleError(
+                    "validation", "TypeSafe Jev does not accept mock controls"
+                )
+            from judgmentllm.providers.typesafe_decisions import (
+                TypeSafeDecisionsAdapter,
+            )
+
+            return TypeSafeDecisionsAdapter(model, concurrency=concurrency)
         if (provider, endpoint) != ("mock", "synthetic"):
             raise LifecycleError(
                 "unsupported_capability",
@@ -309,6 +328,10 @@ def _safe_provider_diagnostic(error: BaseException) -> tuple[ErrorCategory, str]
         OpenAIConfigurationError,
         OpenAIReadinessError,
     )
+    from judgmentllm.providers.typesafe_decisions import (
+        TypeSafeConfigurationError,
+        TypeSafeReadinessError,
+    )
     from judgmentllm.providers.vertex import (
         VertexConfigurationError,
         VertexReadinessError,
@@ -319,6 +342,7 @@ def _safe_provider_diagnostic(error: BaseException) -> tuple[ErrorCategory, str]
         error,
         (
             OpenAIConfigurationError,
+            TypeSafeConfigurationError,
             AnthropicConfigurationError,
             GeminiConfigurationError,
             VertexConfigurationError,
@@ -331,6 +355,7 @@ def _safe_provider_diagnostic(error: BaseException) -> tuple[ErrorCategory, str]
         error,
         (
             OpenAIReadinessError,
+            TypeSafeReadinessError,
             AnthropicReadinessError,
             GeminiReadinessError,
             VertexReadinessError,
@@ -450,6 +475,11 @@ def _mock_adapter(
 def _require_presentation(spec: RunSpecification) -> None:
     """Reject unavailable v2 mechanisms before creating a runtime store."""
     if isinstance(spec, RunSpecV4):
+        if (spec.provider, spec.endpoint) == TYPESAFE_ROUTE:
+            from judgmentllm.providers.typesafe_decisions import decisions_context
+
+            decisions_context(spec)
+            return
         if (spec.provider, spec.endpoint) == ("openai", "decisions"):
             from judgmentllm.providers.openai_decisions import decisions_context
 
@@ -489,6 +519,16 @@ def _profile(
     allow_invalid: bool = False,
 ) -> CapabilityProfile | None:
     if isinstance(spec, RunSpecV4):
+        if (spec.provider, spec.endpoint) == TYPESAFE_ROUTE:
+            from judgmentllm.providers.typesafe_decisions import (
+                TypeSafeDecisionsAdapter,
+            )
+
+            if not allow_invalid:
+                _require_presentation(spec)
+            return TypeSafeDecisionsAdapter.capabilities_for(
+                spec.provider, spec.endpoint, spec.model
+            )
         _require_presentation(spec)
         if (spec.provider, spec.endpoint) == ("openai", "decisions"):
             from judgmentllm.providers.openai_decisions import OpenAIDecisionsAdapter
@@ -699,6 +739,17 @@ def estimate_run(
             )
             pairs = sum(s.record_count for s in manifest.sources if s.role == "pair")
             if isinstance(manifest, ExecutableRunManifestV8):
+                if isinstance(manifest, ExecutableRunManifestV10):
+                    return TypeSafeDecisionsExecutionPlanV2(
+                        task_kind=spec.task_kind,
+                        response_count=responses,
+                        pair_count=pairs,
+                        source_count=len(manifest.sources),
+                        logical_tasks=manifest.logical_task_count,
+                        requests=manifest.initial_transport_count,
+                        presentations=manifest.presentation_count,
+                        limits=manifest.limits,
+                    )
                 return DecisionsExecutionPlanV1(
                     task_kind=spec.task_kind,
                     response_count=responses,
@@ -836,9 +887,25 @@ async def arun_live(
 
                 assert isinstance(adapter, OpenAIDecisionsAdapter)
                 adapter.transport_context = decisions_context(spec)
+            elif (
+                isinstance(spec, RunSpecV4)
+                and (spec.provider, spec.endpoint) == TYPESAFE_ROUTE
+            ):
+                from judgmentllm.providers.typesafe_decisions import (
+                    TypeSafeDecisionsAdapter,
+                )
+                from judgmentllm.providers.typesafe_decisions import (
+                    decisions_context as typesafe_context,
+                )
+
+                assert isinstance(adapter, TypeSafeDecisionsAdapter)
+                adapter.transport_context = typesafe_context(spec)
             getattr(adapter, "validate_new_run", adapter.validate)(spec)
             readiness = getattr(adapter, "validate_credentials", None)
-            if readiness is not None:
+            if (
+                readiness is not None
+                and (spec.provider, spec.endpoint) != TYPESAFE_ROUTE
+            ):
                 readiness()
         except ProviderError as error:
             safe = _safe_provider_diagnostic(error)
@@ -906,7 +973,8 @@ def _prepare(
         from judgmentllm.preparation.decisions import prepare_decisions_run
 
         assert isinstance(
-            decisions_context, (DecisionsContextV1, OpenAIDecisionsContextV1)
+            decisions_context,
+            (DecisionsContextV1, OpenAIDecisionsContextV1, TypeSafeDecisionsContextV1),
         )
         with prepare_decisions_run(
             cast(RunSpecV4 | str | Path, spec_or_path),
@@ -978,20 +1046,24 @@ async def aresume_run(
                 else _load_manifest(
                     repository, identifier, unsealed=False
                 ).schema_version
-                in (8, 9)
+                in (8, 9, 10)
             )
         decisions_manifest = None
-        if decisions and run.provider == "openai":
-            from judgmentllm.preparation.manifest import ExecutableRunManifestV9
-
+        if decisions and run.provider in {"openai", "typesafe"}:
             with ReadOnlyRepository(root) as repository:
                 manifest = _load_manifest(
                     repository, identifier, unsealed=run.manifest_sha256 is None
                 )
-                if not isinstance(manifest, ExecutableRunManifestV9):
+                expected = (
+                    ExecutableRunManifestV10
+                    if run.provider == "typesafe"
+                    else ExecutableRunManifestV9
+                )
+                if type(manifest) is not expected:
                     raise LifecycleError(
-                        "execution", "OpenAI Decisions manifest differs"
+                        "execution", "Production Decisions manifest differs"
                     )
+                assert isinstance(manifest, ExecutableRunManifestV9)
                 decisions_manifest = manifest
         adapter = _execution_adapter(
             run.provider,
@@ -1005,7 +1077,14 @@ async def aresume_run(
             else 4,
             decisions=decisions,
         )
-        if decisions_manifest is not None:
+        if isinstance(decisions_manifest, ExecutableRunManifestV10):
+            from judgmentllm.providers.typesafe_decisions import (
+                TypeSafeDecisionsAdapter,
+            )
+
+            assert isinstance(adapter, TypeSafeDecisionsAdapter)
+            adapter.transport_context = decisions_manifest.production_context
+        elif decisions_manifest is not None:
             from judgmentllm.providers.openai_decisions import OpenAIDecisionsAdapter
 
             assert isinstance(adapter, OpenAIDecisionsAdapter)

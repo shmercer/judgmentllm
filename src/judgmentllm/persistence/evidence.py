@@ -10,7 +10,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from sqlite3 import Row
-from typing import TYPE_CHECKING, Annotated, Literal, TypeVar, cast
+from typing import TYPE_CHECKING, Annotated, ClassVar, Literal, TypeVar, cast
 
 from pydantic import Field, field_validator, model_validator
 
@@ -38,6 +38,7 @@ from judgmentllm.persistence.models import (
 from judgmentllm.persistence.receipts import (
     AcknowledgmentReceipt,
     ResponseReceipt,
+    TypeSafeRejectionEvidenceV1,
     read_acknowledgment,
     read_receipt,
 )
@@ -275,6 +276,7 @@ class DecisionsEvidenceReceiptV2(EvidenceReceipt):
 
 class DecisionsEvidenceReceiptV3(DecisionsEvidenceReceiptV2):
     evidence_receipt_version: Literal[3] = 3  # pyright: ignore[reportIncompatibleVariableOverride]
+    _route: ClassVar[tuple[str, str]] = ("openai", "decisions")
     validation: DecisionsReplayMetadataV1 | None = None
     retained_kind: Literal["original", "filtered_replay", "omitted"] = "omitted"
 
@@ -288,7 +290,7 @@ class DecisionsEvidenceReceiptV3(DecisionsEvidenceReceiptV2):
     @model_validator(mode="after")
     def decisions_scope(self) -> DecisionsEvidenceReceiptV3:
         if (
-            (self.usage.provider, self.usage.endpoint) != ("openai", "decisions")
+            (self.usage.provider, self.usage.endpoint) != self._route
             or self.reasoning
             or self.assessment_diagnostic
             or self.service_tier
@@ -314,15 +316,56 @@ class DecisionsEvidenceReceiptV3(DecisionsEvidenceReceiptV2):
         return self
 
 
+class DecisionsEvidenceReceiptV4(DecisionsEvidenceReceiptV3):
+    evidence_receipt_version: Literal[4] = 4  # pyright: ignore[reportIncompatibleVariableOverride]
+    _route: ClassVar[tuple[str, str]] = ("typesafe", "systemone")
+    rejection: TypeSafeRejectionEvidenceV1 | None = None
+
+    @field_validator("evidence_receipt_version", mode="before")
+    @classmethod
+    def exact_version(cls, value: object) -> object:
+        if type(value) is not int or value != 4:
+            raise ValueError("unsupported TypeSafe Decisions evidence version")
+        return value
+
+    @model_validator(mode="after")
+    def rejection_binding(self) -> DecisionsEvidenceReceiptV4:
+        rejection = self.rejection
+        if rejection is None:
+            if self.identity.observation_id is None:
+                raise ValueError("TypeSafe failure requires a complete rejection")
+        elif (
+            self.identity.observation_id is not None
+            or self.invocation_acceptance is not None
+            or self.failure_transient
+            or self.usage.definitive_failure_id is None
+            or self.response_retention != "omitted"
+            or self.original is not None
+            or self.correlation_id != rejection.correlation_id
+            or self.payload_sha256 != rejection.payload_sha256
+            or any(
+                getattr(self.identity, key) != getattr(rejection, key)
+                for key in ("run_id", "request_uid", "attempt_id", "submission_id")
+            )
+        ):
+            raise ValueError("TypeSafe rejection differs from the invocation")
+        return self
+
+
 def parse_evidence_receipt(raw: bytes) -> EvidenceReceipt:
     from judgmentllm.config import parse_json
 
     data = cast(dict[str, object], parse_json(raw.decode("utf-8")))
-    model = (
-        DecisionsEvidenceReceiptV3
+    version = (
+        data.get("evidence_receipt_version")
         if isinstance(cast(object, data), dict)
-        and type(data.get("evidence_receipt_version")) is int
-        and data["evidence_receipt_version"] == 3
+        else None
+    )
+    model = (
+        DecisionsEvidenceReceiptV4
+        if type(version) is int and version == 4
+        else DecisionsEvidenceReceiptV3
+        if type(version) is int and version == 3
         else DecisionsEvidenceReceiptV2
         if isinstance(cast(object, data), dict) and "evidence_receipt_version" in data
         else EvidenceReceipt

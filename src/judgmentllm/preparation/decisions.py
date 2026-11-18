@@ -24,12 +24,15 @@ from judgmentllm.config import (
     validate_run_spec,
 )
 from judgmentllm.decisions.records import (
+    TYPESAFE_ROUTE,
     PairPresentationInputV1,
     PreparedPairPresentationV1,
+    TypeSafeDecisionsContextV1,
     project_presentation,
 )
 from judgmentllm.decisions.transport import (
     DecisionsCommitmentV1,
+    DecisionsContext,
     DecisionsContextV1,
     DecisionsDependencyV1,
     OpenAIDecisionsContextV1,
@@ -82,6 +85,7 @@ from judgmentllm.preparation.manifest import (
     CategoryCommitment,
     ExecutableRunManifestV8,
     ExecutableRunManifestV9,
+    ExecutableRunManifestV10,
     ExemplarCommitment,
     SourceFormat,
     TemplateCommitment,
@@ -286,7 +290,7 @@ def assessment_commitments(
 class DecisionsPreparedRun(PreparedRun):
     """Native-specific reconstruction; legacy source readers remain unchanged."""
 
-    def context(self) -> DecisionsContextV1 | OpenAIDecisionsContextV1:
+    def context(self) -> DecisionsContext:
         assert isinstance(self.manifest, ExecutableRunManifestV8)
         if isinstance(self.manifest, ExecutableRunManifestV9):
             return self.manifest.production_context
@@ -609,7 +613,7 @@ def prepare_decisions_run(
     store: str | Path,
     run_id: str,
     capabilities: CapabilityProfile | None = None,
-    context: DecisionsContextV1 | OpenAIDecisionsContextV1 | None = None,
+    context: DecisionsContext | None = None,
 ) -> DecisionsPreparedRun:
     from judgmentllm.preparation import _checkpoint, _memory_source  # pyright: ignore[reportPrivateUsage]
     from judgmentllm.providers.decisions_mock import MockDecisionsAdapter
@@ -645,13 +649,21 @@ def prepare_decisions_run(
             else _load_run_spec(cast(Path, origin), document_reader=discover)
         )
         assert isinstance(spec, RunSpecV4)
-        if (spec.provider, spec.endpoint) == ("openai", "decisions"):
-            from judgmentllm.providers.openai_decisions import decisions_context
+        route = spec.provider, spec.endpoint
+        if route in {("openai", "decisions"), TYPESAFE_ROUTE}:
+            if route == TYPESAFE_ROUTE:
+                from judgmentllm.providers.typesafe_decisions import (
+                    decisions_context as build_context,
+                )
+            else:
+                from judgmentllm.providers.openai_decisions import (
+                    decisions_context as build_context,
+                )
 
-            current_context = decisions_context(spec)
+            current_context = build_context(spec)
             if context is not None and context != current_context:
                 raise PreparationError(
-                    "OpenAI Decisions context differs from configuration"
+                    "Production Decisions context differs from configuration"
                 )
             context = current_context
         context = (
@@ -663,6 +675,7 @@ def prepare_decisions_run(
         if (spec.provider, spec.endpoint) not in {
             ("mock", "synthetic"),
             ("openai", "decisions"),
+            TYPESAFE_ROUTE,
         }:
             raise PreparationError(
                 "production Decisions adapters are not implemented in PR B"
@@ -733,7 +746,9 @@ def prepare_decisions_run(
             repository.register_artifact(run_id, specification)
             traits, exemplars = assessment_commitments(spec)
             manifest_type = (
-                ExecutableRunManifestV9
+                ExecutableRunManifestV10
+                if isinstance(context, TypeSafeDecisionsContextV1)
+                else ExecutableRunManifestV9
                 if isinstance(context, OpenAIDecisionsContextV1)
                 else ExecutableRunManifestV8
             )
@@ -741,7 +756,7 @@ def prepare_decisions_run(
                 dict(
                     **(
                         {"production_context": context}
-                        if isinstance(context, OpenAIDecisionsContextV1)
+                        if not isinstance(context, DecisionsContextV1)
                         else {}
                     ),
                     run_id=run_id,

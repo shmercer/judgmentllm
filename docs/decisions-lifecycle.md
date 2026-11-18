@@ -92,7 +92,9 @@ requests fail clearly. Future adapters must bind their credential-source and
 service policy at the same boundary. Split contiguous prefixes at the user's
 maximum and independently known endpoint question/body/context limits. Unknown
 limits stay null; a known context ceiling without a trustworthy local counter
-blocks preparation. B's UTF-8 fixture counter establishes synthetic limits only.
+blocks preparation under the shared policy. [Jev's approved exception](typesafe-decisions.md)
+admits its exact non-strict route with both context fits unverified. B's UTF-8
+fixture counter establishes synthetic limits only.
 An oversized singleton fails; sealed attempts are never repacked or truncated.
 
 ## Explicit pair presentations
