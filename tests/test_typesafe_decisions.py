@@ -38,7 +38,7 @@ from judgmentllm.persistence.decisions_invocations import (
 )
 from judgmentllm.persistence.evidence import DecisionsEvidenceReceiptV4
 from judgmentllm.persistence.repository import Repository
-from judgmentllm.preparation import prepare_run
+from judgmentllm.preparation import PreparationError, prepare_run
 
 CONTEXT_MESSAGE = (
     "TypeSafe Jev rejected the request because it exceeded a context limit. "
@@ -114,16 +114,26 @@ def test_offline_plan_exposes_unverified_context_and_exact_scope(
 def test_unapproved_scope_is_refused_before_credentials(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, change: dict[str, Any]
 ) -> None:
-    from judgmentllm.lifecycle import LifecycleError
     from judgmentllm.providers import typesafe_decisions
 
     def forbidden(*_args: Any, **_kwargs: Any) -> Any:
-        pytest.fail("unapproved scope reached credential resolution")
+        pytest.fail("unapproved scope reached credentials or transport")
 
     monkeypatch.setattr(typesafe_decisions, "_resolve_credentials", forbidden)
+    monkeypatch.setattr(httpx2, "AsyncHTTPTransport", forbidden)
     spec = jev_spec(native_spec(tmp_path), **change)
-    with pytest.raises(LifecycleError, match="context|model"):
+    diagnostic = (
+        "TypeSafe Jev requires exact model jev-1.14.0."
+        if "model" in change
+        else "TypeSafe Jev context fit is unverified under strict capabilities."
+    )
+    with pytest.raises(PreparationError) as rejected_preparation:
+        prepare_run(spec, store=tmp_path / "prepare", run_id="001")
+    assert str(rejected_preparation.value) == diagnostic
+    with pytest.raises(LifecycleError) as rejected_run:
         run_live(spec, store=tmp_path / "store")
+    assert rejected_run.value.category == "unsupported_capability"
+    assert rejected_run.value.message == diagnostic
 
 
 @pytest.mark.parametrize(
