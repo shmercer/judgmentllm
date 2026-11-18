@@ -60,19 +60,23 @@ These tolerances are local validation rules.
 
 ## Recovery and SDK compatibility
 
-Valid named siblings survive missing or invalid answers. Usage is counted
-once per physical attempt when reported. An acknowledged safety response with
-empty answers produces refusals. A conclusive HTTP 400 safety or validation
-response produces a terminal rejection receipt. When a complete 400 identifies
+Valid named siblings survive missing or invalid answers, including numbers
+outside the supported range. Usage is counted once per physical attempt when
+reported. An acknowledged HTTP 200 safety response with empty answers produces
+refusals. Select an acknowledged refusal with `resume --retry-task` and a fresh
+`--retry-id` to create a new attempt for that question. A conclusive HTTP 400
+safety or validation response produces a terminal rejection receipt. When a complete 400 identifies
 a context limit, run, status and resume advise starting a new run with fewer
 grouped questions or smaller shared input. Receipts preserve a typed reason,
-body hash and byte count. Interrupted or ambiguous submissions remain
-unresolved. Recovery does not automatically retry.
+body hash and byte count. Conflicting HTTP and error metadata leave the
+submission unresolved. Credential screening covers escapes in malformed
+responses before hashing. Retries require explicit selection.
 [Google response reference](https://aistudio.google.com/api-reference/decisions)
 
 The same pinned 3.5.0 extra supports existing Developer and Vertex generative
 behavior under a separately sealed offline parity revision. The existing
 2.34.0 live records keep their original SDK, route, model, mechanism and
-presentation. Use the current reader to inspect and export retained historical
+presentation. Native forwarding requires reviewed authority for its actual
+SDK version. Use the current reader to inspect and export retained historical
 results. Use the original checkout and its pinned environment to reconstruct or
 forward original generative requests. Gemini Decisions has its own live review.

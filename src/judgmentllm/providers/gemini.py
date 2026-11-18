@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import importlib
 import logging
-import re
 import ssl
 import time
 from collections import deque
@@ -26,6 +25,7 @@ from judgmentllm.evidence.reasoning import ReasoningBlockMetadata
 from judgmentllm.evidence.usage import (
     InvocationFailureCode,
 )
+from judgmentllm.google_sdk import GOOGLE_SDK_RUNTIME
 from judgmentllm.output_contracts import decode_assessment_output
 from judgmentllm.planning import CapabilityProfile, validate_run
 from judgmentllm.preparation.session import RequestDependency
@@ -43,6 +43,9 @@ from judgmentllm.providers.gemini_response import (
     _parts,
     _safe_original_envelope,
     _usage,
+)
+from judgmentllm.providers.google_response import (
+    contains_credential as _contains_credential,
 )
 from judgmentllm.providers.protocol import (
     ParsedResponse,
@@ -306,45 +309,6 @@ def _sdk_arguments(sdk: Any, prepared: Any) -> dict[str, Any]:
     }
 
 
-def _contains_credential(raw: bytes, key: str) -> bool:
-    """Do not retain or hash a credential echoed in a provider response."""
-    if key.encode("utf-8") in raw:
-        return True
-    # Assessment JSON is itself carried in a JSON string. Inspect escaped key
-    # characters before duplicate-safe parsing, including malformed envelopes
-    # that must never retain an encoded credential in a diagnostic component.
-    try:
-        text = raw.decode("utf-8")
-    except UnicodeError:
-        return False
-    for _ in range(4):
-        decoded = re.sub(
-            r"\\+u([0-9a-fA-F]{4})", lambda match: chr(int(match[1], 16)), text
-        )
-        if key in decoded:
-            return True
-        if decoded == text:
-            break
-        text = decoded
-    else:
-        return True  # A repeatedly escaped envelope cannot be retained safely.
-    try:
-        pending = [decode_assessment_output(raw)]
-    except (ValueError, TypeError, RecursionError):
-        return False
-    while pending:
-        value = pending.pop()
-        if isinstance(value, str) and key in value:
-            return True
-        if isinstance(value, dict):
-            mapping = cast(dict[str, object], value)
-            pending.extend(mapping)
-            pending.extend(mapping.values())
-        elif isinstance(value, list):
-            pending.extend(cast(list[object], value))
-    return False
-
-
 def _response_parts(body: dict[str, Any]) -> list[object]:
     return _parts(body)[1]
 
@@ -428,6 +392,7 @@ class GeminiAdapter:
         model: str,
         *,
         mechanism: str | None = None,
+        sdk_version: str = GOOGLE_SDK_RUNTIME,
     ) -> CapabilityProfile:
         if (provider, endpoint) != ("gemini", "models.generate_content"):
             raise ProviderError("Unsupported Gemini provider endpoint")
@@ -441,7 +406,7 @@ class GeminiAdapter:
         from judgmentllm.native_selection import NativeFeature
 
         scope = production_context_for_identity(provider, endpoint, model).scope
-        reviewed = _profile_for(scope, mechanism)
+        reviewed = _profile_for(scope, mechanism, sdk_version=sdk_version)
 
         def support(features: tuple[NativeFeature, ...]) -> bool | None:
             if reviewed is None:
@@ -484,6 +449,7 @@ class GeminiAdapter:
             spec.endpoint,
             spec.model,
             mechanism=getattr(spec.prompt, "native_mechanism", None),
+            sdk_version=self.transport_context.required_sdk_version,
         )
         return profile.model_copy(
             update={
@@ -530,10 +496,10 @@ class GeminiAdapter:
         """Check new tier entitlement without changing sealed historical validation."""
         self.validate(spec)
         assert spec.schema_version == 3
-        from judgmentllm.gemini_registry import _profile_for
+        from judgmentllm.gemini_transport import _reviewed_profile
 
-        reviewed = _profile_for(
-            self.transport_context.scope, spec.prompt.native_mechanism
+        reviewed = _reviewed_profile(
+            self.transport_context, spec.prompt.native_mechanism
         )
         try:
             validate_service_support(
@@ -570,7 +536,9 @@ class GeminiAdapter:
         if installed != self.transport_context.required_sdk_version:
             raise GeminiReadinessError("sdk_scope_mismatch")
 
-    def _check_authority(self) -> None:
+    def _check_authority(
+        self, prepared: gemini_types.PreparedRequestV6 | None = None
+    ) -> None:
         if self.transport_context.kind == "gemini-study-candidate-v1":
             from judgmentllm.study.admission import guarded_authority
 
@@ -594,6 +562,34 @@ class GeminiAdapter:
             raise ProviderIntegrityError(
                 "Gemini production execution cannot use qualification authority"
             )
+        elif (
+            prepared is not None
+            and prepared.output_commitment.selection.mechanism != "text"
+        ):
+            from judgmentllm.gemini_transport import _authority_sha256, _support
+            from judgmentllm.native_selection import _features
+
+            output = prepared.output_commitment
+            selection = output.selection
+            features = _features(output.contract)
+            if (
+                selection.features != features
+                or selection.authority_kind != "reviewed"
+                or selection.native_support != "supported"
+                or selection.authority_sha256
+                != _authority_sha256(self.transport_context)
+                or _support(
+                    self.transport_context,
+                    features,
+                    selection.mechanism,
+                    output.service_policy,
+                    prepared.generation,
+                )
+                != "supported"
+            ):
+                raise ProviderIntegrityError(
+                    "Gemini native execution requires independent reviewed qualification"
+                )
 
     async def _execution_client(self) -> Any:
         self._check_authority()
@@ -684,7 +680,7 @@ class GeminiAdapter:
                     ),
                 }
                 adapter.serialization_seconds += time.perf_counter() - started
-                adapter._check_authority()
+                adapter._check_authority(prepared)
                 if adapter._submission_guard is not None:
                     adapter._submission_guard(prepared)
                 state["invoked"] = True
@@ -764,7 +760,7 @@ class GeminiAdapter:
             raise ProviderIntegrityError(
                 "Gemini sealed transport scope or invocation identity differs"
             )
-        self._check_authority()
+        self._check_authority(prepared)
         if gemini_sdk_version() != self.transport_context.required_sdk_version:
             raise GeminiReadinessError("sdk_scope_mismatch")
         if submission_id in self._invoked or len(self._responses) >= self._concurrency:

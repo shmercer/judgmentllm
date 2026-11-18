@@ -26,7 +26,7 @@ def test_strict_gemini_exports_in_real_r(tmp_path: Path) -> None:
         "Required for strict local Gemini Decisions R acceptance"
     )
     exports: dict[str, dict[str, Any]] = {}
-    for name in ("rubric", "pairwise", "rejection"):
+    for name in ("rubric", "pairwise", "rejection", "refusal"):
         root = tmp_path / name
         spec = gemini_spec(
             pair_spec(root / "input", criteria=2)
@@ -39,19 +39,22 @@ def test_strict_gemini_exports_in_real_r(tmp_path: Path) -> None:
                 "run",
                 "--config",
                 config_path(root, spec),
-                scenario={"rubric": "filtered", "rejection": "context"}.get(
-                    name, "clean"
-                ),
+                scenario={
+                    "rubric": "filtered",
+                    "rejection": "context",
+                    "refusal": "200-refusal",
+                }.get(name, "clean"),
             )
         )
         run_id = result["run_id"]
         selection = ("--run", run_id)
-        if name == "rubric":
+        if name in ("rubric", "refusal"):
+            failed_status = "invalid" if name == "rubric" else "refused"
             with Repository(root / "store") as repository:
                 failed = next(
                     row
                     for row in repository.iter_results(run_id)
-                    if row.status == "invalid"
+                    if row.status == failed_status
                 )
             retry = ("--retry-task", failed.task_id, "--retry-id", "retry-001")
             for _ in range(2):

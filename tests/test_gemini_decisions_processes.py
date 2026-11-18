@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -14,8 +15,12 @@ from test_gemini_decisions import gemini_spec
 from test_typesafe_decisions_processes import control
 
 from judgmentllm.config import RunSpecV4
+from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.evidence import DecisionsEvidenceReceiptV5
+from judgmentllm.persistence.receipts import read_acknowledgment
 from judgmentllm.persistence.repository import Repository
+from judgmentllm.preparation import open_prepared_run
+from judgmentllm.preparation.decisions import DecisionsPreparedRun
 
 HOOK = Path(__file__).parent / "fixtures/gemini_decisions"
 
@@ -101,6 +106,10 @@ def test_actual_sdk_diagnostics_through_cli(tmp_path: Path) -> None:
         ("context", "max_tokens_exceeded", ["errored"] * 3),
         ("unknown", "request_rejected", ["errored"] * 3),
         ("truncated", None, []),
+        ("message-only-context", "max_tokens_exceeded", ["errored"] * 3),
+        ("conflicting-403", None, []),
+        ("malformed-key", None, []),
+        ("malformed-nested-key", None, []),
     ],
 )
 def test_context_and_validation_first_forward_and_reopen(
@@ -129,7 +138,7 @@ def test_context_and_validation_first_forward_and_reopen(
     for command in (("runs", "status"), ("resume",)):
         reopened = control(cli(tmp_path, *command, "--run", run_id))
         assert reopened["data"]["decisions"].get("diagnostics") == diagnostics
-    if scenario == "context":
+    if code == "max_tokens_exceeded":
         human = cli(tmp_path, "resume", "--run", run_id, json_output=False)
         assert (
             "Start a new run with fewer grouped questions or smaller shared input."
@@ -142,6 +151,14 @@ def test_context_and_validation_first_forward_and_reopen(
         if code is None:
             assert submission.state == "uncertain"
             assert repository.usage_high_water_mark(run_id) == 0
+            assert (
+                read_acknowledgment(
+                    ArtifactStore(repository.run_directory(run_id)),
+                    submission.submission_id,
+                )
+                is None
+            )
+            assert list(repository.iter_evidence(run_id)) == []
         else:
             assert submission.state == "confirmed_not_submitted"
             (receipt,) = repository.iter_evidence(run_id)
@@ -151,7 +168,9 @@ def test_context_and_validation_first_forward_and_reopen(
         directory = repository.run_directory(run_id)
         for path in directory.rglob("*"):
             if path.is_file():
-                assert b"GEMINI_UNSAFE_CANARY" not in path.read_bytes()
+                data = path.read_bytes()
+                assert b"GEMINI_UNSAFE_CANARY" not in data
+                assert b"YNTHETIC_CLI_GEMINI_KEY" not in data
 
 
 @pytest.mark.parametrize(
@@ -196,3 +215,83 @@ def test_refusal_and_grouped_results_recover_in_fresh_process(
         if scenario == "filtered":
             assert rows[0].task_kind == "rubric"
             assert rows[0].provider_expected_index == pytest.approx(1.550001)
+
+
+@pytest.mark.parametrize("fault", ["", "after_evidence_receipt"])
+def test_overflowed_member_preserves_sibling_and_physical_usage(
+    tmp_path: Path, fault: str
+) -> None:
+    spec = gemini_spec(native_spec(tmp_path / "input", traits=2))
+    first = cli(
+        tmp_path,
+        "run",
+        "--config",
+        config_path(tmp_path, spec),
+        scenario="overflow",
+        fault=fault,
+    )
+    if fault:
+        assert first.returncode == 79, (first.stdout, first.stderr)
+    else:
+        control(first)
+    store = tmp_path / "store"
+    with Repository(store) as repository:
+        (run,) = repository.connection.execute("SELECT run_id FROM runs").fetchall()
+        run_id = str(run[0])
+    control(cli(tmp_path, "resume", "--run", run_id))
+    assert (tmp_path / "forwards").read_text().splitlines() == ["decisions"]
+    with Repository(store) as repository:
+        good, invalid = repository.iter_results(run_id)
+        assert good.status == "complete" and good.task_kind == "rubric"
+        assert good.primary_score == pytest.approx(5.15)
+        assert invalid.status == "invalid" and invalid.error_kind == "invalid_output"
+        (receipt,) = repository.iter_evidence(run_id)
+        assert isinstance(receipt, DecisionsEvidenceReceiptV5)
+        assert receipt.retained_kind == "filtered_replay"
+        assert receipt.validation is not None and receipt.validation.recognizable
+        assert (receipt.usage.input_tokens, receipt.usage.output_tokens) == (120, 0)
+        assert repository.usage_high_water_mark(run_id) == 1
+
+
+@pytest.mark.parametrize("scenario", ["200-refusal", "400-refusal", "truncated"])
+def test_explicit_retry_requires_acknowledged_refusal(
+    tmp_path: Path, scenario: str
+) -> None:
+    spec = gemini_spec(native_spec(tmp_path / "input", traits=2))
+    first = control(
+        cli(tmp_path, "run", "--config", config_path(tmp_path, spec), scenario=scenario)
+    )
+    run_id = first["run_id"]
+    selection = ("--run", run_id)
+    store = tmp_path / "store"
+    control(cli(tmp_path, "resume", *selection))
+    assert (tmp_path / "forwards").read_text().splitlines() == ["decisions"]
+    with Repository(store) as repository:
+        (attempt,) = repository.iter_attempts(run_id)
+        task_id, other = repository.attempt_task_ids(run_id, attempt.attempt_id)
+    retry = (*selection, "--retry-task", task_id, "--retry-id", "refusal-retry")
+    result = cli(tmp_path, "resume", *retry)
+    if scenario != "200-refusal":
+        assert json.loads(result.stdout)["error"]["category"] == "validation"
+        assert (tmp_path / "forwards").read_text().splitlines() == ["decisions"]
+        with Repository(store) as repository:
+            assert repository.summary(run_id).retry_operations == 0
+        return
+    control(result)
+    control(cli(tmp_path, "resume", *retry))
+    assert (tmp_path / "forwards").read_text().splitlines() == [
+        "decisions",
+        "decisions",
+    ]
+    with open_prepared_run(run_id, store=store) as prepared:
+        assert isinstance(prepared, DecisionsPreparedRun)
+        repository = prepared.repository
+        old, new = repository.iter_attempts(run_id)
+        original = prepared.transport_for_attempt(old.attempt_id)
+        child = prepared.transport_for_attempt(new.attempt_id)
+        assert child.parent_commitment_sha256 == original.commitment_sha256
+        assert [q.key for q in child.questions] == [original.questions[0].key]
+        assert [
+            (row.task_id, row.status) for row in repository.iter_results(run_id)
+        ] == [(task_id, "refused"), (other, "refused"), (task_id, "complete")]
+        assert repository.summary(run_id).retry_operations == 1

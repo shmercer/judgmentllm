@@ -8,6 +8,7 @@ from typing import Any, Literal, cast
 
 from pydantic import JsonValue
 
+from judgmentllm.config import parse_json
 from judgmentllm.decisions.interpretation import ChoiceAnswerV1, ScoreAnswerV1
 from judgmentllm.decisions.records import GEMINI_DECISIONS_PRECISION
 from judgmentllm.decisions.replay import (
@@ -37,7 +38,14 @@ _SAFETY_CODES = frozenset(
     ("safety", "prohibited_content", "blocklist", "image_safety", "content_blocked")
 )
 _BLOCK_REASONS = _SAFETY_CODES | {"other"}
-_REJECTION_STATUSES = (400, 401, 403, 404, 413, 429)
+_REJECTION_STATUSES = {
+    400: ("INVALID_ARGUMENT",),
+    401: ("UNAUTHENTICATED",),
+    403: ("PERMISSION_DENIED",),
+    404: ("NOT_FOUND",),
+    413: ("RESOURCE_EXHAUSTED", "PAYLOAD_TOO_LARGE"),
+    429: ("RESOURCE_EXHAUSTED",),
+}
 _INPUT_COUNT_LIMIT = re.compile(
     r"(?:the )?input token count \(([0-9][0-9,]{0,11})\) exceeds the maximum "
     r"number of tokens allowed \(([0-9][0-9,]{0,11})\)\.?",
@@ -56,10 +64,15 @@ _USAGE_COUNTERS: tuple[tuple[UsageField, UsageCounter], ...] = (
 )
 
 
-def _document(raw: bytes) -> dict[str, Any] | None:
+def _document(raw: bytes, *, validate_members: bool = False) -> dict[str, Any] | None:
     try:
-        result = decode_assessment_output(raw)
-    except ValueError:
+        # A valid JSON exponent can overflow float. Bound it at the answer boundary.
+        result = (
+            parse_json(raw.decode("utf-8"))
+            if validate_members
+            else decode_assessment_output(raw)
+        )
+    except (ValueError, RecursionError):
         return None
     return cast(dict[str, Any], result) if isinstance(result, dict) else None
 
@@ -144,31 +157,37 @@ def _context_limit(message: object) -> bool:
 def rejected(
     status: int, raw: bytes, wire: PreparedDecisionsRequestV4
 ) -> GeminiDecisionsRequestRejected | None:
-    if status not in _REJECTION_STATUSES:
+    statuses = _REJECTION_STATUSES.get(status)
+    if statuses is None:
         return None
     document = _document(raw) if raw else {}
     if document is None or "answers" in document or "prompt_feedback" in document:
         return None
+    error = document.get("error", {})
+    if not isinstance(error, dict):
+        return None
+    error = cast(dict[str, object], error)
+    code, canonical = error.get("code"), error.get("status")
+    if canonical not in (None, *statuses) or (type(code) is int and code != status):
+        return None
     reason = "payload_too_large" if status == 413 else "request_rejected"
     if status == 400:
-        error = document.get("error")
-        if not isinstance(error, dict):
-            return None
-        error = cast(dict[str, object], error)
-        code, canonical = error.get("code"), error.get("status")
-        if canonical not in (None, "INVALID_ARGUMENT"):
-            return None
         if isinstance(code, str) and code in _SAFETY_CODES:
             reason = "safety_refusal"
         elif (
-            (type(code) is int and code == 400)
+            code is None
+            or type(code) is int
             or code in ("INVALID_ARGUMENT", "invalid_argument")
-            or (code is None and canonical == "INVALID_ARGUMENT")
+        ) and _context_limit(error.get("message")):
+            reason = "max_tokens_exceeded"
+        elif not (
+            type(code) is int
+            or code in ("INVALID_ARGUMENT", "invalid_argument")
+            or (code is None and canonical is not None)
         ):
-            if _context_limit(error.get("message")):
-                reason = "max_tokens_exceeded"
-        else:
             return None
+    elif code is not None and type(code) is not int and code not in statuses:
+        return None
     evidence = GeminiDecisionsRejectionEvidenceV1.model_validate(
         dict(
             **wire.transport_commitment.identity.model_dump(
@@ -322,7 +341,7 @@ def analyze(
     Literal["response", "refusal"],
 ]:
     request = cast(dict[str, Any], decode_assessment_output(wire.payload))["questions"]
-    document = _document(raw)
+    document = _document(raw, validate_members=True)
     fields = document if document is not None else {}
     answers = fields.get("answers")
     feedback = fields.get("prompt_feedback")

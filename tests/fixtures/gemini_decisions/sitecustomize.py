@@ -57,23 +57,36 @@ def respond(request: httpx2.Request) -> httpx2.Response:
         stream.write("decisions\n")
     if fault == "forward":
         os._exit(79)
-    if scenario in {"context", "unknown", "truncated", "400-refusal"}:
-        error = (
-            dict(code="safety", message="GEMINI_UNSAFE_CANARY")
-            if scenario == "400-refusal"
-            else dict(
+    if scenario in {"malformed-key", "malformed-nested-key"}:
+        prefix = b"\\" if scenario == "malformed-key" else b"\\\\"
+        return httpx2.Response(
+            200,
+            content=b'\xff{"message":"' + prefix + b'u0053YNTHETIC_CLI_GEMINI_KEY"}',
+        )
+    if scenario in {
+        "context",
+        "message-only-context",
+        "unknown",
+        "truncated",
+        "400-refusal",
+        "conflicting-403",
+    }:
+        message = "The input token count (262145) exceeds the maximum number of tokens allowed (262144)."
+        error = {
+            "400-refusal": dict(code="safety", message="GEMINI_UNSAFE_CANARY"),
+            "conflicting-403": dict(
+                code=500, status="INTERNAL", message="GEMINI_UNSAFE_CANARY"
+            ),
+            "message-only-context": dict(message=message),
+            "unknown": dict(
                 code=400,
                 status="INVALID_ARGUMENT",
-                message=(
-                    "GEMINI_UNSAFE_CANARY mentioned context window in question text."
-                    if scenario == "unknown"
-                    else "The input token count (262145) exceeds the maximum number of tokens allowed (262144)."
-                ),
-            )
-        )
+                message="GEMINI_UNSAFE_CANARY mentioned context window in question text.",
+            ),
+        }.get(scenario, dict(code=400, status="INVALID_ARGUMENT", message=message))
         encoded = json.dumps({"error": error}).encode()
         return httpx2.Response(
-            400,
+            403 if scenario == "conflicting-403" else 400,
             content=encoded,
             headers={"content-length": str(len(encoded) + 1)}
             if scenario == "truncated"
@@ -111,13 +124,18 @@ def respond(request: httpx2.Request) -> httpx2.Response:
         )
         if i == 1 and scenario == "filtered":
             answers[key]["unknown"] = "GEMINI_UNSAFE_CANARY"
-    return httpx2.Response(
-        200,
-        json=dict(
-            answers=dict(reversed(tuple(answers.items()))),
-            usage={"total_input_tokens": 120, "total_output_tokens": 0},
-        ),
+        if i == 1 and scenario == "overflow":
+            answers[key]["score"] = "overflow_number"
+    result = dict(
+        answers=dict(reversed(tuple(answers.items()))),
+        usage={"total_input_tokens": 120, "total_output_tokens": 0},
     )
+    if scenario == "overflow":
+        return httpx2.Response(
+            200,
+            content=json.dumps(result).replace('"overflow_number"', "1e400").encode(),
+        )
+    return httpx2.Response(200, json=result)
 
 
 httpx2.AsyncHTTPTransport = lambda **_kwargs: httpx2.MockTransport(respond)  # type: ignore[assignment]

@@ -10,7 +10,6 @@ from __future__ import annotations
 import asyncio
 import importlib
 import logging
-import re
 import ssl
 import time
 from collections import deque
@@ -26,6 +25,7 @@ from judgmentllm.evidence.reasoning import ReasoningBlockMetadata
 from judgmentllm.evidence.usage import (
     InvocationFailureCode,
 )
+from judgmentllm.google_sdk import GOOGLE_SDK_RUNTIME
 from judgmentllm.output_contracts import decode_assessment_output
 from judgmentllm.planning import CapabilityProfile, validate_run
 from judgmentllm.preparation.session import RequestDependency
@@ -34,6 +34,9 @@ from judgmentllm.providers.evidence import (
     ProviderEvidence,
     ProviderObservationContext,
     ProviderReasoningBlock,
+)
+from judgmentllm.providers.google_response import (
+    contains_credential as _contains_credential,
 )
 from judgmentllm.providers.protocol import (
     ParsedResponse,
@@ -292,45 +295,6 @@ def _sdk_arguments(sdk: Any, prepared: Any) -> dict[str, Any]:
     }
 
 
-def _contains_credential(raw: bytes, key: str) -> bool:
-    """Do not retain or hash a credential echoed in a provider response."""
-    if key.encode("utf-8") in raw:
-        return True
-    # Assessment JSON is itself carried in a JSON string. Inspect escaped key
-    # characters before duplicate-safe parsing, including malformed envelopes
-    # that must never retain an encoded credential in a diagnostic component.
-    try:
-        text = raw.decode("utf-8")
-    except UnicodeError:
-        return False
-    for _ in range(4):
-        decoded = re.sub(
-            r"\\+u([0-9a-fA-F]{4})", lambda match: chr(int(match[1], 16)), text
-        )
-        if key in decoded:
-            return True
-        if decoded == text:
-            break
-        text = decoded
-    else:
-        return True  # A repeatedly escaped envelope cannot be retained safely.
-    try:
-        pending = [decode_assessment_output(raw)]
-    except (ValueError, TypeError, RecursionError):
-        return False
-    while pending:
-        value = pending.pop()
-        if isinstance(value, str) and key in value:
-            return True
-        if isinstance(value, dict):
-            mapping = cast(dict[str, object], value)
-            pending.extend(mapping)
-            pending.extend(mapping.values())
-        elif isinstance(value, list):
-            pending.extend(cast(list[object], value))
-    return False
-
-
 def _response_parts(body: dict[str, Any]) -> list[object]:
     return _parts(body)[1]
 
@@ -419,6 +383,7 @@ class VertexAdapter:
         *,
         mechanism: str | None = None,
         runtime: VertexRuntimeConfiguration | None = None,
+        sdk_version: str = GOOGLE_SDK_RUNTIME,
     ) -> CapabilityProfile:
         if (provider, endpoint) != ("vertex", "models.generate_content"):
             raise ProviderError("Unsupported Vertex provider endpoint")
@@ -449,6 +414,7 @@ class VertexAdapter:
                 route_sha256=runtime.route_sha256,
                 authentication_mode=runtime.auth_mode,
                 location=runtime.location,
+                sdk_version=sdk_version,
             )
         )
 
@@ -483,6 +449,7 @@ class VertexAdapter:
             spec.model,
             mechanism=getattr(spec.prompt, "native_mechanism", None),
             runtime=self.transport_context.runtime,
+            sdk_version=self.transport_context.required_sdk_version,
         )
 
     def validate(self, spec: RunSpecification) -> None:
@@ -544,7 +511,9 @@ class VertexAdapter:
         if installed != self.transport_context.required_sdk_version:
             raise VertexReadinessError("sdk_scope_mismatch")
 
-    def _check_authority(self) -> None:
+    def _check_authority(
+        self, prepared: vertex_types.PreparedRequestV7 | None = None
+    ) -> None:
         if self.transport_context.kind == "vertex-qualification-candidate-v1":
             from judgmentllm.vertex_qualification_execution import (
                 _QualificationSubmissionGuard,
@@ -562,6 +531,27 @@ class VertexAdapter:
             raise ProviderIntegrityError(
                 "Vertex production execution cannot use qualification authority"
             )
+        elif (
+            prepared is not None
+            and prepared.output_commitment.selection.mechanism != "text"
+        ):
+            from judgmentllm.native_selection import _features
+            from judgmentllm.vertex_transport import _authority_sha256, _support
+
+            selection = prepared.output_commitment.selection
+            features = _features(prepared.output_commitment.contract)
+            if (
+                selection.features != features
+                or selection.authority_kind != "reviewed"
+                or selection.native_support != "supported"
+                or selection.authority_sha256
+                != _authority_sha256(self.transport_context)
+                or _support(self.transport_context, features, selection.mechanism)
+                != "supported"
+            ):
+                raise ProviderIntegrityError(
+                    "Vertex native execution requires independent reviewed qualification"
+                )
 
     async def _execution_client(self) -> Any:
         self._check_authority()
@@ -647,7 +637,10 @@ class VertexAdapter:
                         "Vertex SDK request violates sealed transport: "
                         + ", ".join(name for name, valid in checks.items() if not valid)
                     )
-                assert prepared is not None and state is not None
+                assert (
+                    isinstance(prepared, vertex_types.PreparedRequestV7)
+                    and state is not None
+                )
                 # The SDK supplies a scalar timeout per request, overriding the
                 # client's finer defaults. Enforce the sealed adapter policy at
                 # the final transport boundary; these are local I/O settings.
@@ -658,7 +651,7 @@ class VertexAdapter:
                     "read": 60.0,
                 }
                 adapter.serialization_seconds += time.perf_counter() - started
-                adapter._check_authority()
+                adapter._check_authority(prepared)
                 if adapter._submission_guard is not None:
                     from judgmentllm.vertex_qualification_execution import (
                         _verify_quota_project,
@@ -765,30 +758,7 @@ class VertexAdapter:
             raise ProviderIntegrityError(
                 "Vertex sealed transport scope or invocation identity differs"
             )
-        self._check_authority()
-        # Production never borrows the harness's one-shot grants. Recheck exact
-        # route/feature authority before client construction or any HTTP attempt.
-        selection = prepared.output_commitment.selection
-        if (
-            selection.mechanism != "text"
-            and self.transport_context.kind == "vertex-production-v1"
-        ):
-            from judgmentllm.native_selection import _features
-            from judgmentllm.vertex_transport import _authority_sha256, _support
-
-            features = _features(prepared.output_commitment.contract)
-            if (
-                selection.features != features
-                or selection.authority_kind != "reviewed"
-                or selection.native_support != "supported"
-                or selection.authority_sha256
-                != _authority_sha256(self.transport_context)
-                or _support(self.transport_context, features, selection.mechanism)
-                != "supported"
-            ):
-                raise ProviderIntegrityError(
-                    "Vertex native execution requires independent reviewed qualification"
-                )
+        self._check_authority(prepared)
         if submission_id in self._invoked or len(self._responses) >= self._concurrency:
             raise ProviderIntegrityError(
                 "Vertex invocation identity was reused or handoff capacity exceeded"

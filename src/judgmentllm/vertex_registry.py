@@ -15,6 +15,7 @@ from pydantic import Field, field_validator, model_validator
 from judgmentllm._auth import VertexAuthMode
 from judgmentllm.evidence.scope import EvidenceProvenance
 from judgmentllm.generation import GenerationCapabilities, GenerationParameterCapability
+from judgmentllm.google_sdk import GOOGLE_SDK_RUNTIME
 from judgmentllm.native_schema import NativeModel, NativeProjectionScopeV1
 from judgmentllm.native_selection import NativeFeature
 from judgmentllm.persistence.hashing import semantic_digest
@@ -75,7 +76,8 @@ class _QualifiedProfile(NativeModel):
             or self.scope.model_scope != "exact"
             or self.scope.model != "gemini-3.1-flash-lite"
             or self.scope.sdk_package != "google-genai"
-            or self.scope.sdk_version != VERTEX_PRODUCTION_SDK_VERSION
+            or self.scope.sdk_version
+            not in (VERTEX_PRODUCTION_SDK_VERSION, GOOGLE_SDK_RUNTIME)
             or self.scope.api_version != VERTEX_API_VERSION
             or self.schema_dialect
             != (
@@ -216,8 +218,11 @@ def _profile_for(
     route_sha256: str,
     authentication_mode: VertexAuthMode,
     location: str,
+    sdk_version: str | None = None,
 ) -> _QualifiedProfile | None:
     """Admit complete route facts supplied by a checked production context."""
+    if sdk_version is not None:
+        scope = scope.model_copy(update={"sdk_version": sdk_version})
     matches = [
         profile
         for profile in _QUALIFIED_PROFILES

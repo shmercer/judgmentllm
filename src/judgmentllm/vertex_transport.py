@@ -281,6 +281,7 @@ def _reviewed_profile(
         route_sha256=context.runtime.route_sha256,
         authentication_mode=context.runtime.auth_mode,
         location=context.runtime.location,
+        sdk_version=context.required_sdk_version,
     )
 
 

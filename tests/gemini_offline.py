@@ -14,6 +14,7 @@ from judgmentllm.config import GenerationSpec
 from judgmentllm.evidence.scope import EvidenceProvenance
 from judgmentllm.gemini_registry import _QualifiedProfile
 from judgmentllm.gemini_transport import GeminiProductionContext
+from judgmentllm.google_sdk import GOOGLE_SDK_RUNTIME
 from judgmentllm.reasoning import ReasoningQualificationScopeV1
 from judgmentllm.service_tiers import ServiceQualificationScope
 
@@ -93,7 +94,7 @@ def authorize_fixture(
             ),
         )
     profile = _QualifiedProfile(
-        scope=context.scope,
+        scope=context.scope.model_copy(update={"sdk_version": GOOGLE_SDK_RUNTIME}),
         reasoning_scopes=controls,
         service_scopes=(
             ServiceQualificationScope(

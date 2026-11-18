@@ -427,9 +427,14 @@ def prepare_subset_retry(
                         "retry of completed tasks requires explicit permission"
                     )
     if prepared_run.manifest.schema_version in (10, 11):
+        from judgmentllm.decisions.records import question_key
         from judgmentllm.persistence.evidence import (
             DecisionsEvidenceReceiptV4,
             DecisionsEvidenceReceiptV5,
+        )
+        from judgmentllm.persistence.receipts import (
+            AcknowledgmentReceiptV5,
+            read_acknowledgment,
         )
 
         is_gemini = prepared_run.manifest.schema_version == 11
@@ -442,9 +447,11 @@ def prepare_subset_retry(
             else "Jev retry requires a response-backed failed member"
         )
 
-        checked: set[str] = set()
+        checked: dict[str, tuple[bool, set[str]]] = {}
         for outcome in prior:
-            if outcome.status != "invalid":
+            if outcome.status != "invalid" and not (
+                is_gemini and outcome.status == "refused"
+            ):
                 raise RetryAuthorizationError(message)
             if outcome.attempt_id not in checked:
                 submission = repository.get_submission_for_attempt(
@@ -458,12 +465,39 @@ def prepare_subset_retry(
                     else None
                 )
                 if (
-                    not isinstance(receipt, receipt_type)
+                    submission is None
+                    or not isinstance(receipt, receipt_type)
                     or receipt.validation is None
-                    or not receipt.validation.recognizable
                 ):
                     raise RetryAuthorizationError(message)
-                checked.add(outcome.attempt_id)
+                validation = receipt.validation
+                refused: set[str] = set()
+                if (
+                    is_gemini
+                    and submission.certainty == "accepted"
+                    and receipt.response_receipt is not None
+                    and receipt.response_receipt.kind == "refusal"
+                    and isinstance(
+                        read_acknowledgment(
+                            prepared_run.store, submission.submission_id
+                        ),
+                        AcknowledgmentReceiptV5,
+                    )
+                ):
+                    refused = {
+                        member.key
+                        for member in validation.members
+                        if member.answer_type == "refusal"
+                        and member.failure == "provider_refusal"
+                    }
+                checked[outcome.attempt_id] = validation.recognizable, refused
+            recognizable, refused = checked[outcome.attempt_id]
+            if (
+                not recognizable
+                if outcome.status == "invalid"
+                else question_key(outcome.task_id) not in refused
+            ):
+                raise RetryAuthorizationError(message)
     checkpoint("before_retry_preparation", request_uid)
     prepared_run.verify_compatibility(
         capabilities=adapter.capabilities(prepared_run.spec)

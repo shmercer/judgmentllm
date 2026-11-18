@@ -5,8 +5,8 @@
 The strict local Gemini test reads installed CLI JSONL, lossless CSV,
 R audit CSV and versioned provenance through R/jsonlite. It covers leading-zero
 IDs, score and confidence values, independent grouped retry ancestry, unequal
-Choice probabilities in both orientations, context rejection and physical
-usage. [Gemini Decisions](gemini-decisions.md)
+Choice probabilities in both orientations, context rejection, explicit retry
+of an acknowledged refusal, and physical usage. [Gemini Decisions](gemini-decisions.md)
 
 ## PR D TypeSafe Decisions
 

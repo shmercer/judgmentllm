@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from typing import Any, cast
+
+from judgmentllm.output_contracts import decode_assessment_output
 
 FINISH_REASONS = {
     "STOP",
@@ -50,6 +53,40 @@ _TOOL_FIELDS = {
     "executableCode",
     "codeExecutionResult",
 }
+
+
+def contains_credential(raw: bytes, key: str) -> bool:
+    """Screen credentials before any response retention or hashing."""
+    if key.encode("utf-8") in raw:
+        return True
+    # Replacement keeps valid escape sequences beside malformed UTF-8 visible.
+    text = raw.decode("utf-8", errors="replace")
+    for _ in range(4):
+        decoded = re.sub(
+            r"\\+u([0-9a-fA-F]{4})", lambda match: chr(int(match[1], 16)), text
+        ).replace(r"\/", "/")
+        if key in decoded:
+            return True
+        if decoded == text:
+            break
+        text = decoded
+    else:
+        return True  # A repeatedly escaped envelope cannot be retained safely.
+    try:
+        pending = [decode_assessment_output(raw)]
+    except (ValueError, TypeError, RecursionError):
+        return False
+    while pending:
+        value = pending.pop()
+        if isinstance(value, str) and key in value:
+            return True
+        if isinstance(value, dict):
+            mapping = cast(dict[str, object], value)
+            pending.extend(mapping)
+            pending.extend(mapping.values())
+        elif isinstance(value, list):
+            pending.extend(cast(list[object], value))
+    return False
 
 
 def parts(body: dict[str, Any]) -> tuple[dict[str, Any] | None, list[object]]:

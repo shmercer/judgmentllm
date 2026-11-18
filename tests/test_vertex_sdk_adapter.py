@@ -417,23 +417,26 @@ async def test_rejection_uncertainty_and_redirect_never_retry(
         ("api_key", "SYNTHETIC_SELECTED_VERTEX_KEY"),
     ],
 )
-@pytest.mark.parametrize("escape", [False, True])
+@pytest.mark.parametrize("escape", [False, True, "malformed", "malformed-nested"])
 @pytest.mark.asyncio
 async def test_no_credential_echo_enters_evidence(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     mode: str,
     secret: str,
-    escape: bool,
+    escape: bool | str,
 ) -> None:
     if mode == "adc":
         adc(monkeypatch)
     wire, spec, _, context = wire_for(tmp_path)
     raw = json.dumps(envelope(secret)).encode()
     if escape:
+        slash = "\\" if escape != "malformed-nested" else "\\\\"
         raw = raw.replace(
-            secret.encode(), "".join(f"\\u{ord(c):04x}" for c in secret).encode()
+            secret.encode(), "".join(f"{slash}u{ord(c):04x}" for c in secret).encode()
         )
+    if isinstance(escape, str):
+        raw = b"\xff" + raw
     adapter = p.VertexAdapter(
         spec.endpoint,
         spec.model,
@@ -443,7 +446,9 @@ async def test_no_credential_echo_enters_evidence(
         ),
     )
     try:
-        with pytest.raises(SubmissionUncertain) as failure:
+        with pytest.raises(
+            SubmissionUncertain, match="cannot be retained safely"
+        ) as failure:
             await adapter.submit(wire, **invocation(wire))
         assert secret not in str(failure.value) and not adapter._responses
     finally:

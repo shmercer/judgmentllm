@@ -41,7 +41,7 @@ for (name in names(runs)) {
   physical <- read_jsonl(bundle_file("physical.jsonl"))
   questions <- read_jsonl(bundle_file("questions.jsonl"))
   stopifnot(bundle$provenance_manifest_version == 4L, length(questions) == length(rows),
-            length(physical) == c(rubric = 2L, pairwise = 4L, rejection = 1L)[[name]])
+            length(physical) == c(rubric = 2L, pairwise = 4L, rejection = 1L, refusal = 2L)[[name]])
   for (attempt in physical) {
     stopifnot(attempt$limits$context_fit == "unverified",
               attempt$limits$max_context_tokens == 262144L,
@@ -50,6 +50,9 @@ for (name in names(runs)) {
       stopifnot(attempt$rejection$reason == "max_tokens_exceeded",
                 is.null(attempt$complete_response_evidence),
                 is.null(attempt$selected_usage$input_tokens))
+    } else if (name == "refusal" && attempt$selected_usage$observation_kind == "refusal") {
+      stopifnot(attempt$complete_response_evidence$http_status == 200L,
+                is.null(attempt$selected_usage$input_tokens), is.null(attempt$rejection))
     } else {
       stopifnot(attempt$complete_response_evidence$response_sha256 == attempt$original_response$sha256,
                 attempt$selected_usage$input_tokens == 120L,
@@ -65,6 +68,11 @@ for (name in names(runs)) {
     stopifnot(length(failed) == 1L, length(retried) == 1L,
               failed[[1]]$question$key == retried[[1]]$question$key,
               failed[[1]]$identity$attempt_id != retried[[1]]$identity$attempt_id)
+  } else if (name == "refusal") {
+    refused <- Filter(function(x) x$status == "refused", questions)
+    retried <- Filter(function(x) !is.null(x$parent_commitment_sha256), questions)
+    stopifnot(length(refused) == 3L, length(retried) == 1L, retried[[1]]$status == "complete",
+              retried[[1]]$question$key %in% vapply(refused, function(x) x$question$key, character(1)))
   }
 }
 cat("Gemini Decisions interoperability passed\n")

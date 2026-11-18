@@ -28,6 +28,7 @@ from judgmentllm.gemini_registry import (
     GEMINI_PRODUCTION_SDK_VERSION,
     GeminiMechanism,
     _profile_for,
+    _QualifiedProfile,
     production_generation_capabilities,
 )
 from judgmentllm.google_sdk import (
@@ -232,7 +233,7 @@ def _qualification_context(  # pyright: ignore[reportUnusedFunction]
 
 def _authority_sha256(context: GeminiProductionContext) -> str:
     profiles = tuple(
-        _profile_for(context.scope, route)
+        _reviewed_profile(context, route)
         for route in (
             "gemini.generate_content.response_schema",
             "gemini.generate_content.response_json_schema",
@@ -267,6 +268,15 @@ def production_context_digest(context: GeminiProductionContext) -> str:
         )
     except (ValueError, TypeError, AttributeError, RecursionError):
         raise TransportIntegrityError() from None
+
+
+def _reviewed_profile(
+    context: GeminiProductionContext, mechanism: str | None
+) -> _QualifiedProfile | None:
+    # Projection parity leaves the live authority scoped to the execution SDK.
+    return _profile_for(
+        context.scope, mechanism, sdk_version=context.required_sdk_version
+    )
 
 
 class GeminiSelectionV1(_TransportModel):
@@ -321,7 +331,7 @@ def _support(
     service: ServicePolicyV2 | None = None,
     generation: GenerationSpec | None = None,
 ) -> Literal["supported", "unsupported", "unknown"]:
-    profile = _profile_for(context.scope, mechanism)
+    profile = _reviewed_profile(context, mechanism)
     if profile is not None and not qualified_service(
         service, profile.service_scopes, features
     ):
@@ -352,7 +362,7 @@ def _verify_selection(
         "qualification_probe"
         if qualifier
         else "reviewed"
-        if _profile_for(context.scope, spec.prompt.native_mechanism) is not None
+        if _reviewed_profile(context, spec.prompt.native_mechanism) is not None
         else "unqualified"
     )
     if (
@@ -438,7 +448,7 @@ def _selection(
         authority_kind="qualification_probe"
         if qualifier
         else "reviewed"
-        if _profile_for(context.scope, spec.prompt.native_mechanism) is not None
+        if _reviewed_profile(context, spec.prompt.native_mechanism) is not None
         else "unqualified",
         features=features,
         authority_sha256=_authority_sha256(context),
@@ -601,7 +611,7 @@ def _build_output_commitment_v6(
     if inherited_commitment is not None:
         service_policy_version = 1 if inherited_commitment.service_policy is None else 2
     service = resolve_service_policy(spec, service_policy_version)
-    profile = _profile_for(context.scope, spec.prompt.native_mechanism)
+    profile = _reviewed_profile(context, spec.prompt.native_mechanism)
     validate_service_support(
         service,
         () if profile is None else profile.service_scopes,

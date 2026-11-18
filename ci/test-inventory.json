@@ -764,7 +764,7 @@
     },
     "tests/test_gemini_boundaries.py": {
       "test_context_is_descriptive_and_never_cloud_or_old_configuration": {"": []},
-      "test_credential_echo_screening_precedes_component_capture": {"[\\xff-False]": [], "[not JSON-False]": [], "[{\"a\":[true,1,{\"x\":\"safe\"}]}-False]": [], "[{\"text\":\"\\\\u0053\\\\u0045\\\\u0043\\\\u0052\\\\u0045\\\\u0054\"}-True]": [], "[{\"text\":\"\\u0053\\u0045\\u0043\\u0052\\u0045\\u0054\"}-True]": []},
+      "test_credential_echo_screening_precedes_component_capture": {"[\\xff-False]": [], "[\\xff{\"text\":\"\\\\u0053ECRET\"}-True]": [], "[\\xff{\"text\":\"\\u0053ECRET\"}-True]": [], "[not JSON-False]": [], "[{\"a\":[true,1,{\"x\":\"safe\"}]}-False]": [], "[{\"text\":\"\\\\u0053\\\\u0045\\\\u0043\\\\u0052\\\\u0045\\\\u0054\"}-True]": [], "[{\"text\":\"\\u0053\\u0045\\u0043\\u0052\\u0045\\u0054\"}-True]": []},
       "test_frozen_native_selection_cannot_acquire_new_authority": {"[native]": [], "[text]": []},
       "test_inline_preparation_cannot_resolve_foreign_or_pair_identifiers": {"": []},
       "test_invalid_key_diagnostic_requires_closed_structured_code": {"[None]": [], "[[]]": [], "[not JSON]": [], "[{\"error\":{\"code\":400,\"status\":\"INVALID_ARGUMENT\",\"details\":[null]}}]": [], "[{\"error\":{\"code\":400,\"status\":\"INVALID_ARGUMENT\",\"details\":[{\"reason\":\"API_KEY_INVALID\"}]}}]": [], "[{\"error\":{\"code\":400,\"status\":\"INVALID_ARGUMENT\",\"details\":null}}]": []},
@@ -792,6 +792,8 @@
     "tests/test_gemini_decisions.py": {
       "test_body_cap_and_multi_question_plan": {"": []},
       "test_choice_precision_and_returned_selection": {"[None-0.5-0.5-0.5-False]": [], "[essay_01-0.2-0.8-0.8-False]": [], "[essay_01-0.5-0.5-0.5-True]": [], "[essay_02-0.5-0.5-0.5-True]": [], "[essay_02-0.5000004-0.4999996-0.5-True]": [], "[essay_02-0.5000004-0.4999996-0.5000013-False]": [], "[essay_02-0.500002-0.499998-0.5-False]": []},
+      "test_envelope_stays_strict_before_numeric_member_validation": {"[\\xff{\"answers\":{}}]": [], "[{\"answers\":{\"known\":{\"score\":NaN}}}]": [], "[{\"answers\":{},\"answers\":{}}]": []},
+      "test_explicit_zero_survives_typed_and_mapping_ingress": {"": []},
       "test_gemini_endpoint_and_user_grouping": {"[1000-1001-sizes0]": [], "[1001-1001-sizes1]": [], "[4-3-sizes2]": []},
       "test_guarded_unsafe_body_keeps_transport_uncertain": {"[ambiguous_400]": [], "[credential_echo]": [], "[oversized]": []},
       "test_invalid_scope_precedes_credentials": {"[change0]": [], "[change1]": [], "[change2]": []},
@@ -803,7 +805,9 @@
     },
     "tests/test_gemini_decisions_processes.py": {
       "test_actual_sdk_diagnostics_through_cli": {"": []},
-      "test_context_and_validation_first_forward_and_reopen": {"[context-max_tokens_exceeded-statuses0]": [], "[truncated-None-statuses2]": [], "[unknown-request_rejected-statuses1]": []},
+      "test_context_and_validation_first_forward_and_reopen": {"[conflicting-403-None-statuses4]": [], "[context-max_tokens_exceeded-statuses0]": [], "[malformed-key-None-statuses5]": [], "[malformed-nested-key-None-statuses6]": [], "[message-only-context-max_tokens_exceeded-statuses3]": [], "[truncated-None-statuses2]": [], "[unknown-request_rejected-statuses1]": []},
+      "test_explicit_retry_requires_acknowledged_refusal": {"[200-refusal]": [], "[400-refusal]": [], "[truncated]": []},
+      "test_overflowed_member_preserves_sibling_and_physical_usage": {"[]": [], "[after_evidence_receipt]": []},
       "test_refusal_and_grouped_results_recover_in_fresh_process": {"[200-refusal-after_evidence_receipt-statuses3-1]": [], "[400-refusal-after_failure_evidence_receipt-statuses4-1]": [], "[clean-forward-statuses0-0]": [], "[filtered-after_evidence_receipt-statuses1-1]": [], "[filtered-during_result_transaction-statuses2-1]": []}
     },
     "tests/test_gemini_decisions_r.py": {
@@ -856,11 +860,13 @@
     },
     "tests/test_gemini_production_acceptance.py": {
       "test_actual_sdk_bytes_native_failure_and_frozen_recovery": {"[False]": [], "[True]": []},
+      "test_current_native_runtime_requires_its_own_profile_at_forwarding": {"": []},
       "test_exact_admission_and_complete_frozen_bytes": {"[False-auto-False]": [], "[False-auto-True]": [], "[False-native-False]": [], "[False-native-True]": [], "[False-text-False]": [], "[False-text-True]": [], "[True-auto-False]": [], "[True-auto-True]": [], "[True-native-False]": [], "[True-native-True]": [], "[True-text-False]": [], "[True-text-True]": []},
       "test_exact_profile_and_provenance": {"": []},
       "test_forged_profile_values_revalidate_before_admission": {"[changes0]": [], "[changes1]": [], "[changes2]": [], "[changes3]": [], "[changes4]": [], "[changes5]": [], "[changes6]": [], "[changes7]": [], "[changes8]": []},
       "test_generation_qualification_does_not_expand": {"": []},
       "test_grouped_and_all_unqualified_features_stay_unknown": {"": []},
+      "test_historical_native_wire_still_executes_with_original_authority": {"": []},
       "test_historical_profile_cannot_authorize_new_service_policy": {"": []},
       "test_new_presentation_cannot_borrow_historical_native_authority": {"[False]": [], "[True]": []},
       "test_no_foreign_scope_authority": {"[changes0]": [], "[changes1]": [], "[changes2]": [], "[changes3]": [], "[changes4]": []},
@@ -911,7 +917,7 @@
     "tests/test_gemini_sdk_adapter.py": {
       "test_cancellation_reports_physical_forwarding": {"[after]": [], "[before]": []},
       "test_candidate_and_wrong_scope_never_construct_client": {"": []},
-      "test_credential_echo_never_reaches_retained_envelope": {"[direct]": [], "[escaped]": []},
+      "test_credential_echo_never_reaches_retained_envelope": {"[direct]": [], "[escaped]": [], "[malformed-nested]": [], "[malformed]": []},
       "test_credential_precedence_fallback_and_missing": {"": []},
       "test_custom_templates_and_complete_exemplars_keep_exact_protected_text": {"[False-native]": [], "[False-text]": [], "[True-native]": [], "[True-text]": []},
       "test_documented_invalid_key_is_rejected_without_provider_prose": {"": []},
@@ -1347,7 +1353,7 @@
       "test_sdk_hidden_second_forward_preserves_the_first_response": {"": []},
       "test_sdk_lifecycle_and_versioned_provenance": {"[full]": [], "[minimal]": []},
       "test_sdk_wrong_route_is_rejected_before_forwarding": {"": []},
-      "test_sealed_openai_precision_through_replay_and_retry": {"[0-False-0-1e-09-invalid]": [], "[1e-08-False-5e-07-0-invalid]": [], "[None-False-0-1.1e-05-invalid]": [], "[None-False-1.1e-06-0-invalid]": [], "[None-False-5e-07-8e-06-complete]": [], "[None-True-5e-07-0-invalid]": []},
+      "test_sealed_openai_precision_through_replay_and_retry": {"[0-False-0-1e-09-invalid]": [], "[1e-08-False-5e-07-0-invalid]": [], "[None-False-0-1.1e-05-invalid]": [], "[None-False-1.1e-06-0-invalid]": [], "[None-False-5e-07-8e-06-complete]": [], "[None-True-5e-07-0-invalid]": [], "[model_copy_zero-False-5e-07-0-invalid]": []},
       "test_submission_identity_and_handoff_capacity_do_not_lose_responses": {"": []},
       "test_wire_faults_preserve_content_free_findings_and_named_siblings": {"[choice_count]": [], "[choice_entry]": [], "[choice_mapping]": [], "[choice_not_list]": [], "[model]": [], "[nameless]": [], "[nonobject]": [], "[score_count]": [], "[score_mean]": [], "[score_not_list]": [], "[unrecognized]": []}
     },
@@ -2293,7 +2299,7 @@
     },
     "tests/test_vertex_boundaries.py": {
       "test_context_is_descriptive_and_never_cloud_or_old_configuration": {"": []},
-      "test_credential_echo_screening_precedes_component_capture": {"[\\xff-False]": [], "[not JSON-False]": [], "[{\"a\":[true,1,{\"x\":\"safe\"}]}-False]": [], "[{\"text\":\"\\\\u0053\\\\u0045\\\\u0043\\\\u0052\\\\u0045\\\\u0054\"}-True]": [], "[{\"text\":\"\\u0053\\u0045\\u0043\\u0052\\u0045\\u0054\"}-True]": []},
+      "test_credential_echo_screening_precedes_component_capture": {"[\\xff-False]": [], "[\\xff{\"text\":\"\\\\u0053ECRET\"}-True]": [], "[\\xff{\"text\":\"\\u0053ECRET\"}-True]": [], "[not JSON-False]": [], "[{\"a\":[true,1,{\"x\":\"safe\"}]}-False]": [], "[{\"text\":\"\\\\u0053\\\\u0045\\\\u0043\\\\u0052\\\\u0045\\\\u0054\"}-True]": [], "[{\"text\":\"\\u0053\\u0045\\u0043\\u0052\\u0045\\u0054\"}-True]": []},
       "test_inline_preparation_cannot_resolve_foreign_or_pair_identifiers": {"": []},
       "test_invalid_key_diagnostic_requires_closed_structured_code": {"[None]": [], "[[]]": [], "[not JSON]": [], "[{\"error\":{\"code\":400,\"status\":\"INVALID_ARGUMENT\",\"details\":[null]}}]": [], "[{\"error\":{\"code\":400,\"status\":\"INVALID_ARGUMENT\",\"details\":[{\"reason\":\"API_KEY_INVALID\"}]}}]": [], "[{\"error\":{\"code\":400,\"status\":\"INVALID_ARGUMENT\",\"details\":null}}]": []},
       "test_lazy_concrete_types_keep_dispatch_identity": {"": []},
@@ -2352,6 +2358,7 @@
     "tests/test_vertex_production_acceptance.py": {
       "test_actual_sdk_bytes_native_failure_and_frozen_recovery": {"[adc-False]": [], "[adc-True]": [], "[api_key-False]": [], "[api_key-True]": []},
       "test_adapter_rechecks_native_authority_before_sdk_construction": {"[adc]": [], "[api_key]": []},
+      "test_current_native_runtime_requires_its_own_profile_at_forwarding": {"[adc]": [], "[api_key]": []},
       "test_exact_admission_and_complete_frozen_bytes": {"[adc-False-auto-False]": [], "[adc-False-auto-True]": [], "[adc-False-native-False]": [], "[adc-False-native-True]": [], "[adc-False-text-False]": [], "[adc-False-text-True]": [], "[adc-True-auto-False]": [], "[adc-True-auto-True]": [], "[adc-True-native-False]": [], "[adc-True-native-True]": [], "[adc-True-text-False]": [], "[adc-True-text-True]": [], "[api_key-False-auto-False]": [], "[api_key-False-auto-True]": [], "[api_key-False-native-False]": [], "[api_key-False-native-True]": [], "[api_key-False-text-False]": [], "[api_key-False-text-True]": [], "[api_key-True-auto-False]": [], "[api_key-True-auto-True]": [], "[api_key-True-native-False]": [], "[api_key-True-native-True]": [], "[api_key-True-text-False]": [], "[api_key-True-text-True]": []},
       "test_exact_profile_and_provenance": {"": []},
       "test_forged_frozen_selection_cannot_reinterpret_reviewed_context": {"[adc-auto_text]": [], "[adc-probe_kind]": [], "[adc-support]": [], "[api_key-auto_text]": [], "[api_key-probe_kind]": [], "[api_key-support]": []},
@@ -2449,7 +2456,7 @@
       "test_confirmed_permission_denial_discards_unread_body": {"[False-adc]": [], "[False-api_key]": [], "[True-adc]": [], "[True-api_key]": []},
       "test_exact_vertex_sdk_bytes_and_authorization": {"[None-explanations_first-europe-west4-adc]": [], "[None-explanations_first-europe-west4-api_key]": [], "[None-explanations_first-global-adc]": [], "[None-explanations_first-global-api_key]": [], "[None-explanations_first-us-central1-adc]": [], "[None-explanations_first-us-central1-api_key]": [], "[None-grouped-europe-west4-adc]": [], "[None-grouped-europe-west4-api_key]": [], "[None-grouped-global-adc]": [], "[None-grouped-global-api_key]": [], "[None-grouped-us-central1-adc]": [], "[None-grouped-us-central1-api_key]": [], "[None-pairwise-europe-west4-adc]": [], "[None-pairwise-europe-west4-api_key]": [], "[None-pairwise-global-adc]": [], "[None-pairwise-global-api_key]": [], "[None-pairwise-us-central1-adc]": [], "[None-pairwise-us-central1-api_key]": [], "[None-scores_first-europe-west4-adc]": [], "[None-scores_first-europe-west4-api_key]": [], "[None-scores_first-global-adc]": [], "[None-scores_first-global-api_key]": [], "[None-scores_first-us-central1-adc]": [], "[None-scores_first-us-central1-api_key]": [], "[None-single-europe-west4-adc]": [], "[None-single-europe-west4-api_key]": [], "[None-single-global-adc]": [], "[None-single-global-api_key]": [], "[None-single-us-central1-adc]": [], "[None-single-us-central1-api_key]": [], "[None-ties-europe-west4-adc]": [], "[None-ties-europe-west4-api_key]": [], "[None-ties-global-adc]": [], "[None-ties-global-api_key]": [], "[None-ties-us-central1-adc]": [], "[None-ties-us-central1-api_key]": [], "[generation1-explanations_first-europe-west4-adc]": [], "[generation1-explanations_first-europe-west4-api_key]": [], "[generation1-explanations_first-global-adc]": [], "[generation1-explanations_first-global-api_key]": [], "[generation1-explanations_first-us-central1-adc]": [], "[generation1-explanations_first-us-central1-api_key]": [], "[generation1-grouped-europe-west4-adc]": [], "[generation1-grouped-europe-west4-api_key]": [], "[generation1-grouped-global-adc]": [], "[generation1-grouped-global-api_key]": [], "[generation1-grouped-us-central1-adc]": [], "[generation1-grouped-us-central1-api_key]": [], "[generation1-pairwise-europe-west4-adc]": [], "[generation1-pairwise-europe-west4-api_key]": [], "[generation1-pairwise-global-adc]": [], "[generation1-pairwise-global-api_key]": [], "[generation1-pairwise-us-central1-adc]": [], "[generation1-pairwise-us-central1-api_key]": [], "[generation1-scores_first-europe-west4-adc]": [], "[generation1-scores_first-europe-west4-api_key]": [], "[generation1-scores_first-global-adc]": [], "[generation1-scores_first-global-api_key]": [], "[generation1-scores_first-us-central1-adc]": [], "[generation1-scores_first-us-central1-api_key]": [], "[generation1-single-europe-west4-adc]": [], "[generation1-single-europe-west4-api_key]": [], "[generation1-single-global-adc]": [], "[generation1-single-global-api_key]": [], "[generation1-single-us-central1-adc]": [], "[generation1-single-us-central1-api_key]": [], "[generation1-ties-europe-west4-adc]": [], "[generation1-ties-europe-west4-api_key]": [], "[generation1-ties-global-adc]": [], "[generation1-ties-global-api_key]": [], "[generation1-ties-us-central1-adc]": [], "[generation1-ties-us-central1-api_key]": []},
       "test_native_candidate_full_http_bytes_without_production_authority": {"[explanations_first-response_json_schema]": [], "[explanations_first-response_schema]": [], "[grouped-response_json_schema]": [], "[grouped-response_schema]": [], "[pairwise-response_json_schema]": [], "[pairwise-response_schema]": [], "[scores_first-response_json_schema]": [], "[scores_first-response_schema]": [], "[single-response_json_schema]": [], "[single-response_schema]": [], "[ties-response_json_schema]": [], "[ties-response_schema]": [], "[together-response_json_schema]": [], "[together-response_schema]": []},
-      "test_no_credential_echo_enters_evidence": {"[False-adc-SYNTHETIC_ADC_ACCESS_TOKEN]": [], "[False-api_key-SYNTHETIC_SELECTED_VERTEX_KEY]": [], "[True-adc-SYNTHETIC_ADC_ACCESS_TOKEN]": [], "[True-api_key-SYNTHETIC_SELECTED_VERTEX_KEY]": []},
+      "test_no_credential_echo_enters_evidence": {"[False-adc-SYNTHETIC_ADC_ACCESS_TOKEN]": [], "[False-api_key-SYNTHETIC_SELECTED_VERTEX_KEY]": [], "[True-adc-SYNTHETIC_ADC_ACCESS_TOKEN]": [], "[True-api_key-SYNTHETIC_SELECTED_VERTEX_KEY]": [], "[malformed-adc-SYNTHETIC_ADC_ACCESS_TOKEN]": [], "[malformed-api_key-SYNTHETIC_SELECTED_VERTEX_KEY]": [], "[malformed-nested-adc-SYNTHETIC_ADC_ACCESS_TOKEN]": [], "[malformed-nested-api_key-SYNTHETIC_SELECTED_VERTEX_KEY]": []},
       "test_other_statuses_keep_private_bodies_withheld": {"[307-adc]": [], "[307-api_key]": [], "[400-adc]": [], "[400-api_key]": [], "[401-adc]": [], "[401-api_key]": [], "[404-adc]": [], "[404-api_key]": [], "[418-adc]": [], "[418-api_key]": [], "[422-adc]": [], "[422-api_key]": [], "[429-adc]": [], "[429-api_key]": [], "[500-adc]": [], "[500-api_key]": [], "[503-adc]": [], "[503-api_key]": []},
       "test_permission_classification_requires_an_http_response": {"[connection-adc]": [], "[connection-api_key]": [], "[missing_response-adc]": [], "[missing_response-api_key]": [], "[status_only-adc]": [], "[status_only-api_key]": []},
       "test_pinned_sdk_permission_denial_has_integer_http_code": {"": []},

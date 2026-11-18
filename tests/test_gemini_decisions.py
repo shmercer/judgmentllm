@@ -13,7 +13,7 @@ from gemini_offline import isolate
 from test_decisions_contracts import pair_spec
 from test_decisions_lifecycle import native_spec
 
-from judgmentllm.config import RunSpecV4
+from judgmentllm.config import RunSpecV4, validate_run_spec
 from judgmentllm.decisions.transport import (
     PreparedDecisionsRequestV4,
     fits,
@@ -231,6 +231,37 @@ def test_body_cap_and_multi_question_plan(tmp_path: Path) -> None:
         )
         == 262_144
     )
+
+
+def test_explicit_zero_survives_typed_and_mapping_ingress(tmp_path: Path) -> None:
+    spec = gemini_spec(native_spec(tmp_path, traits=1))
+    normalization = {"probability_sum_tolerance": 0.0}
+    assert decisions_context(validate_run_spec(spec)).probability_sum_tolerance == 1e-6
+    for supplied in (
+        spec.model_copy(update={"normalization": normalization}),
+        spec.model_dump(exclude={"normalization"}) | {"normalization": normalization},
+    ):
+        checked = validate_run_spec(supplied)
+        assert isinstance(checked, RunSpecV4)
+        assert wire_for(checked).transport_commitment.probability_sum_tolerance == 0
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        b'{"answers":{},"answers":{}}',
+        b'{"answers":{"known":{"score":NaN}}}',
+        b'\xff{"answers":{}}',
+    ],
+)
+def test_envelope_stays_strict_before_numeric_member_validation(
+    tmp_path: Path, raw: bytes
+) -> None:
+    wire = wire_for(gemini_spec(native_spec(tmp_path, traits=2)))
+    replay, safe, usage, _ = analyze(raw, wire)
+    assert not safe and usage is None
+    assert replay.metadata.findings == ("malformed_json",)
+    assert replay.answers == (None, None)
 
 
 @pytest.mark.parametrize(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 # pyright: reportPrivateUsage=false
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
@@ -101,11 +102,10 @@ def test_old_manifest_cannot_be_resumed_under_promoted_authority(
     )
     spec.model = MODEL
     store = tmp_path / "store"
+    context = replace(production_context(spec), google_wire_runtime=None)
     profiles = registry._QUALIFIED_PROFILES
     monkeypatch.setattr(registry, "_QUALIFIED_PROFILES", ())
-    with prepare_run(
-        spec, run_id="001", store=store, transport_context=production_context(spec)
-    ) as run:
+    with prepare_run(spec, run_id="001", store=store, transport_context=context) as run:
         manifest = canonical_bytes(run.manifest)
         dep = next(run.iter_request_dependencies())
         ident = physical_identity(
@@ -118,13 +118,13 @@ def test_old_manifest_cannot_be_resumed_under_promoted_authority(
     monkeypatch.setattr(registry, "_QUALIFIED_PROFILES", profiles)
     with pytest.raises(PreparationError):
         with open_prepared_run(
-            "001", spec=spec, store=store, transport_context=production_context(spec)
+            "001", spec=spec, store=store, transport_context=context
         ):
             pytest.fail("Changed authority must never resume a frozen run")
     assert files(store) == before
     monkeypatch.setattr(registry, "_QUALIFIED_PROFILES", ())
     with open_prepared_run(
-        "001", spec=spec, store=store, transport_context=production_context(spec)
+        "001", spec=spec, store=store, transport_context=context
     ) as run:
         assert canonical_bytes(run.manifest) == manifest
         assert run.prepare_transport_attempt(dep, ident) == wire

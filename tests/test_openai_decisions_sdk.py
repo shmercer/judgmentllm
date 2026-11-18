@@ -144,13 +144,14 @@ async def test_sdk_lifecycle_and_versioned_provenance(
         (None, False, 0, 1.1e-5, "invalid"),
         (1e-8, False, 5e-7, 0, "invalid"),
         (0, False, 0, 1e-9, "invalid"),
+        ("model_copy_zero", False, 5e-7, 0, "invalid"),
         (None, True, 5e-7, 0, "invalid"),
     ],
 )
 @pytest.mark.asyncio
 async def test_sealed_openai_precision_through_replay_and_retry(
     tmp_path: Path,
-    explicit: float | None,
+    explicit: float | str | None,
     legacy: bool,
     mass: float,
     delta: float,
@@ -161,12 +162,16 @@ async def test_sealed_openai_precision_through_replay_and_retry(
     from judgmentllm.preparation.decisions import prepare_decisions_run
 
     data = spec_for(tmp_path, traits=1).model_dump(exclude={"normalization"})
-    if explicit is not None or legacy:
+    if (explicit is not None and explicit != "model_copy_zero") or legacy:
         # The historical writer materialized 1e-8 without a policy tag.
         data["normalization"] = {
             "probability_sum_tolerance": 1e-8 if legacy else explicit
         }
     spec = RunSpecV4.model_validate(data)
+    if explicit == "model_copy_zero":
+        spec = spec.model_copy(
+            update={"normalization": {"probability_sum_tolerance": 0.0}}
+        )
     context = OpenAIDecisionsContextV1() if legacy else None
     store = tmp_path / "store"
     with prepare_decisions_run(
