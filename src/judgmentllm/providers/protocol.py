@@ -9,7 +9,10 @@ from typing import Any, Literal, Protocol, Self
 from pydantic import Field, JsonValue, field_validator, model_validator
 
 from judgmentllm.config import GenerationSpec, RunSpecification
-from judgmentllm.decisions.replay import OpenAIDecisionsReplayV1
+from judgmentllm.decisions.replay import (
+    OpenAIDecisionsReplayV1,
+    TypeSafeDecisionsReplayV1,
+)
 from judgmentllm.evidence._base import EvidenceModel
 from judgmentllm.evidence.usage import InvocationFailureCode, ReportedUsageInput
 from judgmentllm.models import ID
@@ -19,6 +22,8 @@ from judgmentllm.persistence.models import SHA256, ExecutionModel
 from judgmentllm.persistence.receipts import (
     CompleteResponseEvidenceV1,
     CompleteResponseEvidenceV2,
+    CompleteResponseEvidenceV3,
+    TypeSafeRejectionEvidenceV1,
 )
 from judgmentllm.planning import CapabilityProfile
 from judgmentllm.preparation.session import RequestDependency
@@ -79,6 +84,17 @@ class TransientNotSubmitted(TransportNotSubmitted):
         self.retry_after = retry_after
 
 
+class TypeSafeRequestRejected(TransportNotSubmitted):
+    def __init__(
+        self,
+        rejection: TypeSafeRejectionEvidenceV1,
+        *,
+        usage: ReportedUsageInput | None,
+    ) -> None:
+        super().__init__("TypeSafe Jev rejected the request", usage=usage)
+        self.rejection = rejection
+
+
 class SubmissionUncertain(ProviderError):
     """Acceptance is unresolved; optional facts establish an invoked SDK call only."""
 
@@ -106,6 +122,14 @@ class ProviderInvocationCancelled(asyncio.CancelledError):
         if type(invoked) is not bool:
             raise ValueError("invalid invocation certainty")
         self.invoked = invoked
+
+
+class TypeSafeRejectionCancelled(ProviderInvocationCancelled):
+    """A complete rejection reached the guard before cancellation."""
+
+    def __init__(self, rejection: TypeSafeRequestRejected) -> None:
+        super().__init__(invoked=True)
+        self.rejection = rejection
 
 
 class RetrievalUnavailable(ProviderError):
@@ -171,6 +195,10 @@ class ProviderAcknowledgmentV3(ProviderAcknowledgmentV2):
     response_evidence: CompleteResponseEvidenceV2  # pyright: ignore[reportIncompatibleVariableOverride]
 
 
+class ProviderAcknowledgmentV4(ProviderAcknowledgmentV3):
+    response_evidence: CompleteResponseEvidenceV3  # pyright: ignore[reportIncompatibleVariableOverride]
+
+
 class ReconciliationEvidence(ExecutionModel):
     """An absent acknowledgment never supplies one of these positive facts."""
 
@@ -186,8 +214,8 @@ class DecisionsReconciliationEvidenceV1(ReconciliationEvidence):
 class ProviderResponse(EvidenceModel):
     """Exact received bytes; only full capture may retain them."""
 
-    decisions_replay: OpenAIDecisionsReplayV1 | None = Field(
-        default=None, exclude=True, repr=False
+    decisions_replay: OpenAIDecisionsReplayV1 | TypeSafeDecisionsReplayV1 | None = (
+        Field(default=None, exclude=True, repr=False)
     )
     observation_key: ID
     kind: Literal["response", "refusal", "provider_error", "confirmed_cancellation"]

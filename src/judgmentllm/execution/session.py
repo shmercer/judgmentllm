@@ -18,6 +18,7 @@ from judgmentllm.config import RunSpecification
 from judgmentllm.decisions.transport import (
     PreparedDecisionsRequestV1,
     PreparedDecisionsRequestV2,
+    PreparedDecisionsRequestV3,
 )
 from judgmentllm.evidence import ReportedUsageInput
 from judgmentllm.evidence.usage import InvocationFailureCode
@@ -30,6 +31,10 @@ from judgmentllm.execution.retry import (
     prepare_subset_retry,
 )
 from judgmentllm.output_commitments import validate_output_commitment
+from judgmentllm.persistence.evidence import (
+    DecisionsEvidenceReceiptV3,
+    DecisionsEvidenceReceiptV4,
+)
 from judgmentllm.persistence.hashing import (
     bytes_digest,
     canonical_bytes,
@@ -51,7 +56,9 @@ from judgmentllm.persistence.receipts import (
     AcknowledgmentReceipt,
     AcknowledgmentReceiptV2,
     AcknowledgmentReceiptV3,
+    AcknowledgmentReceiptV4,
     ResponseReceipt,
+    TypeSafeRejectionEvidenceV1,
     publish_acknowledgment,
     read_acknowledgment,
     read_receipt,
@@ -71,9 +78,19 @@ from judgmentllm.providers import (
 from judgmentllm.providers.protocol import (
     ProviderAcknowledgmentV2,
     ProviderAcknowledgmentV3,
+    ProviderAcknowledgmentV4,
 )
 
 Fault = Callable[[str, str], None]
+
+_DECISIONS_ACKNOWLEDGMENTS: dict[
+    type[PreparedRequest],
+    tuple[type[ProviderAcknowledgmentV2], type[AcknowledgmentReceiptV2]],
+] = {
+    PreparedDecisionsRequestV1: (ProviderAcknowledgmentV2, AcknowledgmentReceiptV2),
+    PreparedDecisionsRequestV2: (ProviderAcknowledgmentV3, AcknowledgmentReceiptV3),
+    PreparedDecisionsRequestV3: (ProviderAcknowledgmentV4, AcknowledgmentReceiptV4),
+}
 
 
 @dataclass(frozen=True)
@@ -218,10 +235,10 @@ class ExecutionSession:
     ) -> PreparedRequest:
         """Reconstruct pinned V3 bytes; historical rendering keeps its old path."""
         assert self.prepared is not None
-        if self.prepared.manifest.schema_version in (3, 4, 5, 6, 7, 8, 9):
+        if self.prepared.manifest.schema_version in (3, 4, 5, 6, 7, 8, 9, 10):
             from judgmentllm.transport import physical_identity
 
-            if self.prepared.manifest.schema_version in (8, 9):
+            if self.prepared.manifest.schema_version in (8, 9, 10):
                 from judgmentllm.preparation.decisions import DecisionsPreparedRun
 
                 assert isinstance(self.prepared, DecisionsPreparedRun)
@@ -329,6 +346,14 @@ class ExecutionSession:
             raise IntegrityError(
                 "missing submission does not describe initial native intent"
             )
+        if isinstance(prepared, PreparedDecisionsRequestV3):
+            from judgmentllm.providers.typesafe_decisions import (
+                TypeSafeDecisionsAdapter,
+            )
+
+            if not isinstance(self.adapter, TypeSafeDecisionsAdapter):
+                raise IntegrityError("TypeSafe request lacks its execution adapter")
+            self.adapter.validate_credentials()
         # No submission can exist before sealing; all receipt/attempt checks above
         # precede this short owned transaction. This never repairs retry intent.
         with self.transaction():
@@ -351,7 +376,7 @@ class ExecutionSession:
         while True:
             existing = next(self.existing, None)
             if existing is not None:
-                if self.prepared.manifest.schema_version in (3, 4, 5, 6, 7, 8, 9):
+                if self.prepared.manifest.schema_version in (3, 4, 5, 6, 7, 8, 9, 10):
                     self.verify_native_attempt(existing)
                 results = self.repository.get_results_for_attempt(
                     self.run_id, existing.attempt_id
@@ -390,7 +415,7 @@ class ExecutionSession:
                 dependency = next(self.dependencies, None)
                 if dependency is None:
                     return None
-                if self.prepared.manifest.schema_version in (3, 4, 5, 6, 7, 8, 9):
+                if self.prepared.manifest.schema_version in (3, 4, 5, 6, 7, 8, 9, 10):
                     raise IntegrityError("sealed native request was scheduled twice")
                 ordinal = self.ordinal
                 self.ordinal += 1
@@ -507,6 +532,7 @@ class ExecutionSession:
                     7,
                     8,
                     9,
+                    10,
                 ):
                     self.initial_submission(existing, prepared)
                     submission = self.repository.get_submission_for_attempt(
@@ -536,7 +562,7 @@ class ExecutionSession:
     def repair_committed(self, attempt: AttemptRecord, status: str) -> None:
         """Committed records are authoritative, including a lost final report."""
         assert self.prepared is not None
-        if self.prepared.manifest.schema_version in (3, 4, 5, 6, 7, 8, 9):
+        if self.prepared.manifest.schema_version in (3, 4, 5, 6, 7, 8, 9, 10):
             self.verify_native_attempt(attempt)
         for digest in (attempt.prompt_sha256, attempt.payload_sha256):
             self.prepared.store.verify(
@@ -605,6 +631,10 @@ class ExecutionSession:
             raise ProviderError(
                 "served tier is unknown; further submission requires review"
             )
+        readiness = getattr(self.adapter, "validate_credentials", None)
+        typesafe = isinstance(work.prepared, PreparedDecisionsRequestV3)
+        if typesafe and readiness is not None:
+            readiness()
         with self.transaction():
             if attempt.state == "claimed":
                 self.repository.transition(
@@ -645,8 +675,7 @@ class ExecutionSession:
         current = self.prepare_attempt(work.dependency, work.attempt_id)
         if current != work.prepared:
             raise IntegrityError("payload changed before submission")
-        readiness = getattr(self.adapter, "validate_credentials", None)
-        if readiness is not None:
+        if readiness is not None and not typesafe:
             readiness()
         with self.transaction():
             self.repository.transition(
@@ -662,14 +691,12 @@ class ExecutionSession:
         self, work: ExecutionWork, acknowledgment: ProviderAcknowledgment
     ) -> None:
         assert self.prepared is not None
+        types = _DECISIONS_ACKNOWLEDGMENTS.get(type(work.prepared))
         if isinstance(work.prepared, PreparedDecisionsRequestV1):
-            expected_ack = (
-                ProviderAcknowledgmentV3
-                if isinstance(work.prepared, PreparedDecisionsRequestV2)
-                else ProviderAcknowledgmentV2
-            )
             if (
-                type(acknowledgment) is not expected_ack
+                types is None
+                or not isinstance(acknowledgment, ProviderAcknowledgmentV2)
+                or type(acknowledgment) is not types[0]
                 or acknowledgment.response_evidence.request_uid
                 != work.prepared.request_uid
             ):
@@ -690,14 +717,11 @@ class ExecutionSession:
             observation_key=acknowledgment.observation_key,
         )
         receipt = (
-            (
-                AcknowledgmentReceiptV3
-                if type(acknowledgment) is ProviderAcknowledgmentV3
-                else AcknowledgmentReceiptV2
-            ).model_validate(
+            types[1].model_validate(
                 {**values, "response_evidence": acknowledgment.response_evidence}
             )
-            if isinstance(acknowledgment, ProviderAcknowledgmentV2)
+            if types is not None
+            and isinstance(acknowledgment, ProviderAcknowledgmentV2)
             else AcknowledgmentReceipt.model_validate(values)
         )
         receipt.verify_submission(
@@ -795,6 +819,7 @@ class ExecutionSession:
         retry_after: float | None = None,
         usage: ReportedUsageInput | None = None,
         diagnostic_code: InvocationFailureCode | None = None,
+        rejection: TypeSafeRejectionEvidenceV1 | None = None,
     ) -> None:
         evidence = (
             self.evidence.failure(
@@ -803,6 +828,7 @@ class ExecutionSession:
                 transient=transient,
                 retry_after=retry_after,
                 diagnostic_code=diagnostic_code,
+                rejection=rejection,
             )
             if invoked
             else None
@@ -931,17 +957,23 @@ class ExecutionSession:
         receipt.verify_submission(
             self.repository.get_submission(self.run_id, work.submission_id)
         )
-        if isinstance(receipt, AcknowledgmentReceiptV2):
-            return (
-                ProviderAcknowledgmentV3
-                if type(receipt) is AcknowledgmentReceiptV3
-                else ProviderAcknowledgmentV2
-            ).model_validate(
+        types = _DECISIONS_ACKNOWLEDGMENTS.get(type(work.prepared))
+        if types is not None:
+            if (
+                not isinstance(receipt, AcknowledgmentReceiptV2)
+                or type(receipt) is not types[1]
+            ):
+                raise IntegrityError("Decisions acknowledgment protocol differs")
+            return types[0].model_validate(
                 dict(
                     remote_id=receipt.remote_id,
                     observation_key=receipt.observation_key,
                     response_evidence=receipt.response_evidence,
                 )
+            )
+        if isinstance(receipt, AcknowledgmentReceiptV2):
+            raise IntegrityError(
+                "historical attempt cannot acquire Decisions acceptance"
             )
         return ProviderAcknowledgment(
             remote_id=receipt.remote_id, observation_key=receipt.observation_key
@@ -956,6 +988,16 @@ class ExecutionSession:
                 return None
             self.not_submitted(work, invoked=True)
             return None
+        if (
+            isinstance(evidence, DecisionsEvidenceReceiptV4)
+            and evidence.capture == "minimal"
+            and evidence.validation is not None
+        ):
+            from judgmentllm.providers.typesafe_decisions_response import (
+                verify_reported_model,
+            )
+
+            verify_reported_model(evidence.validation)
         receipt = read_receipt(self.prepared.store, work.submission_id)
         if evidence is not None and evidence.response_retention == "omitted":
             return None
@@ -965,8 +1007,10 @@ class ExecutionSession:
         self.verify_observation_key(work, receipt.observation_key)
         if receipt.capture == "minimal":
             return None
-        from judgmentllm.decisions.replay import OpenAIDecisionsReplayV1
-        from judgmentllm.persistence.evidence import DecisionsEvidenceReceiptV3
+        from judgmentllm.decisions.replay import (
+            OpenAIDecisionsReplayV1,
+            TypeSafeDecisionsReplayV1,
+        )
 
         raw = self.prepared.store.read(receipt.raw)
         replay = None
@@ -974,7 +1018,12 @@ class ExecutionSession:
             isinstance(evidence, DecisionsEvidenceReceiptV3)
             and evidence.retained_kind == "filtered_replay"
         ):
-            replay = OpenAIDecisionsReplayV1.model_validate_json(raw)
+            replay_type = (
+                TypeSafeDecisionsReplayV1
+                if isinstance(work.prepared, PreparedDecisionsRequestV3)
+                else OpenAIDecisionsReplayV1
+            )
+            replay = replay_type.model_validate_json(raw)
             if canonical_bytes(replay) != raw or replay.metadata != evidence.validation:
                 raise IntegrityError("retained replay differs from verified evidence")
         return ProviderResponse(
@@ -1053,13 +1102,19 @@ class ExecutionSession:
                 if replay is not None
                 else (bytes_digest(response.raw), len(response.raw))
             )
-            if not isinstance(acknowledgment, AcknowledgmentReceiptV2) or (
-                acknowledgment.response_evidence.request_uid,
-                acknowledgment.response_evidence.response_sha256,
-                acknowledgment.response_evidence.response_byte_length,
-            ) != (
-                work.prepared.request_uid,
-                *expected_response,
+            acknowledgment_types = _DECISIONS_ACKNOWLEDGMENTS[type(work.prepared)]
+            if (
+                not isinstance(acknowledgment, AcknowledgmentReceiptV2)
+                or type(acknowledgment) is not acknowledgment_types[1]
+                or (
+                    acknowledgment.response_evidence.request_uid,
+                    acknowledgment.response_evidence.response_sha256,
+                    acknowledgment.response_evidence.response_byte_length,
+                )
+                != (
+                    work.prepared.request_uid,
+                    *expected_response,
+                )
             ):
                 raise IntegrityError(
                     "Decisions complete response differs from acceptance evidence"

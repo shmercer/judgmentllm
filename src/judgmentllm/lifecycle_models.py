@@ -8,6 +8,11 @@ from typing import Annotated, Literal
 
 from pydantic import ConfigDict, Field, model_validator
 
+from judgmentllm.decisions.records import (
+    TYPESAFE_CONTEXT_WARNING,
+    TYPESAFE_PROTOCOL,
+    TypeSafeDecisionsLimitsV3,
+)
 from judgmentllm.models import ID, StrictModel
 from judgmentllm.output_commitments import SchemaSelectionV2
 from judgmentllm.persistence.models import ExecutionModel, RunState
@@ -135,6 +140,15 @@ class DecisionsExecutionPlanV1(ExecutionModel):
     )
 
 
+class TypeSafeDecisionsExecutionPlanV2(DecisionsExecutionPlanV1):
+    plan_version: Literal[2] = 2  # pyright: ignore[reportIncompatibleVariableOverride]
+    cache_report: Literal["unknown"] = "unknown"  # pyright: ignore[reportIncompatibleVariableOverride]
+    pricing: Literal["unknown"] = "unknown"  # pyright: ignore[reportIncompatibleVariableOverride]
+    transport_protocol: Literal["typesafe-systemone-production-v1"] = TYPESAFE_PROTOCOL  # pyright: ignore[reportIncompatibleVariableOverride]
+    limits: TypeSafeDecisionsLimitsV3
+    warnings: tuple[str, ...] = (TYPESAFE_CONTEXT_WARNING,)
+
+
 class ExecutionPlan(ExecutionModel):
     """Exact prepared structural counts, with unknown estimates explicit."""
 
@@ -251,6 +265,12 @@ class RunStatus(ExecutionModel):
     )
 
 
+class DecisionsRejectionDiagnostic(PublicModel):
+    code: Literal["max_tokens_exceeded", "payload_too_large"]
+    message: str
+    rejected_attempts: int = Field(gt=0)
+
+
 class DecisionsStatusV1(PublicModel):
     detail_version: Literal[1] = 1
     logical_tasks: Count
@@ -270,6 +290,9 @@ class DecisionsStatusV1(PublicModel):
         "unavailable", "unknown", "partial", "reported", "not_applicable"
     ]
     provenance_manifest: str | None = None
+    diagnostics: tuple[DecisionsRejectionDiagnostic, ...] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 class RunSummary(RunStatus):

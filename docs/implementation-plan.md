@@ -314,6 +314,12 @@ conduct paid calls as part of this design task.
 
 ## Milestone 4 - Native decision/score adapters
 
+**PR D candidate:** [TypeSafe Jev](typesafe-decisions.md) implements the pinned
+System One SDK with the approved non-strict context policy, durable terminal
+context and body rejection diagnostics, and synthetic Python/CLI/R checks.
+Independent code review, source-bound offline qualification and the bounded
+Jev smoke precede Gemini Decisions.
+
 **PR C candidate:** [official OpenAI Decisions](openai-decisions.md) is implemented
 with additive production acknowledgment/provenance and filtered replay. Focused
 offline SDK/process/R checks precede independent code review; source-bound local

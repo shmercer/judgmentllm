@@ -302,6 +302,42 @@ def validate_run(
                     severity="error" if checked.strict_capabilities else "warning",
                 )
             )
+        if (checked.provider, checked.endpoint) == ("typesafe", "systemone"):
+            from judgmentllm.decisions.records import (
+                TYPESAFE_CONTEXT_WARNING,
+                TYPESAFE_MODEL,
+            )
+
+            issues.append(
+                ValidationIssue(
+                    code="context_fit_unverified",
+                    field="strict_capabilities",
+                    message=TYPESAFE_CONTEXT_WARNING,
+                    severity="error" if checked.strict_capabilities else "warning",
+                )
+            )
+            if checked.model != TYPESAFE_MODEL or checked.execution.tier is not None:
+                issues.append(
+                    ValidationIssue(
+                        code="unsupported",
+                        field="model"
+                        if checked.model != TYPESAFE_MODEL
+                        else "execution.tier",
+                        message="TypeSafe Jev requires exact model jev-1.14.0 and the default service.",
+                        severity="error",
+                    )
+                )
+            if checked.rubric is not None and any(
+                len(trait.levels) > 10 for trait in checked.rubric.traits
+            ):
+                issues.append(
+                    ValidationIssue(
+                        code="unsupported",
+                        field="rubric",
+                        message="TypeSafe Jev supports at most ten score levels per trait.",
+                        severity="error",
+                    )
+                )
         if (
             capabilities is not None
             and checked.rubric is not None

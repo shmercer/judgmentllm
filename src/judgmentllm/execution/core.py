@@ -35,7 +35,11 @@ from judgmentllm.providers import (
     TransientNotSubmitted,
     TransportNotSubmitted,
 )
-from judgmentllm.providers.protocol import ProviderInvocationCancelled
+from judgmentllm.providers.protocol import (
+    ProviderInvocationCancelled,
+    TypeSafeRejectionCancelled,
+    TypeSafeRequestRejected,
+)
 
 
 @dataclass
@@ -44,6 +48,7 @@ class _CancellationWork:
     acknowledgment: ProviderAcknowledgment | None = None
     response: ProviderResponse | None = None
     invoked: bool = False
+    rejection_write: asyncio.Future[None] | None = None
 
 
 T = TypeVar("T")
@@ -83,8 +88,7 @@ async def execute_run(
         return await loop.run_in_executor(io, partial(function, *args, **kwargs))
 
     holder: list[_Session] = []
-    # Only the OpenAI adapter exposes this synchronous, in-memory-only handoff.
-    # Values below alias worker/queue objects and disappear after processing;
+    # Values below alias native Decisions workers/queue objects until processing;
     # the map is bounded by those existing buffers, never the corpus size.
     cancellation_handoff = getattr(adapter, "_received_response_for_cancellation", None)
     cancellation_work: dict[str, _CancellationWork] = {}
@@ -102,10 +106,7 @@ async def execute_run(
         if holder:
             holder[0].cancel()
 
-    async def drain(function: Callable[[], None]) -> None:
-        # A cancelled caller must not cancel a queued ownership cleanup. Queue
-        # it behind initialization and all durable writes on the same I/O thread.
-        pending_cleanup = loop.run_in_executor(io, function)
+    async def drain_pending(pending_cleanup: asyncio.Future[None]) -> None:
         while not pending_cleanup.done():
             try:
                 await asyncio.shield(pending_cleanup)
@@ -113,8 +114,12 @@ async def execute_run(
                 continue
         pending_cleanup.result()
 
+    async def drain(function: Callable[[], None]) -> None:
+        # Queue cleanup behind initialization and durable writes on the owned thread.
+        await drain_pending(loop.run_in_executor(io, function))
+
     async def retain_known_work(*, preserve_original_error: bool = False) -> None:
-        """Drain bounded OpenAI handoffs after TaskGroup has stopped workers.
+        """Drain bounded native Decisions handoffs after TaskGroup stops workers.
 
         A worker fault can cancel another already invoked request just as caller
         cancellation can. Cleanup never submits work or invents an invocation.
@@ -124,6 +129,14 @@ async def execute_run(
         if not holder or cancellation_handoff is None:
             return
         session = holder[0]
+        for submission_id, retained in tuple(cancellation_work.items()):
+            if retained.rejection_write is not None:
+                try:
+                    await drain_pending(retained.rejection_write)
+                except Exception:
+                    # Keep the initiating cancellation or worker error.
+                    pass
+                cancellation_work.pop(submission_id)
         for retained in tuple(cancellation_work.values()):
             try:
                 work = retained.work
@@ -188,6 +201,22 @@ async def execute_run(
             else:
                 await responses.put((work, response))
                 result_high = max(result_high, responses.qsize())
+
+        def queue_rejection(
+            work: _Work, error: TypeSafeRequestRejected
+        ) -> asyncio.Future[None]:
+            pending_write = loop.run_in_executor(
+                io,
+                partial(
+                    session.not_submitted,
+                    work,
+                    invoked=True,
+                    usage=error.usage,
+                    rejection=error.rejection,
+                ),
+            )
+            cancellation_work[work.submission_id].rejection_write = pending_write
+            return pending_write
 
         async def worker() -> None:
             while (work := await pending.get()) is not None:
@@ -285,6 +314,8 @@ async def execute_run(
                 except ProviderInvocationCancelled as exc:
                     if retained is not None:
                         retained.invoked = exc.invoked
+                    if isinstance(exc, TypeSafeRejectionCancelled):
+                        queue_rejection(work, exc.rejection)
                     # A provider task may itself be cancelled. TaskGroup treats
                     # child cancellation as normal, so propagate it to the owning
                     # execution task rather than leaving its consumer waiting.
@@ -302,6 +333,9 @@ async def execute_run(
                         diagnostic_code=exc.diagnostic_code,
                     )
                     cancellation_work.pop(work.submission_id, None)
+                except TypeSafeRequestRejected as exc:
+                    await asyncio.shield(queue_rejection(work, exc))
+                    cancellation_work.pop(work.submission_id)
                 except TransportNotSubmitted as exc:
                     await call(
                         session.not_submitted,

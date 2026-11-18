@@ -10,12 +10,15 @@ from pydantic import Field, field_validator, model_validator
 from judgmentllm.config import RunSpecV4, validate_run_spec
 from judgmentllm.decisions._base import DecisionsModel
 from judgmentllm.decisions.records import (
+    TYPESAFE_MODEL,
     DecisionQuestionV1,
     DecisionsLimitsV1,
     DecisionsLimitsV2,
     OpenAIDecisionsContextV1,
     PreparedPairPresentationV1,
     QuestionCommitmentV1,
+    TypeSafeDecisionsContextV1,
+    TypeSafeDecisionsLimitsV3,
     question_key,
 )
 from judgmentllm.io import _revalidate_record  # pyright: ignore[reportPrivateUsage]
@@ -52,6 +55,11 @@ class DecisionsContextV1(DecisionsModel):
     endpoint: Literal["synthetic"] = "synthetic"
     service_identity: ID
     limits: DecisionsLimitsV1 = Field(default_factory=DecisionsLimitsV1)
+
+
+DecisionsContext = (
+    DecisionsContextV1 | OpenAIDecisionsContextV1 | TypeSafeDecisionsContextV1
+)
 
 
 class DecisionsDependencyV1(RequestDependency):
@@ -250,7 +258,7 @@ def serialize_request(
     shared: str,
     questions: Sequence[DecisionQuestionV1],
     spec: RunSpecV4,
-    context: DecisionsContextV1 | OpenAIDecisionsContextV1,
+    context: DecisionsContext,
 ) -> bytes:
     """B's own synthetic protocol, never vendor wire JSON or a schema projection."""
     from judgmentllm.providers.decisions_wire import serialize_synthetic_decisions
@@ -259,13 +267,19 @@ def serialize_request(
         from judgmentllm.providers.openai_decisions import serialize_openai_decisions
 
         return serialize_openai_decisions(shared, questions, spec)
+    if isinstance(context, TypeSafeDecisionsContextV1):
+        from judgmentllm.providers.typesafe_decisions import (
+            serialize_typesafe_decisions,
+        )
+
+        return serialize_typesafe_decisions(shared, questions, spec)
     return serialize_synthetic_decisions(shared, questions, spec, context)
 
 
 def fits(
     payload: bytes,
     count: int,
-    context: DecisionsContextV1 | OpenAIDecisionsContextV1,
+    context: DecisionsContext,
     *,
     strict: bool,
 ) -> bool:
@@ -293,7 +307,7 @@ def plan_source(
     spec: RunSpecV4,
     record: ResponseItem | PairTask | PreparedPairPresentationV1,
     lookup: Callable[[str], ResponseItem],
-    context: DecisionsContextV1 | OpenAIDecisionsContextV1,
+    context: DecisionsContext,
     template: str | None,
     *,
     question_renderer_version: Literal[1, 2] = 2,
@@ -455,7 +469,7 @@ def prepare_request(
     spec: RunSpecV4,
     dependency: DecisionsDependencyV1,
     identity: PhysicalRequestIdentityV1,
-    context: DecisionsContextV1 | OpenAIDecisionsContextV1,
+    context: DecisionsContext,
     *,
     parent: DecisionsCommitmentV1 | None = None,
 ) -> PreparedDecisionsRequestV1:
@@ -494,7 +508,9 @@ def prepare_request(
         for i, q in enumerate(dependency.questions)
     )
     receipt_type = (
-        DecisionsCommitmentV2
+        DecisionsCommitmentV3
+        if isinstance(context, TypeSafeDecisionsContextV1)
+        else DecisionsCommitmentV2
         if isinstance(context, OpenAIDecisionsContextV1)
         else DecisionsCommitmentV1
     )
@@ -504,7 +520,7 @@ def prepare_request(
                 {
                     "probability_sum_tolerance": spec.normalization.probability_sum_tolerance
                 }
-                if isinstance(context, OpenAIDecisionsContextV1)
+                if not isinstance(context, DecisionsContextV1)
                 else {}
             ),
             identity=identity,
@@ -544,7 +560,9 @@ def prepare_request(
     if identity.request_uid != dependency.request.request_uid:
         raise IntegrityError("Decisions identity differs from parent request")
     prepared_type = (
-        PreparedDecisionsRequestV2
+        PreparedDecisionsRequestV3
+        if isinstance(context, TypeSafeDecisionsContextV1)
+        else PreparedDecisionsRequestV2
         if isinstance(context, OpenAIDecisionsContextV1)
         else PreparedDecisionsRequestV1
     )
@@ -586,4 +604,29 @@ class PreparedDecisionsRequestV2(PreparedDecisionsRequestV1):
     def strict_preparation_version(cls, value: object) -> object:
         if type(value) is not int or value != 9:
             raise ValueError("preparation_version must be integer 9")
+        return value
+
+
+class DecisionsCommitmentV3(DecisionsCommitmentV2):
+    decisions_commitment_version: Literal[3] = 3  # pyright: ignore[reportIncompatibleVariableOverride]
+    provider: Literal["typesafe"] = "typesafe"  # pyright: ignore[reportIncompatibleVariableOverride]
+    endpoint: Literal["systemone"] = "systemone"  # pyright: ignore[reportIncompatibleVariableOverride]
+    requested_model: Literal["jev-1.14.0"] = TYPESAFE_MODEL  # pyright: ignore[reportIncompatibleVariableOverride]
+    limits: TypeSafeDecisionsLimitsV3  # pyright: ignore[reportIncompatibleVariableOverride]
+    context_count: None = None  # pyright: ignore[reportIncompatibleVariableOverride]
+
+    @property
+    def commitment_sha256(self) -> str:
+        return semantic_digest("decisions-commitment-v3", self)
+
+
+class PreparedDecisionsRequestV3(PreparedDecisionsRequestV2):
+    preparation_version: Literal[10] = 10  # pyright: ignore[reportIncompatibleVariableOverride]
+    transport_commitment: DecisionsCommitmentV3  # pyright: ignore[reportIncompatibleVariableOverride]
+
+    @field_validator("preparation_version", mode="before")
+    @classmethod
+    def strict_preparation_version(cls, value: object) -> object:
+        if type(value) is not int or value != 10:
+            raise ValueError("preparation_version must be integer 10")
         return value

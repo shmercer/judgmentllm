@@ -75,3 +75,9 @@ class OpenAIDecisionsReplayV1(DecisionsModel):
         ):
             raise ValueError("replay membership differs from validation findings")
         return self
+
+
+class TypeSafeDecisionsReplayV1(OpenAIDecisionsReplayV1):
+    protocol: Literal["typesafe-systemone-production-v1"] = (
+        "typesafe-systemone-production-v1"
+    )

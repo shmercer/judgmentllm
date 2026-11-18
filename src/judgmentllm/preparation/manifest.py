@@ -21,9 +21,12 @@ from judgmentllm.config import (
     RunSpecification,
 )
 from judgmentllm.decisions.records import (
+    TYPESAFE_PROTOCOL,
     DecisionsLimitsV1,
     DecisionsLimitsV2,
     OpenAIDecisionsContextV1,
+    TypeSafeDecisionsContextV1,
+    TypeSafeDecisionsLimitsV3,
 )
 from judgmentllm.models import ID
 from judgmentllm.output_commitments import SchemaSelectionV2
@@ -807,13 +810,38 @@ class ExecutableRunManifestV9(ExecutableRunManifestV8):
     def production_binding(self) -> ExecutableRunManifestV9:
         if (
             (self.generation.provider, self.generation.endpoint)
-            != ("openai", "decisions")
+            != (self.production_context.provider, self.production_context.endpoint)
             or self.limits != self.production_context.limits
             or self.service_identity != self.production_context.service_identity
             or self.transport_context_sha256
             != semantic_digest("decisions-context-v1", self.production_context)
         ):
             raise ValueError("production Decisions context differs from manifest")
+        return self
+
+
+class ExecutableRunManifestV10(ExecutableRunManifestV9):
+    """Pinned TypeSafe System One with independent admission and wire authority."""
+
+    schema_version: Literal[10] = 10  # pyright: ignore[reportIncompatibleVariableOverride]
+    transport_protocol: Literal["typesafe-systemone-production-v1"] = TYPESAFE_PROTOCOL  # pyright: ignore[reportIncompatibleVariableOverride]
+    limits: TypeSafeDecisionsLimitsV3  # pyright: ignore[reportIncompatibleVariableOverride]
+    production_context: TypeSafeDecisionsContextV1  # pyright: ignore[reportIncompatibleVariableOverride]
+
+    @field_validator("schema_version", mode="before")
+    @classmethod
+    def _version(cls, value: object) -> object:
+        if type(value) is not int or value != 10:
+            raise ValueError("schema_version must be integer 10")
+        return value
+
+    @model_validator(mode="after")
+    def exact_typesafe_scope(self) -> ExecutableRunManifestV10:
+        if (
+            self.generation.model != self.production_context.model
+            or self.strict_capabilities
+        ):
+            raise ValueError("TypeSafe Decisions manifest exceeds approved scope")
         return self
 
 
@@ -827,6 +855,7 @@ ExecutableManifest = (
     | ExecutableRunManifestV7
     | ExecutableRunManifestV8
     | ExecutableRunManifestV9
+    | ExecutableRunManifestV10
 )
 
 
@@ -842,6 +871,8 @@ def parse_executable_manifest(raw: bytes) -> ExecutableManifest:
         if isinstance(value, dict)
         else None
     )
+    if type(version) is int and version == 10:
+        return ExecutableRunManifestV10.model_validate_json(raw)
     if type(version) is int and version == 9:
         return ExecutableRunManifestV9.model_validate_json(raw)
     if type(version) is int and version == 8:

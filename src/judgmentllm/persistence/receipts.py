@@ -188,6 +188,56 @@ class AcknowledgmentReceiptV3(AcknowledgmentReceiptV2):
         return value
 
 
+class CompleteResponseEvidenceV3(CompleteResponseEvidenceV2):
+    acceptance_evidence_version: Literal[3] = 3  # pyright: ignore[reportIncompatibleVariableOverride]
+    protocol: Literal["typesafe-systemone-production-v1"] = (  # pyright: ignore[reportIncompatibleVariableOverride]
+        "typesafe-systemone-production-v1"
+    )
+    http_status: Literal[200] = 200  # pyright: ignore[reportIncompatibleVariableOverride]
+
+    @field_validator("acceptance_evidence_version", mode="before")
+    @classmethod
+    def strict_evidence_version(cls, value: object) -> object:
+        if type(value) is not int or value != 3:
+            raise ValueError("unsupported TypeSafe acceptance evidence version")
+        return value
+
+
+class AcknowledgmentReceiptV4(AcknowledgmentReceiptV3):
+    acknowledgment_version: Literal[4] = 4  # pyright: ignore[reportIncompatibleVariableOverride]
+    response_evidence: CompleteResponseEvidenceV3  # pyright: ignore[reportIncompatibleVariableOverride]
+
+    @field_validator("acknowledgment_version", mode="before")
+    @classmethod
+    def strict_ack_version(cls, value: object) -> object:
+        if type(value) is not int or value != 4:
+            raise ValueError("unsupported TypeSafe acknowledgment version")
+        return value
+
+
+class TypeSafeRejectionEvidenceV1(ExecutionModel):
+    """A complete direct TypeSafe rejection without retained provider error text."""
+
+    run_id: ID
+    request_uid: ID
+    attempt_id: ID
+    submission_id: ID
+    correlation_id: ID
+    payload_sha256: SHA256
+    response_sha256: SHA256
+    response_byte_length: int = Field(ge=0, le=8_388_608)
+    http_status: Literal[400, 401, 413, 415, 422, 429]
+    reason: Literal["max_tokens_exceeded", "payload_too_large", "request_rejected"]
+
+    @model_validator(mode="after")
+    def status_matches_reason(self) -> TypeSafeRejectionEvidenceV1:
+        if (self.http_status == 413) != (self.reason == "payload_too_large") or (
+            self.reason == "max_tokens_exceeded" and self.http_status != 400
+        ):
+            raise ValueError("TypeSafe rejection reason conflicts with HTTP status")
+        return self
+
+
 def _acknowledgment_path(submission_id: str) -> str:
     return f"acknowledgments/{bytes_digest(submission_id.encode('utf-8'))}.json"
 
@@ -198,7 +248,9 @@ def publish_acknowledgment(
     """Durably bind accepted identities before the registry acknowledgment."""
     try:
         receipt_type = (
-            AcknowledgmentReceiptV3
+            AcknowledgmentReceiptV4
+            if type(receipt) is AcknowledgmentReceiptV4
+            else AcknowledgmentReceiptV3
             if type(receipt) is AcknowledgmentReceiptV3
             else AcknowledgmentReceiptV2
             if isinstance(receipt, AcknowledgmentReceiptV2)
@@ -231,15 +283,21 @@ def read_acknowledgment(
         from judgmentllm.config import parse_json
 
         data = cast(dict[str, object], parse_json(encoded.decode("utf-8")))
-        receipt = (
-            AcknowledgmentReceiptV3.model_validate_json(encoded)
+        version = (
+            data.get("acknowledgment_version")
             if isinstance(cast(object, data), dict)
-            and type(data.get("acknowledgment_version")) is int
-            and data["acknowledgment_version"] == 3
-            else AcknowledgmentReceiptV2.model_validate_json(encoded)
-            if isinstance(cast(object, data), dict) and "acknowledgment_version" in data
-            else AcknowledgmentReceipt.model_validate_json(encoded)
+            else None
         )
+        receipt_type = (
+            AcknowledgmentReceiptV4
+            if type(version) is int and version == 4
+            else AcknowledgmentReceiptV3
+            if type(version) is int and version == 3
+            else AcknowledgmentReceiptV2
+            if isinstance(cast(object, data), dict) and "acknowledgment_version" in data
+            else AcknowledgmentReceipt
+        )
+        receipt = receipt_type.model_validate_json(encoded)
         if (
             canonical_bytes(receipt) != encoded
             or receipt.submission_id != submission_id

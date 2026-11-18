@@ -22,6 +22,7 @@ UsageSource = Literal[
     "openai.chat.usage",
     "openai.responses.usage",
     "openai.decisions.usage",
+    "typesafe.systemone.usage",
     "anthropic.messages.usage",
     "gemini.generate_content.usageMetadata",
     "vertex.generate_content.usageMetadata",
@@ -468,6 +469,19 @@ class ProviderUsage(EvidenceIdentity, UsageContext, ReportedUsageInput):
             self.endpoint,
         ) != ("openai", "decisions"):
             raise ValueError("usage source does not match provider endpoint")
+        if self.usage_source == "typesafe.systemone.usage" and (
+            (self.provider, self.endpoint) != ("typesafe", "systemone")
+            or any(
+                value is not None
+                for value in (
+                    self.total_tokens,
+                    self.reasoning_tokens,
+                    self.cache_read_tokens,
+                    self.cache_write_tokens,
+                )
+            )
+        ):
+            raise ValueError("usage is outside the TypeSafe System One contract")
         if self.usage_source == "openai.responses.usage" and (
             self.provider,
             self.endpoint,

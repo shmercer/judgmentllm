@@ -5,13 +5,17 @@ from __future__ import annotations
 import csv
 import io
 import json
+from hashlib import sha256
 from pathlib import Path
 from typing import Any, cast
 
+import httpx2
 import pytest
 from test_decisions_contracts import pair_spec, presentation
 from test_decisions_lifecycle import native_spec
 from test_decisions_validation import native_request
+from test_preparation_rendering import specification
+from test_typesafe_decisions import intercept_jev, jev_envelope, jev_spec, sealed_jev
 
 import judgmentllm.preparation as preparation
 from judgmentllm.config import InputSpec, RunSpecV4
@@ -21,7 +25,14 @@ from judgmentllm.decisions.outcomes import (
     publish_outcomes,
     read_outcomes,
 )
+from judgmentllm.decisions.provenance import (
+    decisions_status,
+    export_decisions_provenance,
+)
+from judgmentllm.decisions.transport import PreparedDecisionsRequestV3
 from judgmentllm.evidence.usage import ProviderUsage
+from judgmentllm.execution.session import ExecutionSession
+from judgmentllm.lifecycle import get_run, run_live
 from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.decisions_invocations import (
     DecisionsInvocationV1,
@@ -29,6 +40,13 @@ from judgmentllm.persistence.decisions_invocations import (
     publish_invocation,
     read_invocation,
 )
+from judgmentllm.persistence.evidence import (
+    DecisionsEvidenceReceiptV3,
+    DecisionsEvidenceReceiptV4,
+    EvidenceReceipt,
+    read_evidence_receipt,
+)
+from judgmentllm.persistence.generation import build_generation_commitment
 from judgmentllm.persistence.hashing import canonical_bytes
 from judgmentllm.persistence.models import (
     ArtifactIntegrityError,
@@ -42,14 +60,28 @@ from judgmentllm.persistence.presentations import (
     iter_presentations,
     verify_members,
 )
+from judgmentllm.persistence.receipts import (
+    AcknowledgmentReceiptV3,
+    AcknowledgmentReceiptV4,
+    CompleteResponseEvidenceV3,
+    TypeSafeRejectionEvidenceV1,
+    publish_acknowledgment,
+    read_acknowledgment,
+)
 from judgmentllm.persistence.repository import Repository
 from judgmentllm.planning import CapabilityProfile
 from judgmentllm.preparation import PreparationError, prepare_run
 from judgmentllm.preparation.decisions import DecisionsPreparedRun, presentation_records
 from judgmentllm.preparation.manifest import (
     ExecutableRunManifestV8,
+    ExecutableRunManifestV10,
     PresentationSourceCommitmentV1,
+    parse_executable_manifest,
 )
+from judgmentllm.providers.decisions_mock import MockDecisionsAdapter
+from judgmentllm.providers.mock import MockAdapter
+from judgmentllm.providers.protocol import TypeSafeRequestRejected
+from judgmentllm.providers.typesafe_decisions import TypeSafeDecisionsAdapter
 
 
 def forwarding_fact(tmp_path: Path) -> DecisionsInvocationV1:
@@ -350,3 +382,414 @@ def test_native_source_index_rejects_invalid_current_locators_and_membership(
                 ),
                 decisions_version=5,
             )
+
+
+@pytest.mark.parametrize(
+    "fault", ["manifest_version", "manifest_model", "strict", "wire_version"]
+)
+def test_jev_sealed_configuration_requires_exact_versions_and_scope(
+    tmp_path: Path, fault: str
+) -> None:
+    wire = sealed_jev(tmp_path)
+    if fault == "wire_version":
+        data = wire.model_dump()
+        assert PreparedDecisionsRequestV3.model_validate(data) == wire
+        data["preparation_version"] = "10"
+        with pytest.raises(ValueError, match="preparation_version must be integer 10"):
+            PreparedDecisionsRequestV3.model_validate(data)
+        return
+
+    with Repository(tmp_path / "store") as repository:
+        raw = (repository.run_directory("001") / "manifest.json").read_bytes()
+    manifest = parse_executable_manifest(raw)
+    assert isinstance(manifest, ExecutableRunManifestV10)
+    data = manifest.model_dump()
+    assert ExecutableRunManifestV10.model_validate(data) == manifest
+    if fault == "manifest_version":
+        data["schema_version"] = "10"
+        diagnostic = "schema_version must be integer 10"
+    else:
+        if fault == "strict":
+            data["strict_capabilities"] = True
+        else:
+            foreign = jev_spec(native_spec(tmp_path / "foreign"), model="jev-1.13.0")
+            data["generation"] = build_generation_commitment(foreign)
+        diagnostic = "TypeSafe Decisions manifest exceeds approved scope"
+    with pytest.raises(ValueError, match=diagnostic):
+        ExecutableRunManifestV10.model_validate(data)
+
+
+@pytest.fixture
+def committed_jev_rejection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> tuple[Path, str, DecisionsEvidenceReceiptV4]:
+    raw = b"provider body-size rejection: UNSAFE_JEV_CANARY"
+    forwards: list[bytes] = []
+
+    def respond(request: httpx2.Request) -> httpx2.Response:
+        forwards.append(request.content)
+        return httpx2.Response(413, content=raw)
+
+    monkeypatch.setenv("TYPESAFE_API_KEY", "synthetic-jev-key")
+    intercept_jev(monkeypatch, respond)
+    store = tmp_path / "store"
+    result = run_live(jev_spec(native_spec(tmp_path / "input")), store=store)
+    assert not result.recovery_required
+    assert result.decisions is not None
+    (diagnostic,) = result.decisions.model_dump()["diagnostics"]
+    assert diagnostic["code"] == "payload_too_large"
+    assert "HTTP body was too large" in diagnostic["message"]
+    assert len(forwards) == 1
+    with Repository(store) as repository:
+        (receipt,) = repository.iter_evidence(result.run_id)
+        assert (
+            isinstance(receipt, DecisionsEvidenceReceiptV4)
+            and receipt.rejection is not None
+        )
+        assert receipt.rejection.response_sha256 == sha256(raw).hexdigest()
+        assert receipt.rejection.response_byte_length == len(raw)
+        assert receipt.correlation_id == receipt.rejection.correlation_id
+        assert receipt.retained is None and receipt.usage.input_tokens is None
+        assert [row.status for row in repository.iter_results(result.run_id)] == [
+            "errored"
+        ] * 3
+    return store, result.run_id, receipt
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "receipt_version",
+        "missing_rejection",
+        "mismatched_rejection",
+        "reason_status",
+        "usage",
+    ],
+)
+def test_jev_rejection_ingress_rechecks_versions_binding_and_usage(
+    committed_jev_rejection: tuple[Path, str, DecisionsEvidenceReceiptV4], fault: str
+) -> None:
+    _, _, receipt = committed_jev_rejection
+    assert receipt.rejection is not None
+    data = receipt.model_dump()
+    assert DecisionsEvidenceReceiptV4.model_validate(data) == receipt
+    if fault == "reason_status":
+        with pytest.raises(ValueError, match="reason conflicts with HTTP status"):
+            TypeSafeRejectionEvidenceV1.model_validate(
+                {**receipt.rejection.model_dump(), "reason": "request_rejected"}
+            )
+        return
+    if fault == "usage":
+        with pytest.raises(ValueError, match="Invalid evidence record"):
+            ProviderUsage.model_validate(
+                {
+                    **receipt.usage.model_dump(),
+                    "total_tokens": 1,
+                    "usage_source": "typesafe.systemone.usage",
+                }
+            )
+        return
+    if fault == "receipt_version":
+        data["evidence_receipt_version"] = "4"
+    elif fault == "missing_rejection":
+        del data["rejection"]
+    else:
+        data["rejection"]["correlation_id"] = "valid-but-foreign"
+        # The rejection is valid alone and conflicts only at its receipt binding.
+        assert (
+            TypeSafeRejectionEvidenceV1.model_validate(data["rejection"]).correlation_id
+            == "valid-but-foreign"
+        )
+    with pytest.raises(ValueError, match="Invalid evidence record"):
+        DecisionsEvidenceReceiptV4.model_validate(data)
+
+
+@pytest.mark.asyncio
+async def test_jev_rejection_write_reuses_only_the_same_durable_fact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spec = jev_spec(native_spec(tmp_path / "input"))
+    store = tmp_path / "store"
+    with prepare_run(spec, store=store, run_id="001"):
+        pass
+    monkeypatch.setenv("TYPESAFE_API_KEY", "synthetic-jev-key")
+    forwards: list[bytes] = []
+
+    def respond(request: httpx2.Request) -> httpx2.Response:
+        forwards.append(request.content)
+        return httpx2.Response(413)
+
+    def stop(stage: str, _request: str) -> None:
+        if stage == "after_failure_evidence_receipt":
+            raise RuntimeError("interrupted rejection write")
+
+    adapter = TypeSafeDecisionsAdapter(
+        spec.model, http_transport=httpx2.MockTransport(respond)
+    )
+    session = ExecutionSession("001", store, adapter, spec, False, stop)
+    try:
+        work = session.next_work()
+        assert work is not None and session.boundary(work)
+        with pytest.raises(TypeSafeRequestRejected) as rejected:
+            await adapter.submit(
+                work.prepared,
+                submission_id=work.submission_id,
+                correlation_id=work.correlation_id,
+            )
+        rejection = rejected.value.rejection
+        with pytest.raises(RuntimeError, match="interrupted rejection write"):
+            session.not_submitted(work, invoked=True, rejection=rejection)
+        assert session.prepared is not None
+        artifacts = session.prepared.store
+        original = read_evidence_receipt(artifacts, work.submission_id)
+        assert (
+            isinstance(original, DecisionsEvidenceReceiptV4)
+            and original.rejection == rejection
+        )
+        assert session.repository.usage_high_water_mark("001") == 0
+
+        different = rejection.model_copy(update={"response_sha256": "f" * 64})
+        with pytest.raises(
+            IntegrityError, match="TypeSafe rejection evidence conflicts"
+        ):
+            session.not_submitted(work, invoked=True, rejection=different)
+        assert read_evidence_receipt(artifacts, work.submission_id) == original
+        assert session.repository.usage_high_water_mark("001") == 0
+        assert list(session.repository.iter_results("001")) == []
+
+        session.not_submitted(work, invoked=True, rejection=rejection)
+        assert (
+            session.repository.get_evidence_for_submission("001", work.submission_id)
+            == original
+        )
+        assert session.repository.usage_high_water_mark("001") == 1
+        assert [r.status for r in session.repository.iter_results("001")] == [
+            "errored"
+        ] * 3
+    finally:
+        session.close()
+        await adapter.aclose()
+    assert forwards == [work.prepared.payload]
+    status = get_run("001", store=store)
+    assert status.decisions is not None
+    (diagnostic,) = status.decisions.model_dump()["diagnostics"]
+    assert diagnostic["code"] == "payload_too_large"
+
+
+def test_jev_rejection_cannot_enter_a_historical_decisions_session(
+    tmp_path: Path,
+) -> None:
+    spec = native_spec(tmp_path / "input")
+    store = tmp_path / "store"
+    with prepare_run(spec, store=store, run_id="001"):
+        pass
+    adapter = MockDecisionsAdapter(store / "mock-service.sqlite3")
+    session = ExecutionSession("001", store, adapter, spec, False, None)
+    try:
+        work = session.next_work()
+        assert work is not None and session.boundary(work)
+        rejection = TypeSafeRejectionEvidenceV1(
+            run_id="001",
+            request_uid=work.prepared.request_uid,
+            attempt_id=work.attempt_id,
+            submission_id=work.submission_id,
+            correlation_id=work.correlation_id,
+            payload_sha256=work.prepared.payload_sha256,
+            response_sha256="a" * 64,
+            response_byte_length=16,
+            http_status=413,
+            reason="payload_too_large",
+        )
+        with pytest.raises(
+            IntegrityError, match="TypeSafe rejection exceeds the sealed provider scope"
+        ):
+            session.not_submitted(work, invoked=True, rejection=rejection)
+        assert session.prepared is not None
+        assert read_evidence_receipt(session.prepared.store, work.submission_id) is None
+        assert session.repository.usage_high_water_mark("001") == 0
+        assert list(session.repository.iter_results("001")) == []
+    finally:
+        session.close()
+
+
+@pytest.mark.asyncio
+async def test_jev_export_and_resume_reject_wrong_acknowledgment_protocol(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spec = jev_spec(native_spec(tmp_path / "input"))
+    store = tmp_path / "store"
+    with prepare_run(spec, store=store, run_id="001"):
+        pass
+    monkeypatch.setenv("TYPESAFE_API_KEY", "synthetic-jev-key")
+
+    def respond(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(200, json=jev_envelope(request))
+
+    adapter = TypeSafeDecisionsAdapter(
+        spec.model, http_transport=httpx2.MockTransport(respond)
+    )
+    session = ExecutionSession("001", store, adapter, spec, False, None)
+    try:
+        work = session.next_work()
+        assert work is not None and session.boundary(work)
+        session.acknowledge(
+            work,
+            await adapter.submit(
+                work.prepared,
+                submission_id=work.submission_id,
+                correlation_id=work.correlation_id,
+            ),
+        )
+        submission = session.repository.get_submission("001", work.submission_id)
+        assert submission.certainty == "accepted"
+        assert (
+            session.repository.get_evidence_for_submission("001", work.submission_id)
+            is None
+        )
+        assert session.prepared is not None
+        artifacts = session.prepared.store
+        receipt = read_acknowledgment(artifacts, work.submission_id)
+        assert isinstance(receipt, AcknowledgmentReceiptV4)
+        with pytest.raises(
+            ValueError, match="unsupported TypeSafe acknowledgment version"
+        ):
+            AcknowledgmentReceiptV4.model_validate(
+                {**receipt.model_dump(), "acknowledgment_version": "4"}
+            )
+        acceptance = receipt.response_evidence.model_dump()
+        with pytest.raises(
+            ValueError, match="unsupported TypeSafe acceptance evidence version"
+        ):
+            CompleteResponseEvidenceV3.model_validate(
+                {**acceptance, "acceptance_evidence_version": "3"}
+            )
+
+        foreign = AcknowledgmentReceiptV3.model_validate(
+            {
+                **receipt.model_dump(),
+                "acknowledgment_version": 3,
+                "response_evidence": {
+                    **acceptance,
+                    "acceptance_evidence_version": 2,
+                    "protocol": "openai-decisions-production-v1",
+                },
+            }
+        )
+        (reference,) = (artifacts.root / "acknowledgments").glob("*.json")
+        reference.unlink()
+        publish_acknowledgment(artifacts, foreign)
+        assert read_acknowledgment(artifacts, work.submission_id) == foreign
+        foreign.verify_submission(submission)
+        with pytest.raises(
+            IntegrityError, match="Decisions acknowledgment protocol differs"
+        ):
+            session.saved_acknowledgment(work)
+    finally:
+        session.close()
+        await adapter.aclose()
+
+    with pytest.raises(IntegrityError, match="Decisions acknowledgment scope differs"):
+        export_decisions_provenance("001", store=store)
+
+
+def test_historical_saved_acknowledgment_cannot_adopt_jev_acceptance(
+    tmp_path: Path,
+) -> None:
+    spec = specification(tmp_path / "input", responses=1, traits=1)
+    spec.provider, spec.endpoint = "mock", "synthetic"
+    store = tmp_path / "store"
+    with prepare_run(spec, store=store, run_id="001"):
+        pass
+    adapter = MockAdapter(store / "mock.sqlite3")
+    session = ExecutionSession("001", store, adapter, spec, False, None)
+    try:
+        work = session.next_work()
+        assert work is not None and session.boundary(work)
+        assert session.prepared is not None
+        binding = dict(
+            run_id="001",
+            attempt_id=work.attempt_id,
+            submission_id=work.submission_id,
+            correlation_id=work.correlation_id,
+            payload_sha256=work.prepared.payload_sha256,
+        )
+        acceptance = CompleteResponseEvidenceV3.model_validate(
+            {
+                **binding,
+                "request_uid": work.prepared.request_uid,
+                "response_sha256": "a" * 64,
+                "response_byte_length": 16,
+            }
+        )
+        foreign = AcknowledgmentReceiptV4.model_validate(
+            {
+                **binding,
+                "remote_id": None,
+                "observation_key": "foreign",
+                "response_evidence": acceptance,
+            }
+        )
+        artifacts = session.prepared.store
+        publish_acknowledgment(artifacts, foreign)
+        assert read_acknowledgment(artifacts, work.submission_id) == foreign
+        foreign.verify_submission(
+            session.repository.get_submission("001", work.submission_id)
+        )
+        with pytest.raises(
+            IntegrityError,
+            match="historical attempt cannot acquire Decisions acceptance",
+        ):
+            session.saved_acknowledgment(work)
+        assert list(session.repository.iter_results("001")) == []
+    finally:
+        session.close()
+
+
+@pytest.mark.parametrize(
+    "case", ["export_foreign_evidence_version", "status_missing_rejection_evidence"]
+)
+def test_jev_provenance_requires_its_own_committed_evidence(
+    committed_jev_rejection: tuple[Path, str, DecisionsEvidenceReceiptV4],
+    monkeypatch: pytest.MonkeyPatch,
+    case: str,
+) -> None:
+    store, run_id, receipt = committed_jev_rejection
+    if case == "export_foreign_evidence_version":
+        data = receipt.model_dump(exclude={"rejection"})
+        data["evidence_receipt_version"] = 3
+        data["usage"].update(provider="openai", endpoint="decisions")
+        replacement: EvidenceReceipt | None = DecisionsEvidenceReceiptV3.model_validate(
+            data
+        )
+    else:
+        replacement = None
+
+    original = Repository.get_evidence_for_submission
+    inspected: list[str] = []
+
+    def evidence(
+        repository: Repository, identifier: str, submission_id: str
+    ) -> EvidenceReceipt | None:
+        if (identifier, submission_id) == (run_id, receipt.identity.submission_id):
+            assert original(repository, identifier, submission_id) == receipt
+            inspected.append(submission_id)
+            return replacement
+        return original(repository, identifier, submission_id)
+
+    # The real reader verifies cross-provider linkage first. The substitute
+    # exercises the independent provenance guard with the actual ledger row.
+    monkeypatch.setattr(Repository, "get_evidence_for_submission", evidence)
+    if case == "export_foreign_evidence_version":
+        with pytest.raises(IntegrityError, match="Decisions evidence scope differs"):
+            export_decisions_provenance(run_id, store=store)
+    else:
+        with Repository(store) as repository:
+            manifest = parse_executable_manifest(
+                (repository.run_directory(run_id) / "manifest.json").read_bytes()
+            )
+            assert isinstance(manifest, ExecutableRunManifestV10)
+            with pytest.raises(
+                IntegrityError, match="TypeSafe rejection lacks its evidence receipt"
+            ):
+                decisions_status(repository, manifest)
+    assert inspected == [receipt.identity.submission_id]

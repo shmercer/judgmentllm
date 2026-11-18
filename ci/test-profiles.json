@@ -1491,6 +1491,36 @@
       "platforms": [],
       "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
     },
+    "tests/test_typesafe_decisions.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Pinned SDK HTTP interception, concurrent HTTP/1.1 privacy, credential binding, SQLite outcomes and terminal rejection diagnostics"
+    },
+    "tests/test_typesafe_decisions_processes.py": {
+      "cost": "process",
+      "domain": "process-ownership",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Installed-console process death and reopen, executor ownership during rejection writes, credential refusal and immutable evidence"
+    },
+    "tests/test_typesafe_decisions_r.py": {
+      "cost": "process",
+      "domain": "r-interface",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Actual R/jsonlite consumes installed CLI exports after process reopen; hosted lanes defer R"
+    },
     "tests/test_v2_durable_contracts.py": {
       "cost": "io",
       "domain": "durable-execution",
@@ -1801,6 +1831,15 @@
       "tests/test_native_schema_privacy.py",
       "tests/test_native_selection.py",
       "tests/test_native_v2_compatibility.py"
+    ],
+    "typesafe": [
+      "tests/test_auth_privacy.py",
+      "tests/test_decisions_compatibility.py",
+      "tests/test_decisions_contracts.py",
+      "tests/test_decisions_persistence_boundaries.py",
+      "tests/test_typesafe_decisions.py",
+      "tests/test_typesafe_decisions_processes.py",
+      "tests/test_typesafe_decisions_r.py"
     ]
   },
   "schema_version": 1,
@@ -1933,6 +1972,8 @@
     "src/judgmentllm/providers/protocol.py",
     "src/judgmentllm/providers/reasoning.py",
     "src/judgmentllm/providers/together_schema.py",
+    "src/judgmentllm/providers/typesafe_decisions.py",
+    "src/judgmentllm/providers/typesafe_decisions_response.py",
     "src/judgmentllm/providers/vertex.py",
     "src/judgmentllm/providers/vertex_cli.py",
     "src/judgmentllm/providers/vertex_response.py",
@@ -2070,6 +2111,8 @@
     "src/judgmentllm/providers/openai_response.py": "openai",
     "src/judgmentllm/providers/openai_schema.py": "openai",
     "src/judgmentllm/providers/together_schema.py": "together",
+    "src/judgmentllm/providers/typesafe_decisions.py": "typesafe",
+    "src/judgmentllm/providers/typesafe_decisions_response.py": "typesafe",
     "src/judgmentllm/providers/vertex.py": "vertex",
     "src/judgmentllm/providers/vertex_response.py": "vertex"
   }

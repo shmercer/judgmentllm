@@ -311,23 +311,30 @@ def test_ordinary_preparation_reports_controls_safely_and_keeps_legacy_builder_c
     with pytest.raises(PreparationError) as invalid:
         prepare_decisions_run(spec, store=tmp_path / "malformed", run_id="001")
     assert "PRIVATE_CANARY" not in str(invalid.value)
-    production = RunSpecV4.model_validate(
-        {**spec.model_dump(), "provider": "typesafe", "endpoint": "systemone"}
+    unimplemented = RunSpecV4.model_validate(
+        {
+            **spec.model_dump(),
+            "provider": "gemini",
+            "endpoint": "decisions",
+            "model": "gemini-decision-1",
+        }
     )
     with pytest.raises(PreparationError, match="not implemented"):
-        prepare_decisions_run(production, store=tmp_path / "unsupported", run_id="001")
-    with pytest.raises(LifecycleError):
+        prepare_decisions_run(
+            unimplemented, store=tmp_path / "unsupported", run_id="001"
+        )
+    with pytest.raises(LifecycleError, match="production Decisions adapters"):
         _execution_adapter(
-            "typesafe",
-            "systemone",
-            "unknown",
+            unimplemented.provider,
+            unimplemented.endpoint,
+            unimplemented.model,
             tmp_path,
             None,
             resume=False,
             decisions=True,
         )
-    with pytest.raises(LifecycleError):
-        _require_presentation(production)
+    with pytest.raises(LifecycleError, match="production Decisions adapters"):
+        _require_presentation(unimplemented)
 
 
 @pytest.mark.asyncio

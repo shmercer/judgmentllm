@@ -1,5 +1,14 @@
 # Data contracts and scoring semantics
 
+## PR D TypeSafe Decisions addition
+
+The [Jev contract](typesafe-decisions.md) adds a separately dispatched V4
+transport. Frozen limits record both unverified context checks. Rejection
+evidence binds a safe reason, response hash and byte count to the physical
+attempt. Run/status/resume diagnostics derive from that persisted reason.
+Physical provenance version 3 retains the rejection, while the question
+crosswalk preserves its member outcomes.
+
 ## PR C production Decisions addition
 
 [Native OpenAI Decisions](openai-decisions.md) now uses the ordinary V4 installed

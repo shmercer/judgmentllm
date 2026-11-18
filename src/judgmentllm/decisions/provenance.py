@@ -6,7 +6,7 @@ import csv
 import os
 import tempfile
 from collections.abc import Callable, Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Literal, cast
 
@@ -18,19 +18,26 @@ from judgmentllm.decisions.records import (
     DecisionsLimitsV1,
     DecisionsLimitsV2,
     QuestionCommitmentV1,
+    TypeSafeDecisionsLimitsV3,
 )
 from judgmentllm.decisions.replay import DecisionsReplayMetadataV1
 from judgmentllm.decisions.transport import DecisionsCommitmentV1
 from judgmentllm.evidence.usage import ProviderUsage
-from judgmentllm.lifecycle_models import DecisionsStatusV1
+from judgmentllm.lifecycle_models import DecisionsRejectionDiagnostic, DecisionsStatusV1
 from judgmentllm.models import ID
 from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.decisions_invocations import (
     DecisionsInvocationV1,
     DecisionsInvocationV2,
+    DecisionsInvocationV3,
     read_invocation,
 )
-from judgmentllm.persistence.evidence import authoritative_usage, usage_high_water_mark
+from judgmentllm.persistence.evidence import (
+    DecisionsEvidenceReceiptV3,
+    DecisionsEvidenceReceiptV4,
+    authoritative_usage,
+    usage_high_water_mark,
+)
 from judgmentllm.persistence.hashing import (
     bytes_digest,
     canonical_bytes,
@@ -43,8 +50,11 @@ from judgmentllm.persistence.models import (
 )
 from judgmentllm.persistence.receipts import (
     AcknowledgmentReceiptV2,
+    AcknowledgmentReceiptV4,
     CompleteResponseEvidenceV1,
     CompleteResponseEvidenceV2,
+    CompleteResponseEvidenceV3,
+    TypeSafeRejectionEvidenceV1,
     read_acknowledgment,
 )
 from judgmentllm.persistence.repository import Repository
@@ -53,6 +63,7 @@ from judgmentllm.preparation import _load_manifest  # pyright: ignore[reportPriv
 from judgmentllm.preparation.manifest import (
     ExecutableRunManifestV8,
     ExecutableRunManifestV9,
+    ExecutableRunManifestV10,
 )
 from judgmentllm.transport import PhysicalRequestIdentityV1, physical_identity
 
@@ -90,6 +101,13 @@ class PhysicalProvenanceV2(PhysicalProvenanceV1):
     validation: DecisionsReplayMetadataV1 | None
     acknowledgment_receipt_sha256: SHA256 | None
     evidence_receipt_sha256: SHA256 | None
+
+
+class PhysicalProvenanceV3(PhysicalProvenanceV2):
+    physical_provenance_version: Literal[3] = 3  # pyright: ignore[reportIncompatibleVariableOverride]
+    limits: TypeSafeDecisionsLimitsV3  # pyright: ignore[reportIncompatibleVariableOverride]
+    complete_response_evidence: CompleteResponseEvidenceV3 | None  # pyright: ignore[reportIncompatibleVariableOverride]
+    rejection: TypeSafeRejectionEvidenceV1 | None
 
 
 class QuestionProvenanceV1(DecisionsModel):
@@ -156,18 +174,48 @@ class DecisionsProvenanceReportV2(DecisionsProvenanceReportV1):
     manifest: DecisionsProvenanceManifestV2  # pyright: ignore[reportIncompatibleVariableOverride]
 
 
+class DecisionsProvenanceManifestV3(DecisionsProvenanceManifestV2):
+    provenance_manifest_version: Literal[3] = 3  # pyright: ignore[reportIncompatibleVariableOverride]
+    physical_row_version: Literal[3] = 3  # pyright: ignore[reportIncompatibleVariableOverride]
+
+
+class DecisionsProvenanceReportV3(DecisionsProvenanceReportV2):
+    provenance_report_version: Literal[3] = 3  # pyright: ignore[reportIncompatibleVariableOverride]
+    manifest: DecisionsProvenanceManifestV3  # pyright: ignore[reportIncompatibleVariableOverride]
+
+
 def _parse_manifest(raw: bytes) -> DecisionsProvenanceManifestV1:
     from judgmentllm.config import parse_json
 
     value = cast(dict[str, object], parse_json(raw.decode("utf-8")))
-    model = (
-        DecisionsProvenanceManifestV2
+    version = (
+        value.get("provenance_manifest_version")
         if isinstance(cast(object, value), dict)
-        and type(value.get("provenance_manifest_version")) is int
-        and value["provenance_manifest_version"] == 2
+        else None
+    )
+    model = (
+        DecisionsProvenanceManifestV3
+        if type(version) is int and version == 3
+        else DecisionsProvenanceManifestV2
+        if type(version) is int and version == 2
         else DecisionsProvenanceManifestV1
     )
     return model.model_validate_json(raw)
+
+
+_TYPE_SAFE_MESSAGES = {
+    "max_tokens_exceeded": (
+        "TypeSafe Jev rejected the request because it exceeded a context limit. "
+        "Start a new run with smaller shared input or, for grouped requests, a lower "
+        "`execution.request_grouping.max_questions_per_request`. "
+        "The original attempt is terminal."
+    ),
+    "payload_too_large": (
+        "TypeSafe Jev rejected the request because the HTTP body was too large. "
+        "Start a new run with smaller input or a lower grouping maximum. "
+        "The original attempt is terminal."
+    ),
+}
 
 
 @dataclass
@@ -183,14 +231,25 @@ class _Totals:
     cost_missing: int = 0
     currency: str | None = None
     currency_conflict: bool = False
+    rejections: dict[Literal["max_tokens_exceeded", "payload_too_large"], int] = field(
+        default_factory=dict[Literal["max_tokens_exceeded", "payload_too_large"], int]
+    )
 
     def add(self, row: PhysicalProvenanceV1) -> None:
+        if isinstance(row, PhysicalProvenanceV3):
+            self.record_rejection(row.rejection)
         self.record(
             row.selected_usage,
             known=row.invocation_evidence == "known",
             unknown=row.invocation_evidence == "unknown",
             observed=row.observation_id is not None,
         )
+
+    def record_rejection(self, rejection: TypeSafeRejectionEvidenceV1 | None) -> None:
+        if rejection is not None and rejection.reason != "request_rejected":
+            self.rejections[rejection.reason] = (
+                self.rejections.get(rejection.reason, 0) + 1
+            )
 
     def record(
         self, usage: ProviderUsage | None, *, known: bool, unknown: bool, observed: bool
@@ -270,6 +329,15 @@ class _Totals:
                 else self.cost,
                 cost_currency=None if cost_state != "reported" else self.currency,
                 cost_evidence=cost_state,
+                diagnostics=tuple(
+                    DecisionsRejectionDiagnostic(
+                        code=code,
+                        message=_TYPE_SAFE_MESSAGES[code],
+                        rejected_attempts=count,
+                    )
+                    for code, count in sorted(self.rejections.items())
+                )
+                or None,
             )
         )
 
@@ -310,7 +378,9 @@ def physical_rows(
         )
         if fact is not None:
             expected_fact = (
-                DecisionsInvocationV2
+                DecisionsInvocationV3
+                if isinstance(manifest, ExecutableRunManifestV10)
+                else DecisionsInvocationV2
                 if isinstance(manifest, ExecutableRunManifestV9)
                 else DecisionsInvocationV1
             )
@@ -335,6 +405,10 @@ def physical_rows(
         if ack is not None:
             assert submission is not None
             ack.verify_submission(submission)
+            if isinstance(ack, AcknowledgmentReceiptV4) != isinstance(
+                manifest, ExecutableRunManifestV10
+            ):
+                raise IntegrityError("Decisions acknowledgment scope differs")
         usage = (
             authoritative_usage(
                 repository, run_id, submission.submission_id, high_water_mark=usage_high
@@ -352,15 +426,34 @@ def physical_rows(
             if submission and submission.state != "prepared"
             else "not_started"
         )
-        from judgmentllm.persistence.evidence import DecisionsEvidenceReceiptV3
-
+        typesafe = isinstance(manifest, ExecutableRunManifestV10)
+        if (
+            evidence is not None
+            and isinstance(evidence, DecisionsEvidenceReceiptV4) != typesafe
+        ):
+            raise IntegrityError("Decisions evidence scope differs")
         production = isinstance(manifest, ExecutableRunManifestV9)
         production_evidence = (
             evidence if isinstance(evidence, DecisionsEvidenceReceiptV3) else None
         )
-        row_type = PhysicalProvenanceV2 if production else PhysicalProvenanceV1
+        row_type = (
+            PhysicalProvenanceV3
+            if typesafe
+            else PhysicalProvenanceV2
+            if production
+            else PhysicalProvenanceV1
+        )
         yield row_type.model_validate(
             dict(
+                **(
+                    {
+                        "rejection": evidence.rejection
+                        if isinstance(evidence, DecisionsEvidenceReceiptV4)
+                        else None
+                    }
+                    if typesafe
+                    else {}
+                ),
                 **(
                     dict(
                         original_response=production_evidence.original
@@ -474,13 +567,26 @@ def decisions_status(
                 ).fetchone()
                 if registered is not None:
                     expected_fact = (
-                        DecisionsInvocationV2
+                        DecisionsInvocationV3
+                        if isinstance(manifest, ExecutableRunManifestV10)
+                        else DecisionsInvocationV2
                         if isinstance(manifest, ExecutableRunManifestV9)
                         else DecisionsInvocationV1
                     )
                     if type(fact) is not expected_fact:
                         raise IntegrityError("Decisions forwarding protocol differs")
                     known, usage = True, fact.usage
+        if (
+            isinstance(manifest, ExecutableRunManifestV10)
+            and row["receipt_sha256"] is not None
+            and row["certainty"] == "not_submitted"
+        ):
+            evidence = repository.get_evidence_for_submission(
+                manifest.run_id, row["submission_id"]
+            )
+            if not isinstance(evidence, DecisionsEvidenceReceiptV4):
+                raise IntegrityError("TypeSafe rejection lacks its evidence receipt")
+            totals.record_rejection(evidence.rejection)
         totals.record(
             usage,
             known=known,
@@ -625,7 +731,9 @@ def read_decisions_provenance(
     ):
         raise IntegrityError("Decisions provenance manifest is inconsistent")
     expected = semantic_digest(
-        "decisions-provenance-v2"
+        "decisions-provenance-v3"
+        if isinstance(manifest, DecisionsProvenanceManifestV3)
+        else "decisions-provenance-v2"
         if isinstance(manifest, DecisionsProvenanceManifestV2)
         else "decisions-provenance-v1",
         [
@@ -656,7 +764,9 @@ def read_decisions_provenance(
             raise IntegrityError("Decisions companion publication metadata differs")
         artifacts.verify(file.artifact)
     report_type = (
-        DecisionsProvenanceReportV2
+        DecisionsProvenanceReportV3
+        if isinstance(manifest, DecisionsProvenanceManifestV3)
+        else DecisionsProvenanceReportV2
         if isinstance(manifest, DecisionsProvenanceManifestV2)
         else DecisionsProvenanceReportV1
     )
@@ -697,7 +807,9 @@ def export_decisions_provenance(
                 (run_id,),
             ).fetchone()[0]
             bundle_id = semantic_digest(
-                "decisions-provenance-v2"
+                "decisions-provenance-v3"
+                if isinstance(manifest, ExecutableRunManifestV10)
+                else "decisions-provenance-v2"
                 if isinstance(manifest, ExecutableRunManifestV9)
                 else "decisions-provenance-v1",
                 [
@@ -738,7 +850,9 @@ def export_decisions_provenance(
                     )
                     question_writer.writerow(QuestionProvenanceV1.model_fields)
                     physical_type = (
-                        PhysicalProvenanceV2
+                        PhysicalProvenanceV3
+                        if isinstance(manifest, ExecutableRunManifestV10)
+                        else PhysicalProvenanceV2
                         if isinstance(manifest, ExecutableRunManifestV9)
                         else PhysicalProvenanceV1
                     )
@@ -792,7 +906,9 @@ def export_decisions_provenance(
             repository.connection.execute("ROLLBACK")
             repository.connection.execute("PRAGMA query_only=OFF")
         manifest_type = (
-            DecisionsProvenanceManifestV2
+            DecisionsProvenanceManifestV3
+            if isinstance(manifest, ExecutableRunManifestV10)
+            else DecisionsProvenanceManifestV2
             if isinstance(manifest, ExecutableRunManifestV9)
             else DecisionsProvenanceManifestV1
         )

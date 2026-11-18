@@ -362,3 +362,55 @@ class OpenAIDecisionsContextV1(DecisionsModel):
     credential_source: Literal["OPENAI_API_KEY"] = "OPENAI_API_KEY"
     account_scope: ID | None = None
     limits: DecisionsLimitsV2 = Field(default_factory=DecisionsLimitsV2)
+
+
+TYPESAFE_MODEL = "jev-1.14.0"
+TYPESAFE_ROUTE = ("typesafe", "systemone")
+TYPESAFE_ORIGIN = "https://api.typesafe.ai"
+TYPESAFE_PROTOCOL = "typesafe-systemone-production-v1"
+TYPESAFE_SDK = "0.7.5"
+TYPESAFE_CONTEXT_WARNING = (
+    "TypeSafe Jev context fit is unverified for both published limits. "
+    "TypeSafe may reject the request after forwarding."
+)
+
+
+class TypeSafeDecisionsLimitsV3(DecisionsLimitsV1):
+    """Documented context ceilings and the approved non-strict admission policy."""
+
+    limit_version: Literal[3] = 3  # pyright: ignore[reportIncompatibleVariableOverride]
+    max_questions: None = None  # pyright: ignore[reportIncompatibleVariableOverride]
+    max_body_bytes: Literal[33_554_432] = 33_554_432  # pyright: ignore[reportIncompatibleVariableOverride]
+    max_context_tokens: None = None  # pyright: ignore[reportIncompatibleVariableOverride]
+    counter: None = None  # pyright: ignore[reportIncompatibleVariableOverride]
+    source: Literal["https://docs.typesafe.ai/models#context-length"] = (  # pyright: ignore[reportIncompatibleVariableOverride]
+        "https://docs.typesafe.ai/models#context-length"
+    )
+    checked_on: Literal["2026-11-17"] = "2026-11-17"  # pyright: ignore[reportIncompatibleVariableOverride]
+    body_source: Literal["https://docs.typesafe.ai/api/errors"] = (
+        "https://docs.typesafe.ai/api/errors"
+    )
+    local_body_bytes: int = Field(default=8_388_608, gt=0, le=8_388_608)
+    request_context_limit: Literal["64k tokens"] = "64k tokens"
+    question_context_limit: Literal["32k tokens"] = "32k tokens"
+    request_context_fit: Literal["unverified"] = "unverified"
+    question_context_fit: Literal["unverified"] = "unverified"
+    admission_policy: Literal["typesafe-non-strict-server-validation-v1"] = (
+        "typesafe-non-strict-server-validation-v1"
+    )
+
+
+class TypeSafeDecisionsContextV1(DecisionsModel):
+    protocol: Literal["typesafe-systemone-production-v1"] = TYPESAFE_PROTOCOL
+    provider: Literal["typesafe"] = "typesafe"
+    endpoint: Literal["systemone"] = "systemone"
+    request_url: Literal["https://api.typesafe.ai/v1/systemone"] = (
+        "https://api.typesafe.ai/v1/systemone"
+    )
+    model: Literal["jev-1.14.0"] = TYPESAFE_MODEL
+    service_identity: Literal["typesafe.systemone.v1"] = "typesafe.systemone.v1"
+    sdk_version: Literal["0.7.5"] = TYPESAFE_SDK
+    api_version: Literal["v1"] = "v1"
+    credential_source: Literal["TYPESAFE_API_KEY"] = "TYPESAFE_API_KEY"
+    account_scope: ID | None = None
+    limits: TypeSafeDecisionsLimitsV3 = Field(default_factory=TypeSafeDecisionsLimitsV3)

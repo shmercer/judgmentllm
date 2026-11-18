@@ -63,7 +63,7 @@ does not remove the intended all-provider qualification requirement.
 | Vertex AI Gemini | implemented; historical exact-route live scope accepted | M5 target (Google Cloud setup required) | M5 target | generative | generative | google-genai 2.34.0/v1beta1; independent ADC/API-key private-project/global scopes in [accepted evidence](vertex-live-qualification-acceptance.md); current presentation is unqualified |
 | Together AI | lower-priority live target | target, subject to current API qualification | M5/deferred live target | generative | generative | Use official Together Python SDK v3 (`together>=3,<4`); endpoint/model feature coverage must be tested |
 | Ollama local | lower-priority live target | no native provider batch | M5/deferred live target | generative | generative | Official Ollama SDK, local daemon; local model discovery; optional later cloud support separate |
-| TypeSafe AI Jev | M4 target, PR D | unsupported in planned adapter | M5 target | typed score; documented maximum 10 levels | typed choice | Official `typesafe-sdk` System One named map; question-count hard cap unknown; no generated explanations |
+| TypeSafe AI Jev | implemented in PR D candidate; exact-source and live acceptance pending | unsupported | M5 target | typed score; documented maximum 10 levels | typed choice | [Pinned System One route](typesafe-decisions.md) with approved non-strict admission and both context fits unverified |
 
 ### Native Decisions capability evidence (PR A only)
 

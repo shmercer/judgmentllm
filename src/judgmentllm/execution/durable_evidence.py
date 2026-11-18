@@ -23,6 +23,7 @@ from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.evidence import (
     DecisionsEvidenceReceiptV2,
     DecisionsEvidenceReceiptV3,
+    DecisionsEvidenceReceiptV4,
     EvidenceReceipt,
     publish_evidence_receipt,
     read_evidence_receipt,
@@ -30,7 +31,10 @@ from judgmentllm.persistence.evidence import (
 from judgmentllm.persistence.hashing import bytes_digest, canonical_bytes
 from judgmentllm.persistence.models import ArtifactIdentity, IntegrityError, utc_now
 from judgmentllm.persistence.receipts import (
+    AcknowledgmentReceiptV3,
+    AcknowledgmentReceiptV4,
     ResponseReceipt,
+    TypeSafeRejectionEvidenceV1,
     publish_receipt,
     read_acknowledgment,
     read_receipt,
@@ -51,7 +55,9 @@ class DurableEvidence:
         self.repository = session.repository
         self.enabled = self.repository.evidence_supported
         self.receipt_type = (
-            DecisionsEvidenceReceiptV3
+            DecisionsEvidenceReceiptV4
+            if session.prepared.manifest.schema_version == 10
+            else DecisionsEvidenceReceiptV3
             if session.prepared.manifest.schema_version == 9
             else DecisionsEvidenceReceiptV2
             if session.prepared.manifest.schema_version == 8
@@ -108,7 +114,8 @@ class DurableEvidence:
         session = self.session
         expected = self.identity(work, evidence.identity.observation_id)
         if (
-            evidence.identity != expected
+            type(evidence) is not self.receipt_type
+            or evidence.identity != expected
             or evidence.payload_sha256 != work.prepared.payload_sha256
             or evidence.correlation_id != work.correlation_id
             or evidence.capture != session.spec.capture
@@ -132,12 +139,13 @@ class DurableEvidence:
         ):
             ack = read_acknowledgment(self.store, work.submission_id)
             from judgmentllm.decisions.transport import PreparedDecisionsRequestV2
-            from judgmentllm.persistence.receipts import AcknowledgmentReceiptV3
 
             assert isinstance(work.prepared, PreparedDecisionsRequestV2)
             v = evidence.validation
             if (
                 not isinstance(ack, AcknowledgmentReceiptV3)
+                or isinstance(ack, AcknowledgmentReceiptV4)
+                != isinstance(evidence, DecisionsEvidenceReceiptV4)
                 or (
                     ack.response_evidence.response_sha256,
                     ack.response_evidence.response_byte_length,
@@ -410,7 +418,7 @@ class DurableEvidence:
                 )
             ack = read_acknowledgment(self.store, work.submission_id)
             assert ack is not None and self.authorization_sha256 is not None
-            production = self.receipt_type is DecisionsEvidenceReceiptV3
+            production = issubclass(self.receipt_type, DecisionsEvidenceReceiptV3)
             validation = (
                 response.evidence.decisions_validation
                 if response.evidence is not None
@@ -482,10 +490,7 @@ class DurableEvidence:
         if not self.enabled:
             return None
         session = self.session
-        if self.receipt_type in (
-            DecisionsEvidenceReceiptV2,
-            DecisionsEvidenceReceiptV3,
-        ):
+        if issubclass(self.receipt_type, DecisionsEvidenceReceiptV2):
             from judgmentllm.decisions.transport import PreparedDecisionsRequestV1
             from judgmentllm.persistence.decisions_invocations import (
                 DecisionsInvocationV1,
@@ -504,10 +509,13 @@ class DurableEvidence:
                 return None
             from judgmentllm.persistence.decisions_invocations import (
                 DecisionsInvocationV2,
+                DecisionsInvocationV3,
             )
 
             fact_type = (
-                DecisionsInvocationV2
+                DecisionsInvocationV3
+                if self.receipt_type is DecisionsEvidenceReceiptV4
+                else DecisionsInvocationV2
                 if self.receipt_type is DecisionsEvidenceReceiptV3
                 else DecisionsInvocationV1
             )
@@ -518,14 +526,14 @@ class DurableEvidence:
                 payload_sha256=work.prepared.payload_sha256,
                 usage=extract_provider_usage(
                     self.identity(work, None),
-                    UsageContext(
-                        provider="openai"
-                        if self.receipt_type is DecisionsEvidenceReceiptV3
-                        else "mock",
-                        endpoint=session.spec.endpoint,
-                        requested_model=session.spec.model,
-                        observation_kind="invocation",
-                        invocation_kind="live",
+                    UsageContext.model_validate(
+                        dict(
+                            provider=session.spec.provider,
+                            endpoint=session.spec.endpoint,
+                            requested_model=session.spec.model,
+                            observation_kind="invocation",
+                            invocation_kind="live",
+                        )
                     ),
                     reported,
                 ),
@@ -613,10 +621,16 @@ class DurableEvidence:
         transient: bool = False,
         retry_after: float | None = None,
         diagnostic_code: InvocationFailureCode | None = None,
+        rejection: TypeSafeRejectionEvidenceV1 | None = None,
     ) -> EvidenceReceipt | None:
         """Invoked definitive nonacceptance has no invented provider observation."""
         if not self.enabled:
             return None
+        if (
+            rejection is not None
+            and self.receipt_type is not DecisionsEvidenceReceiptV4
+        ):
+            raise IntegrityError("TypeSafe rejection exceeds the sealed provider scope")
         session = self.session
         previous = read_evidence_receipt(self.store, work.submission_id)
         if previous is not None:
@@ -642,6 +656,11 @@ class DurableEvidence:
                 and previous.usage.invocation_failure_code != diagnostic_code
             ):
                 raise IntegrityError("failure classification conflicts")
+            if rejection is not None and (
+                not isinstance(previous, DecisionsEvidenceReceiptV4)
+                or previous.rejection != rejection
+            ):
+                raise IntegrityError("TypeSafe rejection evidence conflicts")
             return previous
         identity = self.identity(work, None)
         usage = extract_provider_usage(
@@ -659,17 +678,20 @@ class DurableEvidence:
             reported,
         )
         assert self.authorization_sha256 is not None
-        evidence = self.receipt_type(
-            identity=identity,
-            correlation_id=work.correlation_id,
-            payload_sha256=work.prepared.payload_sha256,
-            capture=session.spec.capture,
-            authorization=self.authorization,
-            authorization_sha256=self.authorization_sha256,
-            usage=usage,
-            response_retention="omitted",
-            failure_transient=transient,
-            failure_retry_after=retry_after,
+        evidence = self.receipt_type.model_validate(
+            dict(
+                **({"rejection": rejection} if rejection is not None else {}),
+                identity=identity,
+                correlation_id=work.correlation_id,
+                payload_sha256=work.prepared.payload_sha256,
+                capture=session.spec.capture,
+                authorization=self.authorization,
+                authorization_sha256=self.authorization_sha256,
+                usage=usage,
+                response_retention="omitted",
+                failure_transient=transient,
+                failure_retry_after=retry_after,
+            )
         )
         publish_evidence_receipt(self.store, evidence)
         session.checkpoint("after_failure_evidence_receipt", work.prepared.request_uid)

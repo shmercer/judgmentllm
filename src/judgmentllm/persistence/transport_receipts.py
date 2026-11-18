@@ -160,9 +160,12 @@ def _parse_transport_commitment(
         from judgmentllm.decisions.transport import (
             DecisionsCommitmentV1,
             DecisionsCommitmentV2,
+            DecisionsCommitmentV3,
         )
 
         version = cast(dict[str, object], value)["decisions_commitment_version"]
+        if type(version) is int and version == 3:
+            return DecisionsCommitmentV3.model_validate_json(raw)
         if type(version) is int and version == 2:
             return DecisionsCommitmentV2.model_validate_json(raw)
         return DecisionsCommitmentV1.model_validate_json(raw)
