@@ -2185,7 +2185,7 @@
       "test_installed_cli_context_rejection_preserves_diagnostic": {"": []},
       "test_invalid_sdk_key_cannot_authorize_subset_retry": {"": []},
       "test_invalid_sdk_key_leaves_prepared_work_untouched": {"[False]": [], "[True]": []},
-      "test_jev_score_precision_replays_receipt_before_member_commit": {"[current]": [], "[pre-fix]": []},
+      "test_jev_score_precision_replays_receipt_before_member_commit": {"[current]": [], "[filtered]": [], "[pre-fix]": []},
       "test_jev_subset_retry_rejects_unbound_parent_or_wrong_concrete_adapter": {"[missing_submission]": [], "[unrecognizable]": [], "[wrong_adapter]": []},
       "test_model_conflict_reopen_keeps_physical_evidence": {"[full]": [], "[minimal]": []},
       "test_owned_minimal_jev_reopen_commits_usage_before_model_integrity_guard": {"": []},

@@ -277,10 +277,19 @@ def run_partial_jev(
     return spec, result.run_id, forwards
 
 
-@pytest.mark.parametrize("legacy", [False, True], ids=["current", "pre-fix"])
+@pytest.mark.parametrize(
+    "response",
+    [
+        pytest.param("score_precision", id="current"),
+        pytest.param("legacy_score_precision", id="pre-fix"),
+        pytest.param("filtered_score_precision", id="filtered"),
+    ],
+)
 def test_jev_score_precision_replays_receipt_before_member_commit(
-    tmp_path: Path, legacy: bool
+    tmp_path: Path, response: str
 ) -> None:
+    legacy = response == "legacy_score_precision"
+    filtered = response == "filtered_score_precision"
     spec = jev_spec(native_spec(tmp_path / "input", traits=2))
     crash = cli(
         tmp_path,
@@ -288,7 +297,7 @@ def test_jev_score_precision_replays_receipt_before_member_commit(
         "--config",
         config_path(tmp_path, spec),
         fault="after_evidence_receipt",
-        response="legacy_score_precision" if legacy else "score_precision",
+        response=response,
     )
     assert crash.returncode == 79, crash.stderr
     store = tmp_path / "store"
@@ -306,12 +315,26 @@ def test_jev_score_precision_replays_receipt_before_member_commit(
         assert receipt.usage.input_tokens == 120
         assert receipt.retained is not None and receipt.validation is not None
         assert receipt.original is not None
-        if legacy:
+        if legacy or filtered:
             assert receipt.retained_kind == "filtered_replay"
             assert receipt.original.sha256 != receipt.retained.sha256
-            first, second = json.loads(artifacts.read(receipt.retained))["answers"]
-            assert first is None and second["expected_index"] == 1.55
-            assert receipt.validation.members[0].failure == "invalid_output"
+            first_answer, second_answer = json.loads(artifacts.read(receipt.retained))[
+                "answers"
+            ]
+            if legacy:
+                assert first_answer is None and second_answer["expected_index"] == 1.55
+                assert receipt.validation.members[0].failure == "invalid_output"
+            else:
+                assert first_answer["expected_index"] == 1.95 and second_answer is None
+                assert [p["probability"] for p in first_answer["probabilities"]] == [
+                    0.01,
+                    0.02,
+                    0.97,
+                ]
+                assert [m.failure for m in receipt.validation.members] == [
+                    None,
+                    "invalid_output",
+                ]
         else:
             assert receipt.retained_kind == "original"
             assert receipt.original.sha256 == receipt.retained.sha256
@@ -332,10 +355,32 @@ def test_jev_score_precision_replays_receipt_before_member_commit(
                 assert (
                     first.status == "complete" and first.provider_expected_index == 1.95
                 )
-                assert first.primary_score == pytest.approx(6.84)
-            assert (
-                second.status == "complete" and second.provider_expected_index == 1.55
-            )
+                assert [p.probability for p in first.probabilities or []] == [
+                    0.01,
+                    0.02,
+                    0.97,
+                ]
+                assert [level.numeric_value for level in first.resolved_levels] == [
+                    1,
+                    2,
+                    7,
+                ]
+                assert (
+                    first.primary_score
+                    == first.expected_value
+                    == pytest.approx(6.84, rel=0, abs=1e-12)
+                )
+            if filtered:
+                assert (
+                    second.status == "invalid" and second.error_kind == "invalid_output"
+                )
+                assert second.provider_expected_index is None
+                assert second.probabilities is None and second.primary_score is None
+            else:
+                assert (
+                    second.status == "complete"
+                    and second.provider_expected_index == 1.55
+                )
             assert list(repository.iter_evidence(run_id)) == [receipt]
             assert repository.usage_high_water_mark(run_id) == 1
             assert list(repository.iter_submissions(run_id)) == [

@@ -69,11 +69,15 @@ def respond(request: httpx2.Request) -> httpx2.Response:
                 probabilities={"essay_01": 0.2, "essay_02": 0.8},
             )
         )
-        if scenario in {"score_precision", "legacy_score_precision"} and i == 0:
+        if i == 0 and scenario in {
+            "score_precision",
+            "legacy_score_precision",
+            "filtered_score_precision",
+        }:
             answers[key].update(
                 score=1.95, probabilities={"0": 0.01, "1": 0.02, "2": 0.97}
             )
-        if scenario == "filtered" and i == 1:
+        if i == 1 and scenario in {"filtered", "filtered_score_precision"}:
             answers[key]["extra"] = "UNSAFE_JEV_CANARY"
     return httpx2.Response(
         200,
