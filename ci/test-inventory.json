@@ -2148,16 +2148,24 @@
       "test_v3_route_is_typed_and_explicit": {"": []}
     },
     "tests/test_typesafe_decisions.py": {
+      "test_400_reason_requires_unambiguous_raw_codes": {"[duplicate]": [], "[flat]": [], "[generic]": [], "[nested-conflict]": [], "[outer-conflict]": [], "[scalar]": []},
       "test_jev_body_splits_reuse_exact_shared_state": {"": []},
       "test_jev_grouping_uses_the_existing_user_maximum": {"[1-None-groups0]": [], "[12-32-groups3]": [], "[2-32-groups1]": [], "[4-3-groups2]": []},
+      "test_jev_http1_logging_stays_private_during_overlap_and_teardown": {"": []},
       "test_jev_score_level_limit_is_enforced_in_offline_preflight": {"[10]": [], "[11]": [], "[2]": []},
       "test_offline_plan_exposes_unverified_context_and_exact_scope": {"": []},
+      "test_sdk_and_guard_use_credential_validated_before_intent": {"": []},
       "test_sdk_named_answers_and_physical_evidence": {"[choice]": [], "[drop]": [], "[duplicate]": [], "[incomplete_rejection]": [], "[overload]": [], "[redirect]": [], "[score]": [], "[sdk_decode]": [], "[wrong_model]": []},
-      "test_sdk_rejection_is_terminal_and_survives_cli_reopen": {"[400-detail0-max_tokens_exceeded]": [], "[413-UNSAFE_JEV_CANARY-payload_too_large]": []},
+      "test_sdk_rejection_is_terminal_and_survives_cli_reopen": {"[400-detail0-max_tokens_exceeded]": [], "[400-detail1-max_tokens_exceeded]": [], "[413-UNSAFE_JEV_CANARY-payload_too_large]": []},
       "test_unapproved_scope_is_refused_before_credentials": {"[change0]": [], "[change1]": []}
     },
     "tests/test_typesafe_decisions_processes.py": {
-      "test_fresh_process_recovery": {"[after_acknowledgment_receipt-full-statuses1]": [], "[after_evidence_receipt-full-statuses2]": [], "[after_evidence_receipt-minimal-statuses4]": [], "[after_failure_evidence_receipt-full-statuses5]": [], "[during_result_transaction-full-statuses3]": [], "[forward-full-statuses0]": []}
+      "test_fresh_process_recovery": {"[after_acknowledgment_receipt-full-statuses1]": [], "[after_evidence_receipt-full-statuses2]": [], "[after_evidence_receipt-minimal-statuses4]": [], "[after_failure_evidence_receipt-full-statuses5]": [], "[during_result_transaction-full-statuses3]": [], "[forward-full-statuses0]": []},
+      "test_installed_cli_context_rejection_preserves_diagnostic": {"": []},
+      "test_invalid_sdk_key_cannot_authorize_subset_retry": {"": []},
+      "test_invalid_sdk_key_leaves_prepared_work_untouched": {"[False]": [], "[True]": []},
+      "test_model_conflict_reopen_keeps_physical_evidence": {"[full]": [], "[minimal]": []},
+      "test_rejection_write_drains_under_ownership_before_cancellation": {"[before_eof]": [], "[queued]": [], "[sibling_error]": [], "[stream_close]": [], "[write_error]": []}
     },
     "tests/test_typesafe_decisions_r.py": {
       "test_strict_jev_exports_in_real_r": {"": ["r_interop", "serial"]}

@@ -31,6 +31,10 @@ from judgmentllm.execution.retry import (
     prepare_subset_retry,
 )
 from judgmentllm.output_commitments import validate_output_commitment
+from judgmentllm.persistence.evidence import (
+    DecisionsEvidenceReceiptV3,
+    DecisionsEvidenceReceiptV4,
+)
 from judgmentllm.persistence.hashing import (
     bytes_digest,
     canonical_bytes,
@@ -342,6 +346,14 @@ class ExecutionSession:
             raise IntegrityError(
                 "missing submission does not describe initial native intent"
             )
+        if isinstance(prepared, PreparedDecisionsRequestV3):
+            from judgmentllm.providers.typesafe_decisions import (
+                TypeSafeDecisionsAdapter,
+            )
+
+            if not isinstance(self.adapter, TypeSafeDecisionsAdapter):
+                raise IntegrityError("TypeSafe request lacks its execution adapter")
+            self.adapter.validate_credentials()
         # No submission can exist before sealing; all receipt/attempt checks above
         # precede this short owned transaction. This never repairs retry intent.
         with self.transaction():
@@ -619,6 +631,10 @@ class ExecutionSession:
             raise ProviderError(
                 "served tier is unknown; further submission requires review"
             )
+        readiness = getattr(self.adapter, "validate_credentials", None)
+        typesafe = isinstance(work.prepared, PreparedDecisionsRequestV3)
+        if typesafe and readiness is not None:
+            readiness()
         with self.transaction():
             if attempt.state == "claimed":
                 self.repository.transition(
@@ -659,8 +675,7 @@ class ExecutionSession:
         current = self.prepare_attempt(work.dependency, work.attempt_id)
         if current != work.prepared:
             raise IntegrityError("payload changed before submission")
-        readiness = getattr(self.adapter, "validate_credentials", None)
-        if readiness is not None:
+        if readiness is not None and not typesafe:
             readiness()
         with self.transaction():
             self.repository.transition(
@@ -973,6 +988,16 @@ class ExecutionSession:
                 return None
             self.not_submitted(work, invoked=True)
             return None
+        if (
+            isinstance(evidence, DecisionsEvidenceReceiptV4)
+            and evidence.capture == "minimal"
+            and evidence.validation is not None
+        ):
+            from judgmentllm.providers.typesafe_decisions_response import (
+                verify_reported_model,
+            )
+
+            verify_reported_model(evidence.validation)
         receipt = read_receipt(self.prepared.store, work.submission_id)
         if evidence is not None and evidence.response_retention == "omitted":
             return None
@@ -986,7 +1011,6 @@ class ExecutionSession:
             OpenAIDecisionsReplayV1,
             TypeSafeDecisionsReplayV1,
         )
-        from judgmentllm.persistence.evidence import DecisionsEvidenceReceiptV3
 
         raw = self.prepared.store.read(receipt.raw)
         replay = None

@@ -32,7 +32,15 @@ def respond(request: httpx2.Request) -> httpx2.Response:
     if fault == "forward":
         os._exit(79)
     if scenario == "rejection":
-        return httpx2.Response(400, json={"detail": {"code": "max_tokens_exceeded"}})
+        return httpx2.Response(
+            400,
+            content=b'{"detail":{"error_type":"max_tokens_exceeded","message":"UNSAFE_JEV_CANARY"}}',
+        )
+    if scenario == "model_conflict":
+        return httpx2.Response(
+            200,
+            content=b'{"model":"UNSAFE_JEV_CANARY","answers":{},"usage":{"input_tokens":120}}',
+        )
     body = json.loads(request.content)
     answers: dict[str, dict[str, Any]] = {}
     for i, (key, question) in enumerate(body["questions"].items()):

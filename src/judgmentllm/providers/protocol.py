@@ -124,6 +124,14 @@ class ProviderInvocationCancelled(asyncio.CancelledError):
         self.invoked = invoked
 
 
+class TypeSafeRejectionCancelled(ProviderInvocationCancelled):
+    """A complete rejection reached the guard before cancellation."""
+
+    def __init__(self, rejection: TypeSafeRequestRejected) -> None:
+        super().__init__(invoked=True)
+        self.rejection = rejection
+
+
 class RetrievalUnavailable(ProviderError):
     """An original accepted observation cannot currently be retrieved."""
 

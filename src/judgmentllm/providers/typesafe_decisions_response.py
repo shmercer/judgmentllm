@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import math
-from typing import Any, cast
+import re
+from typing import Any, Literal, cast
 
 from pydantic import JsonValue
 
+from judgmentllm.assessment_errors import AssessmentOutputError
 from judgmentllm.decisions.interpretation import ChoiceAnswerV1, ScoreAnswerV1
 from judgmentllm.decisions.replay import (
     DecisionsReplayMetadataV1,
@@ -18,8 +20,12 @@ from judgmentllm.evidence._base import EvidenceIdentity
 from judgmentllm.evidence.usage import ReportedUsageInput
 from judgmentllm.output_contracts import decode_assessment_output
 from judgmentllm.persistence.hashing import bytes_digest
+from judgmentllm.persistence.receipts import TypeSafeRejectionEvidenceV1
 from judgmentllm.planning import stable_id
-from judgmentllm.providers.protocol import ProviderIntegrityError
+from judgmentllm.providers.protocol import (
+    ProviderIntegrityError,
+    TypeSafeRequestRejected,
+)
 
 CHOICES = {
     "essay_01": "The first presented essay.",
@@ -76,6 +82,46 @@ def response_object(raw: bytes) -> dict[str, Any] | None:
     except ValueError:
         return None
     return cast(dict[str, Any], value) if isinstance(value, dict) else None
+
+
+def rejected(
+    status: int, raw: bytes, wire: PreparedDecisionsRequestV3
+) -> TypeSafeRequestRejected | None:
+    try:
+        value = decode_assessment_output(raw)
+    except AssessmentOutputError as error:
+        if status == 400 and error.diagnostic_code == "duplicate_keys":
+            return None
+        value = None
+    fields = cast(dict[str, Any], value) if isinstance(value, dict) else {}
+    reason: Literal["request_rejected", "payload_too_large", "max_tokens_exceeded"]
+    reason = "payload_too_large" if status == 413 else "request_rejected"
+    if status == 400:
+        detail: object = fields.get("detail")
+        codes: list[object] = [fields.get("code")]
+        if isinstance(detail, dict):
+            structured = cast(dict[str, object], detail)
+            codes.extend((structured.get("error_type"), structured.get("code")))
+        elif isinstance(detail, str) and re.fullmatch(r"[a-z][a-z0-9_]*", detail):
+            codes.append(detail)
+        claims = {code for code in codes if isinstance(code, str)}
+        if len(claims) > 1:
+            return None
+        if "max_tokens_exceeded" in claims:
+            reason = "max_tokens_exceeded"
+    receipt = TypeSafeRejectionEvidenceV1.model_validate(
+        dict(
+            **wire.transport_commitment.identity.model_dump(
+                exclude={"identity_version"}
+            ),
+            payload_sha256=wire.payload_sha256,
+            response_sha256=bytes_digest(raw),
+            response_byte_length=len(raw),
+            http_status=status,
+            reason=reason,
+        )
+    )
+    return TypeSafeRequestRejected(receipt, usage=usage_from(fields)[0])
 
 
 def canonical_answer(
@@ -254,4 +300,12 @@ def verify_replay(
     ):
         raise ProviderIntegrityError(
             "TypeSafe replay differs from committed invocation"
+        )
+    verify_reported_model(metadata)
+
+
+def verify_reported_model(metadata: DecisionsReplayMetadataV1) -> None:
+    if "model_conflict" in metadata.findings:
+        raise ProviderIntegrityError(
+            "TypeSafe reported model conflicts with invocation"
         )

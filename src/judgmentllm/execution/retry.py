@@ -461,9 +461,9 @@ def prepare_subset_retry(
     )
     adapter.validate(prepared_run.spec)
     attempt_id = stable_id("attempt", run_id, request_uid, attempt_number)
+    version = prepared_run.manifest.schema_version
     native_artifacts = ()
-    if prepared_run.manifest.schema_version in (3, 4, 5, 6, 7, 8, 9, 10):
-        from judgmentllm.preparation.native import publish_prepared_transport
+    if version in (3, 4, 5, 6, 7, 8, 9, 10):
         from judgmentllm.transport import physical_identity
 
         original = repository.get_attempt_for_request(
@@ -477,7 +477,7 @@ def prepare_subset_retry(
             parent=prepared_run.transport_for_attempt(original.attempt_id),
         )
         prompt_bytes = wire.rendered_text.encode("utf-8")
-        if prepared_run.manifest.schema_version in (8, 9, 10):
+        if version in (8, 9):
             from judgmentllm.decisions.transport import PreparedDecisionsRequestV1
             from judgmentllm.preparation.decisions import publish_decisions_request
 
@@ -485,8 +485,9 @@ def prepare_subset_retry(
             native_artifacts = publish_decisions_request(
                 repository, prepared_run.store, wire, prepared_run.spec.capture
             )
-        else:
+        elif version != 10:
             from judgmentllm.decisions.transport import PreparedDecisionsRequestV1
+            from judgmentllm.preparation.native import publish_prepared_transport
 
             if isinstance(wire, PreparedDecisionsRequestV1):
                 raise IntegrityError(
@@ -517,6 +518,19 @@ def prepare_subset_retry(
     ):
         raise IntegrityError("retry preparation differs from its frozen subset")
     store = prepared_run.store
+    if version == 10:
+        from judgmentllm.decisions.transport import PreparedDecisionsRequestV3
+        from judgmentllm.preparation.decisions import publish_decisions_request
+        from judgmentllm.providers.typesafe_decisions import TypeSafeDecisionsAdapter
+
+        if not isinstance(wire, PreparedDecisionsRequestV3) or not isinstance(
+            adapter, TypeSafeDecisionsAdapter
+        ):
+            raise IntegrityError("TypeSafe retry lacks its sealed request or adapter")
+        adapter.validate_credentials()
+        native_artifacts = publish_decisions_request(
+            repository, store, wire, prepared_run.spec.capture
+        )
     prompt = (
         store.put(prompt_bytes, "text/plain")
         if prepared_run.spec.capture == "full"

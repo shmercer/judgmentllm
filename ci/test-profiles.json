@@ -1499,7 +1499,7 @@
         "win32",
         "darwin"
       ],
-      "reason": "Pinned SDK HTTP interception, SQLite outcomes, privacy and terminal rejection diagnostics"
+      "reason": "Pinned SDK HTTP interception, concurrent HTTP/1.1 privacy, credential binding, SQLite outcomes and terminal rejection diagnostics"
     },
     "tests/test_typesafe_decisions_processes.py": {
       "cost": "process",
@@ -1509,7 +1509,7 @@
         "win32",
         "darwin"
       ],
-      "reason": "Installed-console process death, independent reopen and immutable reply or rejection receipts"
+      "reason": "Installed-console process death and reopen, executor ownership during rejection writes, credential refusal and immutable evidence"
     },
     "tests/test_typesafe_decisions_r.py": {
       "cost": "process",

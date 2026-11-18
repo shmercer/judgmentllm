@@ -10,6 +10,7 @@ from collections.abc import Sequence
 from contextvars import ContextVar
 from dataclasses import dataclass
 from importlib.metadata import PackageNotFoundError, version
+from threading import Lock
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from pydantic_core import to_json
@@ -33,10 +34,7 @@ from judgmentllm.persistence.hashing import (
     canonical_bytes,
     semantic_digest,
 )
-from judgmentllm.persistence.receipts import (
-    CompleteResponseEvidenceV3,
-    TypeSafeRejectionEvidenceV1,
-)
+from judgmentllm.persistence.receipts import CompleteResponseEvidenceV3
 from judgmentllm.planning import CapabilityProfile
 from judgmentllm.providers.evidence import ProviderEvidence, ProviderObservationContext
 from judgmentllm.providers.protocol import (
@@ -49,14 +47,13 @@ from judgmentllm.providers.protocol import (
     ProviderResponse,
     RetrievalUnavailable,
     SubmissionUncertain,
-    TypeSafeRequestRejected,
+    TypeSafeRejectionCancelled,
 )
 from judgmentllm.providers.typesafe_decisions_response import (
     CHOICES,
     analyze,
     observation_key,
-    response_object,
-    usage_from,
+    rejected,
     verify_replay,
 )
 
@@ -74,13 +71,18 @@ class TypeSafeConfigurationError(ValueError):
 
 class TypeSafeReadinessError(ProviderError):
     def __init__(
-        self, code: Literal["missing_credentials", "sdk_scope_mismatch"]
+        self,
+        code: Literal[
+            "missing_credentials", "invalid_credentials", "sdk_scope_mismatch"
+        ],
     ) -> None:
         self.diagnostic_code = code
         super().__init__(
-            "TypeSafe Jev requires the selected TYPESAFE_API_KEY credential."
-            if code == "missing_credentials"
-            else "TypeSafe Jev requires typesafe-sdk==0.7.5 from the typesafe extra."
+            {
+                "missing_credentials": "TypeSafe Jev requires the selected TYPESAFE_API_KEY credential.",
+                "invalid_credentials": "TypeSafe Jev requires a TYPESAFE_API_KEY with printable ASCII and no whitespace.",
+                "sdk_scope_mismatch": "TypeSafe Jev requires typesafe-sdk==0.7.5 from the typesafe extra.",
+            }[code]
         )
 
 
@@ -149,11 +151,17 @@ class _Invocation:
 _ACTIVE: ContextVar[_Invocation | None] = ContextVar(
     "typesafe_decisions_invocation", default=None
 )
+_CLOSING: ContextVar[bool] = ContextVar("typesafe_decisions_closing", default=False)
 
 
 class _ExecutionLogFilter(logging.Filter):
     def filter(self, record: logging.LogRecord) -> bool:
-        return _ACTIVE.get() is None
+        return _ACTIVE.get() is None and not _CLOSING.get()
+
+
+_LOG_FILTER = _ExecutionLogFilter()
+_LOG_FILTER_LOCK = Lock()
+_LOGGERS = ("typesafe_sdk", "httpx2", "httpcore2.connection", "httpcore2.http11")
 
 
 class TypeSafeDecisionsAdapter:
@@ -169,6 +177,7 @@ class TypeSafeDecisionsAdapter:
         self.transport_context = context or TypeSafeDecisionsContextV1()
         self.concurrency = concurrency
         self.http_transport = http_transport
+        self._validated_key: str | None = None
         self._client: AsyncTypeSafeClient | None = None
         self._responses: dict[
             str, tuple[ProviderAcknowledgmentV4, ProviderResponse]
@@ -192,6 +201,8 @@ class TypeSafeDecisionsAdapter:
             raise ProviderIntegrityError("TypeSafe Decisions runtime scope differs")
 
     def validate_credentials(self) -> None:
+        if self._validated_key is not None:
+            return
         try:
             installed = version("typesafe-sdk")
         except PackageNotFoundError:
@@ -199,9 +210,13 @@ class TypeSafeDecisionsAdapter:
         if installed != self.transport_context.sdk_version:
             raise TypeSafeReadinessError("sdk_scope_mismatch")
         try:
-            _resolve_credentials("typesafe")
+            key = _resolve_credentials("typesafe")._api_key()  # pyright: ignore[reportPrivateUsage]
         except ValueError:
             raise TypeSafeReadinessError("missing_credentials") from None
+        # Enforce the pinned SDK's syntax before creating submission intent.
+        if not key.isascii() or not key.isprintable() or " " in key:
+            raise TypeSafeReadinessError("invalid_credentials")
+        self._validated_key = key
 
     def prepare(self, *_args: Any, **_kwargs: Any) -> PreparedRequest:
         raise ProviderError("TypeSafe Decisions requires sealed preparation")
@@ -209,14 +224,15 @@ class TypeSafeDecisionsAdapter:
     def _execution_client(self) -> AsyncTypeSafeClient:
         if self._client is not None:
             return self._client
-        self.validate_credentials()
+        key = self._validated_key
+        if key is None:
+            raise ProviderIntegrityError("TypeSafe SDK credential was not validated")
         import httpx2
         from typesafe_sdk import AsyncTypeSafeClient, RetryPolicy
 
-        logger = logging.getLogger("typesafe_sdk")
-        if not any(isinstance(item, _ExecutionLogFilter) for item in logger.filters):
-            logger.addFilter(_ExecutionLogFilter())
-        key = _resolve_credentials("typesafe")._api_key()  # pyright: ignore[reportPrivateUsage]
+        with _LOG_FILTER_LOCK:
+            for name in _LOGGERS:
+                logging.getLogger(name).addFilter(_LOG_FILTER)
         limits = httpx2.Limits(
             max_connections=self.concurrency, max_keepalive_connections=self.concurrency
         )
@@ -254,27 +270,30 @@ class TypeSafeDecisionsAdapter:
                 response = await underlying.handle_async_request(request)
                 body = bytearray()
                 try:
+                    stream = response.stream
                     if (
-                        response.headers.get("content-encoding", "identity").lower()
+                        not isinstance(stream, httpx2.AsyncByteStream)
+                        or response.headers.get("content-encoding", "identity").lower()
                         != "identity"
                     ):
                         raise SubmissionUncertain(invoked=True)
-                    async for chunk in response.aiter_bytes():
+                    # HTTPX's response iterators await closing before reporting EOF.
+                    async for chunk in stream:
                         if len(body) + len(chunk) > _RESPONSE_LIMIT:
                             raise SubmissionUncertain(invoked=True)
                         body.extend(chunk)
+                    raw = bytes(body)
+                    ids = response.headers.get_list("x-typesafe-request-id")
+                    remote_id = (
+                        ids[0]
+                        if len(ids) == 1
+                        and re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", ids[0])
+                        and key not in ids[0]
+                        else None
+                    )
+                    active.received = response.status_code, raw, remote_id
                 finally:
                     await response.aclose()
-                raw = bytes(body)
-                ids = response.headers.get_list("x-typesafe-request-id")
-                remote_id = (
-                    ids[0]
-                    if len(ids) == 1
-                    and re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", ids[0])
-                    and key not in ids[0]
-                    else None
-                )
-                active.received = response.status_code, raw, remote_id
                 return httpx2.Response(
                     response.status_code, content=raw, request=request
                 )
@@ -341,12 +360,10 @@ class TypeSafeDecisionsAdapter:
         active = _ACTIVE.set(state)
         cancelled = False
         try:
-            await asyncio.wait_for(
-                client.system_one(  # pyright: ignore[reportUnknownMemberType]
+            async with asyncio.timeout(90):
+                await client.system_one(  # pyright: ignore[reportUnknownMemberType]
                     model=wire.model, state=request["state"], questions=questions
-                ),
-                timeout=90,
-            )
+                )
         except asyncio.CancelledError:
             cancelled = True
         except ProviderIntegrityError:
@@ -364,32 +381,11 @@ class TypeSafeDecisionsAdapter:
             raise SubmissionUncertain(invoked=state.forwarded)
         status, raw, remote_id = state.received
         if status in _REJECTIONS:
-            fields = response_object(raw) or {}
-            detail = fields.get("detail")
-            code = (
-                cast(dict[str, object], detail).get("code")
-                if isinstance(detail, dict)
-                else detail
-            )
-            rejection = TypeSafeRejectionEvidenceV1.model_validate(
-                dict(
-                    **identity.model_dump(exclude={"identity_version"}),
-                    payload_sha256=wire.payload_sha256,
-                    response_sha256=bytes_digest(raw),
-                    response_byte_length=len(raw),
-                    http_status=status,
-                    reason="payload_too_large"
-                    if status == 413
-                    else "max_tokens_exceeded"
-                    if status == 400
-                    and (
-                        code == "max_tokens_exceeded"
-                        or fields.get("code") == "max_tokens_exceeded"
-                    )
-                    else "request_rejected",
-                )
-            )
-            raise TypeSafeRequestRejected(rejection, usage=usage_from(fields)[0])
+            rejection = rejected(status, raw, wire)
+            if rejection is not None:
+                if cancelled:
+                    raise TypeSafeRejectionCancelled(rejection)
+                raise rejection
         if status != 200:
             if cancelled:
                 raise ProviderInvocationCancelled(invoked=True)
@@ -483,6 +479,11 @@ class TypeSafeDecisionsAdapter:
         raise ProviderError("TypeSafe Decisions requires named-member interpretation")
 
     async def aclose(self) -> None:
-        if self._client is not None:
-            await self._client.aclose()
+        closing = _CLOSING.set(True)
+        try:
+            if self._client is not None:
+                await self._client.aclose()
+        finally:
+            _CLOSING.reset(closing)
             self._client = None
+            self._validated_key = None

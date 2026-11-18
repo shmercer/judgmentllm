@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import socket
@@ -10,6 +11,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any, cast
 
+import httpcore2
 import httpx2
 import pytest
 from test_decisions_contracts import pair_spec
@@ -18,14 +20,23 @@ from typer.testing import CliRunner
 
 from judgmentllm.cli import app
 from judgmentllm.config import RunSpecV4
+from judgmentllm.execution.session import ExecutionSession
 from judgmentllm.lifecycle import (
+    LifecycleError,
     RetrySelection,
+    arun_live,
     estimate_run,
     get_run,
     resume_run,
     run_live,
     validate_inputs,
 )
+from judgmentllm.persistence.artifacts import ArtifactStore
+from judgmentllm.persistence.decisions_invocations import (
+    DecisionsInvocationV3,
+    read_invocation,
+)
+from judgmentllm.persistence.evidence import DecisionsEvidenceReceiptV4
 from judgmentllm.persistence.repository import Repository
 from judgmentllm.preparation import prepare_run
 
@@ -123,6 +134,11 @@ def test_unapproved_scope_is_refused_before_credentials(
             {"code": "max_tokens_exceeded", "message": "UNSAFE_JEV_CANARY"},
             "max_tokens_exceeded",
         ),
+        (
+            400,
+            {"error_type": "max_tokens_exceeded", "message": "UNSAFE_JEV_CANARY"},
+            "max_tokens_exceeded",
+        ),
         (413, "UNSAFE_JEV_CANARY", "payload_too_large"),
     ],
 )
@@ -134,7 +150,6 @@ def test_sdk_rejection_is_terminal_and_survives_cli_reopen(
     reason: str,
 ) -> None:
     from judgmentllm.decisions.provenance import export_decisions_provenance
-    from judgmentllm.lifecycle import LifecycleError
 
     spec = jev_spec(native_spec(tmp_path))
     store = tmp_path / "store"
@@ -171,6 +186,7 @@ def test_sdk_rejection_is_terminal_and_survives_cli_reopen(
         )
         receipt = json.loads(path.read_bytes())["rejection"]
         assert receipt["response_sha256"] == sha256(raw).hexdigest()
+        assert receipt["response_byte_length"] == len(raw)
         assert receipt["http_status"] == status and receipt["reason"] == reason
         assert receipt["attempt_id"] == rows[0].attempt_id
         assert "UNSAFE_JEV_CANARY" not in path.read_text()
@@ -192,6 +208,208 @@ def test_sdk_rejection_is_terminal_and_survives_cli_reopen(
             retry=RetrySelection(task_ids=(rows[0].task_id,), operation_id="retry"),
         )
     assert len(calls) == 1
+
+
+@pytest.mark.parametrize(
+    "raw,reason",
+    [
+        (
+            b'{"detail":{"error_type":"bad_input","message":"max_tokens_exceeded"}}',
+            "request_rejected",
+        ),
+        (b'{"detail":"max_tokens_exceeded"}', "max_tokens_exceeded"),
+        (b'{"code":"max_tokens_exceeded"}', "max_tokens_exceeded"),
+        (
+            b'{"detail":{"error_type":"bad_input","error_type":"max_tokens_exceeded"}}',
+            None,
+        ),
+        (b'{"detail":{"error_type":"bad_input","code":"max_tokens_exceeded"}}', None),
+        (b'{"detail":{"error_type":"max_tokens_exceeded"},"code":"bad_input"}', None),
+    ],
+    ids=["generic", "scalar", "flat", "duplicate", "nested-conflict", "outer-conflict"],
+)
+def test_400_reason_requires_unambiguous_raw_codes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, raw: bytes, reason: str | None
+) -> None:
+    forwards: list[str] = []
+
+    def reject(request: httpx2.Request) -> httpx2.Response:
+        forwards.append(str(request.url))
+        return httpx2.Response(400, content=raw)
+
+    def transport(**_kwargs: object) -> httpx2.MockTransport:
+        return httpx2.MockTransport(reject)
+
+    monkeypatch.setattr(httpx2, "AsyncHTTPTransport", transport)
+    store = tmp_path / "store"
+    result = run_live(jev_spec(native_spec(tmp_path)), store=store)
+    reopened = resume_run(result.run_id, store=store)
+    assert result.recovery_required == reopened.recovery_required == (reason is None)
+    assert result.decisions == reopened.decisions
+    with Repository(store) as repository:
+        (submission,) = repository.iter_submissions(result.run_id)
+        evidence = repository.get_evidence_for_submission(
+            result.run_id, submission.submission_id
+        )
+        if reason is None:
+            assert evidence is None
+            artifacts = ArtifactStore(
+                repository.run_directory(result.run_id), create=False
+            )
+            assert isinstance(
+                read_invocation(artifacts, submission.submission_id),
+                DecisionsInvocationV3,
+            )
+            assert list(repository.iter_results(result.run_id)) == []
+        else:
+            assert isinstance(evidence, DecisionsEvidenceReceiptV4)
+            assert evidence.rejection is not None
+            assert evidence.rejection.reason == reason
+            assert [r.status for r in repository.iter_results(result.run_id)] == [
+                "errored"
+            ] * 3
+    assert forwards == ["https://api.typesafe.ai/v1/systemone"]
+
+
+def test_sdk_and_guard_use_credential_validated_before_intent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from typesafe_sdk import AsyncTypeSafeClient
+
+    sdk_keys: list[str] = []
+    headers: list[str] = []
+    initialize = AsyncTypeSafeClient.__init__
+    checkpoint = ExecutionSession.checkpoint
+    rotations: list[str] = []
+
+    def rotate(session: ExecutionSession, stage: str, request_uid: str = "") -> None:
+        if stage == "after_initial_submission":
+            monkeypatch.setenv("TYPESAFE_API_KEY", "synthetic-jev-rotated")
+            rotations.append(request_uid)
+        checkpoint(session, stage, request_uid)
+
+    def sdk_init(client: AsyncTypeSafeClient, **kwargs: Any) -> None:
+        sdk_keys.append(kwargs["api_key"])
+        initialize(client, **kwargs)
+
+    def respond(request: httpx2.Request) -> httpx2.Response:
+        headers.append(request.headers["authorization"])
+        body = json.loads(request.content)
+        return httpx2.Response(
+            200, json=dict(model=body["model"], answers=answer_map(body))
+        )
+
+    def transport(**_kwargs: object) -> httpx2.MockTransport:
+        return httpx2.MockTransport(respond)
+
+    monkeypatch.setattr(ExecutionSession, "checkpoint", rotate)
+    monkeypatch.setattr(AsyncTypeSafeClient, "__init__", sdk_init)
+    monkeypatch.setattr(httpx2, "AsyncHTTPTransport", transport)
+    result = run_live(jev_spec(native_spec(tmp_path)), store=tmp_path / "store")
+    assert result.outcome == "ok"
+    assert len(rotations) == 1
+    assert sdk_keys == ["synthetic-jev-key"]
+    assert headers == ["Bearer synthetic-jev-key"]
+
+
+@pytest.mark.asyncio
+async def test_jev_http1_logging_stays_private_during_overlap_and_teardown(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    real_transport = httpx2.AsyncHTTPTransport
+    body = b'{"detail":"UNSAFE_JEV_BODY"}'
+    headers = (
+        b"HTTP/1.1 413 Payload Too Large\r\nX-Private: UNSAFE_JEV_HEADER\r\n"
+        + f"Content-Length: {len(body)}\r\n\r\n".encode()
+    )
+
+    class PausedStream(httpcore2.AsyncMockStream):
+        def __init__(self) -> None:
+            super().__init__([headers, body])
+            self.reads = 0
+            self.waiting_for_body = asyncio.Event()
+            self.release_body = asyncio.Event()
+            self.closed = False
+
+        async def read(self, max_bytes: int, timeout: float | None = None) -> bytes:
+            self.reads += 1
+            if self.reads == 2:
+                self.waiting_for_body.set()
+                await self.release_body.wait()
+            return await super().read(max_bytes, timeout)
+
+        async def aclose(self) -> None:
+            self.closed = True
+            logging.getLogger("httpcore2.connection").debug("UNSAFE_JEV_TEARDOWN")
+            await super().aclose()
+
+    class Backend(httpcore2.AsyncMockBackend):
+        def __init__(self, stream: PausedStream) -> None:
+            super().__init__([])
+            self.stream = stream
+
+        async def connect_tcp(
+            self, *_args: Any, **_kwargs: Any
+        ) -> httpcore2.AsyncNetworkStream:
+            return self.stream
+
+    def transport(backend: httpcore2.AsyncNetworkBackend) -> httpx2.AsyncHTTPTransport:
+        client_transport = real_transport(verify=False, trust_env=False)
+        monkeypatch.setattr(
+            client_transport,
+            "_pool",
+            httpcore2.AsyncConnectionPool(network_backend=backend),
+        )
+        return client_transport
+
+    async def unrelated(label: str) -> None:
+        raw = f"HTTP/1.1 204 No Content\r\nX-Trace: {label}\r\n\r\n".encode()
+        async with httpx2.AsyncClient(
+            transport=transport(httpcore2.AsyncMockBackend([raw])), trust_env=False
+        ) as client:
+            assert (await client.get(f"https://{label}.invalid/")).status_code == 204
+        logging.getLogger("typesafe_sdk").debug("unrelated SDK log %s", label)
+
+    first, second = PausedStream(), PausedStream()
+    jev_transports = iter((transport(Backend(first)), transport(Backend(second))))
+
+    def jev_transport(**_kwargs: object) -> httpx2.AsyncHTTPTransport:
+        return next(jev_transports)
+
+    monkeypatch.setattr(httpx2, "AsyncHTTPTransport", jev_transport)
+    loggers = ("typesafe_sdk", "httpx2", "httpcore2.connection", "httpcore2.http11")
+    for logger in loggers:
+        caplog.set_level(logging.DEBUG, logger=logger)
+    tasks: list[asyncio.Task[Any]] = []
+    try:
+        async with asyncio.timeout(10):
+            for index, stream in enumerate((first, second)):
+                root = tmp_path / str(index)
+                tasks.append(
+                    asyncio.create_task(
+                        arun_live(jev_spec(native_spec(root)), store=root / "store")
+                    )
+                )
+                await stream.waiting_for_body.wait()
+            await unrelated("unrelated-during")
+            tasks[0].cancel()
+            with pytest.raises(asyncio.CancelledError):
+                await tasks[0]
+            second.release_body.set()
+            completed = await tasks[1]
+            assert completed.outcome == "partial" and not completed.recovery_required
+            await unrelated("unrelated-after")
+    finally:
+        for task in tasks:
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+    assert first.closed and second.closed
+    assert "UNSAFE_JEV_" not in caplog.text
+    for label in ("unrelated-during", "unrelated-after"):
+        assert {
+            record.name for record in caplog.records if label in record.getMessage()
+        } >= set(loggers)
 
 
 @pytest.mark.parametrize(
@@ -282,6 +500,20 @@ def test_sdk_named_answers_and_physical_evidence(
 
     monkeypatch.setattr(httpx2, "AsyncHTTPTransport", transport)
     caplog.set_level(logging.DEBUG, logger="typesafe_sdk")
+    if case == "wrong_model":
+        with pytest.raises(LifecycleError) as conflict:
+            run_live(spec, store=store)
+        assert conflict.value.category == "execution"
+        run_id = conflict.value.run_id
+        assert run_id is not None
+        with pytest.raises(LifecycleError) as reopened:
+            resume_run(run_id, store=store)
+        assert reopened.value.category == "execution"
+        with Repository(store) as repository:
+            assert list(repository.iter_results(run_id)) == []
+            assert repository.usage_high_water_mark(run_id) == 1
+        assert len(calls) == 1
+        return
     result = run_live(spec, store=store)
     assert "UNSAFE_JEV_CANARY" not in caplog.text
     with Repository(store) as repository:
@@ -301,7 +533,6 @@ def test_sdk_named_answers_and_physical_evidence(
                 "score": ["complete"] * 3,
                 "sdk_decode": ["invalid", "complete", "complete"],
                 "duplicate": ["invalid"] * 3,
-                "wrong_model": ["invalid"] * 3,
             }[case]
             for row in rows:
                 if row.status == "complete":

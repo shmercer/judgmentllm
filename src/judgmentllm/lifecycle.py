@@ -363,7 +363,7 @@ def _safe_provider_diagnostic(error: BaseException) -> tuple[ErrorCategory, str]
     ):
         return (
             "validation"
-            if error.diagnostic_code == "missing_credentials"
+            if error.diagnostic_code in {"missing_credentials", "invalid_credentials"}
             else "unsupported_capability",
             str(error),
         )
