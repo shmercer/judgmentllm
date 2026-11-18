@@ -971,6 +971,11 @@ def test_jev_response_guard_leaves_nonretained_response_unresolved(
 async def test_jev_cancellation_after_transport_eof_preserves_only_established_evidence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, status: int
 ) -> None:
+    from judgmentllm.decisions.outcomes import read_outcomes
+    from judgmentllm.persistence.ownership import executor_is_active
+    from judgmentllm.persistence.receipts import AcknowledgmentReceiptV4
+    from judgmentllm.persistence.repository import ReadOnlyRepository
+
     spec = jev_spec(native_spec(tmp_path))
     store = tmp_path / "store"
     with prepare_run(spec, store=store, run_id="001"):
@@ -1000,6 +1005,53 @@ async def test_jev_cancellation_after_transport_eof_preserves_only_established_e
         )
         return httpx2.Response(status, stream=ClosingStream(raw))
 
+    def ledger_snapshot() -> tuple[object, ...]:
+        with ReadOnlyRepository(store) as repository:
+            assert repository.get_owner("001") is None
+            assert executor_is_active(repository, "001") is False
+            (submission,) = repository.iter_submissions("001")
+            submission_id = submission.submission_id
+            artifacts = ArtifactStore(repository.run_directory("001"), create=False)
+            ack = read_acknowledgment(artifacts, submission_id)
+            fact = read_invocation(artifacts, submission_id)
+            observation = repository.get_observation_for_submission(
+                "001", submission_id
+            )
+            evidence = repository.get_evidence_for_submission("001", submission_id)
+            outcomes = read_outcomes(artifacts, submission_id)
+            rows = list(repository.iter_results("001"))
+            usage = list(repository.usage_revision_history("001", submission_id))
+            if status == 200:
+                assert submission.certainty == "accepted"
+                assert isinstance(ack, AcknowledgmentReceiptV4)
+                assert isinstance(evidence, DecisionsEvidenceReceiptV4)
+                assert observation is not None
+                assert outcomes is not None
+                assert outcomes.observation_id == observation.observation_id
+                assert [answer.answer_type for answer in outcomes.answers] == [
+                    "invalid",
+                    "score",
+                    "score",
+                ]
+                assert [row.status for row in rows] == [
+                    "invalid",
+                    "complete",
+                    "complete",
+                ]
+                (record,) = usage
+                assert record.usage == evidence.usage
+                assert record.usage.input_tokens == 120
+            else:
+                assert (
+                    submission.state == "uncertain"
+                    and submission.certainty == "unknown"
+                )
+                assert isinstance(fact, DecisionsInvocationV3)
+                assert fact.payload_sha256 == sha256(forwards[0]).hexdigest()
+                assert ack is None and observation is None and evidence is None
+                assert outcomes is None and rows == [] and usage == []
+            return submission, ack, fact, observation, evidence, outcomes, rows, usage
+
     adapter = TypeSafeDecisionsAdapter(
         spec.model, http_transport=httpx2.MockTransport(respond)
     )
@@ -1009,6 +1061,8 @@ async def test_jev_cancellation_after_transport_eof_preserves_only_established_e
         task.cancel()
         with pytest.raises(asyncio.CancelledError):
             await asyncio.wait_for(task, 10)
+        assert len(forwards) == 1
+        settled = ledger_snapshot()
     finally:
         if not task.done():
             task.cancel()
@@ -1023,28 +1077,7 @@ async def test_jev_cancellation_after_transport_eof_preserves_only_established_e
     resumed = await aresume_run("001", store=store)
     assert resumed.recovery_required == (status == 529)
     assert len(forwards) == 1
-    with Repository(store) as repository:
-        assert repository.get_owner("001") is None
-        (submission,) = repository.iter_submissions("001")
-        artifacts = ArtifactStore(repository.run_directory("001"), create=False)
-        rows = list(repository.iter_results("001"))
-        evidence = repository.get_evidence_for_submission(
-            "001", submission.submission_id
-        )
-        if status == 200:
-            assert submission.certainty == "accepted"
-            assert read_acknowledgment(artifacts, submission.submission_id) is not None
-            assert isinstance(evidence, DecisionsEvidenceReceiptV4)
-            assert evidence.usage.input_tokens == 120
-            assert [row.status for row in rows] == ["invalid", "complete", "complete"]
-        else:
-            assert submission.certainty == "unknown"
-            fact = read_invocation(artifacts, submission.submission_id)
-            assert isinstance(fact, DecisionsInvocationV3)
-            assert fact.payload_sha256 == sha256(forwards[0]).hexdigest()
-            assert read_acknowledgment(artifacts, submission.submission_id) is None
-            assert evidence is None and rows == []
-        assert repository.usage_high_water_mark("001") == int(status == 200)
+    assert ledger_snapshot() == settled
 
 
 @pytest.mark.parametrize(
