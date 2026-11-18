@@ -26,12 +26,14 @@ def test_strict_gemini_exports_in_real_r(tmp_path: Path) -> None:
         "Required for strict local Gemini Decisions R acceptance"
     )
     exports: dict[str, dict[str, Any]] = {}
-    for name in ("rubric", "pairwise", "rejection", "refusal"):
+    for name in ("rubric", "pairwise", "rejection", "refusal", "oversized-integer"):
         root = tmp_path / name
         spec = gemini_spec(
             pair_spec(root / "input", criteria=2)
             if name == "pairwise"
-            else native_spec(root / "input")
+            else native_spec(
+                root / "input", traits=2 if name == "oversized-integer" else 3
+            )
         )
         result = control(
             cli(
@@ -43,6 +45,7 @@ def test_strict_gemini_exports_in_real_r(tmp_path: Path) -> None:
                     "rubric": "filtered",
                     "rejection": "context",
                     "refusal": "200-refusal",
+                    "oversized-integer": "oversized-integer",
                 }.get(name, "clean"),
             )
         )

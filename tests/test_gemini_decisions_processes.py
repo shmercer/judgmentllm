@@ -221,36 +221,46 @@ def test_refusal_and_grouped_results_recover_in_fresh_process(
 def test_overflowed_member_preserves_sibling_and_physical_usage(
     tmp_path: Path, fault: str
 ) -> None:
-    spec = gemini_spec(native_spec(tmp_path / "input", traits=2))
-    first = cli(
-        tmp_path,
-        "run",
-        "--config",
-        config_path(tmp_path, spec),
-        scenario="overflow",
-        fault=fault,
-    )
-    if fault:
-        assert first.returncode == 79, (first.stdout, first.stderr)
-    else:
-        control(first)
-    store = tmp_path / "store"
-    with Repository(store) as repository:
-        (run,) = repository.connection.execute("SELECT run_id FROM runs").fetchall()
-        run_id = str(run[0])
-    control(cli(tmp_path, "resume", "--run", run_id))
-    assert (tmp_path / "forwards").read_text().splitlines() == ["decisions"]
-    with Repository(store) as repository:
-        good, invalid = repository.iter_results(run_id)
-        assert good.status == "complete" and good.task_kind == "rubric"
-        assert good.primary_score == pytest.approx(5.15)
-        assert invalid.status == "invalid" and invalid.error_kind == "invalid_output"
-        (receipt,) = repository.iter_evidence(run_id)
-        assert isinstance(receipt, DecisionsEvidenceReceiptV5)
-        assert receipt.retained_kind == "filtered_replay"
-        assert receipt.validation is not None and receipt.validation.recognizable
-        assert (receipt.usage.input_tokens, receipt.usage.output_tokens) == (120, 0)
-        assert repository.usage_high_water_mark(run_id) == 1
+    for scenario, plain_index, mapped_score in (
+        ("overflow", 1.55, 5.15),
+        ("oversized-integer", 2, 7),
+    ):
+        root = tmp_path / scenario
+        spec = gemini_spec(native_spec(root / "input", traits=2))
+        first = cli(
+            root,
+            "run",
+            "--config",
+            config_path(root, spec),
+            scenario=scenario,
+            fault=fault,
+        )
+        if fault:
+            assert first.returncode == 79, (first.stdout, first.stderr)
+        else:
+            control(first)
+        store = root / "store"
+        with Repository(store) as repository:
+            (run,) = repository.connection.execute("SELECT run_id FROM runs").fetchall()
+            run_id = str(run[0])
+            if fault:
+                assert list(repository.iter_results(run_id)) == []
+        control(cli(root, "resume", "--run", run_id))
+        assert (root / "forwards").read_text().splitlines() == ["decisions"]
+        with Repository(store) as repository:
+            good, invalid = repository.iter_results(run_id)
+            assert good.status == "complete" and good.task_kind == "rubric"
+            assert good.provider_expected_index == plain_index
+            assert good.primary_score == pytest.approx(mapped_score)
+            assert (
+                invalid.status == "invalid" and invalid.error_kind == "invalid_output"
+            )
+            (receipt,) = repository.iter_evidence(run_id)
+            assert isinstance(receipt, DecisionsEvidenceReceiptV5)
+            assert receipt.retained_kind == "filtered_replay"
+            assert receipt.validation is not None and receipt.validation.recognizable
+            assert (receipt.usage.input_tokens, receipt.usage.output_tokens) == (120, 0)
+            assert repository.usage_high_water_mark(run_id) == 1
 
 
 @pytest.mark.parametrize("scenario", ["200-refusal", "400-refusal", "truncated"])

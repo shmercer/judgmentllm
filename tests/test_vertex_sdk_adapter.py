@@ -417,7 +417,9 @@ async def test_rejection_uncertainty_and_redirect_never_retry(
         ("api_key", "SYNTHETIC_SELECTED_VERTEX_KEY"),
     ],
 )
-@pytest.mark.parametrize("escape", [False, True, "malformed", "malformed-nested"])
+@pytest.mark.parametrize(
+    "escape", [False, True, "malformed", "malformed-nested", "malformed-quoted"]
+)
 @pytest.mark.asyncio
 async def test_no_credential_echo_enters_evidence(
     tmp_path: Path,
@@ -426,11 +428,16 @@ async def test_no_credential_echo_enters_evidence(
     secret: str,
     escape: bool | str,
 ) -> None:
+    if escape == "malformed-quoted":
+        secret += '"\\END'
     if mode == "adc":
-        adc(monkeypatch)
+        credential, _ = adc(monkeypatch)
+        credential.token = secret
+    elif escape == "malformed-quoted":
+        monkeypatch.setenv("JUDGMENTLLM_VERTEX_API_KEY", secret)
     wire, spec, _, context = wire_for(tmp_path)
     raw = json.dumps(envelope(secret)).encode()
-    if escape:
+    if escape and escape != "malformed-quoted":
         slash = "\\" if escape != "malformed-nested" else "\\\\"
         raw = raw.replace(
             secret.encode(), "".join(f"{slash}u{ord(c):04x}" for c in secret).encode()
@@ -450,6 +457,7 @@ async def test_no_credential_echo_enters_evidence(
             SubmissionUncertain, match="cannot be retained safely"
         ) as failure:
             await adapter.submit(wire, **invocation(wire))
+        assert failure.value.invoked and adapter.actual_call_count == 1
         assert secret not in str(failure.value) and not adapter._responses
     finally:
         await adapter.aclose()

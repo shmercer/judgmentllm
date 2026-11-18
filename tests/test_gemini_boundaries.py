@@ -431,6 +431,22 @@ def test_nested_credential_escaping_fails_closed() -> None:
     assert adapter_module._contains_credential(b'{"key":"SE\\/CRET"}', "SE/CRET")
 
 
+def test_credential_screening_respects_string_boundaries_in_malformed_bodies() -> None:
+    key = 'PREFIX\U0001f4dd"\\END'
+    assert adapter_module._contains_credential(
+        b'\xff{"text":"PREFIX\\ud83d\\udcdd\\"\\\\END"}', key
+    )
+    assert adapter_module._contains_credential(
+        b'\xff{"text":"\\qPREFIX\\ud83d\\udcdd\\"\\\\END', key
+    )
+    assert not adapter_module._contains_credential(
+        b'\xff{"first":"PREFIX\\ud83d\\udcdd","second":"\\"\\\\END"}', key
+    )
+    assert not adapter_module._contains_credential(
+        b'\xff{"text":"\\qPREFIX\\ud83d\\udcdd\\"\\\\ELSE"}', key
+    )
+
+
 def test_reviewed_generation_authority_and_partial_features(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -17,6 +17,13 @@ for (name in names(runs)) {
               row$model == "gemini-decision-1", is.null(row$input_tokens))
     if (name == "rejection") {
       stopifnot(row$status == "errored")
+    } else if (name == "oversized-integer") {
+      if (row$status == "complete") {
+        stopifnot(row$primary_score == 7, row$provider_expected_index == 2,
+                  row$confidence == 1, row$trait_id == "00")
+      } else {
+        stopifnot(row$status == "invalid", row$error_kind == "invalid_output")
+      }
     } else if (name == "pairwise") {
       stopifnot(row$status == "complete",
                 identical(unlist(row$original_order), c("001", "002")),
@@ -41,7 +48,8 @@ for (name in names(runs)) {
   physical <- read_jsonl(bundle_file("physical.jsonl"))
   questions <- read_jsonl(bundle_file("questions.jsonl"))
   stopifnot(bundle$provenance_manifest_version == 4L, length(questions) == length(rows),
-            length(physical) == c(rubric = 2L, pairwise = 4L, rejection = 1L, refusal = 2L)[[name]])
+            length(physical) == c(rubric = 2L, pairwise = 4L, rejection = 1L, refusal = 2L,
+                                  "oversized-integer" = 1L)[[name]])
   for (attempt in physical) {
     stopifnot(attempt$limits$context_fit == "unverified",
               attempt$limits$max_context_tokens == 262144L,
@@ -59,7 +67,10 @@ for (name in names(runs)) {
                 attempt$selected_usage$output_tokens == 0L)
     }
   }
-  if (name == "pairwise") {
+  if (name == "oversized-integer") {
+    stopifnot(identical(vapply(rows, function(row) row$status, character(1)),
+                        c("complete", "invalid")), physical[[1]]$retained_kind == "filtered_replay")
+  } else if (name == "pairwise") {
     stopifnot(all(r$winner_pos == "2"), all(r$result == "0"),
               setequal(vapply(rows, function(x) x$p_left, numeric(1)), c(0.2, 0.8)))
   } else if (name == "rubric") {

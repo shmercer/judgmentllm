@@ -69,8 +69,9 @@ safety or validation response produces a terminal rejection receipt. When a comp
 a context limit, run, status and resume advise starting a new run with fewer
 grouped questions or smaller shared input. Receipts preserve a typed reason,
 body hash and byte count. Conflicting HTTP and error metadata leave the
-submission unresolved. Credential screening covers escapes in malformed
-responses before hashing. Retries require explicit selection.
+submission unresolved. Before hashing, credential screening decodes JSON string
+escapes independently of the enclosing response. It covers escaped quotes and
+backslashes even in malformed UTF-8. Retries require explicit selection.
 [Google response reference](https://aistudio.google.com/api-reference/decisions)
 
 The same pinned 3.5.0 extra supports existing Developer and Vertex generative

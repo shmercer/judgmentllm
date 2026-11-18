@@ -124,16 +124,21 @@ def respond(request: httpx2.Request) -> httpx2.Response:
         )
         if i == 1 and scenario == "filtered":
             answers[key]["unknown"] = "GEMINI_UNSAFE_CANARY"
-        if i == 1 and scenario == "overflow":
+        if i == 1 and scenario in {"overflow", "oversized-integer"}:
             answers[key]["score"] = "overflow_number"
+        if i == 0 and scenario == "oversized-integer":
+            answers[key].update(
+                score=2, confidence=1, probabilities={"0": 0, "1": 0, "2": 1}
+            )
     result = dict(
         answers=dict(reversed(tuple(answers.items()))),
         usage={"total_input_tokens": 120, "total_output_tokens": 0},
     )
-    if scenario == "overflow":
+    if scenario in {"overflow", "oversized-integer"}:
+        number = "1e400" if scenario == "overflow" else "9" * 4301
         return httpx2.Response(
             200,
-            content=json.dumps(result).replace('"overflow_number"', "1e400").encode(),
+            content=json.dumps(result).replace('"overflow_number"', number).encode(),
         )
     return httpx2.Response(200, json=result)
 

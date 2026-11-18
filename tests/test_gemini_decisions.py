@@ -29,6 +29,9 @@ from judgmentllm.lifecycle import (
     validate_inputs,
 )
 from judgmentllm.models import ResponseItem
+from judgmentllm.persistence.artifacts import ArtifactStore
+from judgmentllm.persistence.hashing import bytes_digest
+from judgmentllm.persistence.receipts import read_acknowledgment
 from judgmentllm.persistence.repository import Repository
 from judgmentllm.preparation import prepare_run
 from judgmentllm.providers import gemini_decisions as adapter_module
@@ -345,6 +348,93 @@ async def test_guarded_unsafe_body_keeps_transport_uncertain(
         assert failure.value.invoked and adapter.actual_call_count == 1
     finally:
         await adapter.aclose()
+
+
+@pytest.mark.parametrize("encoding", ["escaped", "nested", "unicode", "unrelated"])
+@pytest.mark.asyncio
+async def test_malformed_credential_echo_has_no_acknowledgment_or_original_hash(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, encoding: str
+) -> None:
+    credential = 'SYNTHETIC_"\\KEY'
+    monkeypatch.setenv("GOOGLE_API_KEY", credential)
+    encoded = json.dumps(credential)
+    if encoding == "nested":
+        encoded = json.dumps(encoded)
+    elif encoding == "unicode":
+        encoded = r'"SYNTHETIC_\u0022\u005cKEY"'
+    elif encoding == "unrelated":
+        encoded = json.dumps('SYNTHETIC_"\\OTHER')
+    raw = b'\xff{"detail":' + encoded.encode() + b"}"
+    echoed = encoding != "unrelated"
+    forwards = 0
+
+    def respond(request: httpx2.Request) -> httpx2.Response:
+        nonlocal forwards
+        assert request.headers["x-goog-api-key"] == credential
+        forwards += 1
+        return httpx2.Response(200, content=raw)
+
+    spec = gemini_spec(native_spec(tmp_path, traits=1))
+    store = tmp_path / "store"
+    with prepare_run(spec, store=store, run_id="001"):
+        pass
+    adapter = GeminiDecisionsAdapter(
+        spec.model, http_transport=httpx2.MockTransport(respond)
+    )
+    try:
+        await execute_run("001", store=store, adapter=adapter)
+        report = await recover_run("001", store=store, adapter=adapter)
+        assert report.recovery_required is echoed
+        assert forwards == adapter.actual_call_count == 1
+    finally:
+        await adapter.aclose()
+    with Repository(store) as repository:
+        (submission,) = repository.iter_submissions("001")
+        ack = read_acknowledgment(
+            ArtifactStore(repository.run_directory("001")), submission.submission_id
+        )
+        if not echoed:
+            assert ack is not None
+            assert [row.status for row in repository.iter_results("001")] == ["invalid"]
+            return
+        assert submission.state == "uncertain" and ack is None
+        assert list(repository.iter_evidence("001")) == []
+        assert repository.usage_high_water_mark("001") == 0
+    original_hash = bytes_digest(raw).encode()
+    for path in store.rglob("*"):
+        if path.is_file():
+            assert path.name.encode() != original_hash
+            data = path.read_bytes()
+            assert all(
+                value not in data
+                for value in (original_hash, credential.encode(), encoded.encode(), raw)
+            )
+
+
+@pytest.mark.parametrize(
+    "number",
+    ["2", "2e0", "negative-wide"],
+    ids=["integer", "exponent", "oversized-negative"],
+)
+def test_integer_decoding_preserves_ordinary_numeric_scores(
+    tmp_path: Path, number: str
+) -> None:
+    wire = wire_for(gemini_spec(native_spec(tmp_path, traits=1)))
+    body = envelope(json.loads(wire.payload))
+    item = next(iter(body["answers"].values()))
+    item.update(
+        score="number_marker", confidence=1, probabilities={"0": 0, "1": 0, "2": 1}
+    )
+    token = "-" + "9" * 4301 if number == "negative-wide" else number
+    raw = json.dumps(body).replace('"number_marker"', token).encode()
+    replay, safe, usage, _ = analyze(raw, wire)
+    assert replay.metadata.recognizable and usage is not None
+    assert (usage.input_tokens, usage.output_tokens) == (120, 0)
+    (observed,) = replay.answers
+    if number == "negative-wide":
+        assert not safe and observed is None
+    else:
+        assert safe and observed is not None and observed["expected_index"] == 2
 
 
 @pytest.mark.parametrize(

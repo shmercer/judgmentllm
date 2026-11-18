@@ -2,11 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import re
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import Any, cast
-
-from judgmentllm.output_contracts import decode_assessment_output
 
 FINISH_REASONS = {
     "STOP",
@@ -53,40 +52,43 @@ _TOOL_FIELDS = {
     "executableCode",
     "codeExecutionResult",
 }
+_JSON_STRING_TOKEN = re.compile(r'\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4})|["\\]')
+
+
+def _decoded_fragments(text: str) -> Iterator[str]:
+    # Valid escape tokens stay within a fragment. Quotes and invalid escapes
+    # delimit fragments even when the enclosing document is malformed.
+    start = 0
+    escaped = False
+    for token in _JSON_STRING_TOKEN.finditer(text):
+        if token.end() - token.start() > 1:
+            escaped = True
+            continue
+        if escaped:
+            yield cast(
+                str, json.loads(f'"{text[start : token.start()]}"', strict=False)
+            )
+        start = token.end()
+        escaped = False
+    if escaped:
+        yield cast(str, json.loads(f'"{text[start:]}"', strict=False))
+
+
+def _contains_escaped_credential(text: str, key: str, layers: int) -> bool:
+    return any(
+        key in decoded
+        or layers == 1  # An envelope still being unescaped at the bound is unsafe.
+        or _contains_escaped_credential(decoded, key, layers - 1)
+        for decoded in _decoded_fragments(text)
+    )
 
 
 def contains_credential(raw: bytes, key: str) -> bool:
-    """Screen credentials before any response retention or hashing."""
-    if key.encode("utf-8") in raw:
-        return True
-    # Replacement keeps valid escape sequences beside malformed UTF-8 visible.
-    text = raw.decode("utf-8", errors="replace")
-    for _ in range(4):
-        decoded = re.sub(
-            r"\\+u([0-9a-fA-F]{4})", lambda match: chr(int(match[1], 16)), text
-        ).replace(r"\/", "/")
-        if key in decoded:
-            return True
-        if decoded == text:
-            break
-        text = decoded
-    else:
-        return True  # A repeatedly escaped envelope cannot be retained safely.
-    try:
-        pending = [decode_assessment_output(raw)]
-    except (ValueError, TypeError, RecursionError):
-        return False
-    while pending:
-        value = pending.pop()
-        if isinstance(value, str) and key in value:
-            return True
-        if isinstance(value, dict):
-            mapping = cast(dict[str, object], value)
-            pending.extend(mapping)
-            pending.extend(mapping.values())
-        elif isinstance(value, list):
-            pending.extend(cast(list[object], value))
-    return False
+    """Screen raw and JSON-escaped credentials before retaining or hashing."""
+    return key.encode("utf-8") in raw or (
+        b"\\" in raw
+        and _contains_escaped_credential(raw.decode("utf-8", errors="replace"), key, 4)
+    )
 
 
 def parts(body: dict[str, Any]) -> tuple[dict[str, Any] | None, list[object]]:

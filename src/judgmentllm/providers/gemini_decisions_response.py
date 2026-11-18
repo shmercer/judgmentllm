@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import math
 import re
+from sys import float_info
 from typing import Any, Literal, cast
 
 from pydantic import JsonValue
 
-from judgmentllm.config import parse_json
 from judgmentllm.decisions.interpretation import ChoiceAnswerV1, ScoreAnswerV1
 from judgmentllm.decisions.records import GEMINI_DECISIONS_PRECISION
 from judgmentllm.decisions.replay import (
@@ -24,7 +25,11 @@ from judgmentllm.evidence.usage import (
     UsageCounter,
     UsageField,
 )
-from judgmentllm.output_contracts import decode_assessment_output
+from judgmentllm.output_contracts import (
+    _nonfinite,  # pyright: ignore[reportPrivateUsage]
+    _unique_object,  # pyright: ignore[reportPrivateUsage]
+    decode_assessment_output,
+)
 from judgmentllm.persistence.hashing import bytes_digest
 from judgmentllm.persistence.receipts import GeminiDecisionsRejectionEvidenceV1
 from judgmentllm.planning import stable_id
@@ -64,11 +69,23 @@ _USAGE_COUNTERS: tuple[tuple[UsageField, UsageCounter], ...] = (
 )
 
 
+def _bounded_integer(token: str) -> int | float:
+    digits = len(token) - (1 if token.startswith("-") else 0)
+    # Integers larger than the float range are invalid scores. Avoid converting
+    # them so one member cannot exceed Python's integer conversion limit.
+    return int(token) if digits <= float_info.max_10_exp + 1 else math.inf
+
+
 def _document(raw: bytes, *, validate_members: bool = False) -> dict[str, Any] | None:
     try:
         # A valid JSON exponent can overflow float. Bound it at the answer boundary.
         result = (
-            parse_json(raw.decode("utf-8"))
+            json.loads(
+                raw.decode("utf-8"),
+                object_pairs_hook=_unique_object,
+                parse_constant=_nonfinite,
+                parse_int=_bounded_integer,
+            )
             if validate_members
             else decode_assessment_output(raw)
         )
