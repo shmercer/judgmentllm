@@ -131,18 +131,40 @@ def rejected(
 def matches_rounded_score(
     index: float, probabilities: list[IndexedProbabilityV1]
 ) -> bool:
-    # shortcut: Three-level hundredths only, revisit with a documented precision contract.
-    if len(probabilities) != 3 or index > 2:
+    levels = len(probabilities)
+    if not 2 <= levels <= 10 or not 0 <= index <= levels - 1:
         return False
     index_cents = round(index * 100)
     cents = [round(p.probability * 100) for p in probabilities]
-    return (
-        index == index_cents / 100
-        and all(
-            p.probability == c / 100 for p, c in zip(probabilities, cents, strict=True)
+    if (
+        index != index_cents / 100
+        or sum(cents) != 100
+        or any(
+            p.probability != c / 100 for p, c in zip(probabilities, cents, strict=True)
         )
-        and sum(cents) == 100
-        and abs(index_cents - (cents[1] + 2 * cents[2])) <= 1
+    ):
+        return False
+
+    # shortcut: Nearest-hundredth compatibility cells, revisit when TypeSafe specifies precision.
+    # Half-cent units make contact at either endpoint exact.
+    bounds = [(max(0, 2 * c - 1), min(200, 2 * c + 1)) for c in cents]
+    remaining_mass = 200 - sum(lower for lower, _ in bounds)
+    lower_moment = sum(i * lower for i, (lower, _) in enumerate(bounds))
+
+    def extremum(order: range) -> int:
+        remaining = remaining_mass
+        moment = lower_moment
+        for i in order:
+            lower, upper = bounds[i]
+            assigned = min(remaining, upper - lower)
+            moment += i * assigned
+            remaining -= assigned
+        return moment
+
+    reported = 2 * index_cents
+    return (
+        extremum(range(levels)) <= reported + 1
+        and extremum(range(levels - 1, -1, -1)) >= reported - 1
     )
 
 

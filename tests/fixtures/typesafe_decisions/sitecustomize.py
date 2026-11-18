@@ -77,6 +77,12 @@ def respond(request: httpx2.Request) -> httpx2.Response:
             answers[key].update(
                 score=1.95, probabilities={"0": 0.01, "1": 0.02, "2": 0.97}
             )
+        if scenario == "ten_level_score_precision":
+            assert len(question["criteria"]) == 10
+            answers[key].update(
+                score=4.63 if i == 0 else 4.64,
+                probabilities={str(j): 0.10 for j in range(10)},
+            )
         if i == 1 and scenario in {"filtered", "filtered_score_precision"}:
             answers[key]["extra"] = "UNSAFE_JEV_CANARY"
     return httpx2.Response(

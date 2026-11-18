@@ -74,6 +74,17 @@ def jev_spec(base: RunSpecV4, **changes: Any) -> RunSpecV4:
     )
 
 
+def ten_level_jev_spec(base: RunSpecV4) -> RunSpecV4:
+    rubric = base.model_dump()["rubric"]
+    levels = [
+        dict(label=f"{i:02d}", description=f"Level {i}", numeric_value=i**2)
+        for i in range(10)
+    ]
+    for trait in rubric["traits"]:
+        trait["levels"] = levels
+    return jev_spec(base, rubric=rubric)
+
+
 def answer_map(body: dict[str, Any]) -> dict[str, Any]:
     return {
         key: (
@@ -674,9 +685,37 @@ def test_jev_score_precision_preserves_native_values_and_evidence(
         pytest.param(1.95, (0.0101, 0.0199, 0.97), False, id="off-grid-probabilities"),
         pytest.param(1.95, (0.0, 0.02, 0.97), False, id="unbalanced-mass"),
         pytest.param(2.01, (0.0, 0.0, 1.0), False, id="out-of-range"),
-        pytest.param(0.97, (0.02, 0.98), False, id="two-level"),
+        pytest.param(0.96, (0.02, 0.98), False, id="two-level"),
+        pytest.param(0.97, (0.02, 0.98), True, id="two-level-contact"),
         pytest.param(0.98, (0.02, 0.98), True, id="strict-two-level"),
         pytest.param(1.9599, (0.0101, 0.0199, 0.97), True, id="strict-precise"),
+        pytest.param(1.94, (0.01, 0.03, 0.96), True, id="captured-group-high"),
+        pytest.param(1.98, (0.0, 0.01, 0.99), True, id="captured-group-peak"),
+        pytest.param(0.01, (0.99, 0.0, 0.01), True, id="captured-group-low"),
+        pytest.param(0.04, (0.97, 0.01, 0.02), True, id="captured-group-repeat"),
+        pytest.param(1.48, (0.25,) * 4, True, id="four-lower"),
+        pytest.param(1.47, (0.25,) * 4, False, id="four-below"),
+        pytest.param(1.52, (0.25,) * 4, True, id="four-upper"),
+        pytest.param(1.53, (0.25,) * 4, False, id="four-above"),
+        pytest.param(1.97, (0.20,) * 5, True, id="five-lower"),
+        pytest.param(1.96, (0.20,) * 5, False, id="five-below"),
+        pytest.param(2.03, (0.20,) * 5, True, id="five-upper"),
+        pytest.param(2.04, (0.20,) * 5, False, id="five-above"),
+        pytest.param(4.37, (0.10,) * 10, True, id="ten-lower-contact"),
+        pytest.param(4.36, (0.10,) * 10, False, id="ten-below"),
+        pytest.param(4.63, (0.10,) * 10, True, id="ten-upper-contact"),
+        pytest.param(4.64, (0.10,) * 10, False, id="ten-above"),
+        pytest.param(0.05, (1.0,) + (0.0,) * 9, True, id="low-peak-contact"),
+        pytest.param(0.06, (1.0,) + (0.0,) * 9, False, id="low-peak-outside"),
+        pytest.param(8.95, (0.0,) * 9 + (1.0,), True, id="high-peak-contact"),
+        pytest.param(8.94, (0.0,) * 9 + (1.0,), False, id="high-peak-outside"),
+        pytest.param(4.51, (0.11,) + (0.10,) * 9, False, id="excess-mass"),
+        pytest.param(0.0003, (0.9999, 0.0, 0.0, 0.0001), True, id="strict-tiny-mass"),
+        pytest.param(0.01, (0.9999, 0.0, 0.0, 0.0001), False, id="off-grid-tiny-mass"),
+        pytest.param(
+            1.51, (0.25, 0.25, 0.25, 0.249999999), False, id="almost-unit-mass"
+        ),
+        pytest.param(4.51, (0.10,) * 10 + (0.0,), False, id="eleven-level"),
     ],
 )
 def test_jev_score_precision_requires_exact_grid_and_discrepancy_bound(

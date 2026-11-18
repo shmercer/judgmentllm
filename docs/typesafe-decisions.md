@@ -48,18 +48,25 @@ stay unresolved. An explicit subset retry
 requires a prior failed member from a recognizable accepted response.
 
 Score answers preserve the complete distribution, native expected index,
-mapped numeric mean, derived mode and reported confidence. For three-level
-`jev-1.14.0` Scores on System One, the fallback allows an in-range reported
-index to differ from the index computed from the returned probabilities by at
-most 0.01. The index and all three probabilities must be on the hundredths grid,
-and the probabilities must sum to exactly one. The usual consistency check
-runs first. With conserved probability mass, rounding
-each probability to the nearest hundredth can move the three-level expected
-index (`1 + p[2] - p[0]`) by at most 0.01. Separately rounding the index adds
-at most 0.005, so values on the hundredths grid can differ by at most 0.01.
-The observed discrepancies fit this bound. Jev's internal precision is unknown.
-The mapped mean uses the original probabilities and rubric values. Recovery
-honors invalid members in existing filtered receipts.
+mapped numeric mean, derived mode and reported confidence. System One Score
+supports two through ten levels in this adapter. Requests with more than ten
+levels fail before credentials or transport. [TypeSafe Score limits](https://docs.typesafe.ai/primitives/score#request-structure)
+
+The usual consistency check runs first. The `jev-1.14.0` fallback applies to
+in-range indices and probabilities on the hundredths grid whose probabilities
+sum to exactly one. It checks whether the reported index could come from a
+unit-mass distribution with each probability within 0.005 of its reported value.
+Probability intervals are clipped to [0, 1]. Allocating the available mass to the
+lowest or highest levels gives the minimum and maximum weighted indices. The
+reported index's interval, extending 0.005 in each direction, must intersect
+that range. Half-cent integer arithmetic includes exact contact at its bounds.
+
+Nearest-hundredth reporting is a compatibility assumption. The observed
+three-level discrepancies were at most 0.01, and Jev's internal precision
+remains unknown. At ten equally probable levels, the bound allows 0.13 index
+units at exact contact. With all reported mass on an endpoint, it allows 0.05
+units toward the interior. The mapped mean uses the original probabilities and
+rubric values. Recovery honors invalid members in existing filtered receipts.
 
 Choice answers preserve the returned selection and full probabilities in
 original and presented order. Response maps are matched by committed question key.

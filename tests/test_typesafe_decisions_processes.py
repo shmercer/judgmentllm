@@ -23,6 +23,7 @@ from test_typesafe_decisions import (
     jev_envelope,
     jev_spec,
     native_spec,
+    ten_level_jev_spec,
 )
 
 from judgmentllm.config import RunSpecV4
@@ -283,14 +284,22 @@ def run_partial_jev(
         pytest.param("score_precision", id="current"),
         pytest.param("legacy_score_precision", id="pre-fix"),
         pytest.param("filtered_score_precision", id="filtered"),
+        pytest.param("ten_level_score_precision", id="filtered-ten-levels"),
     ],
 )
 def test_jev_score_precision_replays_receipt_before_member_commit(
     tmp_path: Path, response: str
 ) -> None:
     legacy = response == "legacy_score_precision"
-    filtered = response == "filtered_score_precision"
-    spec = jev_spec(native_spec(tmp_path / "input", traits=2))
+    ten_levels = response == "ten_level_score_precision"
+    filtered = ten_levels or response == "filtered_score_precision"
+    base = native_spec(tmp_path / "input", traits=2)
+    spec = ten_level_jev_spec(base) if ten_levels else jev_spec(base)
+    index, probabilities, codes, mapped_mean = (
+        (4.63, [0.10] * 10, [i**2 for i in range(10)], 28.5)
+        if ten_levels
+        else (1.95, [0.01, 0.02, 0.97], [1, 2, 7], 6.84)
+    )
     crash = cli(
         tmp_path,
         "run",
@@ -325,12 +334,10 @@ def test_jev_score_precision_replays_receipt_before_member_commit(
                 assert first_answer is None and second_answer["expected_index"] == 1.55
                 assert receipt.validation.members[0].failure == "invalid_output"
             else:
-                assert first_answer["expected_index"] == 1.95 and second_answer is None
-                assert [p["probability"] for p in first_answer["probabilities"]] == [
-                    0.01,
-                    0.02,
-                    0.97,
-                ]
+                assert first_answer["expected_index"] == index and second_answer is None
+                assert [
+                    p["probability"] for p in first_answer["probabilities"]
+                ] == probabilities
                 assert [m.failure for m in receipt.validation.members] == [
                     None,
                     "invalid_output",
@@ -353,22 +360,17 @@ def test_jev_score_precision_replays_receipt_before_member_commit(
                 assert first.provider_expected_index is None
             else:
                 assert (
-                    first.status == "complete" and first.provider_expected_index == 1.95
+                    first.status == "complete"
+                    and first.provider_expected_index == index
                 )
-                assert [p.probability for p in first.probabilities or []] == [
-                    0.01,
-                    0.02,
-                    0.97,
-                ]
-                assert [level.numeric_value for level in first.resolved_levels] == [
-                    1,
-                    2,
-                    7,
-                ]
+                assert [
+                    p.probability for p in first.probabilities or []
+                ] == probabilities
+                assert [level.numeric_value for level in first.resolved_levels] == codes
                 assert (
                     first.primary_score
                     == first.expected_value
-                    == pytest.approx(6.84, rel=0, abs=1e-12)
+                    == pytest.approx(mapped_mean, rel=0, abs=1e-12)
                 )
             if filtered:
                 assert (
