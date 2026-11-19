@@ -307,6 +307,16 @@
       ],
       "reason": "Exact V4 instruction/default bytes, protected assessment content, historical fixture reconstruction and fresh-process full/minimal recovery"
     },
+    "tests/test_decisions_installed_parity.py": {
+      "cost": "process",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Pinned SDK interception in fresh public Python and console processes with retained outputs and physical accounting"
+    },
     "tests/test_decisions_lifecycle.py": {
       "cost": "io",
       "domain": "durable-execution",
@@ -1743,6 +1753,7 @@
       "tests/test_service_tiers.py"
     ],
     "gemini": [
+      "tests/test_decisions_installed_parity.py",
       "tests/test_gemini_authority_compatibility.py",
       "tests/test_gemini_boundaries.py",
       "tests/test_gemini_cancellation.py",
@@ -1766,6 +1777,7 @@
       "tests/test_service_tiers.py"
     ],
     "google": [
+      "tests/test_decisions_installed_parity.py",
       "tests/test_gemini_authority_compatibility.py",
       "tests/test_gemini_boundaries.py",
       "tests/test_gemini_cancellation.py",
@@ -1807,6 +1819,7 @@
       "tests/test_assessment_capture.py",
       "tests/test_assessment_diagnostics.py",
       "tests/test_cache_policy.py",
+      "tests/test_decisions_installed_parity.py",
       "tests/test_gemini_lifecycle.py",
       "tests/test_native_other_providers.py",
       "tests/test_native_preseal_validation.py",
@@ -1871,6 +1884,7 @@
     "typesafe": [
       "tests/test_auth_privacy.py",
       "tests/test_decisions_compatibility.py",
+      "tests/test_decisions_installed_parity.py",
       "tests/test_decisions_contracts.py",
       "tests/test_decisions_persistence_boundaries.py",
       "tests/test_typesafe_decisions.py",

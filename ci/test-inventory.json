@@ -334,6 +334,9 @@
       "test_unsealed_source_membership_has_real_uniqueness_and_foreign_keys": {"": []},
       "test_v4_rejects_mixed_legacy_authorities": {"[execution-grouping-grouped]": [], "[execution-groups-value1]": [], "[execution-max_traits_per_request-2]": [], "[prompt-native_mechanism-openai.responses.text.format]": [], "[prompt-output_order-together]": [], "[prompt-preset-rubric_scores_only]": [], "[prompt-structured_output-native]": []}
     },
+    "tests/test_decisions_installed_parity.py": {
+      "test_installed_decisions_packing_parity": {"[gemini]": [], "[openai]": [], "[typesafe]": []}
+    },
     "tests/test_decisions_instructions.py": {
       "test_genuine_renderer_one_sealed_runs_keep_original_bytes": {"[pairwise]": [], "[rubric]": []},
       "test_mutated_instruction_intent_is_deeply_revalidated": {"": []},

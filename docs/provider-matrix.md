@@ -1,25 +1,20 @@
 # Provider and endpoint compatibility: implementation and targets
 
-## PR C production Decisions addition
+## Native Decisions implementation and evidence
 
-[Native OpenAI Decisions](openai-decisions.md) now uses the ordinary V4 installed
-Python/CLI lifecycle with official SDK 3.42.1 and offline synthetic acceptance.
-Production acceptance, privacy-filtered replay and physical provenance have
-additive versions; historical synthetic contracts remain exact. Normalized/R
-schema 1, SQLite3 and the seven strict local R gates remain unchanged. Live
-qualification, Jev/Gemini integration and release remain deferred.
+OpenAI Decisions (#64), TypeSafe Jev (#65 and the #66 precision correction),
+and Gemini Decisions (#67) are merged V4 SDK adapters with offline lifecycle
+and R evidence. Each bounded live check applies to the recorded model, route and
+cases. PR F covers installed cross-provider parity using synthetic SDK responses.
+[Dated Decisions evidence](../README.md#native-decisions)
 
 
 ## PR B implementation boundary (2026-11-15)
 
-RunSpec V4 shared-input preparation, explicit CJ scheduling, grouped lifecycle,
-physical accounting and narrow provenance export are implemented with the own
-`judgmentllm-decisions-offline-v1` synthetic protocol only. Its limits and local
-counter fixtures establish no vendor limits or support. No live qualification,
-provider calls or credential access are part of B. OpenAI Decisions (C), TypeSafe
-Jev (D), Gemini Decisions and separately reviewed SDK compatibility migration (E)
-remain dependency-ready follow-ups. No Google package pin changed in B. See
-[the implemented contract](decisions-lifecycle.md).
+PR B introduced RunSpec V4 shared-input preparation, explicit CJ scheduling,
+grouped lifecycle, physical accounting and provenance using
+`judgmentllm-decisions-offline-v1`. Its limits and counter are synthetic fixture
+settings. C–E added the production transports. [Shared contract](decisions-lifecycle.md)
 
 The [README's current route table](../README.md#providers-endpoints-and-execution-modes)
 lists executable Python/CLI modes separately from projections and planned adapters.
@@ -27,8 +22,7 @@ Implemented generative routes require V3 and `live`: OpenAI `responses` and
 `chat.completions`, Anthropic `messages`, and separate Gemini Developer/Vertex
 `models.generate_content` adapters. Public V1/V2 mock execution and V4 synthetic
 Decisions are offline. V3 private synthetic transports are fixture infrastructure.
-Native batch and managed bulk-live remain M5 targets for every provider below;
-the table does not establish implemented batch support.
+Managed bulk-live and native batch for eligible endpoints remain M5 targets.
 
 New generative preparations use [presentation revision 2](renderer-revision-2.md).
 Retained original-contract live acceptance does not supply its required
@@ -47,25 +41,24 @@ remains a planned reporting surface.
 shared-input multi-question requests; Gemini Decisions is separate from Developer
 `generateContent` and Vertex. The [PR A design](native-decisions-design.md)
 records official-doc evidence, proposed contracts, unknowns and review gates.
-All three native rows below are targets, not implemented or live-qualified
-features. Together/Ollama live completion is lower priority, still on the roadmap.
-First alpha waits for an explicit post-M5 scope/batch-readiness go/no-go; this
-does not remove the intended all-provider qualification requirement.
+Together and Ollama live completion remains on the roadmap at lower priority.
+The first alpha waits for an explicit post-M5 review of scope, batch readiness
+and the intended all-provider qualification requirement.
 
 | Adapter | Live | Native provider batch | Managed bulk-live | Rubric | Pairwise | Notes |
 |---|---|---|---|---|---|---|
 | OpenAI Chat Completions | implemented; reviewed live scope accepted | target | later milestone | generative | generative | Phase 5A, SDK 3.42.1; exact-model capability unknown until qualified |
 | OpenAI Responses | implemented; reviewed live scope accepted | target | later milestone | generative | generative | Phase 5A, SDK 3.42.1; exact-model capability unknown until qualified |
-| OpenAI Decisions | implemented PR C candidate; live qualification pending | unsupported in planned adapter | M5 target | typed score, 2–10 levels | typed choice | `/v1/decisions`, current documented `gpt-6-luna`; 1–400 ordered named questions; complete probabilities; OFF requires explicit cache mode without breakpoints |
+| OpenAI Decisions | implemented, offline fixtures and bounded `gpt-6-luna` smoke | unsupported | M5 target | typed score, 2–10 levels | forced choice | `/v1/decisions`, 1–400 ordered named questions. Cache OFF uses explicit mode without breakpoints. |
 | Anthropic Messages | implemented; live acceptance pending | target | later milestone | generative | generative | Phase 5B; SDK 2.3.0 / API 2026-10-21; text JSON and controlled native output_config.format |
-| Gemini Developer | implemented; reviewed four-case live scope accepted | later milestone | later milestone | generative | generative | Phase 5C; google-genai 2.34.0 / v1beta; [exact qualified scope](gemini-live-qualification-acceptance.md); broader mappings remain fixture-only |
-| Gemini Decisions (Developer only) | implemented PR E candidate | unsupported | M5 target | typed score, 2–255 levels | typed choice, two presented options | [Developer v1beta](gemini-decisions.md), `gemini-decision-1`, 1–1,000 named keys, 256 KiB exact body cap and unverified token fit |
-| Vertex AI Gemini | implemented; historical exact-route live scope accepted | M5 target (Google Cloud setup required) | M5 target | generative | generative | google-genai 2.34.0/v1beta1; independent ADC/API-key private-project/global scopes in [accepted evidence](vertex-live-qualification-acceptance.md); current presentation is unqualified |
+| Gemini Developer | implemented, historical four-case live scope accepted | M5 target | M5 target | generative | generative | Offline parity with Google SDK 3.5.0. The [live scope](gemini-live-qualification-acceptance.md) used 2.34.0/v1beta. |
+| Gemini Decisions (Developer only) | implemented, offline fixtures and live grid at 2, 3, 4, 5 and 10 levels plus both Choice orientations | unsupported | M5 target | typed score, 2–255 levels | forced choice, two presented options | [Developer v1beta](gemini-decisions.md), `gemini-decision-1`, 1–1,000 named keys, 256 KiB local body cap and unverified token fit. |
+| Vertex AI Gemini | implemented, historical exact-route live scope accepted | M5 target (Google Cloud setup required) | M5 target | generative | generative | Offline parity with Google SDK 3.5.0. The [historical ADC/API-key live scopes](vertex-live-qualification-acceptance.md) used 2.34.0/v1beta1. |
 | Together AI | lower-priority live target | target, subject to current API qualification | M5/deferred live target | generative | generative | Use official Together Python SDK v3 (`together>=3,<4`); endpoint/model feature coverage must be tested |
 | Ollama local | lower-priority live target | no native provider batch | M5/deferred live target | generative | generative | Official Ollama SDK, local daemon; local model discovery; optional later cloud support separate |
-| TypeSafe AI Jev | implemented in PR D candidate; exact-source and live acceptance pending | unsupported | M5 target | typed score; documented maximum 10 levels | typed choice | [Pinned System One route](typesafe-decisions.md) with approved non-strict admission and both context fits unverified |
+| TypeSafe AI Jev | implemented, offline fixtures and live scores at 3, 4, 5 and 10 levels after #66, plus earlier Choice cases | unsupported | M5 target | typed score, up to 10 levels | forced choice | [System One](typesafe-decisions.md) has unverified context fit and no established vendor question cap. |
 
-### Native Decisions capability evidence (PR A only)
+### Native Decisions capability evidence
 
 Official sources checked 2026-11-15: [OpenAI guide](https://developers.openai.com/api/docs/guides/decisions)
 and [SDK reference](https://developers.openai.com/api/reference/python/resources/decisions/methods/create),
@@ -73,29 +66,26 @@ and [SDK reference](https://developers.openai.com/api/reference/python/resources
 [Score](https://docs.typesafe.ai/primitives/score) and
 [Choice](https://docs.typesafe.ai/primitives/choice), and
 [Gemini Decisions](https://aistudio.google.com/docs/decisions-api).
-The earlier 2–10-level M4 acceptance language applied to OpenAI/Jev, not the
-neutral category schema or Gemini's distinct range. Jev's unknown question cap
-must not become 400 or 1,000 by analogy; a user maximum and verified context/body
-limits bound grouping. Unknown evidence stays explicit.
+Score bounds are endpoint-specific. Jev grouping uses the user's maximum and
+the local body safeguard, with provider context admission recorded separately.
+Automatic grouping shares one essay or one explicit pair presentation. Each
+repetition and reversal has its own presentation. One physical usage record
+joins its logical results. The three adapters require forced winners, and the
+Gemini live grid observed no ties.
 
-All three plans require a one-question baseline and automatic eligible grouping
-of the same essay or explicitly identified pair presentation. No unrelated
-samples, reversal/repetition merging or mixed controls. One physical usage fact
-joins many logical results. Every provider needs its own synthetic SDK/lifecycle
-and strict R fixtures before implementation acceptance; docs establish no live
-access, exact reported model, pricing, or empirical parity.
-
-Google's documented Decisions SDK requirement `>=3.2` conflicts with both current
-`pyproject.toml` Google constraints `>=2.34,<3` and exact 2.34.0 production
-Developer/Vertex authority. PR E must resolve and qualify those existing functions
-before changing dependencies. PR A upgrades nothing. See the
-[compatibility gate](native-decisions-design.md#google-sdk-compatibility-gate-pr-e).
+PR E pinned `google-genai[httpx]==3.5.0` and verified Developer and Vertex
+offline wire parity separately. Historical generative live evidence retains its
+original 2.34.0 scope. [Google SDK compatibility gate](native-decisions-design.md#google-sdk-compatibility-gate-pr-e)
 
 ### Documented score bounds checked in the Milestone 1 hardening pass
 
 On 2026-11-02, the [official OpenAI Decisions guide](https://developers.openai.com/api/docs/guides/decisions#score-against-a-rubric) specified a 2–10 ordered-level range. Milestone 1 preflight enforces that endpoint bound independently of caller capability overrides. The provider-neutral rubric schema still permits any number of levels above its two-level minimum.
 
-TypeSafe's [official Score guide](https://docs.typesafe.ai/primitives/score#request-structure), checked separately on the same date, documents a maximum of 10 score criteria and recommends at least two. This independently supports the upper bound; it does not establish that the API enforces the same lower bound as OpenAI Decisions. The [System One API reference](https://docs.typesafe.ai/api/system-one) identifies the endpoint as `/v1/systemone`. No request was sent and no Jev adapter or model was live-qualified. Milestone 1 does not embed the Jev bound: callers can supply the independently documented `CapabilityProfile(max_levels=10)` until endpoint-specific adapter validation is implemented. Other providers do not inherit either endpoint's limits.
+TypeSafe's Score guide, checked on the same date, documents a maximum of 10
+score criteria and recommends at least two. Milestone 1 recorded that upper
+bound for caller capability profiles. The M4 System One adapter enforces its
+own score bounds. [Score guide](https://docs.typesafe.ai/primitives/score#request-structure),
+[System One API](https://docs.typesafe.ai/api/system-one)
 
 ### Milestone 3 output and authentication contracts
 
