@@ -28,6 +28,12 @@ class QuotaWait:
     deadline: float | None
 
 
+class BulkQuotaDeferred(Exception):
+    def __init__(self, wait: QuotaWait) -> None:
+        super().__init__("bulk quota unavailable")
+        self.wait = wait
+
+
 @dataclass(eq=False)
 class BulkPermit:
     owner: BulkDispatch
@@ -112,11 +118,14 @@ class BulkDispatch:
     def capped(self) -> bool:
         return self.rpm is not None or self.tpm is not None
 
+    def require_open(self) -> None:
+        if not self.open:
+            raise asyncio.CancelledError
+
     def check(self, tokens: int) -> QuotaWait | None:
         """The final check runs inside the serialized, owner-checked transaction."""
         with self.lock:
-            if not self.open:
-                raise asyncio.CancelledError
+            self.require_open()
             now = monotonic()
             if now < self._held_until:
                 return QuotaWait(self._held_until)
@@ -129,6 +138,10 @@ class BulkDispatch:
             ):
                 return QuotaWait(self._cooling[0][0] if self._cooling else None)
             return None
+
+    def require_capacity(self, tokens: int) -> None:
+        if (wait := self.check(tokens)) is not None:
+            raise BulkQuotaDeferred(wait)
 
     def committed(self, receipt: BulkReservation) -> BulkPermit:
         with self.lock:

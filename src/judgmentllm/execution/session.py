@@ -18,7 +18,6 @@ from judgmentllm._bulk_dispatch import (
     BulkDispatch,
     BulkPermit,
     BulkTokenBoundError,
-    QuotaWait,
 )
 from judgmentllm.config import RunSpecification
 from judgmentllm.decisions.transport import (
@@ -79,7 +78,7 @@ from judgmentllm.persistence.receipts import (
     read_receipt,
 )
 from judgmentllm.persistence.repository import Repository
-from judgmentllm.planning import PreflightError, bulk_execution_issue, stable_id
+from judgmentllm.planning import stable_id
 from judgmentllm.preparation import PreparedRun, RequestDependency, open_prepared_run
 from judgmentllm.prompts import RenderedPrompt, RenderedPromptV2
 from judgmentllm.providers import (
@@ -155,8 +154,6 @@ class ExecutionSession:
             self.prior_debits = False
             if self.bulk_live:
                 self.repository.require_bulk_storage()
-                if (issue := bulk_execution_issue(self.spec)) is not None:
-                    raise PreflightError(issue.message)
                 for _ in committed_reservations(
                     self.repository,
                     self.run_id,
@@ -684,7 +681,7 @@ class ExecutionSession:
 
     def boundary(
         self, work: ExecutionWork, bulk: BulkDispatch | None = None
-    ) -> bool | BulkPermit | QuotaWait:
+    ) -> bool | BulkPermit:
         """Return true only for safe prepared/claimed work; reconcile all other work."""
         assert self.prepared is not None
         attempt = self.repository.get_attempt(self.run_id, work.attempt_id)
@@ -716,9 +713,7 @@ class ExecutionSession:
                     raise BulkTokenBoundError(
                         "bulk-live token bound exceeds the per-minute cap"
                     )
-            capacity = bulk.check(tokens or 0)
-            if capacity is not None:
-                return capacity
+            bulk.require_capacity(tokens or 0)
             reservation = BulkReservation(
                 run_id=self.run_id,
                 request_uid=work.prepared.request_uid,
@@ -785,9 +780,7 @@ class ExecutionSession:
         with self.transaction():
             if bulk is not None:
                 assert reservation is not None and artifact is not None
-                capacity = bulk.check(reservation.tokens or 0)
-                if capacity is not None:
-                    return capacity
+                bulk.require_capacity(reservation.tokens or 0)
                 submission = self.repository.get_submission(
                     self.run_id, work.submission_id
                 )

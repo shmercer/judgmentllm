@@ -16,7 +16,12 @@ from typing import ParamSpec, TypeVar
 
 from pydantic import Field
 
-from judgmentllm._bulk_dispatch import BulkDispatch, BulkPermit, QuotaWait, presenting
+from judgmentllm._bulk_dispatch import (
+    BulkDispatch,
+    BulkPermit,
+    BulkQuotaDeferred,
+    presenting,
+)
 from judgmentllm.config import RunSpecification
 from judgmentllm.execution.retry import DEFAULT_RETRY_POLICY, RetryPolicy
 from judgmentllm.execution.session import ExecutionSession as _Session
@@ -159,8 +164,6 @@ async def execute_run(
         If durable storage itself failed, keep the original worker error while
         attempting independent retained work where possible.
         """
-        if not holder or (cancellation_handoff is None and bulk is None):
-            return
         session = holder[0]
         for submission_id, retained in tuple(cancellation_work.items()):
             if retained.rejection_write is not None:
@@ -209,7 +212,7 @@ async def execute_run(
                             submission_id=work.submission_id,
                             correlation_id=work.correlation_id,
                         )
-                    elif bulk is not None:
+                    else:
                         try:
                             response = await adapter.retrieve(
                                 work.prepared,
@@ -257,8 +260,7 @@ async def execute_run(
     ) -> ProviderAcknowledgment:
         work = retained.work
         with presenting(permit):
-            if not permit.owner.open:
-                raise asyncio.CancelledError
+            permit.owner.require_open()
             flight = asyncio.create_task(
                 adapter.submit(
                     work.prepared,
@@ -350,10 +352,12 @@ async def execute_run(
                     else:
                         while True:
                             changed = bulk.changed
-                            admitted = await call(session.boundary, work, bulk)
-                            if not isinstance(admitted, QuotaWait):
+                            try:
+                                admitted = await call(session.boundary, work, bulk)
+                            except BulkQuotaDeferred as deferred:
+                                await bulk.wait(deferred.wait, changed)
+                            else:
                                 break
-                            await bulk.wait(admitted, changed)
                     if admitted:
                         if isinstance(admitted, BulkPermit):
                             assert retained is not None

@@ -290,6 +290,11 @@ def assessment_commitments(
     )
 
 
+def _verify_bulk_policy(spec: RunSpecV4) -> None:
+    if (issue := bulk_execution_issue(spec)) is not None:
+        raise PreparationError(issue.message)
+
+
 class DecisionsPreparedRun(PreparedRun):
     """Native-specific reconstruction; legacy source readers remain unchanged."""
 
@@ -310,6 +315,7 @@ class DecisionsPreparedRun(PreparedRun):
         self._source_guard()
         checked = validate_run_spec(self.spec)
         assert isinstance(checked, RunSpecV4)
+        _verify_bulk_policy(checked)
         traits, exemplars = assessment_commitments(checked)
         if (
             (
@@ -652,8 +658,7 @@ def prepare_decisions_run(
             else _load_run_spec(cast(Path, origin), document_reader=discover)
         )
         assert isinstance(spec, RunSpecV4)
-        if (issue := bulk_execution_issue(spec)) is not None:
-            raise PreparationError(issue.message)
+        _verify_bulk_policy(spec)
         route = spec.provider, spec.endpoint
         if route in {("openai", "decisions"), TYPESAFE_ROUTE, GEMINI_DECISIONS_ROUTE}:
             if route == GEMINI_DECISIONS_ROUTE:

@@ -7,7 +7,7 @@ import asyncio
 import json
 import multiprocessing
 import threading
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from concurrent.futures import Executor
 from functools import partial
 from pathlib import Path
@@ -38,6 +38,8 @@ from judgmentllm.config import (
 from judgmentllm.execution import execute_run, recover_run
 from judgmentllm.execution.session import ExecutionSession, ExecutionWork
 from judgmentllm.lifecycle import _offline_context
+from judgmentllm.persistence.evidence import DecisionsEvidenceReceiptV4
+from judgmentllm.persistence.hashing import bytes_digest
 from judgmentllm.persistence.ownership import executor_is_active
 from judgmentllm.persistence.repository import ReadOnlyRepository
 from judgmentllm.preparation import prepare_run
@@ -117,6 +119,43 @@ def probe_forked_permit(root: Path, monkeypatch: pytest.MonkeyPatch) -> None:
                 process.terminate()
                 process.join(10)
             process.close()
+
+
+@pytest.mark.asyncio
+async def test_bulk_sdk_self_cancellation_retains_complete_native_rejection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spec = _bulk(_case(tmp_path / "inputs", "jev", monkeypatch))
+    root = tmp_path / "store"
+    raw = b'{"detail":"Synthetic request was too large"}'
+    forwards: list[bytes] = []
+
+    class CancelAtClose(httpx2.AsyncByteStream):
+        async def __aiter__(self) -> AsyncIterator[bytes]:
+            yield raw
+
+        async def aclose(self) -> None:
+            raise asyncio.CancelledError
+
+    def receive(request: httpx2.Request) -> httpx2.Response:
+        forwards.append(request.content)
+        return httpx2.Response(413, stream=CancelAtClose(), request=request)
+
+    adapter = _adapter(spec, httpx2.MockTransport(receive))
+    _prepare(spec, root, adapter)
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(
+            execute_run("001", store=root, adapter=adapter, spec=spec), 10
+        )
+    assert len(forwards) == 1
+    with ReadOnlyRepository(root) as repository:
+        (receipt,) = repository.iter_evidence("001")
+        assert isinstance(receipt, DecisionsEvidenceReceiptV4)
+        assert receipt.rejection is not None
+        assert receipt.rejection.response_sha256 == bytes_digest(raw)
+        assert receipt.rejection.http_status == 413
+        assert not executor_is_active(repository, "001")
+        assert repository.get_run("001").state == "cancelled"
 
 
 _ROUTES = (

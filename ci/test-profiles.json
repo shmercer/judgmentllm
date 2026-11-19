@@ -1741,6 +1741,16 @@
       ],
       "reason": "Schema-3 debits, cancellation and independently launched capped recovery with durable provenance."
     },
+    "tests/test_bulk_live_integrity.py": {
+      "domain": "durable-execution",
+      "cost": "io",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Real SQLite ownership, receipt validation, and durable export from sealed bulk runs."
+    },
     "tests/test_bulk_live_sdk.py": {
       "domain": "provider-sdk",
       "cost": "io",
@@ -1867,6 +1877,7 @@
       "tests/test_service_tier_integrity.py",
       "tests/test_study_integrity.py",
       "tests/test_vertex_lifecycle.py",
+      "tests/test_bulk_live_integrity.py",
       "tests/test_bulk_live_sdk.py"
     ],
     "vertex": [
