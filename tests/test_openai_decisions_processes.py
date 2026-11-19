@@ -12,6 +12,7 @@ from typing import Any
 import pytest
 from test_openai_decisions_sdk import spec_for
 
+import judgmentllm
 from judgmentllm.persistence.repository import Repository
 
 HOOK = Path(__file__).parent / "fixtures/openai_decisions"
@@ -139,7 +140,7 @@ def test_filtered_death_replays_same_siblings_without_forwarding(
             assert b"UNSAFE_WIRE_CANARY" not in path.read_bytes()
     assert (
         Path((tmp_path / "import-origin.txt").read_text()).resolve()
-        == Path(__file__).parents[1] / "src/judgmentllm/__init__.py"
+        == Path(judgmentllm.__file__).resolve()
     )
 
 

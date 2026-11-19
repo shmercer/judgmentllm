@@ -1,10 +1,10 @@
 # Native OpenAI Decisions
 
-PR C implements the official OpenAI Decisions SDK mapping through the existing
-Python and installed CLI lifecycle. Its acceptance is synthetic and offline;
-this does not establish account access, live model qualification, scoring
-accuracy, or equivalence between single and grouped judgments. Jev, Gemini
-Decisions and cross-provider qualification remain separate follow-ups to Issue #61.
+PR #64 merged the official OpenAI Decisions adapter for the V4 Python and
+installed CLI lifecycle. Offline SDK, recovery and R fixtures cover the
+integration. The maintainer confirmed a bounded `gpt-6-luna` smoke, recorded
+alongside the separately scoped Jev and Gemini results.
+[Native Decisions evidence](../README.md#native-decisions)
 
 Use the existing `[openai]` extra and locked OpenAI SDK **3.42.1**. The adapter
 requires that exact SDK version before resolving credentials or constructing a

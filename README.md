@@ -1,13 +1,13 @@
 # JudgmentLLM
 
-**Implemented: durable mock execution, OpenAI Responses/Chat Completions, Anthropic Messages, Gemini Developer and Vertex AI generative adapters, plus native OpenAI Decisions and the V4 synthetic Decisions lifecycle. Development version 0.1.0a3; implementation, offline fixtures and exact-scope live qualification are separate evidence.**
+**Implemented: durable mock execution, OpenAI Responses/Chat Completions, Anthropic Messages, Gemini Developer and Vertex AI generative adapters, and native OpenAI Decisions, TypeSafe Jev and Gemini Decisions. Development version 0.1.0a3.**
 
 Milestone 2 adds an [internal preparation foundation](https://github.com/shmercer/judgmentllm/blob/main/docs/persistence-contracts.md)
 for SQLite state, immutable source snapshots, indexed input access, complete run
 manifests, generation commitments, and local executor ownership.
 Public Python services and the versioned CLI provide complete validation, planning,
 mock live execution, durable status, conservative recovery, explicit subset retries,
-and immutable all-attempt exports. Production runs require explicit RunSpecV3;
+and immutable all-attempt exports. Generative production runs require RunSpec V3.
 see the [OpenAI](docs/openai.md), [Anthropic](docs/anthropic.md),
 [Gemini Developer](docs/gemini.md) and [Vertex](docs/vertex.md) guides. Historical
 live records do not qualify the current presentation revision or every model.
@@ -29,7 +29,8 @@ The R architecture is CLI-first: call the standalone installed executable, norma
 Implemented adapters have offline SDK/lifecycle fixtures; that does not establish
 live acceptance of an arbitrary model, account, control or feature. `live` is the
 single-run execution mode, including deterministic mock runs. Production runs are
-billable network operations and require the provider's explicit V3 configuration.
+billable network operations. Choose RunSpec V3 for generative endpoints or V4 for
+native Decisions.
 
 | Provider / endpoint | Mode / configuration | Current implementation |
 |---|---|---|
@@ -42,12 +43,12 @@ billable network operations and require the provider's explicit V3 configuration
 | Vertex AI Gemini / `models.generate_content` | `live`, V3 | Implemented generative adapter; separate ADC/API-key routing and SDK/lifecycle fixtures |
 | Together / `chat.completions` | Planned live runner | Offline schema-projection/private transport fixtures; no production run/resume adapter |
 | Local Ollama / `chat` | Planned live runner | Offline schema-projection/private transport fixtures; no production run/resume adapter |
-| OpenAI / `decisions` | Implemented V4 official SDK adapter | PR #64 offline acceptance and maintainer-confirmed bounded `gpt-6-luna` smoke |
-| TypeSafe Jev / `systemone` | Implemented V4 official SDK adapter, PR D candidate | Offline SDK and recovery fixtures; exact-source qualification and the bounded `jev-1.14.0` smoke pending |
-| Gemini Developer / `decisions` | Implemented V4 adapter, PR E candidate | Guarded Developer v1beta route with pinned-sdk offline fixtures. Token fit and live qualification pending |
+| OpenAI / `decisions` | `live`, V4 | Offline SDK/lifecycle fixtures and bounded `gpt-6-luna` smoke. 2–10 score levels and up to 400 named questions. |
+| TypeSafe Jev / `systemone` | `live`, V4 | Offline SDK/lifecycle fixtures and bounded `jev-1.14.0` live checks. Up to 10 score levels. Context fit is unverified and the vendor question cap is unknown. |
+| Gemini Developer / `decisions` | `live`, V4 | Offline SDK/lifecycle fixtures and bounded `gemini-decision-1` live grid. 2–255 score levels, up to 1,000 keys and a 256 KiB local body cap. Token fit is unverified. |
 
-Native provider batch and managed bulk-live are **Milestone 5 targets**, not
-implemented modes in these adapters. Generative JSON Schema (`structured_output:
+Managed bulk-live and native batch for eligible endpoints are **Milestone 5 targets**.
+Native Decisions endpoints use synchronous `live` execution. Generative JSON Schema (`structured_output:
 native`) and native Decisions score/choice APIs are different interfaces. New
 generative preparations use [presentation revision 2](docs/renderer-revision-2.md):
 its native serving scope is unqualified, so nonstrict `auto` selects text, while
@@ -68,9 +69,9 @@ Retained live evidence covers only its original sources and contracts:
   routes: `gemini-3.1-flash-lite`, `global`, google-genai 2.34.0/v1beta1,
   one-trait scores and forced-choice winners. Developer evidence grants no Vertex authority.
 
-Those records confer no qualification on the new presentation, other scopes or
-Decisions endpoints. Anthropic has no reviewed live model profile; Together,
-Ollama and the three production Decisions adapters remain unqualified. See the
+Those records cover the original generative presentations. Anthropic's reviewed
+live model profile is pending. Together and Ollama live runners are planned.
+The Decisions adapters have their own scoped live evidence. See the
 [provider matrix](docs/provider-matrix.md) for implementation and roadmap details.
 
 ## Install and preview
@@ -293,16 +294,29 @@ unchanged. No student-writing study or live provider request is authorized here.
 
 ### Native Decisions
 
-RunSpec V4 now supports native OpenAI score/choice requests through the ordinary
-installed Python/CLI lifecycle, including shared-input trait/criterion grouping.
-See [configuration, constraints and filtered recovery](docs/openai-decisions.md).
-PR #64 passed protected offline acceptance and a bounded smoke, confirmed by
-the maintainer. [Protected hosted evidence](https://github.com/shmercer/judgmentllm/actions/runs/44201369404)
+RunSpec V4 supports native rubric scores and two-option comparative judgments
+through the installed Python and CLI lifecycle. Automatic grouping shares one
+essay or one presented pair across eligible questions. Each repetition and
+reversal has its own presentation. The adapters have offline SDK, recovery and
+R fixtures. Live evidence is scoped to the recorded route, model and cases.
 
-[TypeSafe Jev](docs/typesafe-decisions.md) uses the same V4 lifecycle with the
-pinned official SDK and a Jev-specific non-strict context policy. Both context
-checks remain unverified. The provider can reject a request after forwarding.
+- **OpenAI Decisions, PR #64 (2026-11-17).** The maintainer confirmed a bounded
+  `gpt-6-luna` smoke. The retained summary gives no level-by-level or tie
+  coverage. [OpenAI Decisions guide](docs/openai-decisions.md),
+  [PR #64](https://github.com/shmercer/judgmentllm/pull/64)
+- **TypeSafe Jev (maintainer verification, 2026-11-18).** The first smoke stopped
+  before any case completed. The follow-up `jev-1.14.0` grid recorded eleven
+  passing cases and five cases with score validation failures. All eight
+  single-question and grouped Choice cases completed. After the precision
+  correction, eight requests accepted all twelve scores at 3, 4, 5 and 10 levels.
+  Five scores exercised the rounding compatibility check.
+  [TypeSafe Jev adapter guide](docs/typesafe-decisions.md)
+- **Gemini Decisions (maintainer verification, 2026-11-19).** The Developer
+  v1beta grid on `gemini-decision-1` passed eight requests and fourteen judgments, including
+  2, 3, 4, 5 and 10 score levels and Choice in both orientations. Estimated
+  total cost was USD 0.000372. No tie was observed.
+  [Gemini Decisions adapter guide](docs/gemini-decisions.md)
 
-[Gemini Decisions](docs/gemini-decisions.md) supports named rubric scores and
-comparative judgments on the Developer API. The 256 KiB local cap measures the
-serialized body. Provider token fit remains unverified.
+The current adapters require forced winners for comparative judgments.
+The supported score ranges describe adapter limits. The live outcomes above
+cover the tested cases. Public alpha requires a separate post-M5 decision.

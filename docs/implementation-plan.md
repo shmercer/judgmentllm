@@ -314,31 +314,28 @@ conduct paid calls as part of this design task.
 
 ## Milestone 4 - Native decision/score adapters
 
-**PR E candidate:** [Gemini Decisions](gemini-decisions.md) adds the Developer
-v1beta route and the reviewed 256 KiB non-strict text admission rule. The
-3.5.0 Google SDK migration requires separate Developer and Vertex offline
-parity with retained 2.34.0 scope. The protected offline gates, bounded Gemini
-live grid and gap-driven installed M4 closeout stay separate.
+**Merged production adapters.** PR C (#64) added [OpenAI Decisions](openai-decisions.md)
+and filtered replay. PR D (#65) added [TypeSafe Jev](typesafe-decisions.md) with
+durable context/body rejection diagnostics. PR #66 added the Jev score precision
+correction, followed by a passing bounded multilevel live check. PR E (#67)
+added [Gemini Developer Decisions](gemini-decisions.md) and the 3.5.0 Google SDK
+migration, with separate Developer and Vertex offline parity. The dated,
+endpoint-specific live results cover the recorded cases. [Live evidence](../README.md#native-decisions)
 
-**PR D candidate:** [TypeSafe Jev](typesafe-decisions.md) implements the pinned
-System One SDK with the approved non-strict context policy, durable terminal
-context and body rejection diagnostics, and synthetic Python/CLI/R checks.
-Independent code review, source-bound offline qualification and the bounded
-Jev smoke precede Gemini Decisions.
-
-**PR C candidate:** [official OpenAI Decisions](openai-decisions.md) is implemented
-with additive production acknowledgment/provenance and filtered replay. Focused
-offline SDK/process/R checks precede independent code review; source-bound local
-and protected hosted qualification remain required after that review.
+**PR F installed closeout.** Compare the three providers' single-question Python
+runs with grouped installed CLI runs. The synthetic fixtures cover twelve traits
+and SCHED1's four presentations, max-two splitting, logical and physical
+provenance, and shared-input bytes. Exercise selected existing filtered recovery
+and strict R consumers with the candidate wheel and locked provider extras.
+Freeze the candidate for independent code review before exact-source Level 3
+local and protected-base hosted acceptance. Reuse the existing live evidence.
 
 **PR B implementation:** [V4 shared preparation and durable named-member lifecycle](decisions-lifecycle.md)
 is implemented with synthetic-only transport, exact historical dispatch and the
-reviewed schema-3 marker/refusal exception. C–E production adapters/SDK work, F
-integration, M5 batch/bulk-live/caching and post-M5 alpha review remain separate.
-Acceptance requires the protected-base automatic Level3 plan, exact-source local
-Linux/Python3.11 historical coverage (90% combined), all seven strict R gates,
-affected resources/packages and separately verified exact-head hosted ordinary/
-serial functional evidence. Synthetic acceptance does not qualify vendor support.
+reviewed schema-3 marker/refusal exception. The automatic Level 3 plan retains
+exact-source Linux/Python 3.11 historical coverage (90% combined), all seven
+strict R gates, selected resources and packages, and exact-head hosted ordinary
+and serial functional evidence.
 
 
 **Approved scope change:** [Issue #61](https://github.com/shmercer/judgmentllm/issues/61)
@@ -363,7 +360,7 @@ Material recommendations D1–D4 require independent high-reasoning review befor
 | C | Official OpenAI Decisions SDK mapping, 1–400 question cap, score/choice semantics, exact model/cache controls and independent offline SDK/lifecycle/R acceptance. |
 | D | Official `typesafe-sdk` System One mapping and distributions; no invented hard question cap; independently verify context/body/cache constraints and offline SDK/lifecycle/R acceptance. |
 | E | Native Gemini Developer v1beta Decisions, 1–1,000 keys, endpoint-specific limits and controls, plus pinned `google-genai[httpx]==3.5.0` with Developer/Vertex wire parity. Preserve prior live scope and use original pins for historical reconstruction. |
-| F | Cross-provider installed Python/CLI/R parity, partial/error/restart/orientation and bounded-resource evidence; prepare separate small synthetic-data live proposals for later explicit authorization. No implicit live calls or alpha. |
+| F | Cross-provider installed Python/CLI/R parity, selected partial and restart checks, and synthetic request and shared-input byte counts. Retain the existing scoped live records. |
 
 Each native builder keeps shared essay/presented-pair evidence separate from
 complete question-specific rubrics/criteria/examples. Preserve all logical IDs,
@@ -432,6 +429,8 @@ and release go/no-go evidence are in
 [alpha-release readiness](alpha-release-readiness.md).
 
 ## Milestone 5 - Native batches, managed bulk-live and caching
+
+Begin after PR F acceptance. Alpha remains a separate post-M5 decision.
 
 - Add native batch adapters only for supported endpoints: OpenAI generative, Anthropic, Gemini Developer `generateContent`, Vertex Gemini and Together (subject to live qualification). Gemini Decisions is a separate Developer endpoint with no native Batch support; do not inherit the generative route's capability.
 - Implement deterministic splitting, upload, durable submission ID registry, cancel/status/collect, partial outputs, reordered results and safe resumption.

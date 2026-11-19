@@ -3,11 +3,10 @@
 ## PR C production Decisions addition
 
 [Native OpenAI Decisions](openai-decisions.md) now uses the ordinary V4 installed
-Python/CLI lifecycle with official SDK 3.42.1 and offline synthetic acceptance.
-Production acceptance, privacy-filtered replay and physical provenance have
-additive versions; historical synthetic contracts remain exact. Normalized/R
-schema 1, SQLite3 and the seven strict local R gates remain unchanged. Live
-qualification, Jev/Gemini integration and release remain deferred.
+Python/CLI lifecycle with official SDK 3.42.1. PR #64 merged after offline
+acceptance, and the maintainer confirmed a bounded `gpt-6-luna` smoke. See the
+[native Decisions evidence](../README.md#native-decisions) for the OpenAI, Jev
+and Gemini scopes.
 
 
 **Current assessment contract:** new preparations use [presentation revision 2](renderer-revision-2.md), including positional CJ aliases. Historical native evidence
@@ -20,8 +19,9 @@ implements OpenAI Responses and Chat Completions. Serving-model qualification is
 separate: this implementation does not claim that every model accepts every
 parameter or native JSON Schema.
 
-**Every new OpenAI execution requires explicit `schema_version: 3`, including
-text-only runs.** Historical V1/V2 configurations keep their original offline
+**New OpenAI Responses and Chat Completions runs require explicit
+`schema_version: 3`, including text-only runs.** OpenAI Decisions uses V4.
+Historical V1/V2 configurations keep their original offline
 behavior and cannot execute through the production adapters. The sealed manifest
 identifies the production protocol separately from the configuration version.
 
