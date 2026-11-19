@@ -137,6 +137,104 @@ async def test_sdk_lifecycle_and_versioned_provenance(
 
 
 @pytest.mark.parametrize(
+    "explicit,legacy,mass,delta,expected",
+    [
+        (None, False, 5e-7, 8e-6, "complete"),
+        (None, False, 1.1e-6, 0, "invalid"),
+        (None, False, 0, 1.1e-5, "invalid"),
+        (1e-8, False, 5e-7, 0, "invalid"),
+        (0, False, 0, 1e-9, "invalid"),
+        ("model_copy_zero", False, 5e-7, 0, "invalid"),
+        (None, True, 5e-7, 0, "invalid"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_sealed_openai_precision_through_replay_and_retry(
+    tmp_path: Path,
+    explicit: float | str | None,
+    legacy: bool,
+    mass: float,
+    delta: float,
+    expected: str,
+) -> None:
+    from judgmentllm.decisions.records import OpenAIDecisionsContextV1
+    from judgmentllm.execution.retry import authorize_subset_retry
+    from judgmentllm.preparation.decisions import prepare_decisions_run
+
+    data = spec_for(tmp_path, traits=1).model_dump(exclude={"normalization"})
+    if (explicit is not None and explicit != "model_copy_zero") or legacy:
+        # The historical writer materialized 1e-8 without a policy tag.
+        data["normalization"] = {
+            "probability_sum_tolerance": 1e-8 if legacy else explicit
+        }
+    spec = RunSpecV4.model_validate(data)
+    if explicit == "model_copy_zero":
+        spec = spec.model_copy(
+            update={"normalization": {"probability_sum_tolerance": 0.0}}
+        )
+    context = OpenAIDecisionsContextV1() if legacy else None
+    store = tmp_path / "store"
+    with prepare_decisions_run(
+        spec, store=store, run_id="001", context=context
+    ) as prepared:
+        assert prepared.manifest.schema_version == 9
+        assert prepared.manifest.production_context.precision_policy_version == (
+            1 if explicit is None and not legacy else None
+        )
+        frozen = prepared.manifest.production_context
+
+    def respond(request: httpx2.Request) -> httpx2.Response:
+        body = envelope(json.loads(request.content))
+        entry = body["answers"][0]
+        entry["probabilities"][0]["probability"] += mass
+        entry["score"] += delta
+        # Force filtered replay without changing the recognized member.
+        body["unrecognized"] = "UNSAFE_PRECISION_TEST"
+        return httpx2.Response(200, json=body)
+
+    def fault(stage: str, _request: str) -> None:
+        if stage == "after_evidence_receipt":
+            raise RuntimeError("stop before normalization")
+
+    for first in (True, False):
+        adapter = OpenAIDecisionsAdapter(
+            spec.model, context=frozen, http_transport=httpx2.MockTransport(respond)
+        )
+        try:
+            if first:
+                with pytest.raises(ExceptionGroup, match="unhandled errors"):
+                    await execute_run("001", store=store, adapter=adapter, fault=fault)
+            else:
+                await recover_run("001", store=store, adapter=adapter)
+                assert adapter.actual_call_count == 0
+                with Repository(store) as repository:
+                    (row,) = repository.iter_results("001")
+                    assert row.status == expected
+                    if expected == "complete":
+                        assert isinstance(row, RubricResult)
+                        assert row.probabilities is not None
+                        assert row.probabilities[0].probability == 0.1 + mass
+                        assert row.provider_expected_index == 1.55 + delta
+                if legacy:
+                    authorize_subset_retry(
+                        "001",
+                        store=store,
+                        adapter=adapter,
+                        task_ids=(row.task_id,),
+                        operation_id="retry-001",
+                    )
+                    await recover_run("001", store=store, adapter=adapter)
+                    with Repository(store) as repository:
+                        assert [r.status for r in repository.iter_results("001")] == [
+                            "invalid",
+                            "invalid",
+                        ]
+                    assert adapter.actual_call_count == 1
+        finally:
+            await adapter.aclose()
+
+
+@pytest.mark.parametrize(
     "failure", ["rejected", "rate", "redirect", "timeout", "truncated"]
 )
 @pytest.mark.asyncio
@@ -733,3 +831,45 @@ def test_replay_cannot_rebind_an_invocation_or_named_answer(
     with pytest.raises(ProviderIntegrityError):
         verify_replay(replay, wire)
     verify_replay(original, wire)
+
+
+def test_openai_precision_marker_cannot_claim_a_different_tolerance(
+    tmp_path: Path,
+) -> None:
+    from judgmentllm.decisions.records import OpenAIDecisionsContextV1
+    from judgmentllm.decisions.transport import DecisionsCommitmentV2
+    from judgmentllm.preparation.decisions import DecisionsPreparedRun
+
+    spec = RunSpecV4.model_validate(
+        spec_for(tmp_path, traits=1).model_dump(exclude={"normalization"})
+    )
+    with prepare_run(spec, store=tmp_path / "store", run_id="001") as run:
+        assert isinstance(run, DecisionsPreparedRun)
+        context = run.context()
+        assert isinstance(context, OpenAIDecisionsContextV1)
+        (dependency,) = run.iter_request_dependencies()
+        attempt = run.repository.get_attempt_for_request(
+            "001", dependency.request.request_uid
+        )
+        assert attempt is not None
+        commitment = run.transport_for_attempt(attempt.attempt_id)
+    assert isinstance(commitment, DecisionsCommitmentV2)
+    assert context.precision_policy_version == commitment.precision_policy_version == 1
+    assert commitment.probability_sum_tolerance == 1e-6
+    assert commitment.index_tolerance(3) == 1e-5
+    with pytest.raises(
+        ValueError, match="unsupported OpenAI Decisions precision policy"
+    ):
+        OpenAIDecisionsContextV1.model_validate(
+            {**context.model_dump(), "precision_policy_version": "1"}
+        )
+    for tolerance in (0.0, 1e-8):
+        data = {**commitment.model_dump(), "probability_sum_tolerance": tolerance}
+        with pytest.raises(
+            ValueError, match="OpenAI Decisions precision policy differs"
+        ):
+            DecisionsCommitmentV2.model_validate(data)
+        del data["precision_policy_version"]
+        assert (
+            DecisionsCommitmentV2.model_validate(data).index_tolerance(3) == tolerance
+        )

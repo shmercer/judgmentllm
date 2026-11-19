@@ -10,6 +10,8 @@ from pathlib import Path
 from typing import Any
 
 import httpx2
+import pytest
+from google_historical import study_pin
 from study_fixture import KEY, SOURCE, authorization, spec_for
 
 from judgmentllm.execution import execute_run
@@ -19,6 +21,7 @@ from judgmentllm.study.records import Proposal
 
 
 async def main(root: Path) -> None:
+    study_pin(pytest.MonkeyPatch())
     execution._source_commit = lambda: SOURCE
     budget._global_lock_path = lambda: root / "study-global.lock"
     for name in (

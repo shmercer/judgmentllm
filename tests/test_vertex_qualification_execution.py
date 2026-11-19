@@ -18,6 +18,7 @@ from typing import Any, cast
 
 import httpx2
 import pytest
+from google_historical import vertex_pin
 from vertex_offline import adc as _adc
 from vertex_offline import envelope, isolate
 
@@ -39,6 +40,7 @@ def adc(monkeypatch: pytest.MonkeyPatch) -> Any:
 @pytest.fixture(autouse=True)
 def offline(monkeypatch: pytest.MonkeyPatch) -> None:
     isolate(monkeypatch)
+    vertex_pin(monkeypatch)
     monkeypatch.setattr(q, "_source_commit", lambda: "a" * 40)
     monkeypatch.setattr(e, "_source_commit", lambda: "a" * 40)
     from google.auth import _cloud_sdk, _default
@@ -814,11 +816,13 @@ from pathlib import Path
 import pytest
 sys.path.insert(0, str(Path.cwd() / 'tests'))
 from vertex_offline import isolate
+from google_historical import vertex_pin
 from test_vertex_qualification_execution import install
 from judgmentllm import vertex_qualification as q, vertex_qualification_execution as e
 from judgmentllm import execution
 m=pytest.MonkeyPatch()
 isolate(m)
+vertex_pin(m)
 q._source_commit=e._source_commit=lambda:'a'*40
 directory=Path(sys.argv[1])
 boundary, mode=sys.argv[2:]

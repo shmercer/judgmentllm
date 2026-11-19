@@ -399,6 +399,8 @@ async def test_sdk_logs_and_local_timeout_policy_are_enforced(
         (b'{"a":[true,1,{"x":"safe"}]}', False),
         (b'{"text":"\\u0053\\u0045\\u0043\\u0052\\u0045\\u0054"}', True),
         (b'{"text":"\\\\u0053\\\\u0045\\\\u0043\\\\u0052\\\\u0045\\\\u0054"}', True),
+        (b'\xff{"text":"\\u0053ECRET"}', True),
+        (b'\xff{"text":"\\\\u0053ECRET"}', True),
     ],
 )
 def test_credential_echo_screening_precedes_component_capture(
@@ -427,6 +429,52 @@ def test_invalid_key_diagnostic_requires_closed_structured_code(
 def test_nested_credential_escaping_fails_closed() -> None:
     assert adapter_module._contains_credential(b"\\u005cu005cu005cu005cu0041", "SECRET")
     assert adapter_module._contains_credential(b'{"key":"SE\\/CRET"}', "SE/CRET")
+
+
+@pytest.mark.parametrize(
+    "text,key,contains",
+    [
+        (r"\u005cu005cu0041", "SECRET", False),
+        (r"\u005cu005cu0053ECRET", "SECRET", True),
+        (r"\u005cu005cu005cu0053ECRET", "SECRET", True),
+        ("Directory C:" + "\\" * 8 + "files", "SECRET", False),
+        ("Directory C:" + "\\" * 32 + "files", 'PREFIX"\\END', False),
+        ("PREFIX" + "\\" * 32 + "END", "PREFIX\\END", True),
+        ("PREFIX" + "\\" * 31 + '"END', 'PREFIX"END', True),
+        ("PREFIX" + "\\" * 32 + "/END", "PREFIX/END", True),
+    ],
+    ids=[
+        "finished-without-key",
+        "key-at-limit",
+        "key-beyond-limit",
+        "literal-run-at-limit",
+        "literal-run-beyond-limit",
+        "backslash-in-key",
+        "quote-in-key",
+        "slash-in-key",
+    ],
+)
+def test_credential_screening_at_escape_depth_limit(
+    text: str, key: str, contains: bool
+) -> None:
+    raw = json.dumps({"text": text}).encode()
+    assert adapter_module._contains_credential(raw, key) is contains
+
+
+def test_credential_screening_respects_string_boundaries_in_malformed_bodies() -> None:
+    key = 'PREFIX\U0001f4dd"\\END'
+    assert adapter_module._contains_credential(
+        b'\xff{"text":"PREFIX\\ud83d\\udcdd\\"\\\\END"}', key
+    )
+    assert adapter_module._contains_credential(
+        b'\xff{"text":"\\qPREFIX\\ud83d\\udcdd\\"\\\\END', key
+    )
+    assert not adapter_module._contains_credential(
+        b'\xff{"first":"PREFIX\\ud83d\\udcdd","second":"\\"\\\\END"}', key
+    )
+    assert not adapter_module._contains_credential(
+        b'\xff{"text":"\\qPREFIX\\ud83d\\udcdd\\"\\\\ELSE"}', key
+    )
 
 
 def test_reviewed_generation_authority_and_partial_features(

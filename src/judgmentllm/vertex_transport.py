@@ -17,6 +17,11 @@ from typing import Literal, cast
 from pydantic import Field, model_validator
 
 from judgmentllm.config import NativeTransportMechanism, RunSpecV3, validate_run_spec
+from judgmentllm.google_sdk import (
+    GOOGLE_SDK_RUNTIME,
+    GOOGLE_WIRE_RUNTIME,
+    GoogleWireRuntime,
+)
 from judgmentllm.models import PairTask, ResponseItem
 from judgmentllm.native_schema import NativeProjectionScopeV1
 from judgmentllm.native_schema_v2 import (
@@ -97,6 +102,15 @@ class VertexProductionContext:
     runtime: VertexRuntimeConfiguration
     kind: VertexProductionContextKind = "vertex-production-v1"
     source_commit: str | None = None
+    google_wire_runtime: GoogleWireRuntime | None = None
+
+    @property
+    def required_sdk_version(self) -> str:
+        return (
+            GOOGLE_SDK_RUNTIME
+            if self.google_wire_runtime
+            else VERTEX_PRODUCTION_SDK_VERSION
+        )
 
     @property
     def api_scope(self) -> Literal["vertex-generate-content-v1beta1-v1"]:
@@ -133,6 +147,10 @@ def _checked_context(context: VertexProductionContext) -> VertexProductionContex
     ):
         raise TransportIntegrityError()
     qualifier = context.kind != "vertex-production-v1"
+    if context.google_wire_runtime is not None and (
+        context.google_wire_runtime != GOOGLE_WIRE_RUNTIME or qualifier
+    ):
+        raise TransportIntegrityError()
     if qualifier != (context.source_commit is not None):
         raise TransportIntegrityError()
     if context.source_commit is not None and not re.fullmatch(
@@ -148,6 +166,7 @@ def _checked_context(context: VertexProductionContext) -> VertexProductionContex
         runtime=runtime,
         kind=context.kind,
         source_commit=context.source_commit,
+        google_wire_runtime=context.google_wire_runtime,
     )
 
 
@@ -171,6 +190,7 @@ def production_context_for_identity(
     """Create exact credential-free scope before reopening frozen sources."""
     return _checked_context(
         VertexProductionContext(
+            google_wire_runtime=GOOGLE_WIRE_RUNTIME,
             runtime=runtime or runtime_configuration(),
             scope=NativeProjectionScopeV1(
                 provider=provider,
@@ -241,6 +261,11 @@ def production_context_digest(context: VertexProductionContext) -> str:
                 "api_scope": VERTEX_API_SCOPE,
                 "route_sha256": checked.runtime.route_sha256,
                 "authority_sha256": _authority_sha256(checked),
+                **(
+                    {"google_wire_runtime": checked.google_wire_runtime}
+                    if checked.google_wire_runtime is not None
+                    else {}
+                ),
             },
         )
     except (ValueError, TypeError, AttributeError, RecursionError):
@@ -256,6 +281,7 @@ def _reviewed_profile(
         route_sha256=context.runtime.route_sha256,
         authentication_mode=context.runtime.auth_mode,
         location=context.runtime.location,
+        sdk_version=context.required_sdk_version,
     )
 
 
@@ -667,6 +693,9 @@ class TransportCommitmentV5(_TransportModel):
         default=1, exclude_if=lambda value: value == 1
     )
     context_kind: VertexProductionContextKind
+    google_wire_runtime: GoogleWireRuntime | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     scope: NativeProjectionScopeV1 = Field(repr=False)
     request_policy: VertexRequestPolicyV1
     route_sha256: SHA256
@@ -753,6 +782,7 @@ def _receipt(
     prompt: bytes,
     payload: bytes,
     context_kind: VertexProductionContextKind,
+    google_wire_runtime: GoogleWireRuntime | None = None,
 ) -> TransportCommitmentV5:
     projection = output.projection
     native = (
@@ -798,6 +828,8 @@ def _receipt(
         payload_bytes=len(payload),
         local_validation_required=True,
     )
+    if google_wire_runtime is not None:
+        values["google_wire_runtime"] = google_wire_runtime
     if output.contract.presentation_version == 1:
         values.pop("presentation_version")
     return TransportCommitmentV5.model_validate_json(
@@ -868,6 +900,7 @@ class PreparedRequestV7(PreparedRequest, _TransportModel):
                 self.rendered_text.encode("utf-8"),
                 self.payload,
                 receipt.context_kind,
+                receipt.google_wire_runtime,
             )
             or receipt.scope != output.scope
             or receipt.route_sha256 != output.route_sha256
@@ -1011,7 +1044,9 @@ def prepare_production_request(
             context_sha256=context_digest,
             parent_commitment_sha256=output.selection.parent_commitment_sha256,
         )
-        receipt = _receipt(plan, output, prompt, payload, context.kind)
+        receipt = _receipt(
+            plan, output, prompt, payload, context.kind, context.google_wire_runtime
+        )
         if frozen is not None and frozen != receipt:
             raise TransportIntegrityError()
         prepared = PreparedRequestV7(

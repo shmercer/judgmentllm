@@ -21,13 +21,17 @@ from judgmentllm.config import (
     RunSpecification,
 )
 from judgmentllm.decisions.records import (
+    GEMINI_DECISIONS_PROTOCOL,
     TYPESAFE_PROTOCOL,
     DecisionsLimitsV1,
     DecisionsLimitsV2,
+    GeminiDecisionsContextV1,
+    GeminiDecisionsLimitsV4,
     OpenAIDecisionsContextV1,
     TypeSafeDecisionsContextV1,
     TypeSafeDecisionsLimitsV3,
 )
+from judgmentllm.google_sdk import GoogleWireRuntime
 from judgmentllm.models import ID
 from judgmentllm.output_commitments import SchemaSelectionV2
 from judgmentllm.persistence.generation import GenerationCommitment
@@ -560,6 +564,9 @@ class ExecutableRunManifestV6(ExecutableRunManifest):
         default=None, exclude_if=lambda value: value is None
     )
     transport_context_sha256: SHA256
+    google_wire_runtime: GoogleWireRuntime | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     initial_transport_count: int = Field(ge=0)
     initial_transport_sha256: SHA256
 
@@ -648,6 +655,9 @@ class ExecutableRunManifestV7(ExecutableRunManifest):
     request_identity_version: Literal[3] = 3  # pyright: ignore[reportIncompatibleVariableOverride]
     template: TemplateCommitmentV3  # pyright: ignore[reportIncompatibleVariableOverride]
     transport_context_sha256: SHA256
+    google_wire_runtime: GoogleWireRuntime | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     initial_transport_count: int = Field(ge=0)
     initial_transport_sha256: SHA256
 
@@ -845,6 +855,33 @@ class ExecutableRunManifestV10(ExecutableRunManifestV9):
         return self
 
 
+class ExecutableRunManifestV11(ExecutableRunManifestV9):
+    """Native Gemini Decisions with a separately bound admission policy."""
+
+    schema_version: Literal[11] = 11  # pyright: ignore[reportIncompatibleVariableOverride]
+    transport_protocol: Literal["gemini-decisions-production-v1"] = (  # pyright: ignore[reportIncompatibleVariableOverride]
+        GEMINI_DECISIONS_PROTOCOL
+    )
+    limits: GeminiDecisionsLimitsV4  # pyright: ignore[reportIncompatibleVariableOverride]
+    production_context: GeminiDecisionsContextV1  # pyright: ignore[reportIncompatibleVariableOverride]
+
+    @field_validator("schema_version", mode="before")
+    @classmethod
+    def _version(cls, value: object) -> object:
+        if type(value) is not int or value != 11:
+            raise ValueError("schema_version must be integer 11")
+        return value
+
+    @model_validator(mode="after")
+    def exact_gemini_scope(self) -> ExecutableRunManifestV11:
+        if (
+            self.generation.model != self.production_context.model
+            or self.strict_capabilities
+        ):
+            raise ValueError("Gemini Decisions manifest exceeds approved scope")
+        return self
+
+
 ExecutableManifest = (
     ExecutableRunManifest
     | ExecutableRunManifestV2
@@ -856,6 +893,7 @@ ExecutableManifest = (
     | ExecutableRunManifestV8
     | ExecutableRunManifestV9
     | ExecutableRunManifestV10
+    | ExecutableRunManifestV11
 )
 
 
@@ -871,6 +909,8 @@ def parse_executable_manifest(raw: bytes) -> ExecutableManifest:
         if isinstance(value, dict)
         else None
     )
+    if type(version) is int and version == 11:
+        return ExecutableRunManifestV11.model_validate_json(raw)
     if type(version) is int and version == 10:
         return ExecutableRunManifestV10.model_validate_json(raw)
     if type(version) is int and version == 9:

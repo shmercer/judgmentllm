@@ -46,6 +46,14 @@ def test_pinned_sdk_source_profile() -> None:
         ).read_text()
     )
     sdk = distribution("google-genai")
+    if sdk.version != profile["sdk_version"]:
+        from judgmentllm.google_sdk import GOOGLE_SDK_RUNTIME
+        from judgmentllm.vertex_qualification_sdk import installed_sdk_evidence
+
+        assert sdk.version == GOOGLE_SDK_RUNTIME and profile["sdk_version"] == "2.34.0"
+        with pytest.raises(ValueError, match="requires the pinned SDK"):
+            installed_sdk_evidence()
+        return
     assert sdk.version == profile["sdk_version"] == "2.34.0"
     for name, digest in profile["source_sha256"].items():
         assert (
@@ -486,7 +494,12 @@ async def test_rehashed_candidate_cannot_borrow_production_native_authority(
         }
     )
     receipt = _receipt(
-        plan, output, candidate.rendered_text.encode(), candidate.payload, context.kind
+        plan,
+        output,
+        candidate.rendered_text.encode(),
+        candidate.payload,
+        context.kind,
+        context.google_wire_runtime,
     )
     forged = PreparedRequestV7.model_validate(
         dict(candidate)

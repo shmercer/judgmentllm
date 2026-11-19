@@ -38,7 +38,9 @@ from judgmentllm.config import (
     validate_run_spec,
 )
 from judgmentllm.decisions.records import (
+    GEMINI_DECISIONS_ROUTE,
     TYPESAFE_ROUTE,
+    GeminiDecisionsContextV1,
     TypeSafeDecisionsContextV1,
 )
 from judgmentllm.execution import execute_run, recover_run
@@ -50,6 +52,7 @@ from judgmentllm.lifecycle_models import (
     ErrorCategory,
     ExecutionPlan,
     ExportFile,
+    GeminiDecisionsExecutionPlanV3,
     InputValidationReport,
     LifecycleError,
     MockExecutionOptions,
@@ -83,6 +86,7 @@ from judgmentllm.preparation.manifest import (
     ExecutableRunManifestV8,
     ExecutableRunManifestV9,
     ExecutableRunManifestV10,
+    ExecutableRunManifestV11,
 )
 from judgmentllm.providers import MockAdapter, MockScenario, ProviderError
 
@@ -207,6 +211,14 @@ def _execution_adapter(
             )
 
             return TypeSafeDecisionsAdapter(model, concurrency=concurrency)
+        if (provider, endpoint) == GEMINI_DECISIONS_ROUTE:
+            if options is not None:
+                raise LifecycleError(
+                    "validation", "Gemini Decisions does not accept mock controls"
+                )
+            from judgmentllm.providers.gemini_decisions import GeminiDecisionsAdapter
+
+            return GeminiDecisionsAdapter(model, concurrency=concurrency)
         if (provider, endpoint) != ("mock", "synthetic"):
             raise LifecycleError(
                 "unsupported_capability",
@@ -324,6 +336,7 @@ def _safe_provider_diagnostic(error: BaseException) -> tuple[ErrorCategory, str]
         GeminiConfigurationError,
         GeminiReadinessError,
     )
+    from judgmentllm.providers.gemini_decisions import GeminiDecisionsConfigurationError
     from judgmentllm.providers.openai import (
         OpenAIConfigurationError,
         OpenAIReadinessError,
@@ -345,6 +358,7 @@ def _safe_provider_diagnostic(error: BaseException) -> tuple[ErrorCategory, str]
             TypeSafeConfigurationError,
             AnthropicConfigurationError,
             GeminiConfigurationError,
+            GeminiDecisionsConfigurationError,
             VertexConfigurationError,
             VertexSetupError,
         ),
@@ -475,6 +489,11 @@ def _mock_adapter(
 def _require_presentation(spec: RunSpecification) -> None:
     """Reject unavailable v2 mechanisms before creating a runtime store."""
     if isinstance(spec, RunSpecV4):
+        if (spec.provider, spec.endpoint) == GEMINI_DECISIONS_ROUTE:
+            from judgmentllm.providers.gemini_decisions import decisions_context
+
+            decisions_context(spec)
+            return
         if (spec.provider, spec.endpoint) == TYPESAFE_ROUTE:
             from judgmentllm.providers.typesafe_decisions import decisions_context
 
@@ -519,6 +538,14 @@ def _profile(
     allow_invalid: bool = False,
 ) -> CapabilityProfile | None:
     if isinstance(spec, RunSpecV4):
+        if (spec.provider, spec.endpoint) == GEMINI_DECISIONS_ROUTE:
+            from judgmentllm.providers.gemini_decisions import GeminiDecisionsAdapter
+
+            if not allow_invalid:
+                _require_presentation(spec)
+            return GeminiDecisionsAdapter.capabilities_for(
+                spec.provider, spec.endpoint, spec.model
+            )
         if (spec.provider, spec.endpoint) == TYPESAFE_ROUTE:
             from judgmentllm.providers.typesafe_decisions import (
                 TypeSafeDecisionsAdapter,
@@ -739,6 +766,32 @@ def estimate_run(
             )
             pairs = sum(s.record_count for s in manifest.sources if s.role == "pair")
             if isinstance(manifest, ExecutableRunManifestV8):
+                if isinstance(manifest, ExecutableRunManifestV11):
+                    from judgmentllm.decisions.transport import DecisionsCommitmentV4
+                    from judgmentllm.persistence.transport_receipts import (
+                        iter_transport_commitments,
+                    )
+
+                    return GeminiDecisionsExecutionPlanV3(
+                        task_kind=spec.task_kind,
+                        response_count=responses,
+                        pair_count=pairs,
+                        source_count=len(manifest.sources),
+                        logical_tasks=manifest.logical_task_count,
+                        requests=manifest.initial_transport_count,
+                        presentations=manifest.presentation_count,
+                        limits=manifest.limits,
+                        max_serialized_body_bytes=max(
+                            (
+                                receipt.payload_byte_length
+                                for receipt in iter_transport_commitments(
+                                    prepared.store
+                                )
+                                if isinstance(receipt, DecisionsCommitmentV4)
+                            ),
+                            default=0,
+                        ),
+                    )
                 if isinstance(manifest, ExecutableRunManifestV10):
                     return TypeSafeDecisionsExecutionPlanV2(
                         task_kind=spec.task_kind,
@@ -900,12 +953,25 @@ async def arun_live(
 
                 assert isinstance(adapter, TypeSafeDecisionsAdapter)
                 adapter.transport_context = typesafe_context(spec)
+            elif (
+                isinstance(spec, RunSpecV4)
+                and (spec.provider, spec.endpoint) == GEMINI_DECISIONS_ROUTE
+            ):
+                from judgmentllm.providers.gemini_decisions import (
+                    GeminiDecisionsAdapter,
+                )
+                from judgmentllm.providers.gemini_decisions import (
+                    decisions_context as gemini_context,
+                )
+
+                assert isinstance(adapter, GeminiDecisionsAdapter)
+                adapter.transport_context = gemini_context(spec)
             getattr(adapter, "validate_new_run", adapter.validate)(spec)
             readiness = getattr(adapter, "validate_credentials", None)
-            if (
-                readiness is not None
-                and (spec.provider, spec.endpoint) != TYPESAFE_ROUTE
-            ):
+            if readiness is not None and (spec.provider, spec.endpoint) not in {
+                TYPESAFE_ROUTE,
+                GEMINI_DECISIONS_ROUTE,
+            }:
                 readiness()
         except ProviderError as error:
             safe = _safe_provider_diagnostic(error)
@@ -974,7 +1040,12 @@ def _prepare(
 
         assert isinstance(
             decisions_context,
-            (DecisionsContextV1, OpenAIDecisionsContextV1, TypeSafeDecisionsContextV1),
+            (
+                DecisionsContextV1,
+                OpenAIDecisionsContextV1,
+                TypeSafeDecisionsContextV1,
+                GeminiDecisionsContextV1,
+            ),
         )
         with prepare_decisions_run(
             cast(RunSpecV4 | str | Path, spec_or_path),
@@ -1046,16 +1117,18 @@ async def aresume_run(
                 else _load_manifest(
                     repository, identifier, unsealed=False
                 ).schema_version
-                in (8, 9, 10)
+                in (8, 9, 10, 11)
             )
         decisions_manifest = None
-        if decisions and run.provider in {"openai", "typesafe"}:
+        if decisions and run.provider in {"openai", "typesafe", "gemini"}:
             with ReadOnlyRepository(root) as repository:
                 manifest = _load_manifest(
                     repository, identifier, unsealed=run.manifest_sha256 is None
                 )
                 expected = (
-                    ExecutableRunManifestV10
+                    ExecutableRunManifestV11
+                    if run.provider == "gemini"
+                    else ExecutableRunManifestV10
                     if run.provider == "typesafe"
                     else ExecutableRunManifestV9
                 )
@@ -1077,7 +1150,12 @@ async def aresume_run(
             else 4,
             decisions=decisions,
         )
-        if isinstance(decisions_manifest, ExecutableRunManifestV10):
+        if isinstance(decisions_manifest, ExecutableRunManifestV11):
+            from judgmentllm.providers.gemini_decisions import GeminiDecisionsAdapter
+
+            assert isinstance(adapter, GeminiDecisionsAdapter)
+            adapter.transport_context = decisions_manifest.production_context
+        elif isinstance(decisions_manifest, ExecutableRunManifestV10):
             from judgmentllm.providers.typesafe_decisions import (
                 TypeSafeDecisionsAdapter,
             )

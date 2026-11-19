@@ -81,3 +81,9 @@ class TypeSafeDecisionsReplayV1(OpenAIDecisionsReplayV1):
     protocol: Literal["typesafe-systemone-production-v1"] = (
         "typesafe-systemone-production-v1"
     )
+
+
+class GeminiDecisionsReplayV1(OpenAIDecisionsReplayV1):
+    protocol: Literal["gemini-decisions-production-v1"] = (
+        "gemini-decisions-production-v1"
+    )

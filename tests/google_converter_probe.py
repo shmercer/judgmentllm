@@ -14,7 +14,7 @@ from native_sdk_guard import install_guards
 
 def main() -> None:
     records = json.loads(sys.stdin.read())
-    assert importlib.metadata.version("google-genai") == "2.34.0"
+    assert importlib.metadata.version("google-genai") == sys.argv[1]
     guard = install_guards()
     from google import auth, genai
     from google.auth import _default

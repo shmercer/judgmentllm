@@ -12,6 +12,7 @@ from typing import Any, cast
 
 import httpx2
 import pytest
+from google_historical import study_pin
 from reasoning_fixture import response_body
 from study_fixture import (
     KEY,
@@ -64,6 +65,7 @@ from judgmentllm.study.sources import archive
 
 @pytest.fixture(autouse=True)
 def offline(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    study_pin(monkeypatch)
     monkeypatch.setattr(
         "judgmentllm.study.budget._global_lock_path",
         lambda: tmp_path / "study-global.lock",

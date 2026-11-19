@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from decimal import Decimal
 
 # pyright: reportPrivateUsage=false
@@ -9,6 +10,7 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
+from google_historical import vertex_pin
 from test_vertex_lifecycle import production_spec
 from test_vertex_production_acceptance import MODEL, prepare
 from test_vertex_qualification_execution import files, install
@@ -110,11 +112,10 @@ def test_old_manifest_cannot_be_resumed_under_promoted_authority(
     )
     spec.model = MODEL
     store = tmp_path / "store"
+    context = replace(production_context(spec), google_wire_runtime=None)
     profiles = registry._QUALIFIED_PROFILES
     monkeypatch.setattr(registry, "_QUALIFIED_PROFILES", ())
-    with prepare_run(
-        spec, run_id="001", store=store, transport_context=production_context(spec)
-    ) as run:
+    with prepare_run(spec, run_id="001", store=store, transport_context=context) as run:
         manifest = canonical_bytes(run.manifest)
         dep = next(run.iter_request_dependencies())
         ident = physical_identity(
@@ -127,13 +128,13 @@ def test_old_manifest_cannot_be_resumed_under_promoted_authority(
     monkeypatch.setattr(registry, "_QUALIFIED_PROFILES", profiles)
     with pytest.raises(PreparationError):
         with open_prepared_run(
-            "001", spec=spec, store=store, transport_context=production_context(spec)
+            "001", spec=spec, store=store, transport_context=context
         ):
             pytest.fail("Changed authority must never resume a frozen run")
     assert files(store) == before
     monkeypatch.setattr(registry, "_QUALIFIED_PROFILES", ())
     with open_prepared_run(
-        "001", spec=spec, store=store, transport_context=production_context(spec)
+        "001", spec=spec, store=store, transport_context=context
     ) as run:
         assert canonical_bytes(run.manifest) == manifest
         assert run.prepare_transport_attempt(dep, ident) == wire
@@ -144,6 +145,7 @@ async def test_historical_executed_report_requires_original_source_authority(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, qualified: str
 ) -> None:
     # This is an intercepted synthetic execution, never the external live store.
+    vertex_pin(monkeypatch)
     from test_vertex_qualification_execution import PROJECT, adc
 
     from judgmentllm.vertex_config import VertexRuntimeConfiguration

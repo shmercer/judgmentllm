@@ -643,6 +643,36 @@
       ],
       "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
     },
+    "tests/test_gemini_decisions.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Actual pinned SDK HTTP, admission, precision, cancellation and durable once-per-attempt usage"
+    },
+    "tests/test_gemini_decisions_processes.py": {
+      "cost": "process",
+      "domain": "process-ownership",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Installed console process death and reopen, immutable rejection evidence and guarded forwarding"
+    },
+    "tests/test_gemini_decisions_r.py": {
+      "cost": "process",
+      "domain": "r-interface",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Real R/jsonlite consumes installed CLI outputs and provenance; hosted lanes defer R"
+    },
     "tests/test_gemini_diagnostics.py": {
       "cost": "io",
       "domain": "provider-sdk",
@@ -1716,6 +1746,9 @@
       "tests/test_gemini_authority_compatibility.py",
       "tests/test_gemini_boundaries.py",
       "tests/test_gemini_cancellation.py",
+      "tests/test_gemini_decisions.py",
+      "tests/test_gemini_decisions_processes.py",
+      "tests/test_gemini_decisions_r.py",
       "tests/test_gemini_diagnostics.py",
       "tests/test_gemini_integrity.py",
       "tests/test_gemini_invalid_utf8.py",
@@ -1736,6 +1769,9 @@
       "tests/test_gemini_authority_compatibility.py",
       "tests/test_gemini_boundaries.py",
       "tests/test_gemini_cancellation.py",
+      "tests/test_gemini_decisions.py",
+      "tests/test_gemini_decisions_processes.py",
+      "tests/test_gemini_decisions_r.py",
       "tests/test_gemini_diagnostics.py",
       "tests/test_gemini_integrity.py",
       "tests/test_gemini_invalid_utf8.py",
@@ -1900,6 +1936,7 @@
     "src/judgmentllm/gemini_types.pyi",
     "src/judgmentllm/gemini_usage.py",
     "src/judgmentllm/generation.py",
+    "src/judgmentllm/google_sdk.py",
     "src/judgmentllm/io.py",
     "src/judgmentllm/keyring.py",
     "src/judgmentllm/lifecycle.py",
@@ -1956,6 +1993,8 @@
     "src/judgmentllm/providers/decisions_wire.py",
     "src/judgmentllm/providers/evidence.py",
     "src/judgmentllm/providers/gemini.py",
+    "src/judgmentllm/providers/gemini_decisions.py",
+    "src/judgmentllm/providers/gemini_decisions_response.py",
     "src/judgmentllm/providers/gemini_cli.py",
     "src/judgmentllm/providers/gemini_response.py",
     "src/judgmentllm/providers/google_response.py",
@@ -2101,6 +2140,8 @@
     "src/judgmentllm/providers/anthropic_response.py": "anthropic",
     "src/judgmentllm/providers/anthropic_schema.py": "anthropic",
     "src/judgmentllm/providers/gemini.py": "gemini",
+    "src/judgmentllm/providers/gemini_decisions.py": "gemini",
+    "src/judgmentllm/providers/gemini_decisions_response.py": "gemini",
     "src/judgmentllm/providers/gemini_response.py": "gemini",
     "src/judgmentllm/providers/google_response.py": "google",
     "src/judgmentllm/providers/google_schema.py": "google",

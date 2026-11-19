@@ -10,6 +10,7 @@ from pydantic import Field, JsonValue, field_validator, model_validator
 
 from judgmentllm.config import GenerationSpec, RunSpecification
 from judgmentllm.decisions.replay import (
+    GeminiDecisionsReplayV1,
     OpenAIDecisionsReplayV1,
     TypeSafeDecisionsReplayV1,
 )
@@ -23,6 +24,8 @@ from judgmentllm.persistence.receipts import (
     CompleteResponseEvidenceV1,
     CompleteResponseEvidenceV2,
     CompleteResponseEvidenceV3,
+    CompleteResponseEvidenceV4,
+    GeminiDecisionsRejectionEvidenceV1,
     TypeSafeRejectionEvidenceV1,
 )
 from judgmentllm.planning import CapabilityProfile
@@ -95,6 +98,17 @@ class TypeSafeRequestRejected(TransportNotSubmitted):
         self.rejection = rejection
 
 
+class GeminiDecisionsRequestRejected(TransportNotSubmitted):
+    def __init__(
+        self,
+        rejection: GeminiDecisionsRejectionEvidenceV1,
+        *,
+        usage: ReportedUsageInput | None,
+    ) -> None:
+        super().__init__("Gemini Decisions rejected the request", usage=usage)
+        self.rejection = rejection
+
+
 class SubmissionUncertain(ProviderError):
     """Acceptance is unresolved; optional facts establish an invoked SDK call only."""
 
@@ -128,6 +142,12 @@ class TypeSafeRejectionCancelled(ProviderInvocationCancelled):
     """A complete rejection reached the guard before cancellation."""
 
     def __init__(self, rejection: TypeSafeRequestRejected) -> None:
+        super().__init__(invoked=True)
+        self.rejection = rejection
+
+
+class GeminiDecisionsRejectionCancelled(ProviderInvocationCancelled):
+    def __init__(self, rejection: GeminiDecisionsRequestRejected) -> None:
         super().__init__(invoked=True)
         self.rejection = rejection
 
@@ -199,6 +219,10 @@ class ProviderAcknowledgmentV4(ProviderAcknowledgmentV3):
     response_evidence: CompleteResponseEvidenceV3  # pyright: ignore[reportIncompatibleVariableOverride]
 
 
+class ProviderAcknowledgmentV5(ProviderAcknowledgmentV3):
+    response_evidence: CompleteResponseEvidenceV4  # pyright: ignore[reportIncompatibleVariableOverride]
+
+
 class ReconciliationEvidence(ExecutionModel):
     """An absent acknowledgment never supplies one of these positive facts."""
 
@@ -214,9 +238,12 @@ class DecisionsReconciliationEvidenceV1(ReconciliationEvidence):
 class ProviderResponse(EvidenceModel):
     """Exact received bytes; only full capture may retain them."""
 
-    decisions_replay: OpenAIDecisionsReplayV1 | TypeSafeDecisionsReplayV1 | None = (
-        Field(default=None, exclude=True, repr=False)
-    )
+    decisions_replay: (
+        OpenAIDecisionsReplayV1
+        | TypeSafeDecisionsReplayV1
+        | GeminiDecisionsReplayV1
+        | None
+    ) = Field(default=None, exclude=True, repr=False)
     observation_key: ID
     kind: Literal["response", "refusal", "provider_error", "confirmed_cancellation"]
     raw: bytes = Field(exclude=True, repr=False)

@@ -302,6 +302,17 @@ def validate_run(
                     severity="error" if checked.strict_capabilities else "warning",
                 )
             )
+        if (checked.provider, checked.endpoint) == ("gemini", "decisions"):
+            from judgmentllm.decisions.records import GEMINI_DECISIONS_CONTEXT_WARNING
+
+            issues.append(
+                ValidationIssue(
+                    code="context_fit_unverified",
+                    field="strict_capabilities",
+                    message=GEMINI_DECISIONS_CONTEXT_WARNING,
+                    severity="error" if checked.strict_capabilities else "warning",
+                )
+            )
         if (checked.provider, checked.endpoint) == ("typesafe", "systemone"):
             from judgmentllm.decisions.records import (
                 TYPESAFE_CONTEXT_WARNING,

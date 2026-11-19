@@ -24,6 +24,8 @@ from judgmentllm.persistence.evidence import (
     DecisionsEvidenceReceiptV2,
     DecisionsEvidenceReceiptV3,
     DecisionsEvidenceReceiptV4,
+    DecisionsEvidenceReceiptV5,
+    DecisionsEvidenceWithRejection,
     EvidenceReceipt,
     publish_evidence_receipt,
     read_evidence_receipt,
@@ -33,6 +35,8 @@ from judgmentllm.persistence.models import ArtifactIdentity, IntegrityError, utc
 from judgmentllm.persistence.receipts import (
     AcknowledgmentReceiptV3,
     AcknowledgmentReceiptV4,
+    AcknowledgmentReceiptV5,
+    GeminiDecisionsRejectionEvidenceV1,
     ResponseReceipt,
     TypeSafeRejectionEvidenceV1,
     publish_receipt,
@@ -55,7 +59,9 @@ class DurableEvidence:
         self.repository = session.repository
         self.enabled = self.repository.evidence_supported
         self.receipt_type = (
-            DecisionsEvidenceReceiptV4
+            DecisionsEvidenceReceiptV5
+            if session.prepared.manifest.schema_version == 11
+            else DecisionsEvidenceReceiptV4
             if session.prepared.manifest.schema_version == 10
             else DecisionsEvidenceReceiptV3
             if session.prepared.manifest.schema_version == 9
@@ -146,6 +152,8 @@ class DurableEvidence:
                 not isinstance(ack, AcknowledgmentReceiptV3)
                 or isinstance(ack, AcknowledgmentReceiptV4)
                 != isinstance(evidence, DecisionsEvidenceReceiptV4)
+                or isinstance(ack, AcknowledgmentReceiptV5)
+                != isinstance(evidence, DecisionsEvidenceReceiptV5)
                 or (
                     ack.response_evidence.response_sha256,
                     ack.response_evidence.response_byte_length,
@@ -510,10 +518,13 @@ class DurableEvidence:
             from judgmentllm.persistence.decisions_invocations import (
                 DecisionsInvocationV2,
                 DecisionsInvocationV3,
+                DecisionsInvocationV4,
             )
 
             fact_type = (
-                DecisionsInvocationV3
+                DecisionsInvocationV4
+                if self.receipt_type is DecisionsEvidenceReceiptV5
+                else DecisionsInvocationV3
                 if self.receipt_type is DecisionsEvidenceReceiptV4
                 else DecisionsInvocationV2
                 if self.receipt_type is DecisionsEvidenceReceiptV3
@@ -621,16 +632,27 @@ class DurableEvidence:
         transient: bool = False,
         retry_after: float | None = None,
         diagnostic_code: InvocationFailureCode | None = None,
-        rejection: TypeSafeRejectionEvidenceV1 | None = None,
+        rejection: TypeSafeRejectionEvidenceV1
+        | GeminiDecisionsRejectionEvidenceV1
+        | None = None,
     ) -> EvidenceReceipt | None:
         """Invoked definitive nonacceptance has no invented provider observation."""
         if not self.enabled:
             return None
+        typesafe = isinstance(rejection, TypeSafeRejectionEvidenceV1)
+        gemini = isinstance(rejection, GeminiDecisionsRejectionEvidenceV1)
+        provider = (
+            "TypeSafe" if typesafe else "Gemini Decisions" if gemini else "Decisions"
+        )
         if (
-            rejection is not None
+            typesafe
             and self.receipt_type is not DecisionsEvidenceReceiptV4
+            or gemini
+            and self.receipt_type is not DecisionsEvidenceReceiptV5
         ):
-            raise IntegrityError("TypeSafe rejection exceeds the sealed provider scope")
+            raise IntegrityError(
+                f"{provider} rejection exceeds the sealed provider scope"
+            )
         session = self.session
         previous = read_evidence_receipt(self.store, work.submission_id)
         if previous is not None:
@@ -657,10 +679,10 @@ class DurableEvidence:
             ):
                 raise IntegrityError("failure classification conflicts")
             if rejection is not None and (
-                not isinstance(previous, DecisionsEvidenceReceiptV4)
+                not isinstance(previous, DecisionsEvidenceWithRejection)
                 or previous.rejection != rejection
             ):
-                raise IntegrityError("TypeSafe rejection evidence conflicts")
+                raise IntegrityError(f"{provider} rejection evidence conflicts")
             return previous
         identity = self.identity(work, None)
         usage = extract_provider_usage(

@@ -17,6 +17,7 @@ from judgmentllm.decisions.responses import (
     ParsedDecisionsResponseV2,
 )
 from judgmentllm.decisions.transport import (
+    DecisionsCommitmentV2,
     DecisionsDependencyV1,
     PreparedDecisionsRequestV1,
 )
@@ -25,7 +26,11 @@ from judgmentllm.execution.retry import subset_dependency
 from judgmentllm.io import _revalidate_record  # pyright: ignore[reportPrivateUsage]
 from judgmentllm.models import StrictModel
 from judgmentllm.persistence.models import IntegrityError
-from judgmentllm.results import normalize_pairwise_result, normalize_rubric_result
+from judgmentllm.results import (
+    NormalizationOptions,
+    normalize_pairwise_result,
+    normalize_rubric_result,
+)
 
 
 @dataclass(frozen=True)
@@ -80,7 +85,15 @@ def normalize_answer(
     *,
     score_index_fallback: ScoreIndexFallback | None = None,
 ) -> Result:
-    identity = wire.transport_commitment.identity
+    commitment = wire.transport_commitment
+    identity = commitment.identity
+    options = (
+        NormalizationOptions(
+            probability_sum_tolerance=commitment.probability_sum_tolerance
+        )
+        if isinstance(commitment, DecisionsCommitmentV2)
+        else spec.normalization
+    )
     if question.trait is not None:
         checked = ScoreAnswerV1.model_validate(answer)
         levels = question.trait.levels
@@ -95,7 +108,11 @@ def normalize_answer(
         if (
             checked.expected_index is not None
             and abs(expected - checked.expected_index)
-            > spec.normalization.probability_sum_tolerance
+            > (
+                commitment.index_tolerance(len(levels))
+                if isinstance(commitment, DecisionsCommitmentV2)
+                else options.probability_sum_tolerance
+            )
             and (
                 score_index_fallback is None
                 or not score_index_fallback(
@@ -122,7 +139,7 @@ def normalize_answer(
             task_id=question.task_id,
             request_uid=identity.request_uid,
             attempt_id=identity.attempt_id,
-            options=spec.normalization,
+            options=options,
             provider=spec.provider,
             endpoint=spec.endpoint,
             model=spec.model,
@@ -152,7 +169,7 @@ def normalize_answer(
             task_id=question.task_id,
             request_uid=identity.request_uid,
             attempt_id=identity.attempt_id,
-            options=spec.normalization,
+            options=options,
             provider=spec.provider,
             endpoint=spec.endpoint,
             model=spec.model,

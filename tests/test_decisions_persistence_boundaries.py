@@ -64,6 +64,7 @@ from judgmentllm.persistence.receipts import (
     AcknowledgmentReceiptV3,
     AcknowledgmentReceiptV4,
     CompleteResponseEvidenceV3,
+    GeminiDecisionsRejectionEvidenceV1,
     TypeSafeRejectionEvidenceV1,
     publish_acknowledgment,
     read_acknowledgment,
@@ -579,6 +580,29 @@ async def test_jev_rejection_write_reuses_only_the_same_durable_fact(
 def test_jev_rejection_cannot_enter_a_historical_decisions_session(
     tmp_path: Path,
 ) -> None:
+    _check_historical_session_rejects_foreign_rejection(
+        tmp_path,
+        TypeSafeRejectionEvidenceV1,
+        "TypeSafe rejection exceeds the sealed provider scope",
+    )
+
+
+def test_gemini_rejection_cannot_enter_a_historical_decisions_session(
+    tmp_path: Path,
+) -> None:
+    _check_historical_session_rejects_foreign_rejection(
+        tmp_path,
+        GeminiDecisionsRejectionEvidenceV1,
+        "Gemini Decisions rejection exceeds the sealed provider scope",
+    )
+
+
+def _check_historical_session_rejects_foreign_rejection(
+    tmp_path: Path,
+    evidence_type: type[TypeSafeRejectionEvidenceV1]
+    | type[GeminiDecisionsRejectionEvidenceV1],
+    diagnostic: str,
+) -> None:
     spec = native_spec(tmp_path / "input")
     store = tmp_path / "store"
     with prepare_run(spec, store=store, run_id="001"):
@@ -588,7 +612,7 @@ def test_jev_rejection_cannot_enter_a_historical_decisions_session(
     try:
         work = session.next_work()
         assert work is not None and session.boundary(work)
-        rejection = TypeSafeRejectionEvidenceV1(
+        rejection = evidence_type(
             run_id="001",
             request_uid=work.prepared.request_uid,
             attempt_id=work.attempt_id,
@@ -600,9 +624,7 @@ def test_jev_rejection_cannot_enter_a_historical_decisions_session(
             http_status=413,
             reason="payload_too_large",
         )
-        with pytest.raises(
-            IntegrityError, match="TypeSafe rejection exceeds the sealed provider scope"
-        ):
+        with pytest.raises(IntegrityError, match=diagnostic):
             session.not_submitted(work, invoked=True, rejection=rejection)
         assert session.prepared is not None
         assert read_evidence_receipt(session.prepared.store, work.submission_id) is None

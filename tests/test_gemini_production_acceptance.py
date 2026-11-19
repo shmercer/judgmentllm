@@ -12,7 +12,7 @@ from typing import Any, Literal, cast
 import httpx2
 import pytest
 from gemini_fixture import case
-from gemini_offline import envelope, isolate
+from gemini_offline import authorize_fixture, envelope, isolate
 from pydantic import BaseModel
 from test_gemini_lifecycle import production_spec
 
@@ -38,7 +38,12 @@ from judgmentllm.planning import plan_record
 from judgmentllm.preparation import open_prepared_run, prepare_run
 from judgmentllm.preparation.session import RequestDependency
 from judgmentllm.presentation import PresentationVersion
-from judgmentllm.providers.gemini import GeminiAdapter
+from judgmentllm.providers.gemini import (
+    GeminiAdapter,
+    GeminiReadinessError,
+    gemini_sdk_version,
+)
+from judgmentllm.providers.protocol import ProviderIntegrityError
 from judgmentllm.service_tiers import ServicePolicyVersion
 from judgmentllm.transport import TransportIntegrityError, physical_identity
 
@@ -58,6 +63,7 @@ def prepare(
     frozen: TransportCommitmentV4 | None = None,
     presentation_version: PresentationVersion = 1,
     service_policy_version: ServicePolicyVersion = 1,
+    current_runtime: bool = False,
     **settings: Any,
 ) -> tuple[PreparedRequestV6, RunSpecV3, RequestDependency, GeminiProductionContext]:
     strict = settings.pop("strict", False)
@@ -66,6 +72,9 @@ def prepare(
     if service_policy_version == 1:
         spec.account_scope = None
     spec.strict_capabilities = strict
+    context = production_context(spec)
+    if not current_runtime:
+        context = replace(context, google_wire_runtime=None)
     record = dependency.request.pair or dependency.request.response
     assert record is not None
     request = next(
@@ -77,11 +86,11 @@ def prepare(
                 spec.endpoint,
                 spec.model,
                 mechanism=spec.prompt.native_mechanism,
+                sdk_version=context.required_sdk_version,
             ),
         )
     )
     dependency = RequestDependency(request=request, dependency_sha256="0" * 64)
-    context = production_context(spec)
 
     def lookup(
         kind: Literal["response", "pair"], ident: str
@@ -438,3 +447,103 @@ def test_new_presentation_cannot_borrow_historical_native_authority(
     assert wire.transport_commitment.presentation_version == 2
     assert wire.output_commitment.selection.mechanism == "text"
     assert wire.output_commitment.selection.native_support == "unknown"
+
+
+@pytest.mark.asyncio
+async def test_current_native_runtime_requires_its_own_profile_at_forwarding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from judgmentllm.providers import gemini as provider
+
+    historical = registry._QUALIFIED_PROFILES
+    with pytest.raises(TransportIntegrityError):
+        prepare(tmp_path, policy="native", current_runtime=True)
+    text, _, _, context = prepare(tmp_path, policy="auto", current_runtime=True)
+    assert text.output_commitment.selection.authority_kind == "unqualified"
+    assert text.transport_commitment.mechanism == "text"
+    authorize_fixture(monkeypatch, context, ("rubric_scores",), MECHANISM)
+    wire, spec, _, _ = prepare(tmp_path, policy="native", current_runtime=True)
+    assert gemini_sdk_version() == context.required_sdk_version == "3.5.0"
+    sent: list[bytes] = []
+
+    def respond(request: httpx2.Request) -> httpx2.Response:
+        sent.append(request.content)
+        return httpx2.Response(
+            200,
+            json=envelope('{"scores":[{"trait_id":"01","category_label":"low 雪"}]}'),
+        )
+
+    def revoke(*args: Any) -> dict[str, Any]:
+        monkeypatch.setattr(registry, "_QUALIFIED_PROFILES", historical)
+        return arguments_for_sdk(*args)
+
+    arguments_for_sdk = provider._sdk_arguments
+    identity = wire.transport_plan.identity
+    arguments = {
+        "submission_id": identity.submission_id,
+        "correlation_id": identity.correlation_id,
+    }
+    for may_forward in (True, False):
+        adapter = GeminiAdapter(
+            spec.endpoint,
+            MODEL,
+            context=context,
+            http_transport=httpx2.MockTransport(respond),
+        )
+        try:
+            if may_forward:
+                await adapter.submit(wire, **arguments)
+            else:
+                monkeypatch.setattr(provider, "_sdk_arguments", revoke)
+                with pytest.raises(
+                    ProviderIntegrityError, match="independent reviewed"
+                ):
+                    await adapter.submit(wire, **arguments)
+                assert adapter.actual_call_count == 0
+        finally:
+            await adapter.aclose()
+    assert sent == [wire.payload] and b"responseJsonSchema" in sent[0]
+
+
+@pytest.mark.asyncio
+async def test_historical_native_wire_still_executes_with_original_authority(
+    tmp_path: Path,
+) -> None:
+    wire, spec, _, context = prepare(tmp_path, policy="native", pairwise=True)
+    assert context.google_wire_runtime is None
+    assert wire.output_commitment.contract.presentation_version == 1
+    sent: list[bytes] = []
+
+    def respond(request: httpx2.Request) -> httpx2.Response:
+        sent.append(request.content)
+        return httpx2.Response(
+            200, json=envelope('{"winner_id":"002"}', modelVersion=MODEL)
+        )
+
+    adapter = GeminiAdapter(
+        spec.endpoint,
+        MODEL,
+        context=context,
+        http_transport=httpx2.MockTransport(respond),
+    )
+    identity = wire.transport_plan.identity
+    arguments = {
+        "submission_id": identity.submission_id,
+        "correlation_id": identity.correlation_id,
+    }
+    try:
+        if gemini_sdk_version() != context.required_sdk_version:
+            with pytest.raises(
+                GeminiReadinessError, match="qualified transport version"
+            ):
+                await adapter.submit(wire, **arguments)
+            assert not sent and adapter.actual_call_count == 0
+        else:
+            await adapter.submit(wire, **arguments)
+            assert (
+                adapter.parse(await adapter.retrieve(wire, **arguments)).kind
+                == "response"
+            )
+            assert sent == [wire.payload] and b"responseJsonSchema" in sent[0]
+    finally:
+        await adapter.aclose()

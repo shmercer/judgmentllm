@@ -14,6 +14,7 @@ from pydantic import Field, field_validator, model_validator
 
 from judgmentllm.evidence.scope import EvidenceProvenance
 from judgmentllm.generation import GenerationCapabilities
+from judgmentllm.google_sdk import GOOGLE_SDK_RUNTIME
 from judgmentllm.native_schema import NativeModel, NativeProjectionScopeV1
 from judgmentllm.native_selection import NativeFeature
 from judgmentllm.persistence.hashing import semantic_digest
@@ -83,7 +84,8 @@ class _QualifiedProfile(NativeModel):
             or self.scope.model is None
             or self.scope.model.startswith("judgmentllm-synthetic-")
             or self.scope.sdk_package != "google-genai"
-            or self.scope.sdk_version != GEMINI_PRODUCTION_SDK_VERSION
+            or self.scope.sdk_version
+            not in (GEMINI_PRODUCTION_SDK_VERSION, GOOGLE_SDK_RUNTIME)
             or self.scope.api_version != GEMINI_API_VERSION
             or self.schema_dialect
             != (
@@ -202,8 +204,13 @@ _QUALIFIED_PROFILES: tuple[_QualifiedProfile, ...] = (
 
 
 def _profile_for(
-    scope: NativeProjectionScopeV1, mechanism: str | None = None
+    scope: NativeProjectionScopeV1,
+    mechanism: str | None = None,
+    *,
+    sdk_version: str | None = None,
 ) -> _QualifiedProfile | None:
+    if sdk_version is not None:
+        scope = scope.model_copy(update={"sdk_version": sdk_version})
     matches = [
         profile
         for profile in _QUALIFIED_PROFILES

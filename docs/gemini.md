@@ -5,8 +5,8 @@ remains scoped to revision 1. New `auto` requests use text until separately
 qualified for revision 2; explicit `native` and strict unknown `auto` fail before
 submission. Historical sealed requests keep their original commitments.
 
-Phase 5C implements ordinal rubric scoring and pairwise comparison using the
-official `google-genai==2.34.0` SDK, endpoint `models.generate_content`, API
+Phase 5C implements ordinal rubric scoring and pairwise comparison on
+endpoint `models.generate_content`, API
 `v1beta`. This is the **Gemini Developer API** at
 `https://generativelanguage.googleapis.com/`. Vertex/enterprise, ADC and the
 Interactions API are separate integrations.
@@ -16,20 +16,21 @@ on 2026-11-10 establishes exact-model scope for `gemini-3.1-flash-lite`:
 single-trait ordinal scores and forced-choice pairwise winners, without
 explanations or ties, in text and native `response_json_schema` modes. Production
 native authority contains exactly `rubric_scores` and `pairwise_forced_choice`
-for the SDK/API/endpoint above. Other features and models remain unknown.
+for its original `google-genai==2.34.0` SDK, API and endpoint. Other features and models remain unknown.
 Implementation and deterministic SDK fixtures alone establish no live support;
 standard tests still use synthetic keys and intercepted HTTP transports.
 
 Install from a reviewed source checkout with the Google extra:
 
 ```bash
-pip install '.[google]' 'google-genai==2.34.0'
+pip install '.[google]'
 judgmentllm --help
 ```
 
-This does not publish a package. The existing dependency lock already contains
-the reviewed SDK. Execution rejects another installed SDK version; core-only
-offline validation and preview construct no SDK client and resolve no key.
+The current lock uses `google-genai[httpx]==3.5.0` with separately recorded
+offline wire parity. Use the original pinned checkout for historical
+reconstruction or forwarding. Core-only offline validation and preview
+construct no SDK client and resolve no key. [SDK compatibility](gemini-decisions.md#recovery-and-sdk-compatibility)
 
 Copy [examples/gemini](../examples/gemini/) and replace `YOUR_EXACT_MODEL` with an
 exact model ID. Character IDs such as `001` remain strings. These commands are

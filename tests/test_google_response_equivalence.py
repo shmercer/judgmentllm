@@ -16,7 +16,7 @@ from gemini_offline import envelope
 from vertex_offline import isolate
 
 from judgmentllm.assessment_diagnostics import diagnose_assessment_output
-from judgmentllm.providers import gemini_response, vertex_response
+from judgmentllm.providers import gemini, gemini_response, vertex, vertex_response
 from judgmentllm.providers.gemini import GeminiAdapter
 from judgmentllm.providers.protocol import ProviderResponse
 from judgmentllm.providers.vertex import VertexAdapter
@@ -323,6 +323,9 @@ def test_accepted_main_equivalence(
     body: dict[str, Any],
 ) -> None:
     isolate(monkeypatch)
+    # The oracle includes SDK metadata from the historical response snapshot.
+    module = gemini if provider == "gemini" else vertex
+    monkeypatch.setattr(module, f"{provider}_sdk_version", lambda: "2.34.0")
     baseline = json.loads(BASELINE.read_text(encoding="utf-8"))
     assert baseline["source_commit"] == BASE
     assert set(baseline["cases"]) == set(matrix())

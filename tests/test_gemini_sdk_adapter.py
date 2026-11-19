@@ -326,18 +326,26 @@ async def test_http_failure_no_retry_or_redirect(
         await adapter.aclose()
 
 
-@pytest.mark.parametrize("echo", ["direct", "escaped"])
+@pytest.mark.parametrize(
+    "echo", ["direct", "escaped", "malformed", "malformed-nested", "malformed-quoted"]
+)
 @pytest.mark.asyncio
 async def test_credential_echo_never_reaches_retained_envelope(
-    tmp_path: Path, echo: str
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, echo: str
 ) -> None:
     wire, spec, _, _ = wire_for(tmp_path)
     key = "SYNTHETIC_SELECTED_GEMINI_KEY"
+    if echo == "malformed-quoted":
+        key += '"\\END'
+        monkeypatch.setenv("GOOGLE_API_KEY", key)
     raw = json.dumps(envelope(key)).encode()
-    if echo == "escaped":
+    if echo in {"escaped", "malformed", "malformed-nested"}:
+        slash = "\\" if echo != "malformed-nested" else "\\\\"
         raw = raw.replace(
-            key.encode(), "".join(f"\\u{ord(c):04x}" for c in key).encode()
+            key.encode(), "".join(f"{slash}u{ord(c):04x}" for c in key).encode()
         )
+    if echo.startswith("malformed"):
+        raw = b"\xff" + raw
     adapter = GeminiAdapter(
         spec.endpoint,
         spec.model,
@@ -346,8 +354,11 @@ async def test_credential_echo_never_reaches_retained_envelope(
         ),
     )
     try:
-        with pytest.raises(SubmissionUncertain) as failure:
+        with pytest.raises(
+            SubmissionUncertain, match="cannot be retained safely"
+        ) as failure:
             await adapter.submit(wire, **invocation(wire))
+        assert failure.value.invoked and adapter.actual_call_count == 1
         assert key not in str(failure.value)
         assert not adapter._responses
     finally:

@@ -1,5 +1,14 @@
 # Data contracts and scoring semantics
 
+## PR E Gemini Decisions
+
+The [Gemini Decisions contract](gemini-decisions.md) adds manifest 11,
+transport commitment 4, acknowledgment 5, evidence receipt 5 and physical
+provenance 4 to V4 preparation. Provenance distinguishes measured body bytes,
+unverified context fit, acknowledged refusals and definitive HTTP rejections.
+Canonical results retain the existing schema. New OpenAI default precision
+is tagged on its production context and physical commitment.
+
 ## PR D TypeSafe Decisions addition
 
 The [Jev contract](typesafe-decisions.md) adds a separately dispatched V4

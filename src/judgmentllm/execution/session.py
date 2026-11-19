@@ -19,6 +19,7 @@ from judgmentllm.decisions.transport import (
     PreparedDecisionsRequestV1,
     PreparedDecisionsRequestV2,
     PreparedDecisionsRequestV3,
+    PreparedDecisionsRequestV4,
 )
 from judgmentllm.evidence import ReportedUsageInput
 from judgmentllm.evidence.usage import InvocationFailureCode
@@ -57,6 +58,8 @@ from judgmentllm.persistence.receipts import (
     AcknowledgmentReceiptV2,
     AcknowledgmentReceiptV3,
     AcknowledgmentReceiptV4,
+    AcknowledgmentReceiptV5,
+    GeminiDecisionsRejectionEvidenceV1,
     ResponseReceipt,
     TypeSafeRejectionEvidenceV1,
     publish_acknowledgment,
@@ -79,6 +82,7 @@ from judgmentllm.providers.protocol import (
     ProviderAcknowledgmentV2,
     ProviderAcknowledgmentV3,
     ProviderAcknowledgmentV4,
+    ProviderAcknowledgmentV5,
 )
 
 Fault = Callable[[str, str], None]
@@ -90,6 +94,7 @@ _DECISIONS_ACKNOWLEDGMENTS: dict[
     PreparedDecisionsRequestV1: (ProviderAcknowledgmentV2, AcknowledgmentReceiptV2),
     PreparedDecisionsRequestV2: (ProviderAcknowledgmentV3, AcknowledgmentReceiptV3),
     PreparedDecisionsRequestV3: (ProviderAcknowledgmentV4, AcknowledgmentReceiptV4),
+    PreparedDecisionsRequestV4: (ProviderAcknowledgmentV5, AcknowledgmentReceiptV5),
 }
 
 
@@ -235,10 +240,10 @@ class ExecutionSession:
     ) -> PreparedRequest:
         """Reconstruct pinned V3 bytes; historical rendering keeps its old path."""
         assert self.prepared is not None
-        if self.prepared.manifest.schema_version in (3, 4, 5, 6, 7, 8, 9, 10):
+        if self.prepared.manifest.schema_version in (3, 4, 5, 6, 7, 8, 9, 10, 11):
             from judgmentllm.transport import physical_identity
 
-            if self.prepared.manifest.schema_version in (8, 9, 10):
+            if self.prepared.manifest.schema_version in (8, 9, 10, 11):
                 from judgmentllm.preparation.decisions import DecisionsPreparedRun
 
                 assert isinstance(self.prepared, DecisionsPreparedRun)
@@ -354,6 +359,14 @@ class ExecutionSession:
             if not isinstance(self.adapter, TypeSafeDecisionsAdapter):
                 raise IntegrityError("TypeSafe request lacks its execution adapter")
             self.adapter.validate_credentials()
+        elif isinstance(prepared, PreparedDecisionsRequestV4):
+            from judgmentllm.providers.gemini_decisions import GeminiDecisionsAdapter
+
+            if not isinstance(self.adapter, GeminiDecisionsAdapter):
+                raise IntegrityError(
+                    "Gemini Decisions request lacks its execution adapter"
+                )
+            self.adapter.validate_credentials()
         # No submission can exist before sealing; all receipt/attempt checks above
         # precede this short owned transaction. This never repairs retry intent.
         with self.transaction():
@@ -376,7 +389,17 @@ class ExecutionSession:
         while True:
             existing = next(self.existing, None)
             if existing is not None:
-                if self.prepared.manifest.schema_version in (3, 4, 5, 6, 7, 8, 9, 10):
+                if self.prepared.manifest.schema_version in (
+                    3,
+                    4,
+                    5,
+                    6,
+                    7,
+                    8,
+                    9,
+                    10,
+                    11,
+                ):
                     self.verify_native_attempt(existing)
                 results = self.repository.get_results_for_attempt(
                     self.run_id, existing.attempt_id
@@ -415,7 +438,17 @@ class ExecutionSession:
                 dependency = next(self.dependencies, None)
                 if dependency is None:
                     return None
-                if self.prepared.manifest.schema_version in (3, 4, 5, 6, 7, 8, 9, 10):
+                if self.prepared.manifest.schema_version in (
+                    3,
+                    4,
+                    5,
+                    6,
+                    7,
+                    8,
+                    9,
+                    10,
+                    11,
+                ):
                     raise IntegrityError("sealed native request was scheduled twice")
                 ordinal = self.ordinal
                 self.ordinal += 1
@@ -533,6 +566,7 @@ class ExecutionSession:
                     8,
                     9,
                     10,
+                    11,
                 ):
                     self.initial_submission(existing, prepared)
                     submission = self.repository.get_submission_for_attempt(
@@ -562,7 +596,7 @@ class ExecutionSession:
     def repair_committed(self, attempt: AttemptRecord, status: str) -> None:
         """Committed records are authoritative, including a lost final report."""
         assert self.prepared is not None
-        if self.prepared.manifest.schema_version in (3, 4, 5, 6, 7, 8, 9, 10):
+        if self.prepared.manifest.schema_version in (3, 4, 5, 6, 7, 8, 9, 10, 11):
             self.verify_native_attempt(attempt)
         for digest in (attempt.prompt_sha256, attempt.payload_sha256):
             self.prepared.store.verify(
@@ -632,8 +666,10 @@ class ExecutionSession:
                 "served tier is unknown; further submission requires review"
             )
         readiness = getattr(self.adapter, "validate_credentials", None)
-        typesafe = isinstance(work.prepared, PreparedDecisionsRequestV3)
-        if typesafe and readiness is not None:
+        check_before_claim = isinstance(
+            work.prepared, (PreparedDecisionsRequestV3, PreparedDecisionsRequestV4)
+        )
+        if check_before_claim and readiness is not None:
             readiness()
         with self.transaction():
             if attempt.state == "claimed":
@@ -675,7 +711,7 @@ class ExecutionSession:
         current = self.prepare_attempt(work.dependency, work.attempt_id)
         if current != work.prepared:
             raise IntegrityError("payload changed before submission")
-        if readiness is not None and not typesafe:
+        if readiness is not None and not check_before_claim:
             readiness()
         with self.transaction():
             self.repository.transition(
@@ -819,7 +855,9 @@ class ExecutionSession:
         retry_after: float | None = None,
         usage: ReportedUsageInput | None = None,
         diagnostic_code: InvocationFailureCode | None = None,
-        rejection: TypeSafeRejectionEvidenceV1 | None = None,
+        rejection: TypeSafeRejectionEvidenceV1
+        | GeminiDecisionsRejectionEvidenceV1
+        | None = None,
     ) -> None:
         evidence = (
             self.evidence.failure(
@@ -1008,6 +1046,7 @@ class ExecutionSession:
         if receipt.capture == "minimal":
             return None
         from judgmentllm.decisions.replay import (
+            GeminiDecisionsReplayV1,
             OpenAIDecisionsReplayV1,
             TypeSafeDecisionsReplayV1,
         )
@@ -1019,7 +1058,9 @@ class ExecutionSession:
             and evidence.retained_kind == "filtered_replay"
         ):
             replay_type = (
-                TypeSafeDecisionsReplayV1
+                GeminiDecisionsReplayV1
+                if isinstance(work.prepared, PreparedDecisionsRequestV4)
+                else TypeSafeDecisionsReplayV1
                 if isinstance(work.prepared, PreparedDecisionsRequestV3)
                 else OpenAIDecisionsReplayV1
             )

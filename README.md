@@ -44,7 +44,7 @@ billable network operations and require the provider's explicit V3 configuration
 | Local Ollama / `chat` | Planned live runner | Offline schema-projection/private transport fixtures; no production run/resume adapter |
 | OpenAI / `decisions` | Implemented V4 official SDK adapter | PR #64 offline acceptance and maintainer-confirmed bounded `gpt-6-luna` smoke |
 | TypeSafe Jev / `systemone` | Implemented V4 official SDK adapter, PR D candidate | Offline SDK and recovery fixtures; exact-source qualification and the bounded `jev-1.14.0` smoke pending |
-| Gemini Developer / `decisions` | Planned V4 adapter, PR E | Separate route from `generate_content` |
+| Gemini Developer / `decisions` | Implemented V4 adapter, PR E candidate | Guarded Developer v1beta route with pinned-sdk offline fixtures. Token fit and live qualification pending |
 
 Native provider batch and managed bulk-live are **Milestone 5 targets**, not
 implemented modes in these adapters. Generative JSON Schema (`structured_output:
@@ -263,7 +263,7 @@ optional complete campaign, not a prerequisite for routine PRs.
 
 ## Optional dependencies and later milestones
 
-Extras remain `openai`, `anthropic`, `google`, `together`, `ollama`, `typesafe`, `parquet`, `api`, and `all`. Use the route table above for implementation and qualification. Gemini Decisions, Together/Ollama live runners, M5 batch/bulk-live, the M6 CLI-first `rubricLLM` wrapper and M7 optional local FastAPI remain later work under the [implementation plan](docs/implementation-plan.md). R calls operate on runs/files or sized task groups, not one Python process per judgment.
+Extras remain `openai`, `anthropic`, `google`, `together`, `ollama`, `typesafe`, `parquet`, `api`, and `all`. Use the route table above for implementation and qualification. Together/Ollama live runners, M5 batch/bulk-live, the M6 CLI-first `rubricLLM` wrapper and M7 optional local FastAPI remain later work under the [implementation plan](docs/implementation-plan.md). R calls operate on runs/files or sized task groups, not one Python process per judgment.
 
 The repository is [shmercer/judgmentllm](https://github.com/shmercer/judgmentllm), licensed under [MIT](https://github.com/shmercer/judgmentllm/blob/main/LICENSE), and not yet published to PyPI. The core does not implement Bradley–Terry fitting, adaptive pairing, or rubric calibration; these remain in `pairwiseLLM`.
 
@@ -302,3 +302,7 @@ the maintainer. [Protected hosted evidence](https://github.com/shmercer/judgment
 [TypeSafe Jev](docs/typesafe-decisions.md) uses the same V4 lifecycle with the
 pinned official SDK and a Jev-specific non-strict context policy. Both context
 checks remain unverified. The provider can reject a request after forwarding.
+
+[Gemini Decisions](docs/gemini-decisions.md) supports named rubric scores and
+comparative judgments on the Developer API. The 256 KiB local cap measures the
+serialized body. Provider token fit remains unverified.

@@ -329,6 +329,8 @@ async def test_sdk_logs_and_local_timeout_policy_are_enforced(
         (b'{"a":[true,1,{"x":"safe"}]}', False),
         (b'{"text":"\\u0053\\u0045\\u0043\\u0052\\u0045\\u0054"}', True),
         (b'{"text":"\\\\u0053\\\\u0045\\\\u0043\\\\u0052\\\\u0045\\\\u0054"}', True),
+        (b'\xff{"text":"\\u0053ECRET"}', True),
+        (b'\xff{"text":"\\\\u0053ECRET"}', True),
     ],
 )
 def test_credential_echo_screening_precedes_component_capture(

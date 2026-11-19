@@ -223,7 +223,9 @@ def _reviewed_profile(
     context: GeminiProductionContext, **changes: Any
 ) -> _QualifiedProfile:
     fields: dict[str, Any] = {
-        "scope": context.scope,
+        "scope": context.scope.model_copy(
+            update={"sdk_version": context.required_sdk_version}
+        ),
         "service_scopes": (
             ServiceQualificationScope(
                 account_scope="synthetic-account",

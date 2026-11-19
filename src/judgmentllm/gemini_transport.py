@@ -28,7 +28,13 @@ from judgmentllm.gemini_registry import (
     GEMINI_PRODUCTION_SDK_VERSION,
     GeminiMechanism,
     _profile_for,
+    _QualifiedProfile,
     production_generation_capabilities,
+)
+from judgmentllm.google_sdk import (
+    GOOGLE_SDK_RUNTIME,
+    GOOGLE_WIRE_RUNTIME,
+    GoogleWireRuntime,
 )
 from judgmentllm.models import PairTask, ResponseItem
 from judgmentllm.native_schema import NativeProjectionScopeV1
@@ -117,6 +123,15 @@ class GeminiProductionContext:
     scope: NativeProjectionScopeV1
     kind: GeminiProductionContextKind = "gemini-production-v1"
     source_commit: str | None = None
+    google_wire_runtime: GoogleWireRuntime | None = None
+
+    @property
+    def required_sdk_version(self) -> str:
+        return (
+            GOOGLE_SDK_RUNTIME
+            if self.google_wire_runtime
+            else GEMINI_PRODUCTION_SDK_VERSION
+        )
 
     @property
     def api_scope(self) -> Literal["gemini-developer-generate-content-v1beta-v1"]:
@@ -154,6 +169,10 @@ def _checked_context(context: GeminiProductionContext) -> GeminiProductionContex
     ):
         raise TransportIntegrityError()
     qualifier = context.kind != "gemini-production-v1"
+    if context.google_wire_runtime is not None and (
+        context.google_wire_runtime != GOOGLE_WIRE_RUNTIME or qualifier
+    ):
+        raise TransportIntegrityError()
     if qualifier != (context.source_commit is not None):
         raise TransportIntegrityError()
     if context.source_commit is not None and not re.fullmatch(
@@ -164,6 +183,7 @@ def _checked_context(context: GeminiProductionContext) -> GeminiProductionContex
         scope=scope,
         kind=context.kind,
         source_commit=context.source_commit,
+        google_wire_runtime=context.google_wire_runtime,
     )
 
 
@@ -183,6 +203,7 @@ def production_context_for_identity(
     """Create exact credential-free scope before reopening frozen sources."""
     return _checked_context(
         GeminiProductionContext(
+            google_wire_runtime=GOOGLE_WIRE_RUNTIME,
             scope=NativeProjectionScopeV1(
                 provider=provider,
                 endpoint=endpoint,
@@ -191,7 +212,7 @@ def production_context_for_identity(
                 sdk_package="google-genai",
                 sdk_version=GEMINI_PRODUCTION_SDK_VERSION,
                 api_version=GEMINI_API_VERSION,
-            )
+            ),
         )
     )
 
@@ -212,7 +233,7 @@ def _qualification_context(  # pyright: ignore[reportUnusedFunction]
 
 def _authority_sha256(context: GeminiProductionContext) -> str:
     profiles = tuple(
-        _profile_for(context.scope, route)
+        _reviewed_profile(context, route)
         for route in (
             "gemini.generate_content.response_schema",
             "gemini.generate_content.response_json_schema",
@@ -238,10 +259,24 @@ def production_context_digest(context: GeminiProductionContext) -> str:
                 "scope": checked.scope,
                 "api_scope": GEMINI_API_SCOPE,
                 "authority_sha256": _authority_sha256(checked),
+                **(
+                    {"google_wire_runtime": checked.google_wire_runtime}
+                    if checked.google_wire_runtime is not None
+                    else {}
+                ),
             },
         )
     except (ValueError, TypeError, AttributeError, RecursionError):
         raise TransportIntegrityError() from None
+
+
+def _reviewed_profile(
+    context: GeminiProductionContext, mechanism: str | None
+) -> _QualifiedProfile | None:
+    # Projection parity leaves the live authority scoped to the execution SDK.
+    return _profile_for(
+        context.scope, mechanism, sdk_version=context.required_sdk_version
+    )
 
 
 class GeminiSelectionV1(_TransportModel):
@@ -296,7 +331,7 @@ def _support(
     service: ServicePolicyV2 | None = None,
     generation: GenerationSpec | None = None,
 ) -> Literal["supported", "unsupported", "unknown"]:
-    profile = _profile_for(context.scope, mechanism)
+    profile = _reviewed_profile(context, mechanism)
     if profile is not None and not qualified_service(
         service, profile.service_scopes, features
     ):
@@ -327,7 +362,7 @@ def _verify_selection(
         "qualification_probe"
         if qualifier
         else "reviewed"
-        if _profile_for(context.scope, spec.prompt.native_mechanism) is not None
+        if _reviewed_profile(context, spec.prompt.native_mechanism) is not None
         else "unqualified"
     )
     if (
@@ -413,7 +448,7 @@ def _selection(
         authority_kind="qualification_probe"
         if qualifier
         else "reviewed"
-        if _profile_for(context.scope, spec.prompt.native_mechanism) is not None
+        if _reviewed_profile(context, spec.prompt.native_mechanism) is not None
         else "unqualified",
         features=features,
         authority_sha256=_authority_sha256(context),
@@ -576,7 +611,7 @@ def _build_output_commitment_v6(
     if inherited_commitment is not None:
         service_policy_version = 1 if inherited_commitment.service_policy is None else 2
     service = resolve_service_policy(spec, service_policy_version)
-    profile = _profile_for(context.scope, spec.prompt.native_mechanism)
+    profile = _reviewed_profile(context, spec.prompt.native_mechanism)
     validate_service_support(
         service,
         () if profile is None else profile.service_scopes,
@@ -739,6 +774,9 @@ class TransportCommitmentV4(_TransportModel):
         default=1, exclude_if=lambda value: value == 1
     )
     context_kind: GeminiProductionContextKind
+    google_wire_runtime: GoogleWireRuntime | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     service_policy: ServicePolicyV2 | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
@@ -827,6 +865,7 @@ def _receipt(
     prompt: bytes,
     payload: bytes,
     context_kind: GeminiProductionContextKind,
+    google_wire_runtime: GoogleWireRuntime | None,
 ) -> TransportCommitmentV4:
     projection = output.projection
     native = (
@@ -873,6 +912,8 @@ def _receipt(
     )
     if output.service_policy is not None:
         values["service_policy"] = output.service_policy.model_dump(mode="json")
+    if google_wire_runtime is not None:
+        values["google_wire_runtime"] = google_wire_runtime
     if output.contract.presentation_version == 1:
         values.pop("presentation_version")
     return TransportCommitmentV4.model_validate_json(
@@ -943,6 +984,7 @@ class PreparedRequestV6(PreparedRequest, _TransportModel):
                 self.rendered_text.encode("utf-8"),
                 self.payload,
                 receipt.context_kind,
+                receipt.google_wire_runtime,
             )
             or receipt.scope != output.scope
         ):
@@ -1095,7 +1137,9 @@ def prepare_production_request(
             context_sha256=context_digest,
             parent_commitment_sha256=output.selection.parent_commitment_sha256,
         )
-        receipt = _receipt(plan, output, prompt, payload, context.kind)
+        receipt = _receipt(
+            plan, output, prompt, payload, context.kind, context.google_wire_runtime
+        )
         if frozen is not None and frozen != receipt:
             raise TransportIntegrityError()
         prepared = PreparedRequestV6(

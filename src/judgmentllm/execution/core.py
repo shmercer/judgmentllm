@@ -36,6 +36,8 @@ from judgmentllm.providers import (
     TransportNotSubmitted,
 )
 from judgmentllm.providers.protocol import (
+    GeminiDecisionsRejectionCancelled,
+    GeminiDecisionsRequestRejected,
     ProviderInvocationCancelled,
     TypeSafeRejectionCancelled,
     TypeSafeRequestRejected,
@@ -203,7 +205,7 @@ async def execute_run(
                 result_high = max(result_high, responses.qsize())
 
         def queue_rejection(
-            work: _Work, error: TypeSafeRequestRejected
+            work: _Work, error: TypeSafeRequestRejected | GeminiDecisionsRequestRejected
         ) -> asyncio.Future[None]:
             pending_write = loop.run_in_executor(
                 io,
@@ -314,7 +316,10 @@ async def execute_run(
                 except ProviderInvocationCancelled as exc:
                     if retained is not None:
                         retained.invoked = exc.invoked
-                    if isinstance(exc, TypeSafeRejectionCancelled):
+                    if isinstance(
+                        exc,
+                        (TypeSafeRejectionCancelled, GeminiDecisionsRejectionCancelled),
+                    ):
                         queue_rejection(work, exc.rejection)
                     # A provider task may itself be cancelled. TaskGroup treats
                     # child cancellation as normal, so propagate it to the owning
@@ -333,7 +338,7 @@ async def execute_run(
                         diagnostic_code=exc.diagnostic_code,
                     )
                     cancellation_work.pop(work.submission_id, None)
-                except TypeSafeRequestRejected as exc:
+                except (TypeSafeRequestRejected, GeminiDecisionsRequestRejected) as exc:
                     await asyncio.shield(queue_rejection(work, exc))
                     cancellation_work.pop(work.submission_id)
                 except TransportNotSubmitted as exc:

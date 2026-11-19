@@ -13,6 +13,7 @@ from typing import Literal
 from pydantic import Field, field_validator, model_validator
 
 from judgmentllm.decisions._base import DecisionsModel
+from judgmentllm.google_sdk import GOOGLE_SDK_RUNTIME
 from judgmentllm.io import _revalidate_record  # pyright: ignore[reportPrivateUsage]
 from judgmentllm.models import ID, PairTask, PairwiseCriterion, ResolvedLevel, Trait
 from judgmentllm.persistence.models import SHA256
@@ -362,6 +363,16 @@ class OpenAIDecisionsContextV1(DecisionsModel):
     credential_source: Literal["OPENAI_API_KEY"] = "OPENAI_API_KEY"
     account_scope: ID | None = None
     limits: DecisionsLimitsV2 = Field(default_factory=DecisionsLimitsV2)
+    precision_policy_version: Literal[1] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
+    @field_validator("precision_policy_version", mode="before")
+    @classmethod
+    def strict_precision_version(cls, value: object) -> object:
+        if value is not None and (type(value) is not int or value != 1):
+            raise ValueError("unsupported OpenAI Decisions precision policy")
+        return value
 
 
 TYPESAFE_MODEL = "jev-1.14.0"
@@ -414,3 +425,50 @@ class TypeSafeDecisionsContextV1(DecisionsModel):
     credential_source: Literal["TYPESAFE_API_KEY"] = "TYPESAFE_API_KEY"
     account_scope: ID | None = None
     limits: TypeSafeDecisionsLimitsV3 = Field(default_factory=TypeSafeDecisionsLimitsV3)
+
+
+GEMINI_DECISIONS_ROUTE = ("gemini", "decisions")
+GEMINI_DECISIONS_MODEL = "gemini-decision-1"
+GEMINI_DECISIONS_PROTOCOL = "gemini-decisions-production-v1"
+GEMINI_DECISIONS_URL = "https://generativelanguage.googleapis.com/v1beta/decisions"
+GEMINI_DECISIONS_BODY_CAP = 262_144
+GEMINI_DECISIONS_PRECISION = 1e-6
+GEMINI_DECISIONS_CONTEXT_WARNING = (
+    "Gemini Decisions context fit is unverified. The 256 KiB request body cap "
+    "does not measure the provider's token count."
+)
+
+
+class GeminiDecisionsLimitsV4(DecisionsLimitsV1):
+    limit_version: Literal[4] = 4  # pyright: ignore[reportIncompatibleVariableOverride]
+    max_questions: Literal[1000] = 1000  # pyright: ignore[reportIncompatibleVariableOverride]
+    max_body_bytes: None = None  # pyright: ignore[reportIncompatibleVariableOverride]
+    max_context_tokens: Literal[262144] = 262_144  # pyright: ignore[reportIncompatibleVariableOverride]
+    counter: None = None  # pyright: ignore[reportIncompatibleVariableOverride]
+    local_body_bytes: Literal[262144] = GEMINI_DECISIONS_BODY_CAP  # pyright: ignore[reportIncompatibleVariableOverride]
+    context_fit: Literal["unverified"] = "unverified"
+    source: Literal["https://aistudio.google.com/docs/decisions-api#limits"] = (  # pyright: ignore[reportIncompatibleVariableOverride]
+        "https://aistudio.google.com/docs/decisions-api#limits"
+    )
+    checked_on: Literal["2026-11-18"] = "2026-11-18"  # pyright: ignore[reportIncompatibleVariableOverride]
+
+
+class GeminiDecisionsContextV1(DecisionsModel):
+    protocol: Literal["gemini-decisions-production-v1"] = GEMINI_DECISIONS_PROTOCOL
+    provider: Literal["gemini"] = "gemini"
+    endpoint: Literal["decisions"] = "decisions"
+    request_url: Literal[
+        "https://generativelanguage.googleapis.com/v1beta/decisions"
+    ] = GEMINI_DECISIONS_URL
+    model: Literal["gemini-decision-1"] = GEMINI_DECISIONS_MODEL
+    service_identity: Literal["gemini.decisions.v1beta"] = "gemini.decisions.v1beta"
+    sdk_version: Literal["3.5.0"] = GOOGLE_SDK_RUNTIME
+    api_version: Literal["v1beta"] = "v1beta"
+    credential_source: Literal["gemini_developer_environment"] = (
+        "gemini_developer_environment"
+    )
+    account_scope: ID | None = None
+    limits: GeminiDecisionsLimitsV4 = Field(default_factory=GeminiDecisionsLimitsV4)
+    probability_sum_tolerance: float = Field(
+        default=GEMINI_DECISIONS_PRECISION, ge=0, le=GEMINI_DECISIONS_PRECISION
+    )

@@ -19,6 +19,7 @@ from vertex_offline import envelope, isolate
 from judgmentllm import vertex_registry as registry
 from judgmentllm.config import GenerationSpec, RunSpecV3
 from judgmentllm.decisions.transport import DecisionsCommitmentV1
+from judgmentllm.evidence.scope import EvidenceProvenance
 from judgmentllm.execution import execute_run, recover_run
 from judgmentllm.models import PairTask, ResponseItem
 from judgmentllm.native_selection import NativeFeature
@@ -28,7 +29,12 @@ from judgmentllm.planning import plan_record
 from judgmentllm.preparation import open_prepared_run, prepare_run
 from judgmentllm.preparation.session import RequestDependency
 from judgmentllm.presentation import PresentationVersion
-from judgmentllm.providers.vertex import VertexAdapter
+from judgmentllm.providers.protocol import ProviderIntegrityError
+from judgmentllm.providers.vertex import (
+    VertexAdapter,
+    VertexReadinessError,
+    vertex_sdk_version,
+)
 from judgmentllm.transport import TransportIntegrityError, physical_identity
 from judgmentllm.vertex_transport import (
     PreparedRequestV7,
@@ -56,12 +62,16 @@ def prepare(
     model: str = MODEL,
     frozen: TransportCommitmentV5 | None = None,
     presentation_version: PresentationVersion = 1,
+    current_runtime: bool = False,
     **settings: Any,
 ) -> tuple[PreparedRequestV7, RunSpecV3, RequestDependency, VertexProductionContext]:
     strict = settings.pop("strict", False)
     spec, dependency, records = case(tmp_path, grouped=False, **settings)
     spec.model = model
     spec.strict_capabilities = strict
+    context = production_context(spec)
+    if not current_runtime:
+        context = replace(context, google_wire_runtime=None)
     record = dependency.request.pair or dependency.request.response
     assert record is not None
     request = next(
@@ -77,7 +87,6 @@ def prepare(
         )
     )
     dependency = RequestDependency(request=request, dependency_sha256="0" * 64)
-    context = production_context(spec)
 
     def lookup(
         kind: Literal["response", "pair"], ident: str
@@ -559,6 +568,7 @@ def test_known_unsupported_and_duplicate_registry_fail_closed(
         MODEL,
         mechanism=MECHANISM,
         runtime=context.runtime,
+        sdk_version=context.required_sdk_version,
     )
     assert capabilities.grouped is False
     broader = profile.model_copy(
@@ -581,6 +591,7 @@ def test_known_unsupported_and_duplicate_registry_fail_closed(
         MODEL,
         mechanism=MECHANISM,
         runtime=context.runtime,
+        sdk_version=context.required_sdk_version,
     )
     assert (
         capabilities.grouped is capabilities.explanations is capabilities.ties is True
@@ -829,10 +840,98 @@ def test_new_presentation_cannot_borrow_historical_native_authority(
 
 
 @pytest.mark.asyncio
+async def test_current_native_runtime_requires_its_own_profile_at_forwarding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, qualified: str
+) -> None:
+    from judgmentllm.providers import vertex as provider
+
+    historical = registry._QUALIFIED_PROFILES
+    with pytest.raises(TransportIntegrityError):
+        prepare(tmp_path, policy="native", current_runtime=True)
+    text, _, _, context = prepare(tmp_path, policy="auto", current_runtime=True)
+    assert text.output_commitment.selection.authority_kind == "unqualified"
+    assert text.transport_commitment.mechanism == "text"
+    profile = registry._QualifiedProfile(
+        scope=context.scope.model_copy(
+            update={"sdk_version": context.required_sdk_version}
+        ),
+        mechanism=MECHANISM,
+        authentication_mode=context.runtime.auth_mode,
+        route_sha256=context.runtime.route_sha256,
+        plan_sha256="1" * 64,
+        source_commit="a" * 40,
+        qualification_date=date(2026, 11, 18),
+        schema_dialect="vertex.json-schema.v1",
+        support_status="supported",
+        request_acceptance="accepted",
+        assessment_behavior="verified",
+        native_schema_behavior="verified",
+        supported_features=("pairwise_forced_choice",),
+        documentation_sha256="a" * 64,
+        offline_fixture_sha256="b" * 64,
+        independent_live_sha256="c" * 64,
+        provenance=tuple(
+            EvidenceProvenance(
+                kind=cast(Any, kind),
+                source_sha256=digest * 64,
+                recorded_on=date(2026, 11, 18),
+            )
+            for kind, digest in (
+                ("documentation", "a"),
+                ("offline_fixture", "b"),
+                ("independent_live", "c"),
+            )
+        ),
+    )
+    monkeypatch.setattr(registry, "_QUALIFIED_PROFILES", (profile,))
+    wire, spec, _, _ = prepare(
+        tmp_path, policy="native", pairwise=True, current_runtime=True
+    )
+    assert vertex_sdk_version() == context.required_sdk_version == "3.5.0"
+    sent: list[bytes] = []
+
+    def respond(request: httpx2.Request) -> httpx2.Response:
+        sent.append(request.content)
+        return httpx2.Response(200, json=envelope('{"winner_id":"002"}'))
+
+    def revoke(*args: Any) -> dict[str, Any]:
+        monkeypatch.setattr(registry, "_QUALIFIED_PROFILES", historical)
+        return arguments_for_sdk(*args)
+
+    arguments_for_sdk = provider._sdk_arguments
+    identity = wire.transport_plan.identity
+    arguments = {
+        "submission_id": identity.submission_id,
+        "correlation_id": identity.correlation_id,
+    }
+    for may_forward in (True, False):
+        adapter = VertexAdapter(
+            spec.endpoint,
+            MODEL,
+            context=context,
+            http_transport=httpx2.MockTransport(respond),
+        )
+        try:
+            if may_forward:
+                await adapter.submit(wire, **arguments)
+            else:
+                monkeypatch.setattr(provider, "_sdk_arguments", revoke)
+                with pytest.raises(
+                    ProviderIntegrityError, match="independent reviewed"
+                ):
+                    await adapter.submit(wire, **arguments)
+                assert adapter.actual_call_count == 0
+        finally:
+            await adapter.aclose()
+    assert sent == [wire.payload] and b"responseJsonSchema" in sent[0]
+
+
+@pytest.mark.asyncio
 async def test_historical_native_wire_still_executes_with_original_authority(
     tmp_path: Path, qualified: str
 ) -> None:
     wire, spec, _, context = prepare(tmp_path, policy="native", pairwise=True)
+    assert context.google_wire_runtime is None
     assert wire.output_commitment.contract.presentation_version == 1
     sent: list[bytes] = []
 
@@ -855,6 +954,13 @@ async def test_historical_native_wire_still_executes_with_original_authority(
         "correlation_id": identity.correlation_id,
     }
     try:
+        if vertex_sdk_version() != context.required_sdk_version:
+            with pytest.raises(
+                VertexReadinessError, match="qualified transport version"
+            ):
+                await adapter.submit(wire, **arguments)
+            assert not sent and adapter.actual_call_count == 0
+            return
         await adapter.submit(wire, **arguments)
         response = await adapter.retrieve(wire, **arguments)
         assert adapter.parse(response).kind == "response"

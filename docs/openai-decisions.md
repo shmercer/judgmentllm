@@ -12,6 +12,13 @@ client. Offline validation, planning and preview do not resolve credentials.
 An explicit execution uses only `OPENAI_API_KEY`; no credential file, keyring,
 ambient authorization header, alternate URL or provider discovery is used.
 
+New runs that omit `normalization.probability_sum_tolerance` seal a local
+`1e-6` probability-mass tolerance and `1e-5` expected-index tolerance.
+An explicit value, including `1e-8` or zero, keeps its original mass and
+index meaning. Historical untagged attempts and retries from those parents
+keep their original tolerance. Replay and normalization use the sealed checks
+and preserve provider values.
+
 ```yaml
 schema_version: 4
 task_kind: rubric

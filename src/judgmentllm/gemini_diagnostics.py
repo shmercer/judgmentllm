@@ -13,6 +13,7 @@ from typing import Any, Literal, cast
 
 from judgmentllm._auth import _resolve_credentials
 from judgmentllm.evidence._base import EvidenceModel
+from judgmentllm.google_sdk import GOOGLE_SDK_RUNTIME
 from judgmentllm.models import ID
 from judgmentllm.output_contracts import decode_assessment_output
 from judgmentllm.providers.gemini import (
@@ -110,7 +111,7 @@ async def adiscover_models(
             raise _DiagnosticUnavailable from None
         source = cast(Literal["GOOGLE_API_KEY", "GEMINI_API_KEY"], credentials.source)
         try:
-            if gemini_sdk_version() != "2.34.0":
+            if gemini_sdk_version() != GOOGLE_SDK_RUNTIME:
                 status = "unsupported"
                 diagnostic = "sdk_scope_mismatch"
                 raise _DiagnosticUnavailable

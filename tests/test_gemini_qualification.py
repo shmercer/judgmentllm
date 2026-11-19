@@ -11,9 +11,15 @@ from pathlib import Path
 from typing import Any, cast
 
 import pytest
+from google_historical import gemini_pin
 
 from judgmentllm import gemini_qualification as qualification
 from judgmentllm.persistence.hashing import bytes_digest, canonical_bytes
+
+
+@pytest.fixture(autouse=True)
+def historical_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    gemini_pin(monkeypatch)
 
 
 def _files(root: Path) -> dict[str, str]:
@@ -252,6 +258,17 @@ def test_reviewed_sdk_and_http_source_bytes_remain_pinned() -> None:
         ("httpx2", "httpx2", "http_sources"),
     ):
         dist = distribution(package)
+        if package == "google-genai" and dist.version != profile["sdk_version"]:
+            from judgmentllm.google_sdk import GOOGLE_SDK_RUNTIME
+
+            assert dist.version == GOOGLE_SDK_RUNTIME
+            assert (
+                qualification.GeminiQualificationPlanV1.model_fields[
+                    "sdk_version"
+                ].default
+                == profile["sdk_version"]
+            )
+            continue
         assert (
             dist.version
             == profile["sdk_version" if package == "google-genai" else "http_version"]

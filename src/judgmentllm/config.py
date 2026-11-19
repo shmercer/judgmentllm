@@ -734,6 +734,17 @@ def validate_run_spec(
         and _spec_snapshot(checked) != snapshot
     ):
         raise ConfigurationError("run specification would change during validation")
+    normalization = (
+        cast(object, value.normalization) if isinstance(value, RunSpecV4) else None
+    )
+    if (
+        isinstance(checked, RunSpecV4)
+        and isinstance(normalization, NormalizationOptions)
+        and "probability_sum_tolerance" not in normalization.model_fields_set
+        and normalization == NormalizationOptions()
+    ):
+        # Preserve omission without changing canonical configuration bytes.
+        checked.normalization.model_fields_set.discard("probability_sum_tolerance")
     return checked
 
 

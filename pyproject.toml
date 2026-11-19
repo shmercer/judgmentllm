@@ -39,7 +39,7 @@ judgmentllm = "judgmentllm.cli:app"
 [project.optional-dependencies]
 openai = ["openai>=3.42.1,<4"]
 anthropic = ["anthropic>=2.3,<3"]
-google = ["google-genai>=2.34,<3"]
+google = ["google-genai[httpx]==3.5.0"]
 together = ["together>=3,<4"]
 ollama = ["ollama>=0.6.3,<1"]
 typesafe = ["typesafe-sdk>=0.7.5,<1"]
@@ -48,7 +48,7 @@ api = ["fastapi>=0.162,<1", "uvicorn>=0.54,<1"]
 all = [
     "openai>=3.42.1,<4",
     "anthropic>=2.3,<3",
-    "google-genai>=2.34,<3",
+    "google-genai[httpx]==3.5.0",
     "together>=3,<4",
     "ollama>=0.6.3,<1",
     "typesafe-sdk>=0.7.5,<1",

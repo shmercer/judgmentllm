@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+import json
+import re
+from collections.abc import Callable, Iterator
 from typing import Any, cast
 
 FINISH_REASONS = {
@@ -50,6 +52,62 @@ _TOOL_FIELDS = {
     "executableCode",
     "codeExecutionResult",
 }
+_JSON_STRING_TOKEN = re.compile(r'\\(?:["\\/bfnrt]|u[0-9a-fA-F]{4})|["\\]')
+_UNICODE_ESCAPE = re.compile(r"\\u[0-9a-fA-F]{4}")
+_BACKSLASH_RUN = re.compile(r"\\{2,}")
+_SHORT_ESCAPES = tuple(zip('"/bfnrt', '"/\b\f\n\r\t', strict=True))
+
+
+def _decoded_fragments(text: str) -> Iterator[str]:
+    # Valid escape tokens stay within a fragment. Quotes and invalid escapes
+    # delimit fragments even when the enclosing document is malformed.
+    start = 0
+    escaped = False
+    for token in _JSON_STRING_TOKEN.finditer(text):
+        if token.end() - token.start() > 1:
+            escaped = True
+            continue
+        if escaped:
+            yield cast(
+                str, json.loads(f'"{text[start : token.start()]}"', strict=False)
+            )
+        start = token.end()
+        escaped = False
+    if escaped:
+        yield cast(str, json.loads(f'"{text[start:]}"', strict=False))
+
+
+def _credential_escape_remains(text: str, key: str) -> bool:
+    # Deeper Unicode escapes are opaque at the limit, even after a slash run.
+    if _UNICODE_ESCAPE.search(text):
+        return True
+    if len(text) < len(key):
+        return False
+    if any(char in key and "\\" + code in text for code, char in _SHORT_ESCAPES):
+        return True
+    # A bare run can only shorten. Compare the surrounding text as well.
+    return (
+        r"\\" in text
+        and "\\" in key
+        and _BACKSLASH_RUN.sub(r"\\", key) in _BACKSLASH_RUN.sub(r"\\", text)
+    )
+
+
+def _contains_escaped_credential(text: str, key: str, layers: int) -> bool:
+    if layers == 0:
+        return _credential_escape_remains(text, key)
+    return any(
+        key in decoded or _contains_escaped_credential(decoded, key, layers - 1)
+        for decoded in _decoded_fragments(text)
+    )
+
+
+def contains_credential(raw: bytes, key: str) -> bool:
+    """Screen raw and JSON-escaped credentials before retaining or hashing."""
+    return key.encode("utf-8") in raw or (
+        b"\\" in raw
+        and _contains_escaped_credential(raw.decode("utf-8", errors="replace"), key, 4)
+    )
 
 
 def parts(body: dict[str, Any]) -> tuple[dict[str, Any] | None, list[object]]:

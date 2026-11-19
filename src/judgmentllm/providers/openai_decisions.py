@@ -77,7 +77,12 @@ def decisions_context(spec: RunSpecification) -> OpenAIDecisionsContextV1:
         raise ProviderError(
             "Decisions context ceiling is unknown under strict capabilities"
         )
-    return OpenAIDecisionsContextV1(account_scope=checked.account_scope)
+    return OpenAIDecisionsContextV1(
+        account_scope=checked.account_scope,
+        precision_policy_version=1
+        if "probability_sum_tolerance" not in checked.normalization.model_fields_set
+        else None,
+    )
 
 
 def serialize_openai_decisions(
@@ -167,10 +172,13 @@ class OpenAIDecisionsAdapter:
         return self.capabilities_for(spec.provider, spec.endpoint, spec.model)
 
     def validate(self, spec: RunSpecification) -> None:
-        if (
-            decisions_context(spec) != self.transport_context
-            or spec.model != self.model
-        ):
+        # Reopened snapshots contain the old default value even if it was omitted.
+        expected = decisions_context(spec).model_copy(
+            update={
+                "precision_policy_version": self.transport_context.precision_policy_version
+            }
+        )
+        if expected != self.transport_context or spec.model != self.model:
             raise ProviderIntegrityError("Decisions runtime scope differs")
 
     def validate_credentials(self) -> None:

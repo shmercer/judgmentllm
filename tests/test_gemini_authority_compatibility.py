@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 # pyright: reportPrivateUsage=false
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 import pytest
 from gemini_offline import isolate
+from google_historical import gemini_pin
 from test_gemini_lifecycle import production_spec
 from test_gemini_production_acceptance import MODEL, prepare
 from test_gemini_qualification_execution import files, install
@@ -92,6 +94,27 @@ def test_other_models_keep_frozen_identities(
     assert before == after
 
 
+def test_current_google_wire_manifest_reopen_requires_its_sdk_context(
+    tmp_path: Path,
+) -> None:
+    spec = production_spec(
+        tmp_path / "inputs", traits=1, grouping="independent", explanations=False
+    )
+    context = production_context(spec)
+    assert context.google_wire_runtime is not None
+    store = tmp_path / "store"
+    with prepare_run(spec, run_id="001", store=store, transport_context=context) as run:
+        before = canonical_bytes(run.manifest)
+    with pytest.raises(PreparationError, match="use the original source and pins"):
+        open_prepared_run(
+            "001",
+            store=store,
+            transport_context=replace(context, google_wire_runtime=None),
+        )
+    with open_prepared_run("001", store=store, transport_context=context) as reopened:
+        assert canonical_bytes(reopened.manifest) == before
+
+
 def test_old_manifest_cannot_be_resumed_under_promoted_authority(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -100,11 +123,10 @@ def test_old_manifest_cannot_be_resumed_under_promoted_authority(
     )
     spec.model = MODEL
     store = tmp_path / "store"
+    context = replace(production_context(spec), google_wire_runtime=None)
     profiles = registry._QUALIFIED_PROFILES
     monkeypatch.setattr(registry, "_QUALIFIED_PROFILES", ())
-    with prepare_run(
-        spec, run_id="001", store=store, transport_context=production_context(spec)
-    ) as run:
+    with prepare_run(spec, run_id="001", store=store, transport_context=context) as run:
         manifest = canonical_bytes(run.manifest)
         dep = next(run.iter_request_dependencies())
         ident = physical_identity(
@@ -117,13 +139,13 @@ def test_old_manifest_cannot_be_resumed_under_promoted_authority(
     monkeypatch.setattr(registry, "_QUALIFIED_PROFILES", profiles)
     with pytest.raises(PreparationError):
         with open_prepared_run(
-            "001", spec=spec, store=store, transport_context=production_context(spec)
+            "001", spec=spec, store=store, transport_context=context
         ):
             pytest.fail("Changed authority must never resume a frozen run")
     assert files(store) == before
     monkeypatch.setattr(registry, "_QUALIFIED_PROFILES", ())
     with open_prepared_run(
-        "001", spec=spec, store=store, transport_context=production_context(spec)
+        "001", spec=spec, store=store, transport_context=context
     ) as run:
         assert canonical_bytes(run.manifest) == manifest
         assert run.prepare_transport_attempt(dep, ident) == wire
@@ -134,6 +156,7 @@ async def test_historical_executed_report_requires_original_source_authority(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     # This is an intercepted synthetic execution, never the external live store.
+    gemini_pin(monkeypatch)
     profiles = registry._QUALIFIED_PROFILES
     monkeypatch.setattr(registry, "_QUALIFIED_PROFILES", ())
     monkeypatch.setattr(q, "_source_commit", lambda: "a" * 40)

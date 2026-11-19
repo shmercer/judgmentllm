@@ -430,7 +430,7 @@ class Repository:
             data = None
         native = isinstance(data, dict) and cast(dict[str, object], data).get(
             "schema_version"
-        ) in (8, 9, 10)
+        ) in (8, 9, 10, 11)
         if (self.decisions_version(run_id) == 4) != native:
             raise IntegrityError("Decisions marker differs from frozen manifest")
         if native:

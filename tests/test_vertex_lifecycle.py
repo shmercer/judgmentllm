@@ -20,7 +20,9 @@ from judgmentllm.lifecycle import (
     get_run,
     validate_inputs,
 )
+from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.hashing import canonical_bytes
+from judgmentllm.persistence.receipts import read_acknowledgment
 from judgmentllm.persistence.repository import ReadOnlyRepository
 from judgmentllm.planning import stable_id
 from judgmentllm.preparation import PreparationError, open_prepared_run, prepare_run
@@ -497,13 +499,15 @@ async def test_layouts_complete_through_real_sdk_and_local_contract(
         {"trait_id": trait.trait_id, "category_label": trait.levels[0].label}
         for trait in spec.rubric.traits
     ]
+    explanation = "Assessment explanation 雪"
     if layout == "together":
+        explanation += " Directory C:" + "\\" * 32 + "files"
         for score in scores:
-            score["explanation"] = "Assessment explanation 雪"
+            score["explanation"] = explanation
     result: dict[str, Any] = {"scores": scores}
     if layout in {"scores_first", "explanations_first"}:
         explanations = [
-            {"trait_id": trait.trait_id, "text": "Assessment explanation 雪"}
+            {"trait_id": trait.trait_id, "text": explanation}
             for trait in reversed(spec.rubric.traits)
         ]
         result = (
@@ -532,10 +536,17 @@ async def test_layouts_complete_through_real_sdk_and_local_contract(
             rows = tuple(repository.iter_results("001"))
             assert len(rows) == 2 and all(row.status == "complete" for row in rows)
             assert all(
-                row.explanation
-                == ("Assessment explanation 雪" if layout != "scores" else None)
+                row.explanation == (explanation if layout != "scores" else None)
                 for row in rows
             )
             assert len(tuple(repository.iter_evidence("001"))) == 1
+            (submission,) = repository.iter_submissions("001")
+            assert (
+                read_acknowledgment(
+                    ArtifactStore(repository.run_directory("001")),
+                    submission.submission_id,
+                )
+                is not None
+            )
     finally:
         await adapter.aclose()

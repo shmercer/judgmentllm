@@ -14,6 +14,7 @@ from judgmentllm.config import GenerationSpec
 from judgmentllm.evidence.scope import EvidenceProvenance
 from judgmentllm.gemini_registry import _QualifiedProfile
 from judgmentllm.gemini_transport import GeminiProductionContext
+from judgmentllm.google_sdk import GOOGLE_SDK_RUNTIME
 from judgmentllm.reasoning import ReasoningQualificationScopeV1
 from judgmentllm.service_tiers import ServiceQualificationScope
 
@@ -32,6 +33,7 @@ def isolate(monkeypatch: pytest.MonkeyPatch) -> None:
         "GOOGLE_GENAI_CLIENT_MODE": "record",
         "GOOGLE_GENAI_REPLAYS_DIRECTORY": "/forbidden/replays",
         "GOOGLE_GENAI_REPLAY_ID": "synthetic-replay",
+        "GOOGLE_GENAI_HTTP_CLIENT": "httpx",
         "SSL_CERT_FILE": "/forbidden/ca.pem",
         "SSL_CERT_DIR": "/forbidden/certs",
         "HTTPS_PROXY": "http://forbidden.invalid:8080",
@@ -92,7 +94,7 @@ def authorize_fixture(
             ),
         )
     profile = _QualifiedProfile(
-        scope=context.scope,
+        scope=context.scope.model_copy(update={"sdk_version": GOOGLE_SDK_RUNTIME}),
         reasoning_scopes=controls,
         service_scopes=(
             ServiceQualificationScope(

@@ -10,10 +10,14 @@ from pydantic import Field, field_validator, model_validator
 from judgmentllm.config import RunSpecV4, validate_run_spec
 from judgmentllm.decisions._base import DecisionsModel
 from judgmentllm.decisions.records import (
+    GEMINI_DECISIONS_MODEL,
+    GEMINI_DECISIONS_PRECISION,
     TYPESAFE_MODEL,
     DecisionQuestionV1,
     DecisionsLimitsV1,
     DecisionsLimitsV2,
+    GeminiDecisionsContextV1,
+    GeminiDecisionsLimitsV4,
     OpenAIDecisionsContextV1,
     PreparedPairPresentationV1,
     QuestionCommitmentV1,
@@ -58,7 +62,10 @@ class DecisionsContextV1(DecisionsModel):
 
 
 DecisionsContext = (
-    DecisionsContextV1 | OpenAIDecisionsContextV1 | TypeSafeDecisionsContextV1
+    DecisionsContextV1
+    | OpenAIDecisionsContextV1
+    | TypeSafeDecisionsContextV1
+    | GeminiDecisionsContextV1
 )
 
 
@@ -273,6 +280,10 @@ def serialize_request(
         )
 
         return serialize_typesafe_decisions(shared, questions, spec)
+    if isinstance(context, GeminiDecisionsContextV1):
+        from judgmentllm.providers.gemini_decisions import serialize_gemini_decisions
+
+        return serialize_gemini_decisions(shared, questions, spec)
     return serialize_synthetic_decisions(shared, questions, spec, context)
 
 
@@ -284,6 +295,12 @@ def fits(
     strict: bool,
 ) -> bool:
     limits = context.limits
+    if isinstance(limits, GeminiDecisionsLimitsV4):
+        return (
+            not strict
+            and 1 <= count <= limits.max_questions
+            and len(payload) <= limits.local_body_bytes
+        )
     if limits.max_context_tokens is not None and limits.counter is None:
         raise ValueError("known context ceiling requires a trustworthy local counter")
     if strict and limits.max_context_tokens is None:
@@ -453,11 +470,21 @@ def plan_source(
                 yield dependency(buffer)
                 buffer = []
             if not fits(
-                serialize_request(shared, [q], spec, context),
+                singleton := serialize_request(shared, [q], spec, context),
                 1,
                 context,
                 strict=spec.strict_capabilities,
             ):
+                if isinstance(context, GeminiDecisionsContextV1):
+                    from judgmentllm.providers.gemini_decisions import (
+                        GeminiDecisionsConfigurationError,
+                    )
+
+                    raise GeminiDecisionsConfigurationError(
+                        f"Gemini Decisions member {q.task_id} needs {len(singleton)} serialized bytes. "
+                        f"The local cap is {context.limits.local_body_bytes} bytes. "
+                        "Start a new run with smaller shared input or question material."
+                    )
                 raise ValueError(
                     f"oversized Decisions member {q.task_id}: body/context ceiling"
                 )
@@ -508,21 +535,29 @@ def prepare_request(
         for i, q in enumerate(dependency.questions)
     )
     receipt_type = (
-        DecisionsCommitmentV3
+        DecisionsCommitmentV4
+        if isinstance(context, GeminiDecisionsContextV1)
+        else DecisionsCommitmentV3
         if isinstance(context, TypeSafeDecisionsContextV1)
         else DecisionsCommitmentV2
         if isinstance(context, OpenAIDecisionsContextV1)
         else DecisionsCommitmentV1
     )
+    precision: dict[str, object] = {}
+    if isinstance(context, GeminiDecisionsContextV1):
+        precision["probability_sum_tolerance"] = context.probability_sum_tolerance
+    elif (
+        isinstance(context, OpenAIDecisionsContextV1)
+        and context.precision_policy_version
+    ):
+        precision.update(probability_sum_tolerance=1e-6, precision_policy_version=1)
+    elif not isinstance(context, DecisionsContextV1):
+        precision["probability_sum_tolerance"] = (
+            spec.normalization.probability_sum_tolerance
+        )
     receipt = receipt_type.model_validate(
         dict(
-            **(
-                {
-                    "probability_sum_tolerance": spec.normalization.probability_sum_tolerance
-                }
-                if not isinstance(context, DecisionsContextV1)
-                else {}
-            ),
+            **precision,
             identity=identity,
             provider=spec.provider,
             endpoint=spec.endpoint,
@@ -560,7 +595,9 @@ def prepare_request(
     if identity.request_uid != dependency.request.request_uid:
         raise IntegrityError("Decisions identity differs from parent request")
     prepared_type = (
-        PreparedDecisionsRequestV3
+        PreparedDecisionsRequestV4
+        if isinstance(context, GeminiDecisionsContextV1)
+        else PreparedDecisionsRequestV3
         if isinstance(context, TypeSafeDecisionsContextV1)
         else PreparedDecisionsRequestV2
         if isinstance(context, OpenAIDecisionsContextV1)
@@ -589,6 +626,24 @@ class DecisionsCommitmentV2(DecisionsCommitmentV1):
     endpoint: Literal["decisions"] = "decisions"  # pyright: ignore[reportIncompatibleVariableOverride]
     limits: DecisionsLimitsV2  # pyright: ignore[reportIncompatibleVariableOverride]
     probability_sum_tolerance: float = Field(default=1e-8, ge=0, lt=1)
+    precision_policy_version: Literal[1] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
+    @model_validator(mode="after")
+    def exact_precision(self) -> DecisionsCommitmentV2:
+        if self.precision_policy_version is not None and (
+            self.provider != "openai" or self.probability_sum_tolerance != 1e-6
+        ):
+            raise ValueError("OpenAI Decisions precision policy differs")
+        return self
+
+    def index_tolerance(self, level_count: int) -> float:
+        return (
+            1e-5
+            if self.precision_policy_version == 1
+            else self.probability_sum_tolerance
+        )
 
     @property
     def commitment_sha256(self) -> str:
@@ -629,4 +684,34 @@ class PreparedDecisionsRequestV3(PreparedDecisionsRequestV2):
     def strict_preparation_version(cls, value: object) -> object:
         if type(value) is not int or value != 10:
             raise ValueError("preparation_version must be integer 10")
+        return value
+
+
+class DecisionsCommitmentV4(DecisionsCommitmentV2):
+    decisions_commitment_version: Literal[4] = 4  # pyright: ignore[reportIncompatibleVariableOverride]
+    provider: Literal["gemini"] = "gemini"  # pyright: ignore[reportIncompatibleVariableOverride]
+    requested_model: Literal["gemini-decision-1"] = GEMINI_DECISIONS_MODEL  # pyright: ignore[reportIncompatibleVariableOverride]
+    limits: GeminiDecisionsLimitsV4  # pyright: ignore[reportIncompatibleVariableOverride]
+    context_count: None = None  # pyright: ignore[reportIncompatibleVariableOverride]
+    probability_sum_tolerance: float = Field(
+        default=GEMINI_DECISIONS_PRECISION, ge=0, le=GEMINI_DECISIONS_PRECISION
+    )
+
+    @property
+    def commitment_sha256(self) -> str:
+        return semantic_digest("decisions-commitment-v4", self)
+
+    def index_tolerance(self, level_count: int) -> float:
+        return GEMINI_DECISIONS_PRECISION * (level_count - 1)
+
+
+class PreparedDecisionsRequestV4(PreparedDecisionsRequestV2):
+    preparation_version: Literal[11] = 11  # pyright: ignore[reportIncompatibleVariableOverride]
+    transport_commitment: DecisionsCommitmentV4  # pyright: ignore[reportIncompatibleVariableOverride]
+
+    @field_validator("preparation_version", mode="before")
+    @classmethod
+    def strict_preparation_version(cls, value: object) -> object:
+        if type(value) is not int or value != 11:
+            raise ValueError("preparation_version must be integer 11")
         return value

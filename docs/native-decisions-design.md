@@ -138,6 +138,12 @@ user grouping maximum. A complete TypeSafe size rejection is terminal, and
 lost responses stay unresolved. Strict admission remains closed for Jev.
 See [Jev admission and provenance](typesafe-decisions.md).
 
+The approved PR E exception applies to non-strict, text-only
+`gemini / decisions / gemini-decision-1`. The local cap is 256 KiB on the
+exact serialized body. The published context limit and unverified token fit
+are separate evidence. Strict admission stays closed until a reliable counter
+can establish fit. [Gemini admission and recovery](gemini-decisions.md)
+
 On overflow, close the prefix and start the next request, repeating the complete
 shared input. If one question plus shared input cannot fit, fail before submission
 with its identity, offending limit and counts. Never truncate an essay, rubric
