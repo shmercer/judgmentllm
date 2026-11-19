@@ -7,6 +7,7 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from textwrap import dedent
 from typing import Any
 
 import pytest
@@ -31,14 +32,7 @@ def config_path(root: Path, spec: RunSpecV4) -> str:
     return str(path)
 
 
-def cli(
-    root: Path,
-    *args: str,
-    scenario: str = "clean",
-    fault: str = "",
-    json_output: bool = True,
-    console: Path | None = None,
-) -> subprocess.CompletedProcess[str]:
+def fixture_environment(root: Path, scenario: str, fault: str) -> dict[str, str]:
     env = {
         name: os.environ[name]
         for name in (
@@ -63,6 +57,18 @@ def cli(
         GOOGLE_GENAI_HTTP_CLIENT="httpx",
         GOOGLE_GENAI_API_VERSION="v1",
     )
+    return env
+
+
+def cli(
+    root: Path,
+    *args: str,
+    scenario: str = "clean",
+    fault: str = "",
+    json_output: bool = True,
+    console: Path | None = None,
+) -> subprocess.CompletedProcess[str]:
+    env = fixture_environment(root, scenario, fault)
     trace_flag = "JLLM_GEMINI_DECISIONS_TRACE_ASYNCIO"
     if os.environ.get(trace_flag) == "1":
         env[trace_flag] = "1"
@@ -91,6 +97,50 @@ def cli(
     if trace_flag in env and result.returncode == 1:
         print(result.stderr, file=sys.stderr, end="")
     return result
+
+
+def test_gemini_process_guard_allows_only_literal_loopback_ipc(tmp_path: Path) -> None:
+    script = dedent("""\
+        import asyncio
+        import socket
+        from types import SimpleNamespace
+        import sitecustomize
+
+        assert asyncio.run(asyncio.sleep(0, result="ready")) == "ready"
+
+        # Observe address admission without attempting a real external connection.
+        delegated = []
+        sitecustomize._connect = lambda sock, address: delegated.append(address)
+        def deny(operation, *args):
+            try:
+                operation(*args)
+            except AssertionError as error:
+                assert str(error) == "Provider sockets are blocked in the CLI fixture"
+            else:
+                raise AssertionError("network guard accepted the operation")
+
+        ipv4 = SimpleNamespace(family=socket.AF_INET)
+        ipv6 = SimpleNamespace(family=socket.AF_INET6)
+        loopback4 = ("127.0.0.1", 9)
+        loopback6 = ("::1", 9, 0, 0)
+        socket.socket.connect(ipv4, loopback4)
+        socket.socket.connect(ipv6, loopback6)
+        deny(socket.socket.connect, ipv4, ("203.0.113.1", 443))
+        deny(socket.socket.connect, ipv6, ("2001:db8::1", 443, 0, 0))
+        deny(socket.socket.connect, ipv4, ("localhost", 9))
+        deny(socket.getaddrinfo, "127.0.0.1", 9)
+        deny(socket.create_connection, ("127.0.0.1", 9))
+        assert delegated == [loopback4, loopback6]
+        """)
+    result = subprocess.run(
+        [sys.executable, "-B", "-c", script],
+        env=fixture_environment(tmp_path, "clean", ""),
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    assert not (tmp_path / "forwards").exists()
 
 
 def test_actual_sdk_diagnostics_through_cli(tmp_path: Path) -> None:

@@ -831,6 +831,7 @@
       "test_actual_sdk_diagnostics_through_cli": {"": []},
       "test_context_and_validation_first_forward_and_reopen": {"[conflicting-403-None-statuses4]": [], "[context-max_tokens_exceeded-statuses0]": [], "[malformed-key-None-statuses5]": [], "[malformed-nested-key-None-statuses6]": [], "[message-only-context-max_tokens_exceeded-statuses3]": [], "[truncated-None-statuses2]": [], "[unknown-request_rejected-statuses1]": []},
       "test_explicit_retry_requires_acknowledged_refusal": {"[200-refusal]": [], "[400-refusal]": [], "[truncated]": []},
+      "test_gemini_process_guard_allows_only_literal_loopback_ipc": {"": []},
       "test_overflowed_member_preserves_sibling_and_physical_usage": {"[]": [], "[after_evidence_receipt]": []},
       "test_refusal_and_grouped_results_recover_in_fresh_process": {"[200-refusal-after_evidence_receipt-statuses3-1]": [], "[400-refusal-after_failure_evidence_receipt-statuses4-1]": [], "[clean-forward-statuses0-0]": [], "[filtered-after_evidence_receipt-statuses1-1]": [], "[filtered-during_result_transaction-statuses2-1]": []}
     },

@@ -30,7 +30,11 @@ _connect = socket.socket.connect
 
 
 def connect(sock: socket.socket, address: Any) -> Any:
-    if sock.family in (socket.AF_INET, socket.AF_INET6):
+    # The Windows asyncio wakeup channel uses a literal loopback socket pair.
+    if sock.family in (socket.AF_INET, socket.AF_INET6) and address[0] not in (
+        "127.0.0.1",
+        "::1",
+    ):
         return forbidden()
     return _connect(sock, address)
 
