@@ -1,8 +1,8 @@
-"""Synthetic Vertex promotion compatibility outputs for the strict R gate.
+"""Synthetic Vertex SDK migration outputs for the strict R gate.
 
-Only this offline fixture substitutes synthetic route hashes into private copies
-of historical reviewed profiles. Their feature sets remain unchanged: revision 2
-must use text until separately qualified. Real credentials are never needed.
+Private copies of the historical profiles bind their original qualification
+facts to synthetic routes. The installed SDK runs unqualified revision-2 text
+on those routes and produces independent runtime evidence.
 """
 
 from __future__ import annotations
@@ -21,17 +21,20 @@ from vertex_offline_fixture import FixtureTransport, offline, specification
 from judgmentllm import vertex_registry as registry
 from judgmentllm.assessment_inspection import inspect_assessment_output
 from judgmentllm.execution import execute_run, recover_run
+from judgmentllm.google_sdk import GOOGLE_WIRE_RUNTIME
 from judgmentllm.io import write_results_jsonl
 from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.hashing import canonical_bytes
 from judgmentllm.persistence.repository import ReadOnlyRepository
 from judgmentllm.persistence.transport_receipts import read_transport_commitment
 from judgmentllm.preparation import prepare_run
+from judgmentllm.providers.vertex import vertex_sdk_version
 from judgmentllm.r_exports import export_pairwise_r_csv, export_rubric_r_csv
 from judgmentllm.results import PairwiseResult, RubricResult
 from judgmentllm.vertex_config import VertexRuntimeConfiguration
 from judgmentllm.vertex_transport import (
     TransportCommitmentV5,
+    _reviewed_profile,
     production_context,
     production_context_digest,
     production_context_for_identity,
@@ -138,6 +141,7 @@ def export_vertex_promotion(output: Path) -> None:
     evidence: list[dict[str, Any]] = []
     transports: list[dict[str, Any]] = []
     inspections: list[dict[str, Any]] = []
+    sdk_version = vertex_sdk_version()
     for mode in ("adc", "api_key"):
         with promoted(mode), ReadOnlyRepository(output / "store") as repository:
             for capture in ("full", "minimal"):
@@ -156,29 +160,37 @@ def export_vertex_promotion(output: Path) -> None:
                     runtime = VertexRuntimeConfiguration(
                         project=PROJECT, location="global", auth_mode=mode
                     )
-                    profile = registry._profile_for(
+                    historical_profile = registry._profile_for(
                         transport.scope,
                         MECHANISM,
                         route_sha256=runtime.route_sha256,
                         authentication_mode=mode,
                         location="global",
                     )
-                    assert profile is not None
+                    assert historical_profile is not None
+                    assert historical_profile.scope.sdk_version == "2.34.0"
                     context = production_context_for_identity(
                         "vertex", "models.generate_content", MODEL, runtime=runtime
                     )
+                    assert _reviewed_profile(context, MECHANISM) is None
+                    assert (
+                        sdk_version
+                        == context.required_sdk_version
+                        == receipt.usage.sdk_version
+                    )
+                    assert transport.google_wire_runtime == GOOGLE_WIRE_RUNTIME
                     assert transport.context_sha256 == production_context_digest(
                         context
                     )
                     assert (
                         transport.presentation_version == 2
-                        and transport.selection.authority_kind == "reviewed"
+                        and transport.selection.authority_kind == "unqualified"
                         and transport.selection.kind == "text"
                         and transport.mechanism == "text"
                         and transport.selection.native_support == "unknown"
                         and "assessment_presentation_v2" in transport.selection.features
                         and "assessment_presentation_v2"
-                        not in profile.supported_features
+                        not in historical_profile.supported_features
                     )
                     transports.append(
                         {
@@ -188,11 +200,17 @@ def export_vertex_promotion(output: Path) -> None:
                             "context_sha256": transport.context_sha256,
                             "mechanism": transport.mechanism,
                             "presentation_version": transport.presentation_version,
-                            "qualified_features": list(profile.supported_features),
+                            "google_wire_runtime": transport.google_wire_runtime,
                             "selection": transport.selection.model_dump(mode="json"),
-                            "profile_authority_sha256": profile.authority_sha256,
-                            "qualification_source_commit": profile.source_commit,
-                            "independent_live_sha256": profile.independent_live_sha256,
+                            "historical_profile": {
+                                "sdk_version": historical_profile.scope.sdk_version,
+                                "qualified_features": list(
+                                    historical_profile.supported_features
+                                ),
+                                "profile_authority_sha256": historical_profile.authority_sha256,
+                                "qualification_source_commit": historical_profile.source_commit,
+                                "independent_live_sha256": historical_profile.independent_live_sha256,
+                            },
                         }
                     )
                     for row in repository.iter_results(run_id):

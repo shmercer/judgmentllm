@@ -329,7 +329,7 @@ stopifnot(sum(vapply(vertex_rows, function(x) x$status == "invalid", logical(1))
 for (entry in vertex_evidence) {
   usage <- entry$usage
   stopifnot(usage$requested_model == "offline-unqualified-model", usage$reported_model == "offline-reported-model")
-  stopifnot(usage$sdk_version == "2.34.0", usage$invocation_kind == "live")
+  stopifnot(identical(usage$sdk_version, "3.5.0"), usage$invocation_kind == "live")
   stopifnot(usage$provider == "vertex", is.null(usage$reported_cost), is.null(usage$cache_write_tokens))
   if (is.null(usage$input_tokens)) {
     stopifnot(is.null(usage$output_tokens), is.null(usage$reasoning_tokens), is.null(usage$total_tokens))
@@ -356,7 +356,7 @@ stopifnot(length(unique(gr$attempt_id)) == 4L)
 for (inspection in read_vertex("inspections.jsonl")) stopifnot(!"output_text" %in% names(inspection))
 cat("Vertex AI interoperability passed\n")
 
-# Phase 5D3: historical native authority cannot qualify revision-2 presentation.
+# Historical Vertex profiles and current SDK text execution have separate provenance.
 vp_root <- file.path(root, "vertex-promotion")
 read_vp <- function(name) lapply(readLines(file.path(vp_root, name), encoding="UTF-8"), jsonlite::fromJSON, simplifyVector=FALSE)
 vp_rows <- read_vp("results.jsonl")
@@ -379,14 +379,22 @@ for (row in vp_rows) {
 }
 for (transport in vp_transports) {
   mode <- transport$authentication_mode
-  stopifnot(mode %in% c("adc","api_key"), transport$qualification_source_commit == vp_sources[[mode]], transport$independent_live_sha256 == vp_reports[[mode]])
-  stopifnot(transport$presentation_version == 2L, transport$mechanism == "text", transport$selection$kind == "text", transport$selection$policy == "auto", transport$selection$native_support == "unknown", transport$selection$authority_kind == "reviewed", transport$selection$requested_mechanism == "vertex.generate_content.response_json_schema", "assessment_presentation_v2" %in% unlist(transport$selection$features), !"assessment_presentation_v2" %in% unlist(transport$qualified_features))
+  historical <- transport$historical_profile
+  selection <- transport$selection
+  stopifnot(mode %in% c("adc","api_key"), identical(historical$sdk_version, "2.34.0"),
+            identical(historical$qualification_source_commit, vp_sources[[mode]]),
+            identical(historical$independent_live_sha256, vp_reports[[mode]]),
+            identical(unlist(historical$qualified_features), c("rubric_scores", "pairwise_forced_choice")))
+  stopifnot(identical(transport$google_wire_runtime, "google-genai-3.5.0-offline-parity-v1"), transport$presentation_version == 2L,
+            transport$mechanism == "text", selection$kind == "text", selection$policy == "auto", selection$native_support == "unknown",
+            identical(selection$authority_kind, "unqualified"), selection$requested_mechanism == "vertex.generate_content.response_json_schema",
+            "assessment_presentation_v2" %in% unlist(selection$features))
   stopifnot(transport$run_id %in% vapply(vp_rows, function(x) x$run_id, character(1)))
 }
 vp_routes <- split(vapply(vp_transports, function(x) x$route_sha256, character(1)), vapply(vp_transports, function(x) x$authentication_mode, character(1)))
 stopifnot(length(unique(vp_routes$adc)) == 1L, length(unique(vp_routes$api_key)) == 1L, vp_routes$adc[[1L]] != vp_routes$api_key[[1L]])
 for (entry in vp_evidence) {
-  stopifnot(entry$usage$reported_model == "gemini-3.1-flash-lite", entry$assessment_diagnostic$canonical_valid)
+  stopifnot(identical(entry$usage$sdk_version, "3.5.0"), entry$usage$reported_model == "gemini-3.1-flash-lite", entry$assessment_diagnostic$canonical_valid)
   if (grepl("-minimal-", entry$identity$run_id, fixed=TRUE)) stopifnot(is.null(entry$usage$input_tokens), is.null(entry$usage$total_tokens))
   else stopifnot(entry$usage$input_tokens == 100L, entry$usage$output_tokens == 10L)
 }
