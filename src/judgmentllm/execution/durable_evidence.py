@@ -639,14 +639,19 @@ class DurableEvidence:
         """Invoked definitive nonacceptance has no invented provider observation."""
         if not self.enabled:
             return None
+        typesafe = isinstance(rejection, TypeSafeRejectionEvidenceV1)
+        gemini = isinstance(rejection, GeminiDecisionsRejectionEvidenceV1)
+        provider = (
+            "TypeSafe" if typesafe else "Gemini Decisions" if gemini else "Decisions"
+        )
         if (
-            isinstance(rejection, TypeSafeRejectionEvidenceV1)
+            typesafe
             and self.receipt_type is not DecisionsEvidenceReceiptV4
-            or isinstance(rejection, GeminiDecisionsRejectionEvidenceV1)
+            or gemini
             and self.receipt_type is not DecisionsEvidenceReceiptV5
         ):
             raise IntegrityError(
-                "Decisions rejection exceeds the sealed provider scope"
+                f"{provider} rejection exceeds the sealed provider scope"
             )
         session = self.session
         previous = read_evidence_receipt(self.store, work.submission_id)
@@ -677,7 +682,7 @@ class DurableEvidence:
                 not isinstance(previous, DecisionsEvidenceWithRejection)
                 or previous.rejection != rejection
             ):
-                raise IntegrityError("Decisions rejection evidence conflicts")
+                raise IntegrityError(f"{provider} rejection evidence conflicts")
             return previous
         identity = self.identity(work, None)
         usage = extract_provider_usage(

@@ -578,7 +578,10 @@ def prepare_subset_retry(
             and isinstance(wire, PreparedDecisionsRequestV4)
             and isinstance(adapter, GeminiDecisionsAdapter)
         ):
-            raise IntegrityError("Decisions retry lacks its sealed request or adapter")
+            provider = "TypeSafe" if version == 10 else "Gemini Decisions"
+            raise IntegrityError(
+                f"{provider} retry lacks its sealed request or adapter"
+            )
         adapter.validate_credentials()
         native_artifacts = publish_decisions_request(
             repository, store, wire, prepared_run.spec.capture

@@ -74,6 +74,8 @@ escapes independently of the enclosing response, including malformed UTF-8.
 After four passes, further Unicode escapes or escape sequences that could still
 hide a credential leave the submission unresolved. Literal backslash runs can
 pass screening. Retries require explicit selection.
+Python integrity errors identify the provider for conflicting rejection evidence
+or a retry adapter that differs from the sealed run.
 [Google response reference](https://aistudio.google.com/api-reference/decisions)
 
 The same pinned 3.5.0 extra supports existing Developer and Vertex generative

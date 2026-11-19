@@ -655,7 +655,12 @@ def decisions_status(
                 else DecisionsEvidenceReceiptV4
             )
             if not isinstance(evidence, expected_receipt):
-                raise IntegrityError("Decisions rejection lacks its evidence receipt")
+                provider = (
+                    "TypeSafe"
+                    if expected_receipt is DecisionsEvidenceReceiptV4
+                    else "Gemini Decisions"
+                )
+                raise IntegrityError(f"{provider} rejection lacks its evidence receipt")
             totals.record_rejection(evidence.rejection)
         totals.record(
             usage,

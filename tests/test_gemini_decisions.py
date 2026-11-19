@@ -5,7 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
-from typing import Any
+from types import SimpleNamespace
+from typing import Any, cast
 
 import httpx2
 import pytest
@@ -14,6 +15,7 @@ from test_decisions_contracts import pair_spec
 from test_decisions_lifecycle import native_spec
 
 from judgmentllm.config import RunSpecV4, validate_run_spec
+from judgmentllm.decisions.provenance import decisions_status
 from judgmentllm.decisions.transport import (
     PreparedDecisionsRequestV4,
     fits,
@@ -22,6 +24,8 @@ from judgmentllm.decisions.transport import (
     serialize_request,
 )
 from judgmentllm.execution import execute_run, recover_run
+from judgmentllm.execution.retry import authorize_subset_retry
+from judgmentllm.execution.session import ExecutionSession
 from judgmentllm.lifecycle import (
     LifecycleError,
     estimate_run,
@@ -32,16 +36,22 @@ from judgmentllm.models import ResponseItem
 from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.evidence import DecisionsEvidenceReceiptV5
 from judgmentllm.persistence.hashing import bytes_digest
+from judgmentllm.persistence.models import IntegrityError
 from judgmentllm.persistence.receipts import read_acknowledgment
 from judgmentllm.persistence.repository import Repository
 from judgmentllm.preparation import prepare_run
+from judgmentllm.preparation.manifest import ExecutableRunManifestV11
 from judgmentllm.providers import gemini_decisions as adapter_module
 from judgmentllm.providers.gemini_decisions import (
     GeminiDecisionsAdapter,
     decisions_context,
 )
 from judgmentllm.providers.gemini_decisions_response import analyze
-from judgmentllm.providers.protocol import SubmissionUncertain
+from judgmentllm.providers.protocol import (
+    GeminiDecisionsRequestRejected,
+    ProviderAdapter,
+    SubmissionUncertain,
+)
 from judgmentllm.transport import physical_identity
 
 
@@ -364,6 +374,120 @@ async def test_guarded_unsafe_body_keeps_transport_uncertain(
                 correlation_id=identity.correlation_id,
             )
         assert failure.value.invoked and adapter.actual_call_count == 1
+    finally:
+        await adapter.aclose()
+
+
+@pytest.mark.asyncio
+async def test_gemini_conflicting_or_missing_rejection_keeps_provider_context(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spec = gemini_spec(native_spec(tmp_path, traits=1))
+    store = tmp_path / "store"
+    with prepare_run(spec, store=store, run_id="001"):
+        pass
+    adapter = GeminiDecisionsAdapter(
+        spec.model,
+        http_transport=httpx2.MockTransport(lambda request: httpx2.Response(413)),
+    )
+    session = ExecutionSession("001", store, adapter, spec, False, None)
+    try:
+        work = session.next_work()
+        assert work is not None and session.boundary(work)
+        with pytest.raises(GeminiDecisionsRequestRejected) as rejected:
+            await adapter.submit(
+                work.prepared,
+                submission_id=work.submission_id,
+                correlation_id=work.correlation_id,
+            )
+        rejection = rejected.value.rejection
+        session.not_submitted(work, invoked=True, rejection=rejection)
+        different = rejection.model_copy(update={"response_sha256": "f" * 64})
+        with pytest.raises(
+            IntegrityError, match="Gemini Decisions rejection evidence conflicts"
+        ):
+            session.not_submitted(work, invoked=True, rejection=different)
+        assert session.prepared is not None
+        manifest = session.prepared.manifest
+        assert isinstance(manifest, ExecutableRunManifestV11)
+        assert adapter.actual_call_count == 1
+    finally:
+        session.close()
+        await adapter.aclose()
+
+    original = Repository.get_evidence_for_submission
+
+    def missing(repository: Repository, run_id: str, submission_id: str) -> None:
+        assert (run_id, submission_id) == ("001", rejection.submission_id)
+        assert original(repository, run_id, submission_id) == receipt
+
+    with Repository(store) as repository:
+        (receipt,) = repository.iter_evidence("001")
+        assert (
+            isinstance(receipt, DecisionsEvidenceReceiptV5)
+            and receipt.rejection == rejection
+        )
+        assert repository.usage_high_water_mark("001") == 1
+        assert [row.status for row in repository.iter_results("001")] == ["errored"]
+        with monkeypatch.context() as unavailable:
+            unavailable.setattr(Repository, "get_evidence_for_submission", missing)
+            with pytest.raises(
+                IntegrityError,
+                match="Gemini Decisions rejection lacks its evidence receipt",
+            ):
+                decisions_status(repository, manifest)
+
+
+@pytest.mark.asyncio
+async def test_gemini_refused_member_cannot_retry_with_unbound_adapter(
+    tmp_path: Path,
+) -> None:
+    spec = gemini_spec(native_spec(tmp_path, traits=1))
+    store = tmp_path / "store"
+    with prepare_run(spec, store=store, run_id="001"):
+        pass
+    adapter = GeminiDecisionsAdapter(
+        spec.model,
+        http_transport=httpx2.MockTransport(
+            lambda request: httpx2.Response(
+                200, json={"answers": {}, "prompt_feedback": {"block_reason": "safety"}}
+            )
+        ),
+    )
+    try:
+        await execute_run("001", store=store, adapter=adapter)
+        with Repository(store) as repository:
+            (row,) = repository.iter_results("001")
+            assert row.status == "refused"
+
+        def forbidden() -> None:
+            pytest.fail("unbound Gemini adapter reached credential validation")
+
+        claimed = cast(
+            ProviderAdapter,
+            SimpleNamespace(
+                transport_context=adapter.transport_context,
+                capabilities=adapter.capabilities,
+                validate=adapter.validate,
+                validate_credentials=forbidden,
+            ),
+        )
+        with pytest.raises(
+            IntegrityError,
+            match="Gemini Decisions retry lacks its sealed request or adapter",
+        ):
+            authorize_subset_retry(
+                "001",
+                store=store,
+                adapter=claimed,
+                task_ids=(row.task_id,),
+                operation_id="refused",
+            )
+        assert adapter.actual_call_count == 1
+        with Repository(store) as repository:
+            summary = repository.summary("001")
+            assert summary.attempts == 1 and summary.retry_operations == 0
+            assert repository.usage_high_water_mark("001") == 1
     finally:
         await adapter.aclose()
 
