@@ -34,7 +34,7 @@ from judgmentllm.persistence.models import (
     SubmissionCertainty,
     SubmissionState,
 )
-from judgmentllm.persistence.repository import Repository
+from judgmentllm.persistence.repository import ReadOnlyRepository, Repository
 from judgmentllm.preparation import _load_manifest  # pyright: ignore[reportPrivateUsage]
 
 
@@ -197,10 +197,12 @@ def export_bulk_provenance(run_id: str, *, root: Path) -> BulkProvenanceReport:
                     raise IntegrityError(
                         "bulk provenance bundle differs from its snapshot"
                     )
-                store.verify(repository.get_artifact(run_id, bytes_digest(raw)))
-                for file in bundle.files:
-                    repository.get_artifact(run_id, file.artifact.sha256)
-                    store.verify(file.artifact)
+                # A same-cut exporter can publish after this snapshot opens.
+                with ReadOnlyRepository(repository.root) as registry:
+                    store.verify(registry.get_artifact(run_id, bytes_digest(raw)))
+                    for file in bundle.files:
+                        registry.get_artifact(run_id, file.artifact.sha256)
+                        store.verify(file.artifact)
                 return BulkProvenanceReport(
                     run_id=run_id,
                     bundle_id=bundle_id,

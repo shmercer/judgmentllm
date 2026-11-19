@@ -69,7 +69,7 @@ from judgmentllm.persistence.receipts import (
     TypeSafeRejectionEvidenceV1,
     read_acknowledgment,
 )
-from judgmentllm.persistence.repository import Repository
+from judgmentllm.persistence.repository import ReadOnlyRepository, Repository
 from judgmentllm.persistence.transport_receipts import read_transport_commitment
 from judgmentllm.preparation import _load_manifest  # pyright: ignore[reportPrivateUsage]
 from judgmentllm.preparation.manifest import (
@@ -931,9 +931,12 @@ def export_decisions_provenance(
                     event_high,
                 ],
             )
-            existing = read_decisions_provenance(repository, run_id, bundle_id)
-            if existing is not None:
-                return existing
+            if artifacts.reference_path(_reference(bundle_id)).exists():
+                # A same-cut exporter can publish after this snapshot opens.
+                with ReadOnlyRepository(repository.root) as registry:
+                    existing = read_decisions_provenance(registry, run_id, bundle_id)
+                if existing is not None:
+                    return existing
             totals = _Totals()
             with tempfile.TemporaryDirectory(
                 prefix=".decisions-export-", dir=artifacts.root

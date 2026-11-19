@@ -6,6 +6,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import signal
 import subprocess
 import sys
 import threading
@@ -37,6 +38,7 @@ from judgmentllm.lifecycle import (
     export_run_provenance,
     validate_inputs,
 )
+from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.bulk import BulkReservation, reservation_reference
 from judgmentllm.persistence.hashing import bytes_digest
 from judgmentllm.persistence.models import IntegrityError
@@ -44,6 +46,7 @@ from judgmentllm.persistence.ownership import executor_is_active
 from judgmentllm.persistence.repository import ReadOnlyRepository, Repository
 from judgmentllm.preparation import prepare_run
 from judgmentllm.providers.decisions_mock import MockDecisionsAdapter
+from judgmentllm.providers.ledger import AcceptanceRecord
 from judgmentllm.providers.mock import MockAdapter, MockScenario
 from judgmentllm.providers.protocol import PreparedRequest
 
@@ -181,6 +184,52 @@ async def test_snapshot_ignores_orphan_and_recovery_reuses_exact_receipt(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("decisions", [False, True])
+async def test_concurrent_export_verifies_publication_at_its_original_cut(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, decisions: bool
+) -> None:
+    spec = bulk_spec(tmp_path, decisions=decisions)
+    root = tmp_path / "runtime"
+    ledger = root / "mock-service.sqlite3"
+    adapter = MockDecisionsAdapter(ledger) if decisions else MockAdapter(ledger)
+    with prepare_run(
+        spec, store=root, run_id="001", capabilities=adapter.capabilities(spec)
+    ):
+        pass
+
+    frozen = threading.Event()
+    release = threading.Event()
+    reference_path = ArtifactStore.reference_path
+    prefix = "decisions-provenance/" if decisions else "bulk-provenance/"
+
+    def pause_at_reference(store: ArtifactStore, relative_path: str) -> Path:
+        if relative_path.startswith(prefix) and not frozen.is_set():
+            frozen.set()
+            assert release.wait(15)
+        return reference_path(store, relative_path)
+
+    monkeypatch.setattr(ArtifactStore, "reference_path", pause_at_reference)
+    first = asyncio.create_task(
+        asyncio.to_thread(export_run_provenance, "001", store=root)
+    )
+    try:
+        assert await asyncio.to_thread(frozen.wait, 10)
+        published = await asyncio.wait_for(
+            asyncio.to_thread(export_run_provenance, "001", store=root), 10
+        )
+        await asyncio.wait_for(
+            execute_run("001", store=root, adapter=adapter, spec=spec), 10
+        )
+    finally:
+        release.set()
+        original_cut = await asyncio.wait_for(first, 10)
+    assert original_cut == published
+    newer_bundle, rows = physical_rows("001", root)
+    assert newer_bundle != original_cut.bundle_id
+    assert rows[0]["reservation"]["receipt"]["requests"] == 1
+
+
+@pytest.mark.asyncio
 async def test_cancel_during_debit_settles_commit_before_unlock(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -226,6 +275,100 @@ async def test_cancel_during_debit_settles_commit_before_unlock(
     _, rows = physical_rows("001", root)
     assert rows[0]["reservation"]["receipt"]["requests"] == 1
     assert rows[0]["selected_usage"] is None
+
+
+@pytest.mark.asyncio
+async def test_cancel_drains_transient_rejection_with_retry_after(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spec = bulk_spec(tmp_path)
+    root = tmp_path / "runtime"
+    adapter = MockAdapter(
+        root / "mock-service.sqlite3",
+        scenario=MockScenario(transport="transient_not_submitted", retry_after=17),
+    )
+    with prepare_run(
+        spec, store=root, run_id="001", capabilities=adapter.capabilities(spec)
+    ):
+        pass
+
+    sending = asyncio.Event()
+    stopping = asyncio.Event()
+    release = asyncio.Event()
+    establish = adapter._establish
+    stop = BulkDispatch.stop
+
+    async def wait_for_cancellation(
+        record: AcceptanceRecord, service_identity: str
+    ) -> AcceptanceRecord:
+        assert not record.accepted
+        sending.set()
+        await release.wait()
+        return await establish(record, service_identity)
+
+    def mark_stop(dispatch: BulkDispatch) -> None:
+        stop(dispatch)
+        stopping.set()
+
+    monkeypatch.setattr(adapter, "_establish", wait_for_cancellation)
+    monkeypatch.setattr(BulkDispatch, "stop", mark_stop)
+    run = asyncio.create_task(
+        execute_run("001", store=root, adapter=adapter, spec=spec)
+    )
+    try:
+        await asyncio.wait_for(sending.wait(), 10)
+        run.cancel()
+        await asyncio.wait_for(stopping.wait(), 10)
+    finally:
+        release.set()
+    with pytest.raises(asyncio.CancelledError):
+        await asyncio.wait_for(run, 10)
+
+    with ReadOnlyRepository(root) as repository:
+        assert repository.get_run("001").state == "cancelled"
+        assert (
+            next(repository.iter_submissions("001")).state == "confirmed_not_submitted"
+        )
+        (receipt,) = repository.iter_evidence("001")
+        assert receipt.failure_transient
+        assert receipt.failure_retry_after == 17
+        (attempt,) = repository.iter_attempts("001")
+        assert attempt.next_eligible_at is not None
+    assert adapter.submit_calls == 1
+
+
+def test_bulk_cli_interrupt_during_adapter_close_keeps_completed_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spec = bulk_spec(tmp_path)
+    config = tmp_path / "bulk.json"
+    config.write_text(spec.model_dump_json(), encoding="utf-8")
+    root = tmp_path / "runtime"
+    closed: list[str] = []
+
+    async def close(_: MockAdapter) -> None:
+        with ReadOnlyRepository(root) as repository:
+            run_id = repository.connection.execute(
+                "SELECT run_id FROM runs"
+            ).fetchone()[0]
+            assert repository.get_run(run_id).state == "completed"
+            assert executor_is_active(repository, run_id)
+        signal.raise_signal(signal.SIGINT)
+        await asyncio.sleep(0)
+        with ReadOnlyRepository(root) as repository:
+            assert executor_is_active(repository, run_id)
+        closed.append(run_id)
+
+    monkeypatch.setattr(MockAdapter, "aclose", close, raising=False)
+    envelope, _ = control(["run", "--config", str(config), "--store", str(root)], 130)
+    assert envelope["error"]["category"] == "interrupted"
+    assert closed == [envelope["run_id"]]
+    with ReadOnlyRepository(root) as repository:
+        assert repository.get_run(closed[0]).state == "completed"
+        assert not executor_is_active(repository, closed[0])
+        assert all(
+            row.status == "complete" for row in repository.iter_results(closed[0])
+        )
 
 
 @pytest.mark.asyncio

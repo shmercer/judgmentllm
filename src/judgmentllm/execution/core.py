@@ -98,6 +98,7 @@ async def execute_run(
     cancellation_work: dict[str, _CancellationWork] = {}
     bulk: BulkDispatch | None = None
     bulk_drained = False
+    drain_cancellation: asyncio.CancelledError | None = None
 
     def initialize() -> _Session:
         created = _Session(run_id, store, adapter, spec, use_frozen_snapshot, fault)
@@ -113,16 +114,42 @@ async def execute_run(
             holder[0].cancel()
 
     async def drain_pending(pending_cleanup: asyncio.Future[T]) -> T:
+        nonlocal drain_cancellation
         while not pending_cleanup.done():
             try:
                 await asyncio.shield(pending_cleanup)
-            except asyncio.CancelledError:
+            except asyncio.CancelledError as error:
+                if asyncio.current_task() is execution_task:
+                    drain_cancellation = error
                 continue
         return pending_cleanup.result()
 
     async def drain(function: Callable[[], None]) -> None:
         # Queue cleanup behind initialization and durable writes on the owned thread.
         await drain_pending(loop.run_in_executor(io, function))
+
+    def queue_rejection(
+        session: _Session, work: _Work, error: TransportNotSubmitted, *, invoked: bool
+    ) -> asyncio.Future[None]:
+        return loop.run_in_executor(
+            io,
+            partial(
+                session.not_submitted,
+                work,
+                invoked=invoked,
+                usage=error.usage,
+                diagnostic_code=error.diagnostic_code,
+                transient=isinstance(error, TransientNotSubmitted),
+                retry_after=error.retry_after
+                if isinstance(error, TransientNotSubmitted)
+                else None,
+                rejection=error.rejection
+                if isinstance(
+                    error, (TypeSafeRequestRejected, GeminiDecisionsRequestRejected)
+                )
+                else None,
+            ),
+        )
 
     async def retain_known_work(*, preserve_original_error: bool = False) -> None:
         """Drain bounded native Decisions handoffs after TaskGroup stops workers.
@@ -148,22 +175,9 @@ async def execute_run(
                 work = retained.work
                 failure = retained.drained_failure
                 if isinstance(failure, TransportNotSubmitted):
-                    reject = (
-                        failure.rejection
-                        if isinstance(
-                            failure,
-                            (TypeSafeRequestRejected, GeminiDecisionsRequestRejected),
-                        )
-                        else None
-                    )
-                    await drain(
-                        partial(
-                            session.not_submitted,
-                            work,
-                            invoked=retained.invoked,
-                            usage=failure.usage,
-                            diagnostic_code=failure.diagnostic_code,
-                            rejection=reject,
+                    await drain_pending(
+                        queue_rejection(
+                            session, work, failure, invoked=retained.invoked
                         )
                     )
                     continue
@@ -320,22 +334,6 @@ async def execute_run(
                 await responses.put((work, response))
                 result_high = max(result_high, responses.qsize())
 
-        def queue_rejection(
-            work: _Work, error: TypeSafeRequestRejected | GeminiDecisionsRequestRejected
-        ) -> asyncio.Future[None]:
-            pending_write = loop.run_in_executor(
-                io,
-                partial(
-                    session.not_submitted,
-                    work,
-                    invoked=True,
-                    usage=error.usage,
-                    rejection=error.rejection,
-                ),
-            )
-            cancellation_work[work.submission_id].rejection_write = pending_write
-            return pending_write
-
         async def worker() -> None:
             while (work := await pending.get()) is not None:
                 retained = (
@@ -451,35 +449,31 @@ async def execute_run(
                         exc,
                         (TypeSafeRejectionCancelled, GeminiDecisionsRejectionCancelled),
                     ):
-                        queue_rejection(work, exc.rejection)
+                        assert retained is not None
+                        retained.rejection_write = queue_rejection(
+                            session, work, exc.rejection, invoked=exc.invoked
+                        )
                     # A provider task may itself be cancelled. TaskGroup treats
                     # child cancellation as normal, so propagate it to the owning
                     # execution task rather than leaving its consumer waiting.
                     if execution_task is not None and not execution_task.cancelling():
                         execution_task.cancel()
                     raise
-                except TransientNotSubmitted as exc:
-                    await call(
-                        session.not_submitted,
-                        work,
-                        invoked=permit.used if permit is not None else True,
-                        transient=True,
-                        retry_after=exc.retry_after,
-                        usage=exc.usage,
-                        diagnostic_code=exc.diagnostic_code,
-                    )
-                    cancellation_work.pop(work.submission_id, None)
-                except (TypeSafeRequestRejected, GeminiDecisionsRequestRejected) as exc:
-                    await asyncio.shield(queue_rejection(work, exc))
-                    cancellation_work.pop(work.submission_id)
                 except TransportNotSubmitted as exc:
-                    await call(
-                        session.not_submitted,
+                    write = queue_rejection(
+                        session,
                         work,
+                        exc,
                         invoked=permit.used if permit is not None else True,
-                        usage=exc.usage,
-                        diagnostic_code=exc.diagnostic_code,
                     )
+                    if bulk is not None or isinstance(
+                        exc, (TypeSafeRequestRejected, GeminiDecisionsRequestRejected)
+                    ):
+                        assert retained is not None
+                        retained.rejection_write = write
+                        await asyncio.shield(write)
+                    else:
+                        await write
                     cancellation_work.pop(work.submission_id, None)
                 except SubmissionUncertain as exc:
                     await call(
@@ -523,7 +517,7 @@ async def execute_run(
             await asyncio.sleep(delay)
             await call(session.restart_retry_wave)
         summary = await call(session.finish)
-        return ExecutionReport(
+        report = ExecutionReport(
             summary=summary,
             recovery_required=bool(summary.unresolved_submissions),
             worker_count=count,
@@ -555,6 +549,9 @@ async def execute_run(
             # All possible scoring sends have ended or are fenced before unlock.
             await drain(close)
             io.shutdown(wait=True, cancel_futures=True)
+    if bulk is not None and drain_cancellation is not None:
+        raise drain_cancellation
+    return report
 
 
 async def recover_run(

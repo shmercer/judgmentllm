@@ -7,6 +7,9 @@ import asyncio
 import json
 import multiprocessing
 import threading
+from collections.abc import Callable
+from concurrent.futures import Executor
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -380,6 +383,96 @@ async def test_sdk_drain_keeps_complete_responses_and_lock(
     with ReadOnlyRepository(root) as repository:
         assert executor_is_active(repository, "001") is False
         assert all(row.status == "complete" for row in repository.iter_results("001"))
+
+
+@pytest.mark.asyncio
+async def test_sdk_queued_rejection_is_committed_before_cancel(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spec = _bulk(_case(tmp_path / "inputs", "responses", monkeypatch))
+    spec.execution.concurrency = 2
+    with spec.input.path.open("a", encoding="utf-8") as source:
+        source.write(
+            json.dumps({"item_id": "9999", "text": "Second synthetic input."}) + "\n"
+        )
+    root = tmp_path / "runtime"
+    both_sending = asyncio.Event()
+    io_blocked = asyncio.Event()
+    reject = asyncio.Event()
+    write_queued = asyncio.Event()
+    worker_stopped = asyncio.Event()
+    release_io = threading.Event()
+    calls: list[bytes] = []
+
+    async def respond(request: httpx2.Request) -> httpx2.Response:
+        first = not calls
+        calls.append(request.content)
+        if first:
+            await both_sending.wait()
+            return _response(spec, request, partial=False)
+        both_sending.set()
+        await reject.wait()
+        return httpx2.Response(
+            403, json={"error": {"message": "synthetic denial"}}, request=request
+        )
+
+    adapter = _adapter(spec, httpx2.MockTransport(respond))
+    _prepare(spec, root, adapter)
+    loop = asyncio.get_running_loop()
+    run_in_executor = loop.run_in_executor
+
+    def observe_enqueue(
+        executor: Executor | None, function: Callable[..., Any], *args: Any
+    ) -> asyncio.Future[Any]:
+        future = run_in_executor(executor, function, *args)
+        if (
+            isinstance(function, partial)
+            and getattr(function.func, "__func__", None)
+            is ExecutionSession.not_submitted
+        ):
+            worker = asyncio.current_task()
+            assert worker is not None
+            worker.add_done_callback(lambda _: worker_stopped.set())
+            write_queued.set()
+        return future
+
+    def block_io(stage: str, _: str) -> None:
+        if stage == "after_submit":
+            loop.call_soon_threadsafe(io_blocked.set)
+            assert release_io.wait(15)
+
+    monkeypatch.setattr(loop, "run_in_executor", observe_enqueue)
+    run = asyncio.create_task(
+        execute_run("001", spec=spec, store=root, adapter=adapter, fault=block_io)
+    )
+    try:
+        await asyncio.wait_for(io_blocked.wait(), 10)
+        reject.set()
+        await asyncio.wait_for(write_queued.wait(), 10)
+        run.cancel()
+        await asyncio.wait_for(worker_stopped.wait(), 10)
+    finally:
+        both_sending.set()
+        reject.set()
+        release_io.set()
+        if not run.done() and not run.cancelling():
+            run.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await asyncio.wait_for(run, 10)
+
+    assert len(calls) == 2
+    with ReadOnlyRepository(root) as repository:
+        assert {row.state for row in repository.iter_submissions("001")} == {
+            "confirmed_not_submitted",
+            "resolved",
+        }
+        receipts = list(repository.iter_evidence("001"))
+        assert len(receipts) == 2
+        (failure,) = (row for row in receipts if row.usage.definitive_failure_id)
+        assert failure.usage.invocation_failure_code == "permission_denied"
+        assert failure.usage.invocation_kind == "managed_bulk_live"
+        assert not list(repository.connection.execute("SELECT * FROM retry_operations"))
+        assert not executor_is_active(repository, "001")
 
 
 @pytest.mark.asyncio

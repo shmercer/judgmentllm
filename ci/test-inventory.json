@@ -220,8 +220,11 @@
       "test_status_isolated_from_io_discovery_sdk_and_runtime_boundaries": {"": []}
     },
     "tests/test_bulk_live.py": {
+      "test_bulk_cli_interrupt_during_adapter_close_keeps_completed_state": {"": []},
       "test_bulk_limits_are_strict": {"[-1]": [], "[0]": [], "[1.0]": [], "[1]": [], "[True]": []},
+      "test_cancel_drains_transient_rejection_with_retry_after": {"": []},
       "test_cancel_during_debit_settles_commit_before_unlock": {"": []},
+      "test_concurrent_export_verifies_publication_at_its_original_cut": {"[False]": [], "[True]": []},
       "test_process_handoff_restarts_window_and_keeps_uncertainty": {"": []},
       "test_production_tpm_is_an_offline_validation_error": {"": []},
       "test_quota_ages_from_transport_end_and_unused_revocation": {"": []},
@@ -232,6 +235,7 @@
     "tests/test_bulk_live_sdk.py": {
       "test_sdk_bulk_wire_parity_and_interrupted_partial_replay": {"[anthropic-128]": [], "[anthropic-None]": [], "[chat.completions-128]": [], "[chat.completions-None]": [], "[gemini-128]": [], "[gemini-None]": [], "[gemini-decisions-None]": [], "[jev-None]": [], "[openai-decisions-None]": [], "[responses-128]": [], "[responses-None]": [], "[vertex-adc-128]": [], "[vertex-adc-None]": [], "[vertex-key-128]": [], "[vertex-key-None]": []},
       "test_sdk_drain_keeps_complete_responses_and_lock": {"[False]": [], "[True]": []},
+      "test_sdk_queued_rejection_is_committed_before_cancel": {"": []},
       "test_sdk_receiver_requires_committed_permit": {"[anthropic]": [], "[chat.completions]": [], "[gemini-decisions]": [], "[gemini]": [], "[jev]": [], "[openai-decisions]": [], "[responses]": [], "[vertex-adc]": [], "[vertex-key]": []},
       "test_sdk_send_delay_stays_charged_past_one_minute": {"": []}
     },
