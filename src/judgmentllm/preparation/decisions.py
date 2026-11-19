@@ -683,15 +683,6 @@ def prepare_decisions_run(
                 Path(store) / "mock-service.sqlite3"
             ).transport_context
         )
-        if (spec.provider, spec.endpoint) not in {
-            ("mock", "synthetic"),
-            ("openai", "decisions"),
-            TYPESAFE_ROUTE,
-            GEMINI_DECISIONS_ROUTE,
-        }:
-            raise PreparationError(
-                "production Decisions adapters are not implemented in PR B"
-            )
         context = _revalidate_record(context)
         repository.create_run(
             RunRecord(

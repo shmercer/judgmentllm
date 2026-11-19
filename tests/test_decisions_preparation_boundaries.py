@@ -370,6 +370,20 @@ async def test_decisions_evidence_version_cannot_claim_a_vendor_scope(
                 DecisionsEvidenceReceiptV2.model_validate(data)
 
 
+def test_file_route_rejection_leaves_no_native_run(tmp_path: Path) -> None:
+    spec = native_spec(tmp_path)
+    config = tmp_path / "foreign.json"
+    config.write_text(
+        json.dumps({**spec.model_dump(mode="json"), "provider": "vertex"}),
+        encoding="utf-8",
+    )
+    store = tmp_path / "store"
+    with pytest.raises(PreparationError, match="configuration validation failed"):
+        prepare_decisions_run(config, store=store, run_id="001")
+    with Repository(store) as repository:
+        assert repository.connection.execute("SELECT run_id FROM runs").fetchall() == []
+
+
 def test_original_study_verifier_does_not_adopt_v4_native_configuration(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

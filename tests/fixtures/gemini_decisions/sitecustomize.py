@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import socket
+import sys
 from pathlib import Path
+from traceback import walk_tb
 from typing import Any
 
 import httpx2
@@ -33,6 +36,23 @@ def connect(sock: socket.socket, address: Any) -> Any:
 
 
 socket.socket.connect = connect
+
+
+if os.environ.get("JLLM_GEMINI_DECISIONS_TRACE_ASYNCIO") == "1":
+    _run = asyncio.run
+
+    def trace_run(*args: Any, **kwargs: Any) -> Any:
+        try:
+            return _run(*args, **kwargs)
+        except Exception as error:
+            # Keep the original failure location without exception text or locals.
+            print(f"Gemini asyncio exception: {type(error).__name__}", file=sys.stderr)
+            for frame, line in walk_tb(error.__traceback__):
+                code = frame.f_code
+                print(f"  {code.co_filename}:{line} in {code.co_name}", file=sys.stderr)
+            raise
+
+    asyncio.run = trace_run
 
 
 def respond(request: httpx2.Request) -> httpx2.Response:

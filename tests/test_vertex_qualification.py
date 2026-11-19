@@ -642,6 +642,59 @@ def test_sdk_source_corruption_fails(monkeypatch: pytest.MonkeyPatch) -> None:
         sdk_probe.installed_sdk_evidence()
 
 
+def test_sdk_source_verification_reads_every_profile_entry(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from hashlib import sha256
+    from importlib.metadata import Distribution
+
+    sources = {
+        "client.py": b"first fixture file\n",
+        "types.py": b"second fixture file\n",
+    }
+    digests = {name: sha256(data).hexdigest() for name, data in sources.items()}
+    profile = tmp_path / "tests/fixtures/production_vertex/sdk-profile.json"
+    profile.parent.mkdir(parents=True)
+    raw = json.dumps({"sdk_version": "2.34.0", "source_sha256": digests}).encode()
+    profile.write_bytes(raw)
+    installed = tmp_path / "site-packages"
+    metadata = installed / "google_genai-2.34.0.dist-info"
+    metadata.mkdir(parents=True)
+    (metadata / "METADATA").write_bytes(b"Name: google-genai\nVersion: 2.34.0\n")
+    package = installed / "google/genai"
+    package.mkdir(parents=True)
+    for name, data in sources.items():
+        (package / name).write_bytes(data)
+    distribution = Distribution.at(metadata)
+
+    def find_fixture(name: str) -> Distribution:
+        assert name == "google-genai"
+        return distribution
+
+    monkeypatch.setattr(sdk_probe, "ROOT", tmp_path)
+    monkeypatch.setattr(sdk_probe.importlib.metadata, "distribution", find_fixture)
+    assert sdk_probe.installed_sdk_evidence() == {
+        "profile_sha256": sha256(raw).hexdigest(),
+        **digests,
+    }
+    (package / "types.py").write_bytes(b"changed second fixture file")
+    with pytest.raises(ValueError, match="Vertex qualification SDK source differs"):
+        sdk_probe.installed_sdk_evidence()
+
+
+def test_vertex_qualification_source_must_be_a_hex_commit(tmp_path: Path) -> None:
+    from test_vertex_lifecycle import production_spec
+
+    from judgmentllm.transport import TransportIntegrityError
+
+    spec = production_spec(
+        tmp_path, traits=1, grouping="independent", explanations=False
+    )
+    assert _qualification_context(spec, source_commit=SOURCE).source_commit == SOURCE
+    with pytest.raises(TransportIntegrityError):
+        _qualification_context(spec, source_commit="g" * 40)
+
+
 def test_external_evidence_and_symlink_admission(plan: Path, tmp_path: Path) -> None:
     with pytest.raises(ValueError):
         q.build_plan(

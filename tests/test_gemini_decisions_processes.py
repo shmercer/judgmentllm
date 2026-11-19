@@ -63,6 +63,9 @@ def cli(
         GOOGLE_GENAI_HTTP_CLIENT="httpx",
         GOOGLE_GENAI_API_VERSION="v1",
     )
+    trace_flag = "JLLM_GEMINI_DECISIONS_TRACE_ASYNCIO"
+    if os.environ.get(trace_flag) == "1":
+        env[trace_flag] = "1"
     diagnostics = args[0] in {"auth", "providers"}
     if diagnostics or args[0] == "run" or "--retry-task" in args:
         env["GOOGLE_API_KEY"] = "SYNTHETIC_CLI_GEMINI_KEY"
@@ -85,6 +88,8 @@ def cli(
     assert "GEMINI_UNSAFE_CANARY" not in result.stdout + result.stderr
     assert "SYNTHETIC_CLI_GEMINI_KEY" not in result.stdout + result.stderr
     assert "Error in sitecustomize" not in result.stderr
+    if trace_flag in env and result.returncode == 1:
+        print(result.stderr, file=sys.stderr, end="")
     return result
 
 

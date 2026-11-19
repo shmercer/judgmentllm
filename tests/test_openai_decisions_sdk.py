@@ -831,3 +831,45 @@ def test_replay_cannot_rebind_an_invocation_or_named_answer(
     with pytest.raises(ProviderIntegrityError):
         verify_replay(replay, wire)
     verify_replay(original, wire)
+
+
+def test_openai_precision_marker_cannot_claim_a_different_tolerance(
+    tmp_path: Path,
+) -> None:
+    from judgmentllm.decisions.records import OpenAIDecisionsContextV1
+    from judgmentllm.decisions.transport import DecisionsCommitmentV2
+    from judgmentllm.preparation.decisions import DecisionsPreparedRun
+
+    spec = RunSpecV4.model_validate(
+        spec_for(tmp_path, traits=1).model_dump(exclude={"normalization"})
+    )
+    with prepare_run(spec, store=tmp_path / "store", run_id="001") as run:
+        assert isinstance(run, DecisionsPreparedRun)
+        context = run.context()
+        assert isinstance(context, OpenAIDecisionsContextV1)
+        (dependency,) = run.iter_request_dependencies()
+        attempt = run.repository.get_attempt_for_request(
+            "001", dependency.request.request_uid
+        )
+        assert attempt is not None
+        commitment = run.transport_for_attempt(attempt.attempt_id)
+    assert isinstance(commitment, DecisionsCommitmentV2)
+    assert context.precision_policy_version == commitment.precision_policy_version == 1
+    assert commitment.probability_sum_tolerance == 1e-6
+    assert commitment.index_tolerance(3) == 1e-5
+    with pytest.raises(
+        ValueError, match="unsupported OpenAI Decisions precision policy"
+    ):
+        OpenAIDecisionsContextV1.model_validate(
+            {**context.model_dump(), "precision_policy_version": "1"}
+        )
+    for tolerance in (0.0, 1e-8):
+        data = {**commitment.model_dump(), "probability_sum_tolerance": tolerance}
+        with pytest.raises(
+            ValueError, match="OpenAI Decisions precision policy differs"
+        ):
+            DecisionsCommitmentV2.model_validate(data)
+        del data["precision_policy_version"]
+        assert (
+            DecisionsCommitmentV2.model_validate(data).index_tolerance(3) == tolerance
+        )

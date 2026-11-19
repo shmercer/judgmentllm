@@ -94,6 +94,27 @@ def test_other_models_keep_frozen_identities(
     assert before == after
 
 
+def test_current_google_wire_manifest_reopen_requires_its_sdk_context(
+    tmp_path: Path,
+) -> None:
+    spec = production_spec(
+        tmp_path / "inputs", traits=1, grouping="independent", explanations=False
+    )
+    context = production_context(spec)
+    assert context.google_wire_runtime is not None
+    store = tmp_path / "store"
+    with prepare_run(spec, run_id="001", store=store, transport_context=context) as run:
+        before = canonical_bytes(run.manifest)
+    with pytest.raises(PreparationError, match="use the original source and pins"):
+        open_prepared_run(
+            "001",
+            store=store,
+            transport_context=replace(context, google_wire_runtime=None),
+        )
+    with open_prepared_run("001", store=store, transport_context=context) as reopened:
+        assert canonical_bytes(reopened.manifest) == before
+
+
 def test_old_manifest_cannot_be_resumed_under_promoted_authority(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
