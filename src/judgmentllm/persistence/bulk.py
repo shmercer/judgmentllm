@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
 from pydantic import Field, model_validator
 
@@ -17,9 +17,7 @@ from judgmentllm.persistence.models import (
     ExecutionModel,
     IntegrityError,
 )
-
-if TYPE_CHECKING:
-    from judgmentllm.persistence.repository import Repository
+from judgmentllm.persistence.repository import Repository
 
 _MEDIA_TYPE = "application/vnd.judgmentllm.bulk-reservation+json"
 _MAX_RECEIPT = 1_048_576

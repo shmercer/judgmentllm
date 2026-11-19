@@ -11,13 +11,10 @@ from contextvars import ContextVar
 from dataclasses import dataclass
 from threading import Lock
 from time import monotonic
-from typing import TYPE_CHECKING
 
 from judgmentllm.config import BulkLimits
 from judgmentllm.persistence.bulk import BulkReservation
-
-if TYPE_CHECKING:
-    from judgmentllm.providers.protocol import PreparedRequest
+from judgmentllm.providers.protocol import PreparedRequest, ProviderIntegrityError
 
 _MINUTE = 60.0
 
@@ -61,8 +58,6 @@ def scoring_forward(prepared: PreparedRequest, submission_id: str) -> Generator[
     if not prepared.bulk_live and permit is None:
         yield
         return
-    from judgmentllm.providers.protocol import ProviderIntegrityError
-
     if not prepared.bulk_live or permit is None:
         raise ProviderIntegrityError("bulk-live requires a committed send permit")
     owner = permit.owner

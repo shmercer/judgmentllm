@@ -14,7 +14,6 @@ from typing import Literal, cast
 
 from pydantic import Field, JsonValue, model_validator
 
-from judgmentllm._bulk_dispatch import scoring_forward
 from judgmentllm.config import GenerationSpec, RunSpecification
 from judgmentllm.generation import GenerationCapabilities, GenerationParameterCapability
 from judgmentllm.io import _revalidate_record  # pyright: ignore[reportPrivateUsage]
@@ -882,6 +881,8 @@ class MockAdapter:
     async def submit(
         self, prepared: PreparedRequest, *, submission_id: str, correlation_id: str
     ) -> ProviderAcknowledgment:
+        from judgmentllm._bulk_dispatch import scoring_forward
+
         payload, scenario = await asyncio.to_thread(self._payload, prepared)
         self.submit_calls += 1
         if scenario.delay_seconds:

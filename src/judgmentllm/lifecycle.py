@@ -37,6 +37,10 @@ from judgmentllm.config import (
     parse_json,
     validate_run_spec,
 )
+from judgmentllm.decisions.provenance import (
+    DecisionsProvenanceReportV1,
+    export_decisions_provenance,
+)
 from judgmentllm.decisions.records import (
     GEMINI_DECISIONS_ROUTE,
     TYPESAFE_ROUTE,
@@ -44,6 +48,10 @@ from judgmentllm.decisions.records import (
     TypeSafeDecisionsContextV1,
 )
 from judgmentllm.execution import execute_run, recover_run
+from judgmentllm.execution.bulk_provenance import (
+    BulkProvenanceReport,
+    export_bulk_provenance,
+)
 from judgmentllm.execution.exports import export_run
 from judgmentllm.execution.retry import authorize_subset_retry
 from judgmentllm.lifecycle_models import (
@@ -94,8 +102,6 @@ from judgmentllm.providers import MockAdapter, MockScenario, ProviderError
 
 if TYPE_CHECKING:
     from judgmentllm.anthropic_transport import AnthropicProductionContext
-    from judgmentllm.decisions.provenance import DecisionsProvenanceReportV1
-    from judgmentllm.execution.bulk_provenance import BulkProvenanceReport
     from judgmentllm.production_transport import ProductionContext
     from judgmentllm.providers.protocol import ProviderAdapter
 
@@ -1350,8 +1356,6 @@ def export_run_provenance(
     run_id: str | Path, *, store: str | Path | None = None
 ) -> DecisionsProvenanceReportV1 | BulkProvenanceReport:
     """Publish the immutable companion selected by a run's sealed manifest."""
-    from judgmentllm.decisions.provenance import export_decisions_provenance
-    from judgmentllm.execution.bulk_provenance import export_bulk_provenance
     from judgmentllm.preparation import _load_manifest  # pyright: ignore[reportPrivateUsage]
 
     with _errors():
