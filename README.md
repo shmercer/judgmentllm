@@ -304,19 +304,18 @@ R fixtures. Live evidence is scoped to the recorded route, model and cases.
   `gpt-6-luna` smoke. The retained summary gives no level-by-level or tie
   coverage. [OpenAI Decisions guide](docs/openai-decisions.md),
   [PR #64](https://github.com/shmercer/judgmentllm/pull/64)
-- **TypeSafe Jev, PRs #65 and #66 (2026-11-18).** The earlier `jev-1.14.0` grid
-  recorded eleven passing cases and five cases with score validation failures.
-  All eight single-question and grouped Choice cases completed.
-  After the precision correction, eight requests accepted all twelve scores at
-  3, 4, 5 and 10 levels. Five scores exercised the rounding compatibility check.
-  [TypeSafe Jev guide](docs/typesafe-decisions.md),
-  [PR #66](https://github.com/shmercer/judgmentllm/pull/66)
-- **Gemini Decisions, PR #67 (2026-11-19).** The Developer v1beta grid on
-  `gemini-decision-1` passed eight requests and fourteen judgments, including
+- **TypeSafe Jev (maintainer verification, 2026-11-18).** The first smoke stopped
+  before any case completed. The follow-up `jev-1.14.0` grid recorded eleven
+  passing cases and five cases with score validation failures. All eight
+  single-question and grouped Choice cases completed. After the precision
+  correction, eight requests accepted all twelve scores at 3, 4, 5 and 10 levels.
+  Five scores exercised the rounding compatibility check.
+  [TypeSafe Jev adapter guide](docs/typesafe-decisions.md)
+- **Gemini Decisions (maintainer verification, 2026-11-19).** The Developer
+  v1beta grid on `gemini-decision-1` passed eight requests and fourteen judgments, including
   2, 3, 4, 5 and 10 score levels and Choice in both orientations. Estimated
   total cost was USD 0.000372. No tie was observed.
-  [Gemini Decisions guide](docs/gemini-decisions.md),
-  [PR #67](https://github.com/shmercer/judgmentllm/pull/67)
+  [Gemini Decisions adapter guide](docs/gemini-decisions.md)
 
 The current adapters require forced winners for comparative judgments.
 The supported score ranges describe adapter limits. The live outcomes above

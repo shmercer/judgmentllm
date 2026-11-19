@@ -7,7 +7,7 @@ import json
 import os
 import subprocess
 import sys
-from collections import Counter, defaultdict
+from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +17,6 @@ from test_decisions_lifecycle import native_spec
 
 from judgmentllm import AutoRequestGroupingV1, RunSpecV4, export_run_results
 from judgmentllm.decisions.provenance import export_decisions_provenance
-from judgmentllm.preparation import prepare_run
 
 
 def _grouped(spec: RunSpecV4, maximum: int) -> RunSpecV4:
@@ -55,7 +54,8 @@ def _run(spec: RunSpecV4, root: Path, *, console: bool) -> tuple[str, int]:
     }
     env.update(
         HOME=str(root),
-        PYTHONPATH=str(Path(__file__).parent / f"fixtures/{spec.provider}_decisions"),
+        PYTHONPATH=str(Path(__file__).parent / "fixtures/decisions_parity"),
+        DECISIONS_PARITY_PROVIDER=spec.provider,
         PYTHONDONTWRITEBYTECODE="1",
     )
     if spec.provider == "openai":
@@ -118,10 +118,13 @@ def _rows(path: Path) -> list[dict[str, Any]]:
 
 
 def _observe(
-    spec: RunSpecV4, root: Path, sizes: list[int], *, console: bool
+    spec: RunSpecV4, root: Path, sizes: tuple[int, ...], *, console: bool
 ) -> tuple[dict[str, tuple[object, ...]], int]:
+    presentation_count = 1 if spec.task_kind == "rubric" else 4
     run_id, forwards = _run(spec, root, console=console)
-    assert forwards == len(sizes)
+    wire_rows = _rows(root / "wire.jsonl")
+    wire = {frozenset(row["keys"]): row for row in wire_rows}
+    assert len(wire_rows) == len(wire) == forwards == presentation_count * len(sizes)
     store = root / "store"
     export = export_run_results(run_id, store=store)
     results = {r["task_id"]: r for r in _rows(Path(export.files[0].path))}
@@ -142,9 +145,11 @@ def _observe(
     assert all(p["selected_usage"]["input_tokens"] == 120 for p in physical.values())
 
     members: dict[str, tuple[object, ...]] = {}
-    sizes_by_attempt: Counter[str] = Counter()
+    keys_by_attempt: dict[str, set[str]] = defaultdict(set)
+    distinct_by_attempt: dict[str, set[str]] = defaultdict(set)
     presentations: dict[str, set[str | None]] = defaultdict(set)
     questions = companions["questions.jsonl"]
+    distinct_trait = "05" if spec.task_kind == "rubric" else "02"
     assert len(questions) == 12
     assert len({q["question"]["key"] for q in questions}) == 12
     for row in questions:
@@ -159,7 +164,9 @@ def _observe(
         assert physical[attempt]["identity"] == identity
         assert physical[attempt]["shared_input_sha256"] == row["shared_input_sha256"]
         assert result["input_tokens"] is None and result["output_tokens"] is None
-        sizes_by_attempt[attempt] += 1
+        keys_by_attempt[attempt].add(question["key"])
+        if result["trait_id"] == distinct_trait:
+            distinct_by_attempt[attempt].add(question["key"])
         presentations[attempt].add(row["presentation_id"])
         members[task] = (
             question["key"],
@@ -172,29 +179,49 @@ def _observe(
             result["confidence"],
         )
     assert members.keys() == results.keys()
-    assert sorted(sizes_by_attempt.values()) == sizes
-    assert all(len(items) == 1 for items in presentations.values())
+    assert keys_by_attempt.keys() == physical.keys()
+    counts_by_presentation: dict[str | None, list[int]] = defaultdict(list)
+    for attempt, keys in keys_by_attempt.items():
+        (presentation,) = presentations[attempt]
+        counts_by_presentation[presentation].append(len(keys))
+        observed = wire.pop(frozenset(keys))
+        assert set(observed["distinct"]) == distinct_by_attempt[attempt]
+        assert (
+            physical[attempt]["shared_input_byte_length"]
+            == observed["shared_input_bytes"]
+        )
+    assert not wire
+    assert len(counts_by_presentation) == presentation_count
+    assert all(
+        tuple(sorted(counts)) == sizes for counts in counts_by_presentation.values()
+    )
 
     if spec.task_kind == "rubric":
         assert {r["trait_id"] for r in results.values()} == {
             f"{i:02d}" for i in range(12)
         }
         for row in results.values():
+            distinct = row["trait_id"] == distinct_trait
+            index, mapped = (0.45, 1.85) if distinct else (1.55, 5.15)
             assert row["item_id"] == "000"
-            assert row["provider_expected_index"] == pytest.approx(1.55)
-            assert row["primary_score"] == row["expected_value"] == pytest.approx(5.15)
+            assert row["provider_expected_index"] == pytest.approx(index)
+            assert (
+                row["primary_score"] == row["expected_value"] == pytest.approx(mapped)
+            )
             assert row["primary_score_kind"] == "expected"
-            assert row["category_label"] is None and row["modal_category_label"] == "02"
+            assert row["category_label"] is None
+            assert row["modal_category_label"] == ("00" if distinct else "02")
+            probabilities = (0.65, 0.25, 0.1) if distinct else (0.1, 0.25, 0.65)
             assert [
                 (p["level_label"], p["probability"]) for p in row["probabilities"]
-            ] == [("00", 0.1), ("01", 0.25), ("02", 0.65)]
+            ] == list(zip(("00", "01", "02"), probabilities, strict=True))
             assert [level["numeric_value"] for level in row["resolved_levels"]] == [
                 1,
                 2,
                 7,
             ]
     else:
-        assert len({p for items in presentations.values() for p in items}) == 4
+        assert None not in counts_by_presentation
         assert {
             (r["trait_id"], r["repetition_index"], r["is_reversal"])
             for r in results.values()
@@ -211,23 +238,20 @@ def _observe(
         for task, row in results.items():
             assert row["original_order"] == ["001", "002"]
             assert row["source_pair_uid"] == f"criterion-{row['trait_id']}"
-            if row["is_reversal"]:
-                assert row["presented_order"] == ["001", "002"]
-                assert (row["winner_id"], row["p_left"], row["p_right"]) == (
-                    "002",
-                    0.2,
-                    0.8,
-                )
-            else:
-                assert row["presented_order"] == ["002", "001"]
-                assert (row["winner_id"], row["p_left"], row["p_right"]) == (
-                    "001",
-                    0.8,
-                    0.2,
-                )
+            order = ["001", "002"] if row["is_reversal"] else ["002", "001"]
+            assert row["presented_order"] == order
+            distinct = row["trait_id"] == distinct_trait
+            first, second = (0.8, 0.2) if distinct else (0.2, 0.8)
+            assert row["winner_id"] == order[0 if distinct else 1]
+            assert (row["p_left"], row["p_right"]) == (
+                (first, second) if row["is_reversal"] else (second, first)
+            )
             assert row["tie"] is False and row["p_tie"] is None
-            assert (audit[task]["p_first"], audit[task]["p_second"]) == ("0.2", "0.8")
-    return members, sum(p["shared_input_byte_length"] for p in physical.values())
+            assert (audit[task]["p_first"], audit[task]["p_second"]) == (
+                str(first),
+                str(second),
+            )
+    return members, sum(row["shared_input_bytes"] for row in wire_rows)
 
 
 @pytest.mark.parametrize(
@@ -242,9 +266,9 @@ def _observe(
 def test_installed_decisions_packing_parity(
     tmp_path: Path, provider: str, endpoint: str, model: str
 ) -> None:
-    for name, base, sizes in (
-        ("r", native_spec(tmp_path / "rubric", traits=12, maximum=None), [12]),
-        ("p", pair_spec(tmp_path / "pair", maximum=None), [3] * 4),
+    for name, base, group_size in (
+        ("r", native_spec(tmp_path / "rubric", traits=12, maximum=None), 12),
+        ("p", pair_spec(tmp_path / "pair", maximum=None), 3),
     ):
         spec = RunSpecV4.model_validate(
             {
@@ -255,23 +279,17 @@ def test_installed_decisions_packing_parity(
             }
         )
         single, single_bytes = _observe(
-            spec, tmp_path / f"s-{name}", [1] * 12, console=False
+            spec, tmp_path / f"s-{name}", (1,) * group_size, console=False
         )
         grouped, grouped_bytes = _observe(
-            _grouped(spec, 32), tmp_path / f"g-{name}", sizes, console=True
+            _grouped(spec, 32), tmp_path / f"g-{name}", (group_size,), console=True
         )
         assert grouped == single
         assert grouped_bytes > 0
-        assert single_bytes == grouped_bytes * (12 // len(sizes))
+        assert single_bytes == grouped_bytes * group_size
         if spec.task_kind == "pairwise":
-            with prepare_run(
-                _grouped(spec, 2), store=tmp_path / "split", run_id="split"
-            ) as prepared:
-                dependencies = list(prepared.iter_request_dependencies())
-                assert (
-                    sorted(len(d.request.tasks) for d in dependencies)
-                    == [1] * 4 + [2] * 4
-                )
-                assert {
-                    t.task_id for d in dependencies for t in d.request.tasks
-                } == single.keys()
+            split, split_bytes = _observe(
+                _grouped(spec, 2), tmp_path / "split", (1, 2), console=True
+            )
+            assert split == single
+            assert split_bytes == grouped_bytes * 2

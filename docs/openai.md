@@ -19,8 +19,9 @@ implements OpenAI Responses and Chat Completions. Serving-model qualification is
 separate: this implementation does not claim that every model accepts every
 parameter or native JSON Schema.
 
-**Every new OpenAI execution requires explicit `schema_version: 3`, including
-text-only runs.** Historical V1/V2 configurations keep their original offline
+**New OpenAI Responses and Chat Completions runs require explicit
+`schema_version: 3`, including text-only runs.** OpenAI Decisions uses V4.
+Historical V1/V2 configurations keep their original offline
 behavior and cannot execute through the production adapters. The sealed manifest
 identifies the production protocol separately from the configuration version.
 

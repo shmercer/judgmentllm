@@ -96,9 +96,10 @@ qualification. Phases 1–3 implement neutral output contracts, v2 mock executio
 and offline authentication diagnostics. Phase 4A adds standalone strict evidence
 records and pure extractors. Phase 5A adds production OpenAI Responses and Chat
 adapters; Phase 5B adds Anthropic Messages, Phase 5C adds Gemini Developer and
-Phase 5D adds Vertex AI Gemini. Together/Ollama live runners and production
-Decisions adapters remain planned. No endpoint/model acquires runtime support or
-live qualification merely from documentation or fixtures.
+Phase 5D adds Vertex AI Gemini. Milestone 4 added the three production Decisions
+adapters. Together and Ollama live runners remain planned. No endpoint/model
+acquires runtime support or live qualification merely from documentation or
+fixtures.
 
 - Shared credential resolution uses official SDK mechanisms: provider-specific
   API-key environment variables, Google ADC for Vertex, and no authentication
@@ -241,26 +242,26 @@ The four-case live proposal is prepared offline and requires separate consent
 against its exact source and plan digest; no model-list or token-count call is
 needed to prepare it.
 
-### Gemini Developer Phase 5C scope
+### Historical Gemini Developer Phase 5C scope
 
-The [Gemini guide](gemini.md) distinguishes implemented request mapping and
-synthetic SDK/lifecycle tests from the narrowly accepted live scope. Developer API only:
-`models.generate_content`, google-genai 2.34.0, v1beta, explicit API key with
-`GOOGLE_API_KEY` before `GEMINI_API_KEY`. Vertex, enterprise, ADC and Interactions
-are separate. Independent/grouped rubric layouts and pairwise winners use the
-existing strict local output contracts. No probability distribution is invented.
+The Phase 5C live check used Developer `models.generate_content`, Google SDK
+2.34.0 and API v1beta, with an explicit key and `GOOGLE_API_KEY` taking precedence
+over `GEMINI_API_KEY`. Vertex, enterprise, ADC and Interactions were separate.
+The generative rubric and pairwise contracts record categorical outcomes.
 
-Both existing native projections are preserved and tested through actual SDK
-serialization. The [accepted qualification](gemini-live-qualification-acceptance.md)
-promotes only `rubric_scores` and `pairwise_forced_choice` for exact
-`gemini-3.1-flash-lite` through `response_json_schema`. `auto` selects native for
-that feature scope and records text when authority is unknown and strict policy
-permits it. Selected native
-requests never fall back after failure. Automatic continuation, function calling,
-SDK retries, redirects and ambient transport routing are disabled or rejected.
-Usage records prompt, candidate, thought, cache and total counts separately, with
-missing values unknown. The four original-source text/native rubric/pairwise
-cases qualified on 2026-11-10; grouped traits, explanations, ordering variants,
-ties, `response_schema`, other models, Vertex and broader generation/reasoning
-features remain unknown. Historical verification requires the original checkout
-where authority commitments differ; no new live operation is authorized here.
+Both native projections had offline SDK serialization coverage. The 2026-11-10
+qualification covered four text/native rubric and pairwise cases. Its registry
+allowed `auto` to select native for `rubric_scores` and `pairwise_forced_choice`
+on exact `gemini-3.1-flash-lite` through `response_json_schema`. With unknown
+authority, nonstrict `auto` selected text. Selected native requests did not
+fall back after failure. Automatic continuation, function calling, SDK retries,
+redirects and ambient routing were disabled or rejected. Usage kept prompt,
+candidate, thought, cache and total counts separate, with missing values unknown.
+Grouped traits, explanations, ordering variants, ties, `response_schema`, other models, Vertex
+and broader generation and reasoning features were outside that live scope.
+Historical verification uses the original checkout.
+[Accepted Phase 5C evidence](gemini-live-qualification-acceptance.md)
+
+The current adapter uses Google SDK 3.5.0. New preparations use presentation
+revision 2, for which nonstrict `auto` selects text pending native qualification.
+[Current Gemini guide](gemini.md)
