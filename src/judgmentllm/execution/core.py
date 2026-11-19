@@ -526,7 +526,8 @@ async def execute_run(
         )
     except asyncio.CancelledError:
         await settle_bulk()
-        await drain_pending(asyncio.create_task(retain_known_work()))
+        if cancellation_work:
+            await drain_pending(asyncio.create_task(retain_known_work()))
         await drain(cancel)
         raise
     except ExceptionGroup:
@@ -534,9 +535,10 @@ async def execute_run(
         # established evidence without changing the original failure into a
         # successful report or classifying the run as caller-cancelled.
         await settle_bulk()
-        await drain_pending(
-            asyncio.create_task(retain_known_work(preserve_original_error=True))
-        )
+        if cancellation_work:
+            await drain_pending(
+                asyncio.create_task(retain_known_work(preserve_original_error=True))
+            )
         raise
     finally:
         await settle_bulk()
