@@ -471,7 +471,12 @@ async def test_public_resume_preserves_eight_worker_capacity_across_burst_and_re
     monkeypatch.setattr(OpenAIDecisionsAdapter, "__init__", initialize)
     monkeypatch.setattr(OpenAIDecisionsAdapter, "submit", submit)
     monkeypatch.setattr(OpenAIDecisionsAdapter, "retrieve", retrieve)
-    initial = await asyncio.wait_for(aresume_run("001", store=store), 20)
+    # Separate 20-second deadlines allow a nominal 40 seconds before task cleanup.
+    async with asyncio.TaskGroup() as group:
+        async with asyncio.timeout(20):
+            resume = group.create_task(aresume_run("001", store=store))
+            await ninth_forwarded.wait()
+        initial = await asyncio.wait_for(resume, 20)
     assert initial.results == 17 and initial.successful_results == 16
     assert Counter(forwarded) == Counter(keys)
     assert max(buffered) == 8 and ninth_forwarded.is_set()
