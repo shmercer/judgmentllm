@@ -788,7 +788,8 @@ def test_gemini_adapter_rejects_unsealed_entrypoints_and_mismatched_scope(
 @pytest.mark.parametrize(
     "problem", ["missing_extra", "sdk_scope_mismatch", "missing_credentials"]
 )
-def test_gemini_readiness_distinguishes_packaging_scope_and_credentials(
+@pytest.mark.asyncio
+async def test_gemini_readiness_distinguishes_packaging_scope_and_credentials(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, problem: str
 ) -> None:
     from judgmentllm.providers import gemini
@@ -813,12 +814,15 @@ def test_gemini_readiness_distinguishes_packaging_scope_and_credentials(
         monkeypatch.setattr(adapter_module, "_resolve_credentials", forbidden)
 
     spec = gemini_spec(native_spec(tmp_path))
+    wire = wire_for(spec)
     adapter = GeminiDecisionsAdapter(spec.model)
     with pytest.raises(GeminiReadinessError) as failure:
-        adapter.validate_credentials()
+        await adapter.submit(wire, **invocation(wire))
     assert failure.value.diagnostic_code == problem
     assert "missing SDK fixture" not in str(failure.value)
     assert adapter.actual_call_count == 0
+    with pytest.raises(RetrievalUnavailable):
+        await adapter.retrieve(wire, **invocation(wire))
 
 
 @pytest.mark.asyncio
