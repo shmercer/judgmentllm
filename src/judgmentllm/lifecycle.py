@@ -79,6 +79,8 @@ from judgmentllm.planning import (
     CapabilityProfile,
     PreflightError,
     ValidationIssue,
+    bulk_capabilities,
+    bulk_execution_issue,
     validate_run,
 )
 from judgmentllm.preparation import PreparationError, prepare_run
@@ -92,6 +94,8 @@ from judgmentllm.providers import MockAdapter, MockScenario, ProviderError
 
 if TYPE_CHECKING:
     from judgmentllm.anthropic_transport import AnthropicProductionContext
+    from judgmentllm.decisions.provenance import DecisionsProvenanceReportV1
+    from judgmentllm.execution.bulk_provenance import BulkProvenanceReport
     from judgmentllm.production_transport import ProductionContext
     from judgmentllm.providers.protocol import ProviderAdapter
 
@@ -328,6 +332,7 @@ def _checked_spec(spec_or_path: RunSpecification | str | Path) -> RunSpecificati
 
 def _safe_provider_diagnostic(error: BaseException) -> tuple[ErrorCategory, str] | None:
     """Unwrap only fixed adapter diagnostics, never arbitrary exception text."""
+    from judgmentllm._bulk_dispatch import BulkTokenBoundError
     from judgmentllm.providers.anthropic import (
         AnthropicConfigurationError,
         AnthropicReadinessError,
@@ -350,6 +355,9 @@ def _safe_provider_diagnostic(error: BaseException) -> tuple[ErrorCategory, str]
         VertexReadinessError,
     )
     from judgmentllm.vertex_config import VertexSetupError
+
+    if isinstance(error, BulkTokenBoundError):
+        return "validation", str(error)
 
     if isinstance(
         error,
@@ -488,6 +496,8 @@ def _mock_adapter(
 
 def _require_presentation(spec: RunSpecification) -> None:
     """Reject unavailable v2 mechanisms before creating a runtime store."""
+    if (issue := bulk_execution_issue(spec)) is not None:
+        raise LifecycleError("unsupported_capability", issue.message)
     if isinstance(spec, RunSpecV4):
         if (spec.provider, spec.endpoint) == GEMINI_DECISIONS_ROUTE:
             from judgmentllm.providers.gemini_decisions import decisions_context
@@ -543,8 +553,11 @@ def _profile(
 
             if not allow_invalid:
                 _require_presentation(spec)
-            return GeminiDecisionsAdapter.capabilities_for(
-                spec.provider, spec.endpoint, spec.model
+            return bulk_capabilities(
+                spec,
+                GeminiDecisionsAdapter.capabilities_for(
+                    spec.provider, spec.endpoint, spec.model
+                ),
             )
         if (spec.provider, spec.endpoint) == TYPESAFE_ROUTE:
             from judgmentllm.providers.typesafe_decisions import (
@@ -553,20 +566,29 @@ def _profile(
 
             if not allow_invalid:
                 _require_presentation(spec)
-            return TypeSafeDecisionsAdapter.capabilities_for(
-                spec.provider, spec.endpoint, spec.model
+            return bulk_capabilities(
+                spec,
+                TypeSafeDecisionsAdapter.capabilities_for(
+                    spec.provider, spec.endpoint, spec.model
+                ),
             )
         _require_presentation(spec)
         if (spec.provider, spec.endpoint) == ("openai", "decisions"):
             from judgmentllm.providers.openai_decisions import OpenAIDecisionsAdapter
 
-            return OpenAIDecisionsAdapter.capabilities_for(
-                spec.provider, spec.endpoint, spec.model
+            return bulk_capabilities(
+                spec,
+                OpenAIDecisionsAdapter.capabilities_for(
+                    spec.provider, spec.endpoint, spec.model
+                ),
             )
         from judgmentllm.providers.decisions_mock import MockDecisionsAdapter
 
-        return capabilities or MockDecisionsAdapter.capabilities_for(
-            spec.provider, spec.endpoint, spec.model
+        return capabilities or bulk_capabilities(
+            spec,
+            MockDecisionsAdapter.capabilities_for(
+                spec.provider, spec.endpoint, spec.model
+            ),
         )
     profile = (
         CapabilityProfile.model_validate(dict(capabilities))
@@ -574,8 +596,8 @@ def _profile(
         else None
     )
     if (spec.provider, spec.endpoint) == ("mock", "synthetic"):
-        profile = profile or MockAdapter.capabilities_for(
-            spec.provider, spec.endpoint, spec.model
+        profile = profile or bulk_capabilities(
+            spec, MockAdapter.capabilities_for(spec.provider, spec.endpoint, spec.model)
         )
         if (
             isinstance(spec, RunSpecV2)
@@ -595,11 +617,14 @@ def _profile(
             VertexConfigurationError,
         )
 
-        profile = VertexAdapter.capabilities_for(
-            spec.provider,
-            spec.endpoint,
-            spec.model,
-            mechanism=spec.prompt.native_mechanism,
+        profile = bulk_capabilities(
+            spec,
+            VertexAdapter.capabilities_for(
+                spec.provider,
+                spec.endpoint,
+                spec.model,
+                mechanism=spec.prompt.native_mechanism,
+            ),
         )
         if allow_invalid and not validate_run(spec, capabilities=profile).valid:
             return profile
@@ -679,6 +704,10 @@ def validate_inputs(
             tempfile.TemporaryDirectory(prefix="judgmentllm-validation-") as temporary,
         ):
             spec = _checked_spec(spec_or_path)
+            if (issue := bulk_execution_issue(spec)) is not None:
+                return InputValidationReport(
+                    valid=False, issues=(issue,), total_issues=1
+                )
             profile = _profile(spec, capabilities, allow_invalid=True)
             structural = validate_run(spec, capabilities=profile)
             issues = structural.issues
@@ -907,16 +936,26 @@ def _summary(
     )
 
 
-async def arun_live(
+async def _arun(
     spec_or_path: RunSpecification | str | Path,
     *,
     store: str | Path | None = None,
     progress: Progress | None = None,
     mock: MockExecutionOptions | None = None,
+    mode: Literal["live", "bulk_live"] | None,
 ) -> RunSummary:
     """Execute in this process until drained; cancellation preserves durable work."""
     with _errors():
         spec = _checked_spec(spec_or_path)
+        selected_mode = spec.execution.mode
+        if selected_mode == "batch_native" or (
+            mode is not None and selected_mode != mode
+        ):
+            raise LifecycleError(
+                "unsupported_capability",
+                "execution.mode is unsupported by this entry point",
+            )
+        bulk = selected_mode == "bulk_live"
         if spec.provider in {"openai", "anthropic", "gemini", "vertex"}:
             _production_context(spec)
         _require_presentation(spec)
@@ -968,10 +1007,15 @@ async def arun_live(
                 adapter.transport_context = gemini_context(spec)
             getattr(adapter, "validate_new_run", adapter.validate)(spec)
             readiness = getattr(adapter, "validate_credentials", None)
-            if readiness is not None and (spec.provider, spec.endpoint) not in {
-                TYPESAFE_ROUTE,
-                GEMINI_DECISIONS_ROUTE,
-            }:
+            if (
+                not bulk
+                and readiness is not None
+                and (spec.provider, spec.endpoint)
+                not in {
+                    TYPESAFE_ROUTE,
+                    GEMINI_DECISIONS_ROUTE,
+                }
+            ):
                 readiness()
         except ProviderError as error:
             safe = _safe_provider_diagnostic(error)
@@ -981,6 +1025,7 @@ async def arun_live(
                 "unsupported_capability", "provider settings are unsupported"
             ) from None
     run_id = uuid.uuid4().hex
+    executor_closes = False
     try:
         with _errors(run_id, root):
             _progress(progress, "started", run_id, root)
@@ -1013,12 +1058,14 @@ async def arun_live(
                     preparation.exception()
                 raise
             _progress(progress, "prepared", run_id, root)
+            executor_closes = bulk
             await execute_run(run_id, store=root, adapter=adapter, spec=spec)
             result = _summary(run_id, root)
             _progress(progress, "finished", run_id, root)
             return result
     finally:
-        await _close_adapter(adapter)
+        if not executor_closes:
+            await _close_adapter(adapter)
 
 
 def _prepare(
@@ -1077,6 +1124,32 @@ def _no_event_loop(operation: str) -> None:
     )
 
 
+async def arun_live(
+    spec_or_path: RunSpecification | str | Path,
+    *,
+    store: str | Path | None = None,
+    progress: Progress | None = None,
+    mock: MockExecutionOptions | None = None,
+) -> RunSummary:
+    """Execute a live run until drained."""
+    return await _arun(
+        spec_or_path, store=store, progress=progress, mock=mock, mode="live"
+    )
+
+
+async def arun_bulk_live(
+    spec_or_path: RunSpecification | str | Path,
+    *,
+    store: str | Path | None = None,
+    progress: Progress | None = None,
+    mock: MockExecutionOptions | None = None,
+) -> RunSummary:
+    """Execute a managed bulk-live run with durable per-send reservations."""
+    return await _arun(
+        spec_or_path, store=store, progress=progress, mock=mock, mode="bulk_live"
+    )
+
+
 def run_live(
     spec_or_path: RunSpecification | str | Path,
     *,
@@ -1088,6 +1161,32 @@ def run_live(
     _no_event_loop("run_live")
     return asyncio.run(
         arun_live(spec_or_path, store=store, progress=progress, mock=mock)
+    )
+
+
+def run_bulk_live(
+    spec_or_path: RunSpecification | str | Path,
+    *,
+    store: str | Path | None = None,
+    progress: Progress | None = None,
+    mock: MockExecutionOptions | None = None,
+) -> RunSummary:
+    """Synchronous counterpart to arun_bulk_live."""
+    _no_event_loop("run_bulk_live")
+    return asyncio.run(
+        arun_bulk_live(spec_or_path, store=store, progress=progress, mock=mock)
+    )
+
+
+def _run_config(  # pyright: ignore[reportUnusedFunction]
+    config: Path,
+    *,
+    store: str | Path | None,
+    progress: Progress,
+    mock: MockExecutionOptions | None,
+) -> RunSummary:
+    return asyncio.run(
+        _arun(config, store=store, progress=progress, mock=mock, mode=None)
     )
 
 
@@ -1111,13 +1210,15 @@ async def aresume_run(
             run = repository.get_run(identifier)
             from judgmentllm.preparation import _load_manifest  # pyright: ignore[reportPrivateUsage]
 
+            sealed = (
+                _load_manifest(repository, identifier, unsealed=False)
+                if run.manifest_sha256 is not None
+                else None
+            )
             decisions = (
                 repository.decisions_version(identifier) == 4
-                if run.manifest_sha256 is None
-                else _load_manifest(
-                    repository, identifier, unsealed=False
-                ).schema_version
-                in (8, 9, 10, 11)
+                if sealed is None
+                else isinstance(sealed, ExecutableRunManifestV8)
             )
         decisions_manifest = None
         if decisions and run.provider in {"openai", "typesafe", "gemini"}:
@@ -1167,6 +1268,7 @@ async def aresume_run(
 
             assert isinstance(adapter, OpenAIDecisionsAdapter)
             adapter.transport_context = decisions_manifest.production_context
+        executor_closes = False
         try:
             _progress(progress, "started", identifier, root)
             if retry is not None:
@@ -1197,6 +1299,9 @@ async def aresume_run(
                     if not authorization.cancelled():
                         authorization.exception()
                     raise
+            executor_closes = (
+                sealed is not None and sealed.execution.mode == "bulk_live"
+            )
             await recover_run(
                 identifier,
                 store=root,
@@ -1212,7 +1317,8 @@ async def aresume_run(
             _progress(progress, "finished", identifier, root)
             return result
         finally:
-            await _close_adapter(adapter)
+            if not executor_closes:
+                await _close_adapter(adapter)
 
 
 def resume_run(
@@ -1238,6 +1344,35 @@ def resume_run(
             mock=mock,
         )
     )
+
+
+def export_run_provenance(
+    run_id: str | Path, *, store: str | Path | None = None
+) -> DecisionsProvenanceReportV1 | BulkProvenanceReport:
+    """Publish the immutable companion selected by a run's sealed manifest."""
+    from judgmentllm.decisions.provenance import export_decisions_provenance
+    from judgmentllm.execution.bulk_provenance import export_bulk_provenance
+    from judgmentllm.preparation import _load_manifest  # pyright: ignore[reportPrivateUsage]
+
+    with _errors():
+        identifier, root = resolve_run(run_id, store)
+    with _errors(identifier, root):
+        with ReadOnlyRepository(root) as repository:
+            manifest = _load_manifest(repository, identifier, unsealed=False)
+        if isinstance(manifest, ExecutableRunManifestV8):
+            return export_decisions_provenance(identifier, store=root)
+        return export_bulk_provenance(identifier, root=root)
+
+
+def cancel_run(run_id: str | Path, *, store: str | Path | None = None) -> RunStatus:
+    """Cancel local scheduling for an idle run."""
+    from judgmentllm.execution.cancellation import cancel_run as cancel_idle
+
+    with _errors():
+        identifier, root = resolve_run(run_id, store)
+    with _errors(identifier, root):
+        cancel_idle(identifier, store=root)
+        return get_run(identifier, store=root)
 
 
 def get_run(run_id: str | Path, *, store: str | Path | None = None) -> RunStatus:

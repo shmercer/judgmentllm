@@ -189,6 +189,15 @@ def test_genuine_historical_store_inspection_export_and_v4_rejection_do_not_migr
     candidate = native_spec(tmp_path / "new")
     with pytest.raises(IntegrityError, match="schema-3"):
         prepare_run(candidate, store=store, run_id="new-v4")
+    from test_bulk_live import bulk_spec
+
+    for decisions in (False, True):
+        with pytest.raises(IntegrityError, match="schema-3"):
+            prepare_run(
+                bulk_spec(tmp_path / f"bulk-{decisions}", decisions=decisions),
+                store=store,
+                run_id=f"new-bulk-{decisions}",
+            )
     with ReadOnlyRepository(store) as repository:
         assert (
             repository.connection.execute("PRAGMA user_version").fetchone()[0]

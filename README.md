@@ -34,21 +34,23 @@ native Decisions.
 
 | Provider / endpoint | Mode / configuration | Current implementation |
 |---|---|---|
-| Mock / `synthetic` | `live`, V1/V2 | Public generative mock; offline execution, recovery and exports; V3 native transport has private fixtures |
-| Mock / `synthetic` | `live`, V4 | Native score/choice questions, grouping and provenance; synthetic protocol only |
-| OpenAI / `responses` | `live`, V3 | Implemented generative adapter; SDK/lifecycle fixtures |
-| OpenAI / `chat.completions` | `live`, V3 | Implemented generative adapter; SDK/lifecycle fixtures |
-| Anthropic / `messages` | `live`, V3 | Implemented generative adapter; SDK/lifecycle fixtures |
-| Gemini Developer / `models.generate_content` | `live`, V3 | Implemented generative adapter; SDK/lifecycle fixtures |
-| Vertex AI Gemini / `models.generate_content` | `live`, V3 | Implemented generative adapter; separate ADC/API-key routing and SDK/lifecycle fixtures |
+| Mock / `synthetic` | `live`, V1/V2; `bulk_live`, V2 | Public generative mock; offline execution, recovery and exports; V3 native transport has private fixtures |
+| Mock / `synthetic` | `live`, `bulk_live`, V4 | Native score/choice questions, grouping and provenance; synthetic protocol only |
+| OpenAI / `responses` | `live`, `bulk_live`, V3 | Implemented generative adapter; SDK/lifecycle fixtures |
+| OpenAI / `chat.completions` | `live`, `bulk_live`, V3 | Implemented generative adapter; SDK/lifecycle fixtures |
+| Anthropic / `messages` | `live`, `bulk_live`, V3 | Implemented generative adapter; SDK/lifecycle fixtures |
+| Gemini Developer / `models.generate_content` | `live`, `bulk_live`, V3 | Implemented generative adapter; SDK/lifecycle fixtures |
+| Vertex AI Gemini / `models.generate_content` | `live`, `bulk_live`, V3 | Implemented generative adapter; separate ADC/API-key routing and SDK/lifecycle fixtures |
 | Together / `chat.completions` | Planned live runner | Offline schema-projection/private transport fixtures; no production run/resume adapter |
 | Local Ollama / `chat` | Planned live runner | Offline schema-projection/private transport fixtures; no production run/resume adapter |
-| OpenAI / `decisions` | `live`, V4 | Offline SDK/lifecycle fixtures and bounded `gpt-6-luna` smoke. 2–10 score levels and up to 400 named questions. |
-| TypeSafe Jev / `systemone` | `live`, V4 | Offline SDK/lifecycle fixtures and bounded `jev-1.14.0` live checks. Up to 10 score levels. Context fit is unverified and the vendor question cap is unknown. |
-| Gemini Developer / `decisions` | `live`, V4 | Offline SDK/lifecycle fixtures and bounded `gemini-decision-1` live grid. 2–255 score levels, up to 1,000 keys and a 256 KiB local body cap. Token fit is unverified. |
+| OpenAI / `decisions` | `live`, `bulk_live`, V4 | Offline SDK/lifecycle fixtures and bounded `gpt-6-luna` smoke. 2–10 score levels and up to 400 named questions. |
+| TypeSafe Jev / `systemone` | `live`, `bulk_live`, V4 | Offline SDK/lifecycle fixtures and bounded `jev-1.14.0` live checks. Up to 10 score levels. Context fit is unverified and the vendor question cap is unknown. |
+| Gemini Developer / `decisions` | `live`, `bulk_live`, V4 | Offline SDK/lifecycle fixtures and bounded `gemini-decision-1` live grid. 2–255 score levels, up to 1,000 keys and a 256 KiB local body cap. Token fit is unverified. |
 
-Managed bulk-live and native batch for eligible endpoints are **Milestone 5 targets**.
-Native Decisions endpoints use synchronous `live` execution. Generative JSON Schema (`structured_output:
+Managed bulk-live schedules the same provider scoring calls locally. Optional
+request caps apply per run. Production token caps require a verified bound and
+currently fail offline validation. Native batch for eligible endpoints is a
+later Milestone 5 target. Generative JSON Schema (`structured_output:
 native`) and native Decisions score/choice APIs are different interfaces. New
 generative preparations use [presentation revision 2](docs/renderer-revision-2.md):
 its native serving scope is unqualified, so nonstrict `auto` selects text, while
@@ -264,7 +266,7 @@ optional complete campaign, not a prerequisite for routine PRs.
 
 ## Optional dependencies and later milestones
 
-Extras remain `openai`, `anthropic`, `google`, `together`, `ollama`, `typesafe`, `parquet`, `api`, and `all`. Use the route table above for implementation and qualification. Together/Ollama live runners, M5 batch/bulk-live, the M6 CLI-first `rubricLLM` wrapper and M7 optional local FastAPI remain later work under the [implementation plan](docs/implementation-plan.md). R calls operate on runs/files or sized task groups, not one Python process per judgment.
+Extras remain `openai`, `anthropic`, `google`, `together`, `ollama`, `typesafe`, `parquet`, `api`, and `all`. Use the route table above for implementation and qualification. Together/Ollama live runners, M5 native batch, the M6 CLI-first `rubricLLM` wrapper and M7 optional local FastAPI remain later work under the [implementation plan](docs/implementation-plan.md). R calls operate on runs/files or sized task groups, not one Python process per judgment.
 
 The repository is [shmercer/judgmentllm](https://github.com/shmercer/judgmentllm), licensed under [MIT](https://github.com/shmercer/judgmentllm/blob/main/LICENSE), and not yet published to PyPI. The core does not implement Bradley–Terry fitting, adaptive pairing, or rubric calibration; these remain in `pairwiseLLM`.
 

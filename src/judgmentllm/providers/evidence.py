@@ -203,7 +203,13 @@ def prepare_evidence(
     if evidence is not None and evidence.observation_context is not None:
         metadata = evidence.observation_context
         context = UsageContext.model_validate(
-            {**context.model_dump(), **metadata.model_dump()}
+            {
+                **context.model_dump(),
+                **metadata.model_dump(),
+                "invocation_kind": context.invocation_kind
+                if context.invocation_kind == "managed_bulk_live"
+                else metadata.invocation_kind,
+            }
         )
     service_tier = evidence.service_tier if evidence is not None else None
     if service_tier is not None and (

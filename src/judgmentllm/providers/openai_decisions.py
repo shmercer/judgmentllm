@@ -10,6 +10,7 @@ from contextvars import ContextVar
 from typing import Any, cast
 
 from judgmentllm._auth import _resolve_credentials
+from judgmentllm._bulk_dispatch import scoring_forward
 from judgmentllm.config import RunSpecification, RunSpecV4, validate_run_spec
 from judgmentllm.decisions.records import DecisionQuestionV1, OpenAIDecisionsContextV1
 from judgmentllm.decisions.responses import ParsedDecisionsResponseV2
@@ -27,7 +28,7 @@ from judgmentllm.persistence.hashing import (
     semantic_digest,
 )
 from judgmentllm.persistence.receipts import CompleteResponseEvidenceV2
-from judgmentllm.planning import CapabilityProfile
+from judgmentllm.planning import CapabilityProfile, bulk_capabilities
 from judgmentllm.providers.evidence import ProviderEvidence, ProviderObservationContext
 from judgmentllm.providers.openai import (
     _SDK_LOGGING,
@@ -169,7 +170,9 @@ class OpenAIDecisionsAdapter:
         )
 
     def capabilities(self, spec: RunSpecification) -> CapabilityProfile:
-        return self.capabilities_for(spec.provider, spec.endpoint, spec.model)
+        return bulk_capabilities(
+            spec, self.capabilities_for(spec.provider, spec.endpoint, spec.model)
+        )
 
     def validate(self, spec: RunSpecification) -> None:
         # Reopened snapshots contain the old default value even if it was omitted.
@@ -221,21 +224,25 @@ class OpenAIDecisionsAdapter:
                     raise ProviderIntegrityError(
                         "Decisions SDK forwarding differs from sealed request"
                     )
-                state["invoked"] = True
-                adapter.actual_call_count += 1
-                response = await underlying.handle_async_request(request)
-                body = bytearray()
-                try:
-                    async for chunk in response.aiter_bytes():
-                        if len(body) + len(chunk) > 8_388_608:
-                            raise SubmissionUncertain(invoked=True)
-                        body.extend(chunk)
-                finally:
-                    await response.aclose()
-                state["received"] = (response.status_code, bytes(body))
-                return http.Response(
-                    response.status_code, content=bytes(body), request=request
-                )
+                with scoring_forward(
+                    state["wire"],
+                    state["wire"].transport_commitment.identity.submission_id,
+                ):
+                    state["invoked"] = True
+                    adapter.actual_call_count += 1
+                    response = await underlying.handle_async_request(request)
+                    body = bytearray()
+                    try:
+                        async for chunk in response.aiter_bytes():
+                            if len(body) + len(chunk) > 8_388_608:
+                                raise SubmissionUncertain(invoked=True)
+                            body.extend(chunk)
+                    finally:
+                        await response.aclose()
+                    state["received"] = (response.status_code, bytes(body))
+                    return http.Response(
+                        response.status_code, content=bytes(body), request=request
+                    )
 
             async def aclose(self) -> None:
                 await underlying.aclose()

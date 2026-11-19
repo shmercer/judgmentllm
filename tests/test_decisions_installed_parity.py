@@ -143,6 +143,12 @@ def _observe(
     assert bundle.usage_high_water_mark == forwards
     assert bundle.totals.input_tokens == 120 * forwards
     assert all(p["selected_usage"]["input_tokens"] == 120 for p in physical.values())
+    if spec.execution.mode == "bulk_live":
+        assert all(
+            p["selected_usage"]["invocation_kind"] == "managed_bulk_live"
+            and p["reservation"]["receipt"]["requests"] == 1
+            for p in physical.values()
+        )
 
     members: dict[str, tuple[object, ...]] = {}
     keys_by_attempt: dict[str, set[str]] = defaultdict(set)
@@ -285,6 +291,19 @@ def test_installed_decisions_packing_parity(
             _grouped(spec, 32), tmp_path / f"g-{name}", (group_size,), console=True
         )
         assert grouped == single
+        packed = _grouped(spec, 32 if spec.task_kind == "rubric" else 2)
+        bulk = RunSpecV4.model_validate(
+            packed.model_dump()
+            | {"execution": packed.execution.model_dump() | {"mode": "bulk_live"}}
+        )
+        bulk_members, bulk_bytes = _observe(
+            bulk,
+            tmp_path / f"bulk-{name}",
+            (group_size,) if spec.task_kind == "rubric" else (1, 2),
+            console=True,
+        )
+        assert bulk_members == single
+        assert bulk_bytes == grouped_bytes * (1 if spec.task_kind == "rubric" else 2)
         assert grouped_bytes > 0
         assert single_bytes == grouped_bytes * group_size
         if spec.task_kind == "pairwise":

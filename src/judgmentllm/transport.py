@@ -912,6 +912,7 @@ class TransportPlanV1(_TransportModel):
     """Acyclic payload-embedded commitment, before final payload hashing."""
 
     plan_version: Literal[1] = 1
+    bulk_live: bool = Field(default=False, exclude_if=lambda value: not value)
     identity: PhysicalRequestIdentityV1
     configuration_sha256: SHA256
     dependency_sha256: SHA256

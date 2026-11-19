@@ -127,6 +127,8 @@ class DurableEvidence:
             or evidence.capture != session.spec.capture
             or evidence.authorization != self.authorization
             or evidence.authorization_sha256 != self.authorization_sha256
+            or session.bulk_live
+            and evidence.usage.invocation_kind != "managed_bulk_live"
         ):
             raise IntegrityError("evidence receipt identity or authorization conflicts")
         if (
@@ -281,6 +283,9 @@ class DurableEvidence:
                     "endpoint": session.spec.endpoint,
                     "requested_model": session.spec.model,
                     "observation_kind": response.kind,
+                    "invocation_kind": "managed_bulk_live"
+                    if session.bulk_live
+                    else "unknown",
                 }
             ),
             commitment=commitment,
@@ -511,6 +516,8 @@ class DurableEvidence:
             if prior is not None and (
                 prior.identity != work.prepared.transport_commitment.identity
                 or prior.payload_sha256 != work.prepared.payload_sha256
+                or session.bulk_live
+                and prior.usage.invocation_kind != "managed_bulk_live"
             ):
                 raise IntegrityError("Decisions forwarding identity conflicts")
             if not known_invoked and prior is None:
@@ -543,7 +550,9 @@ class DurableEvidence:
                             endpoint=session.spec.endpoint,
                             requested_model=session.spec.model,
                             observation_kind="invocation",
-                            invocation_kind="live",
+                            invocation_kind="managed_bulk_live"
+                            if session.bulk_live
+                            else "live",
                         )
                     ),
                     reported,
@@ -601,7 +610,9 @@ class DurableEvidence:
                     "endpoint": session.spec.endpoint,
                     "requested_model": session.spec.model,
                     "observation_kind": "invocation",
-                    "invocation_kind": "live",
+                    "invocation_kind": "managed_bulk_live"
+                    if session.bulk_live
+                    else "live",
                 }
             ),
             reported,
@@ -695,6 +706,9 @@ class DurableEvidence:
                     "observation_kind": "invocation",
                     "definitive_failure_id": stable_id("failure", work.submission_id),
                     "invocation_failure_code": diagnostic_code,
+                    "invocation_kind": "managed_bulk_live"
+                    if session.bulk_live
+                    else "unknown",
                 }
             ),
             reported,

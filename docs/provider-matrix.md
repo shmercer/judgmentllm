@@ -18,11 +18,13 @@ settings. C–E added the production transports. [Shared contract](decisions-lif
 
 The [README's current route table](../README.md#providers-endpoints-and-execution-modes)
 lists executable Python/CLI modes separately from projections and planned adapters.
-Implemented generative routes require V3 and `live`: OpenAI `responses` and
+Implemented generative routes require V3 and accept `live` and `bulk_live`: OpenAI `responses` and
 `chat.completions`, Anthropic `messages`, and separate Gemini Developer/Vertex
 `models.generate_content` adapters. Public V1/V2 mock execution and V4 synthetic
 Decisions are offline. V3 private synthetic transports are fixture infrastructure.
-Managed bulk-live and native batch for eligible endpoints remain M5 targets.
+The eight implemented production routes support managed bulk-live with optional
+per-run request caps. All reject production token caps before credentials.
+Native batch for eligible endpoints remains an M5 target.
 
 New generative preparations use [presentation revision 2](renderer-revision-2.md).
 Retained original-contract live acceptance does not supply its required
@@ -47,16 +49,16 @@ and the intended all-provider qualification requirement.
 
 | Adapter | Live | Native provider batch | Managed bulk-live | Rubric | Pairwise | Notes |
 |---|---|---|---|---|---|---|
-| OpenAI Chat Completions | implemented; reviewed live scope accepted | target | later milestone | generative | generative | Phase 5A, SDK 3.42.1; exact-model capability unknown until qualified |
-| OpenAI Responses | implemented; reviewed live scope accepted | target | later milestone | generative | generative | Phase 5A, SDK 3.42.1; exact-model capability unknown until qualified |
-| OpenAI Decisions | implemented, offline fixtures and bounded `gpt-6-luna` smoke | unsupported | M5 target | typed score, 2–10 levels | forced choice | `/v1/decisions`, 1–400 ordered named questions. Cache OFF uses explicit mode without breakpoints. |
-| Anthropic Messages | implemented; live acceptance pending | target | later milestone | generative | generative | Phase 5B; SDK 2.3.0 / API 2026-10-21; text JSON and controlled native output_config.format |
-| Gemini Developer | implemented, historical four-case live scope accepted | M5 target | M5 target | generative | generative | Offline parity with Google SDK 3.5.0. The [live scope](gemini-live-qualification-acceptance.md) used 2.34.0/v1beta. |
-| Gemini Decisions (Developer only) | implemented, offline fixtures and live grid at 2, 3, 4, 5 and 10 levels plus both Choice orientations | unsupported | M5 target | typed score, 2–255 levels | forced choice, two presented options | [Developer v1beta](gemini-decisions.md), `gemini-decision-1`, 1–1,000 named keys, 256 KiB local body cap and unverified token fit. |
-| Vertex AI Gemini | implemented, historical exact-route live scope accepted | M5 target (Google Cloud setup required) | M5 target | generative | generative | Offline parity with Google SDK 3.5.0. The [historical ADC/API-key live scopes](vertex-live-qualification-acceptance.md) used 2.34.0/v1beta1. |
+| OpenAI Chat Completions | implemented; reviewed live scope accepted | target | implemented with RPM | generative | generative | Phase 5A, SDK 3.42.1; exact-model capability unknown until qualified |
+| OpenAI Responses | implemented; reviewed live scope accepted | target | implemented with RPM | generative | generative | Phase 5A, SDK 3.42.1; exact-model capability unknown until qualified |
+| OpenAI Decisions | implemented, offline fixtures and bounded `gpt-6-luna` smoke | unsupported | implemented with RPM | typed score, 2–10 levels | forced choice | `/v1/decisions`, 1–400 ordered named questions. Cache OFF uses explicit mode without breakpoints. |
+| Anthropic Messages | implemented; live acceptance pending | target | implemented with RPM | generative | generative | Phase 5B; SDK 2.3.0 / API 2026-10-21; text JSON and controlled native output_config.format |
+| Gemini Developer | implemented, historical four-case live scope accepted | M5 target | implemented with RPM | generative | generative | Offline parity with Google SDK 3.5.0. The [live scope](gemini-live-qualification-acceptance.md) used 2.34.0/v1beta. |
+| Gemini Decisions (Developer only) | implemented, offline fixtures and live grid at 2, 3, 4, 5 and 10 levels plus both Choice orientations | unsupported | implemented with RPM | typed score, 2–255 levels | forced choice, two presented options | [Developer v1beta](gemini-decisions.md), `gemini-decision-1`, 1–1,000 named keys, 256 KiB local body cap and unverified token fit. |
+| Vertex AI Gemini | implemented, historical exact-route live scope accepted | M5 target (Google Cloud setup required) | implemented with RPM | generative | generative | Offline parity with Google SDK 3.5.0. The [historical ADC/API-key live scopes](vertex-live-qualification-acceptance.md) used 2.34.0/v1beta1. |
 | Together AI | lower-priority live target | target, subject to current API qualification | M5/deferred live target | generative | generative | Use official Together Python SDK v3 (`together>=3,<4`); endpoint/model feature coverage must be tested |
 | Ollama local | lower-priority live target | no native provider batch | M5/deferred live target | generative | generative | Official Ollama SDK, local daemon; local model discovery; optional later cloud support separate |
-| TypeSafe AI Jev | implemented, offline fixtures and live scores at 3, 4, 5 and 10 levels after #66, plus earlier Choice cases | unsupported | M5 target | typed score, up to 10 levels | forced choice | [System One](typesafe-decisions.md) has unverified context fit and no established vendor question cap. |
+| TypeSafe AI Jev | implemented, offline fixtures and live scores at 3, 4, 5 and 10 levels after #66, plus earlier Choice cases | unsupported | implemented with RPM | typed score, up to 10 levels | forced choice | [System One](typesafe-decisions.md) has unverified context fit and no established vendor question cap. |
 
 ### Native Decisions capability evidence
 

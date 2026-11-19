@@ -279,8 +279,15 @@ Implemented V1–V3 pairwise preparation uses independent grouping. Fixed groups
 rubric traits exactly once without empty groups. Auto grouping requires an
 explicit or supplied capability limit; it never invents context windows or
 splits exemplars. Retry policy is an execution-service control; it is not a RunSpec field. Explicit
-retry selection uses the public resume interface. Native-batch, rate/timeout and
-budget configuration remain reserved and are rejected as unknown fields today.
+retry selection uses the public resume interface. RunSpec V2 (exact synthetic
+route), V3 (production generative routes) and V4 (Decisions) admit
+`execution.mode: bulk_live`. In bulk mode, optional
+`execution.bulk_limits.requests_per_minute` and `tokens_per_minute` are strict
+positive integers. Absent fields are omitted. Production TPM requires a
+verified input, output and reasoning bound and is currently unsupported.
+Synthetic fixtures count UTF-8 bytes of the exact input and deterministic
+response as synthetic units. Native-batch, timeout and spending budget
+configuration remain reserved.
 
 ### Generation configuration and extensibility
 

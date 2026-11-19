@@ -110,6 +110,7 @@ def _command_name(args: Sequence[str]) -> str:
             ("runs", "list"),
             ("runs", "status"),
             ("runs", "resume"),
+            ("runs", "cancel"),
             ("results", "export"),
             ("results", "provenance"),
         }:

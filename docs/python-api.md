@@ -62,6 +62,8 @@ validate_inputs(spec_or_path, *, capabilities=None, exhaustive_rendering=False) 
 estimate_run(spec_or_path, *, capabilities=None) -> ExecutionPlan
 run_live(spec_or_path, *, store=None, progress=None, mock=None) -> RunSummary
 arun_live(spec_or_path, *, store=None, progress=None, mock=None) -> RunSummary
+run_bulk_live(spec_or_path, *, store=None, progress=None, mock=None) -> RunSummary
+arun_bulk_live(spec_or_path, *, store=None, progress=None, mock=None) -> RunSummary
 resume_run(run_id, *, store=None, spec=None, use_frozen_snapshot=False,
            retry=None, progress=None, mock=None) -> RunSummary
 aresume_run(run_id, *, store=None, spec=None, use_frozen_snapshot=False,
@@ -70,6 +72,7 @@ list_runs(*, store=None, limit=100, cursor=None) -> RunPage
 get_run(run_id, *, store=None) -> RunStatus
 export_run_results(run_id, *, store=None, format="jsonl", view="canonical",
                    na_string="NA", high_water_mark=None) -> ResultManifest
+export_run_provenance(run_id, *, store=None) -> DecisionsProvenanceReportV1 | BulkProvenanceReport
 ```
 
 `spec_or_path` accepts a `RunSpec`, `RunSpecV2`, `RunSpecV3`, string path or `Path`. Synchronous execution
@@ -574,8 +577,9 @@ protocol; it does not imitate a cloud endpoint.
 retrieval_available=True, reconciliation_available=True)` supports provider
 `mock`, endpoint `synthetic`, and arbitrary model IDs. Its live synthetic service
 supports explanations, ties with compatible custom templates, the three existing
-generation controls, and cache `off`/`auto` (uncached). Explicit cache, tier,
-managed bulk/native batch, and real providers fail before submission.
+generation controls, and cache `off`/`auto` (uncached). RunSpec V2 also accepts
+`bulk_live` on the exact synthetic route with cache OFF. Explicit cache, tier,
+native batch, and real providers fail mock preflight.
 `MockScenario` selects synthetic judgments, distributions, delays, refusals,
 invalid outputs, provider errors, and transport failures. Scenario text stays in
 memory; recovery needs the same fixture configuration. Lost fixture configuration

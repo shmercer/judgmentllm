@@ -18,13 +18,14 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from judgmentllm._auth import _resolve_credentials
+from judgmentllm._bulk_dispatch import scoring_forward
 from judgmentllm.config import RunSpecification
 from judgmentllm.evidence.reasoning import ReasoningBlockMetadata
 from judgmentllm.evidence.usage import (
     InvocationFailureCode,
 )
 from judgmentllm.output_contracts import decode_assessment_output
-from judgmentllm.planning import CapabilityProfile, validate_run
+from judgmentllm.planning import CapabilityProfile, bulk_capabilities, validate_run
 from judgmentllm.preparation.session import RequestDependency
 from judgmentllm.prompts import RenderedAssessmentPrompt
 from judgmentllm.providers.anthropic_response import (
@@ -333,7 +334,7 @@ class AnthropicAdapter:
         from judgmentllm.providers.reasoning import generation_capabilities
 
         profile = self.capabilities_for(spec.provider, spec.endpoint, spec.model)
-        return profile.model_copy(
+        return bulk_capabilities(spec, profile).model_copy(
             update={
                 "generation": generation_capabilities(
                     spec, self.transport_context.scope, profile.generation
@@ -350,7 +351,7 @@ class AnthropicAdapter:
             raise ProviderIntegrityError(
                 "Anthropic adapter configuration scope differs"
             )
-        if spec.schema_version != 3 or spec.execution.mode != "live":
+        if spec.schema_version != 3 or spec.execution.mode not in ("live", "bulk_live"):
             raise AnthropicConfigurationError(("schema_version", "execution.mode"))
         from judgmentllm.anthropic_transport import _request_policy
 
@@ -447,6 +448,8 @@ class AnthropicAdapter:
             )
 
     async def _execution_client(self) -> Any:
+        from judgmentllm.anthropic_transport import PreparedRequestV5
+
         if self._client is not None:
             return self._client
         sdk, http = _sdk()
@@ -516,36 +519,42 @@ class AnthropicAdapter:
                     raise ProviderIntegrityError(
                         "Anthropic invocation boundary state is unavailable"
                     )
-                state["invoked"] = True
-                adapter.actual_call_count += 1
-                response = await underlying.handle_async_request(request)
-                body = bytearray()
-                try:
-                    async for chunk in response.aiter_bytes():
-                        if len(body) + len(chunk) > _MAX_RESPONSE_BYTES:
-                            raise SubmissionUncertain(
-                                "Anthropic response exceeds the bounded retention limit",
-                                invoked=True,
-                            )
-                        body.extend(chunk)
-                finally:
-                    await response.aclose()
-                if _contains_credential(bytes(body), key):
-                    raise SubmissionUncertain(
-                        "Anthropic response cannot be retained safely", invoked=True
+                with scoring_forward(
+                    prepared,
+                    cast(
+                        PreparedRequestV5, prepared
+                    ).transport_commitment.identity.submission_id,
+                ):
+                    state["invoked"] = True
+                    adapter.actual_call_count += 1
+                    response = await underlying.handle_async_request(request)
+                    body = bytearray()
+                    try:
+                        async for chunk in response.aiter_bytes():
+                            if len(body) + len(chunk) > _MAX_RESPONSE_BYTES:
+                                raise SubmissionUncertain(
+                                    "Anthropic response exceeds the bounded retention limit",
+                                    invoked=True,
+                                )
+                            body.extend(chunk)
+                    finally:
+                        await response.aclose()
+                    if _contains_credential(bytes(body), key):
+                        raise SubmissionUncertain(
+                            "Anthropic response cannot be retained safely", invoked=True
+                        )
+                    state["raw"] = bytes(body)
+                    headers = {
+                        key: value
+                        for key, value in response.headers.items()
+                        if key.lower() not in {"content-encoding", "content-length"}
+                    }
+                    return http.Response(
+                        response.status_code,
+                        content=bytes(body),
+                        headers=headers,
+                        request=request,
                     )
-                state["raw"] = bytes(body)
-                headers = {
-                    key: value
-                    for key, value in response.headers.items()
-                    if key.lower() not in {"content-encoding", "content-length"}
-                }
-                return http.Response(
-                    response.status_code,
-                    content=bytes(body),
-                    headers=headers,
-                    request=request,
-                )
 
             async def aclose(self) -> None:
                 await underlying.aclose()

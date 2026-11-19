@@ -1,5 +1,23 @@
 # Internal persistence contracts — Milestone 2 mock execution and lifecycle
 
+## Managed bulk-live reservations
+
+New bulk-live runs require SQLite schema 3. A submission-keyed canonical
+reservation records the frozen run, request, attempt, manifest and payload
+identity, limits and bound units. The owner checks quota, registers the
+verified artifact and transitions the attempt and submission to `submitting`
+in one transaction. The submission transition is the debit. A named receipt
+without this pair is an orphan. Recovery rejects mismatched pairs.
+
+The per-run quota charges a used permit until its scoring send has ended or
+been fenced, including transport cleanup. An unused permit closes when it
+loses authority. Both stay charged for a further 60 monotonic seconds. This
+conservative bound can reduce throughput on slow calls. The executor closes
+admission, settles writes, drains evidence and fences senders before unlocking.
+A new owner with prior debits waits a fresh minute for capped dispatch after
+the sender fence. Quota timing stays in memory. Acceptance, certainty and
+retry authorization follow the existing evidence rules independently.
+
 ## PR C production Decisions addition
 
 [Native OpenAI Decisions](openai-decisions.md) now uses the ordinary V4 installed

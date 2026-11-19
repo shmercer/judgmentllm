@@ -432,4 +432,59 @@ stopifnot(sum(vapply(interrupted_evidence$acceptances, function(x) x$acceptance_
 stopifnot(identical(vapply(interrupted_evidence$results, function(x) x$record_sha256, character(1L)), unlist(killed$result_sha256)))
 missing <- cli(c("runs", "status", "--run", "missing", "--store", run$store), 2L)
 stopifnot(missing$error$category == "not_found", missing$status == "error")
+
+# Read each bulk provenance shape from a separate installed CLI process.
+stopifnot(cli(c("runs", "cancel", "--help"))$command == "runs cancel")
+for (kind in c("generative", "decisions")) {
+  directory <- file.path(root, paste0("bulk-", kind))
+  mock <- if (kind == "generative") settings(directory) else character()
+  started <- cli(c("run", "--config", file.path(directory, "config.json"),
+    "--store", file.path(directory, "store"), mock,
+    if (kind == "generative") "--mock-no-retrieval" else character()),
+    if (kind == "generative") 3L else 0L)
+  run <- list(run_id = started$run_id, store = file.path(directory, "store"))
+  selection <- run_arguments(run)
+  state <- cli(c("runs", "status", selection))
+  stopifnot(state$run_id == started$run_id, !isTRUE(state$data$executor_active))
+  if (kind == "generative") {
+    cancelled <- cli(c("runs", "cancel", selection))
+    stopifnot(cancelled$command == "runs cancel", cancelled$run_status == "cancelled")
+    resumed <- cli(c("resume", selection, mock), 3L)
+    stopifnot(resumed$data$results == 2L, resumed$data$attempts == 2L, resumed$data$unresolved_submissions == 0L)
+  } else {
+    resumed <- cli(c("resume", selection))
+    stopifnot(resumed$data$results == 6L, resumed$data$attempts == 2L)
+  }
+  normalized <- cli(c("results", "export", selection))
+  assessment <- records(normalized$artifacts$export)
+  stopifnot(setequal(vapply(assessment, function(x) x$item_id, character(1L)), c("001", "002")))
+  stopifnot(all(vapply(assessment, function(x) x$mode == "bulk_live", logical(1L))))
+  stopifnot(all(vapply(assessment, function(x) length(x$probabilities), integer(1L)) == 3L))
+  r_view <- cli(c("results", "export", selection, "--format", "csv", "--view", "r"))
+  r_rows <- audit(r_view$artifacts$export, "NA")
+  stopifnot(setequal(r_rows$item_id, c("001", "002")), nrow(r_rows) == length(assessment))
+  bundle <- cli(c("results", "provenance", selection))$data
+  companion <- function(name) {
+    entry <- one(bundle$manifest$files, function(f) f$name == name)
+    file.path(dirname(dirname(bundle$manifest_path)), entry$artifact$relative_path)
+  }
+  physical <- records(companion("physical.jsonl"))
+  cells <- audit(companion("physical.csv"), character())
+  stopifnot(length(physical) == 2L, nrow(cells) == 2L)
+  stopifnot(all(vapply(physical, function(x)
+    identical(x$selected_usage$invocation_kind, "managed_bulk_live") &&
+    identical(x$reservation$receipt$requests, 1L) &&
+    is.null(x$reservation$receipt$tokens), logical(1L))))
+  stopifnot(identical(lapply(cells$reservation, jsonlite::fromJSON, simplifyVector = FALSE),
+                      lapply(physical, function(x) x$reservation)))
+  if (kind == "decisions") {
+    questions <- records(companion("questions.jsonl"))
+    stopifnot(length(questions) == 6L)
+    stopifnot(identical(vapply(questions[1:3], function(x) x$question$trait_id, character(1L)),
+                        c("001", "002", "003")))
+  } else {
+    stopifnot(all(vapply(physical, function(x) length(x$members) == 1L &&
+      !is.null(x$members[[1L]]$result_sha256), logical(1L))))
+  }
+}
 cat(sprintf("Installed CLI lifecycle interoperability passed: helper setup %.2fs; lifecycle %.2fs\n", setup_seconds, proc.time()[["elapsed"]] - lifecycle_started))

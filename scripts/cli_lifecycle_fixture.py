@@ -152,6 +152,26 @@ def create(root: Path) -> None:
             )
 
     create_v2(root)
+    for name, original, version in (
+        ("bulk-generative", "recovery-minimal", 2),
+        ("bulk-decisions", "grouped-full", 4),
+    ):
+        source = root / original
+        directory = root / name
+        directory.mkdir()
+        shutil.copyfile(source / "responses.jsonl", directory / "responses.jsonl")
+        config = json.loads((source / "config.json").read_text(encoding="utf-8"))
+        config.update(schema_version=version, output_path=str(directory / "store"))
+        if version == 2:
+            config["execution"]["mode"] = "bulk_live"
+            shutil.copyfile(source / "fixture.json", directory / "fixture.json")
+        else:
+            config["execution"] = {
+                "mode": "bulk_live",
+                "concurrency": 1,
+                "request_grouping": {"mode": "auto", "max_questions_per_request": 3},
+            }
+        document(directory / "config.json", config)
 
 
 def create_v2(root: Path) -> None:

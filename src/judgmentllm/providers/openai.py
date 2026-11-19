@@ -18,12 +18,13 @@ from importlib.metadata import PackageNotFoundError, version
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from judgmentllm._auth import _resolve_credentials
+from judgmentllm._bulk_dispatch import scoring_forward
 from judgmentllm.config import RunSpecification
 from judgmentllm.evidence.usage import (
     InvocationFailureCode,
 )
 from judgmentllm.output_contracts import decode_assessment_output
-from judgmentllm.planning import CapabilityProfile, validate_run
+from judgmentllm.planning import CapabilityProfile, bulk_capabilities, validate_run
 from judgmentllm.preparation.session import RequestDependency
 from judgmentllm.prompts import RenderedAssessmentPrompt
 from judgmentllm.providers.evidence import ProviderEvidence, ProviderObservationContext
@@ -293,7 +294,7 @@ class OpenAIAdapter:
         from judgmentllm.providers.reasoning import generation_capabilities
 
         profile = self.capabilities_for(spec.provider, spec.endpoint, spec.model)
-        return profile.model_copy(
+        return bulk_capabilities(spec, profile).model_copy(
             update={
                 "generation": generation_capabilities(
                     spec, self.transport_context.scope, profile.generation
@@ -308,7 +309,7 @@ class OpenAIAdapter:
             self.model,
         ):
             raise ProviderIntegrityError("OpenAI adapter configuration scope differs")
-        if spec.schema_version != 3 or spec.execution.mode != "live":
+        if spec.schema_version != 3 or spec.execution.mode not in ("live", "bulk_live"):
             raise OpenAIConfigurationError(("schema_version", "execution.mode"))
         if spec.execution.cache_policy not in (None, "auto", "off"):
             raise OpenAIConfigurationError(
@@ -480,32 +481,35 @@ class OpenAIAdapter:
                     raise ProviderIntegrityError(
                         "OpenAI invocation boundary state is unavailable"
                     )
-                state["invoked"] = True
-                adapter.actual_call_count += 1
-                response = await underlying.handle_async_request(request)
-                body = bytearray()
-                try:
-                    async for chunk in response.aiter_bytes():
-                        if len(body) + len(chunk) > _MAX_RESPONSE_BYTES:
-                            raise SubmissionUncertain(
-                                "OpenAI response exceeds the bounded retention limit",
-                                invoked=True,
-                            )
-                        body.extend(chunk)
-                finally:
-                    await response.aclose()
-                state["raw"] = bytes(body)
-                headers = {
-                    key: value
-                    for key, value in response.headers.items()
-                    if key.lower() not in {"content-encoding", "content-length"}
-                }
-                return http.Response(
-                    response.status_code,
-                    content=bytes(body),
-                    headers=headers,
-                    request=request,
-                )
+                with scoring_forward(
+                    prepared, prepared.transport_commitment.identity.submission_id
+                ):
+                    state["invoked"] = True
+                    adapter.actual_call_count += 1
+                    response = await underlying.handle_async_request(request)
+                    body = bytearray()
+                    try:
+                        async for chunk in response.aiter_bytes():
+                            if len(body) + len(chunk) > _MAX_RESPONSE_BYTES:
+                                raise SubmissionUncertain(
+                                    "OpenAI response exceeds the bounded retention limit",
+                                    invoked=True,
+                                )
+                            body.extend(chunk)
+                    finally:
+                        await response.aclose()
+                    state["raw"] = bytes(body)
+                    headers = {
+                        key: value
+                        for key, value in response.headers.items()
+                        if key.lower() not in {"content-encoding", "content-length"}
+                    }
+                    return http.Response(
+                        response.status_code,
+                        content=bytes(body),
+                        headers=headers,
+                        request=request,
+                    )
 
             async def aclose(self) -> None:
                 await underlying.aclose()

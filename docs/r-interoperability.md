@@ -1,5 +1,15 @@
 # R interoperability: explicit audit and analysis views
 
+## Managed bulk-live
+
+Read bulk-live assessment exports through the existing normalized and R audit
+views. The installed CLI lifecycle gate also exercises separate-process run,
+status, cancel, resume and provenance export. It reads both the generative
+physical-attempt companion and the Decisions physical and question companions.
+Read the companion CSV columns as characters and decode each cell with
+`jsonlite::fromJSON`. Reservations identify local debits. Usage belongs to
+the physical attempt even when several assessment rows share it.
+
 ## PR E Gemini Decisions
 
 The strict local Gemini test reads installed CLI JSONL, lossless CSV,

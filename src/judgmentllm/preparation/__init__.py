@@ -347,6 +347,14 @@ def prepare_run(
             spec = _load_run_spec(origin, document_reader=discover_document)
             initial = sig, digest
         profile = _revalidate_record(capabilities) if capabilities else None
+        if spec.execution.mode == "bulk_live":
+            repository.require_bulk_storage()
+            if transport_context is not None and getattr(
+                transport_context, "kind", ""
+            ).endswith(("-candidate-v1", "-qualification-v1")):
+                raise PreparationError(
+                    "bulk-live requires the ordinary production transport"
+                )
         if spec.schema_version == 3 and transport_context is None:
             raise PreparationError(
                 "native-capable preparation requires transport context"

@@ -122,6 +122,10 @@ class Repository:
         if self.connection.execute("PRAGMA user_version").fetchone()[0] != 3:
             raise IntegrityError("Decisions V4 requires a fresh schema-3 store")
 
+    def require_bulk_storage(self) -> None:
+        if self.connection.execute("PRAGMA user_version").fetchone()[0] != 3:
+            raise IntegrityError("Managed bulk-live requires a schema-3 store")
+
     def prepare_evidence_commit(
         self, receipt: EvidenceReceipt
     ) -> VerifiedEvidenceCommit:

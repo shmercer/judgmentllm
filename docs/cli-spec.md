@@ -1,5 +1,26 @@
 # Command-line interface
 
+## Managed bulk-live
+
+`judgmentllm run --config FILE` selects `live` or `bulk_live` from the
+configuration. Bulk-live uses the same scoring requests and route-specific
+controls as live. `execution.bulk_limits.requests_per_minute` is an optional
+positive integer per run. Production routes reject `tokens_per_minute` during
+offline validation because they lack a verified complete token bound.
+
+`resume` uses the original mode and limits. An unresolved attempt needs
+independent reconciliation evidence before retry. `runs cancel --run RUN`
+stops local scheduling for an idle run under its ownership lock. For an
+active foreground run, interrupt its executing process.
+
+`results provenance --run RUN` publishes immutable physical-attempt records
+for bulk-live, including attempts without results. Generative runs publish
+`physical.jsonl` and `physical.csv` with ordered member/result links. Decisions
+retain their question and physical companions. A reservation appears only
+when the snapshot includes both the debit and its registered receipt. CSV
+companion cells contain JSON. Reservations are local scheduling evidence,
+separate from reported usage and cost.
+
 ## PR C production Decisions addition
 
 [Native OpenAI Decisions](openai-decisions.md) now uses the ordinary V4 installed
@@ -480,7 +501,7 @@ remain readable without rewriting their identities or artifacts.
 
 ## Future commands and integrations
 
-Provider integrations, managed bulk-live, native `batch submit/status/collect/cancel`,
+Additional provider integrations, native `batch submit/status/collect/cancel`,
 actual caching controls, and model catalogs remain assigned to later milestones.
 The functional CLI-first `rubricLLM` wrapper arrives in Milestone 6; ordinary R
 workflows need no resident Python process or HTTP server. Optional local-loopback

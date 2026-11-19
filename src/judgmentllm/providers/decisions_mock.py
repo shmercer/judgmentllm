@@ -9,6 +9,7 @@ from typing import Literal, cast
 
 from pydantic import Field
 
+from judgmentllm._bulk_dispatch import scoring_forward
 from judgmentllm.config import (
     RunSpecification,
     RunSpecV4,
@@ -28,7 +29,7 @@ from judgmentllm.persistence.hashing import (
 )
 from judgmentllm.persistence.models import ExecutionModel
 from judgmentllm.persistence.receipts import CompleteResponseEvidenceV1
-from judgmentllm.planning import CapabilityProfile, stable_id
+from judgmentllm.planning import CapabilityProfile, bulk_capabilities, stable_id
 from judgmentllm.providers.evidence import ProviderEvidence, ProviderObservationContext
 from judgmentllm.providers.ledger import (
     AcceptanceRecord,
@@ -155,7 +156,9 @@ class MockDecisionsAdapter:
         )
 
     def capabilities(self, spec: RunSpecification) -> CapabilityProfile:
-        return self.capabilities_for(spec.provider, spec.endpoint, spec.model)
+        return bulk_capabilities(
+            spec, self.capabilities_for(spec.provider, spec.endpoint, spec.model)
+        )
 
     def validate(self, spec: RunSpecification) -> None:
         checked = validate_run_spec(spec)
@@ -336,61 +339,71 @@ class MockDecisionsAdapter:
     async def _receive(
         self, wire: PreparedDecisionsRequestV1, guard: InvocationGuard
     ) -> tuple[ProviderAcknowledgmentV2, ProviderResponse]:
-        guard.enter(wire)
-        self.forward_entries += 1
-        if self.receiver_observer is not None:
-            self.receiver_observer(wire.transport_commitment.identity.submission_id)
-        identity = wire.transport_commitment.identity
-        key = stable_id("local-decisions-observation-v1", identity.submission_id)
-        response = self._response(wire, key)
-        accepted = self.scenario.transport not in {
-            "not_submitted",
-            "transient_not_submitted",
-        }
-        recipe = (
-            ObservationRecipe(
-                fixture_sha256=self._fixture_digest(),
-                outcome="valid",
-                selection_index=0,
-                winner="second",
-                probabilities=True,
-                response_sha256=bytes_digest(response.raw),
+        with scoring_forward(wire, wire.transport_commitment.identity.submission_id):
+            guard.enter(wire)
+            self.forward_entries += 1
+            if self.receiver_observer is not None:
+                self.receiver_observer(wire.transport_commitment.identity.submission_id)
+            identity = wire.transport_commitment.identity
+            key = stable_id("local-decisions-observation-v1", identity.submission_id)
+            response = self._response(wire, key)
+            accepted = self.scenario.transport not in {
+                "not_submitted",
+                "transient_not_submitted",
+            }
+            recipe = (
+                ObservationRecipe(
+                    fixture_sha256=self._fixture_digest(),
+                    outcome="valid",
+                    selection_index=0,
+                    winner="second",
+                    probabilities=True,
+                    response_sha256=bytes_digest(response.raw),
+                )
+                if accepted
+                else None
             )
-            if accepted
-            else None
-        )
-        record = AcceptanceRecord(
-            submission_id=identity.submission_id,
-            correlation_id=identity.correlation_id,
-            payload_sha256=wire.payload_sha256,
-            accepted=accepted,
-            observation_key=key if accepted else None,
-            recipe=recipe,
-            acceptance_count=int(accepted),
-            retrieval_status="available" if accepted else "not_accepted",
-        )
-        pending = asyncio.create_task(
-            asyncio.to_thread(
-                self.ledger.establish,
-                record,
-                service_identity=self.transport_context.service_identity,
+            record = AcceptanceRecord(
+                submission_id=identity.submission_id,
+                correlation_id=identity.correlation_id,
+                payload_sha256=wire.payload_sha256,
+                accepted=accepted,
+                observation_key=key if accepted else None,
+                recipe=recipe,
+                acceptance_count=int(accepted),
+                retrieval_status="available" if accepted else "not_accepted",
             )
+            pending = asyncio.create_task(
+                asyncio.to_thread(
+                    self.ledger.establish,
+                    record,
+                    service_identity=self.transport_context.service_identity,
+                )
+            )
+            try:
+                await asyncio.shield(pending)
+            except asyncio.CancelledError:
+                while not pending.done():
+                    try:
+                        await asyncio.shield(pending)
+                    except asyncio.CancelledError:
+                        continue
+                pending.result()
+                raise
+            if not accepted:
+                if self.scenario.transport == "transient_not_submitted":
+                    raise TransientNotSubmitted()
+                raise TransportNotSubmitted()
+            return self._ack(wire, response), response
+
+    def synthetic_token_bound(
+        self, prepared: PreparedRequest, submission_id: str, correlation_id: str
+    ) -> int:
+        wire = self._wire(prepared, submission_id, correlation_id)
+        response = self._response(
+            wire, stable_id("local-decisions-observation-v1", submission_id)
         )
-        try:
-            await asyncio.shield(pending)
-        except asyncio.CancelledError:
-            while not pending.done():
-                try:
-                    await asyncio.shield(pending)
-                except asyncio.CancelledError:
-                    continue
-            pending.result()
-            raise
-        if not accepted:
-            if self.scenario.transport == "transient_not_submitted":
-                raise TransientNotSubmitted()
-            raise TransportNotSubmitted()
-        return self._ack(wire, response), response
+        return len(wire.payload) + len(response.raw)
 
     async def submit(
         self, prepared: PreparedRequest, *, submission_id: str, correlation_id: str

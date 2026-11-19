@@ -466,10 +466,18 @@ def test_untrusted_runtime_selection_and_frozen_identity_cannot_be_substituted(
     candidate, _, _, _ = wire_for(tmp_path, probe=True, policy="native")
     artifacts = candidate.content_artifacts()
     assert {"native_schema", "sdk_configuration", "format_fragment"} <= set(artifacts)
-    for mode in ("bulk_live", "batch_native"):
-        spec.execution = spec.execution.model_copy(update={"mode": mode})
-        with pytest.raises(ValueError):
-            prepare_production_request(spec, dep, wire.transport_plan.identity, context)
+    spec.execution = spec.execution.model_copy(update={"mode": "bulk_live"})
+    with pytest.raises(ValueError):
+        prepare_production_request(
+            spec,
+            dep,
+            wire.transport_plan.identity,
+            context,
+            frozen=wire.transport_commitment,
+        )
+    spec.execution = spec.execution.model_copy(update={"mode": "batch_native"})
+    with pytest.raises(ValueError):
+        prepare_production_request(spec, dep, wire.transport_plan.identity, context)
 
 
 @pytest.mark.asyncio

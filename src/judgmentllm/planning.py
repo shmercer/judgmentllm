@@ -285,6 +285,53 @@ def _groups(
     return groups
 
 
+_BULK_GENERATIVE_ROUTES = {
+    ("openai", "responses"),
+    ("openai", "chat.completions"),
+    ("anthropic", "messages"),
+    ("gemini", "models.generate_content"),
+    ("vertex", "models.generate_content"),
+}
+
+
+def bulk_execution_issue(spec: RunSpecification) -> ValidationIssue | None:
+    if spec.execution.mode != "bulk_live":
+        return None
+    route = (spec.provider, spec.endpoint)
+    synthetic = route == ("mock", "synthetic")
+    if not (
+        isinstance(spec, RunSpecV4)
+        or isinstance(spec, RunSpecV3)
+        and route in _BULK_GENERATIVE_ROUTES
+        or isinstance(spec, RunSpecV2)
+        and synthetic
+    ):
+        return ValidationIssue(
+            code="unsupported",
+            field="execution.mode",
+            message="bulk_live is unavailable for this RunSpec version or route",
+            severity="error",
+        )
+    limits = spec.execution.bulk_limits
+    if not synthetic and limits is not None and limits.tokens_per_minute is not None:
+        return ValidationIssue(
+            code="unsupported",
+            field="execution.bulk_limits.tokens_per_minute",
+            message="production bulk-live has no verified token bound; use requests_per_minute",
+            severity="error",
+        )
+    return None
+
+
+def bulk_capabilities(
+    spec: RunSpecification, profile: CapabilityProfile
+) -> CapabilityProfile:
+    """Advertise the new mode for a bulk spec without changing historical profiles."""
+    if spec.execution.mode == "bulk_live" and bulk_execution_issue(spec) is None:
+        return profile.model_copy(update={"modes": ("live", "bulk_live")})
+    return profile
+
+
 def validate_run(
     spec: RunSpecification, *, capabilities: CapabilityProfile | None = None
 ) -> ValidationReport:
@@ -292,7 +339,8 @@ def validate_run(
     if isinstance(spec, RunSpecV4):
         checked = validate_run_spec(spec)
         assert isinstance(checked, RunSpecV4)
-        issues = []
+        bulk_issue = bulk_execution_issue(checked)
+        issues = [bulk_issue] if bulk_issue is not None else []
         if (checked.provider, checked.endpoint) == ("openai", "decisions"):
             issues.append(
                 ValidationIssue(
@@ -368,13 +416,13 @@ def validate_run(
         if (
             capabilities is not None
             and capabilities.modes is not None
-            and "live" not in capabilities.modes
+            and checked.execution.mode not in capabilities.modes
         ):
             issues.append(
                 ValidationIssue(
                     code="unsupported",
                     field="execution.mode",
-                    message="live execution is unsupported",
+                    message=f"{checked.execution.mode} execution is unsupported",
                     severity="error",
                 )
             )
@@ -388,11 +436,12 @@ def validate_run(
     ):
         from judgmentllm.providers.mock import MockAdapter
 
-        capabilities = MockAdapter.capabilities_for(
-            spec.provider, spec.endpoint, spec.model
+        capabilities = bulk_capabilities(
+            spec, MockAdapter.capabilities_for(spec.provider, spec.endpoint, spec.model)
         )
     profile = capabilities or CapabilityProfile()
-    issues: list[ValidationIssue] = []
+    bulk_issue = bulk_execution_issue(spec)
+    issues: list[ValidationIssue] = [bulk_issue] if bulk_issue is not None else []
 
     def issue(code: str, field: str, message: str, *, unknown: bool = False) -> None:
         severity: Literal["warning", "error"] = (

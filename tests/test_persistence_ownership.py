@@ -183,7 +183,11 @@ def test_wrong_process_cannot_heartbeat_or_unlock_parent(
 
 @pytest.mark.skipif(not hasattr(os, "fork"), reason="fork inheritance is Unix-specific")
 @pytest.mark.serial
-def test_forked_child_release_does_not_unlock_parent(registry: Repository) -> None:
+def test_forked_child_release_does_not_unlock_parent(
+    registry: Repository,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     fork: Callable[[], int] | None = getattr(os, "fork", None)
     if fork is None:
         pytest.skip("fork inheritance is Unix-specific")
@@ -199,6 +203,9 @@ def test_forked_child_release_does_not_unlock_parent(registry: Repository) -> No
         assert os.waitstatus_to_exitcode(status) == 0
         with pytest.raises(OwnershipError, match="another executor"):
             ExecutorOwnership(registry, "run").acquire()
+    from test_bulk_live_sdk import probe_forked_permit
+
+    probe_forked_permit(tmp_path / "bulk", monkeypatch)
 
 
 def test_database_failure_during_acquire_releases_os_lock(

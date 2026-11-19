@@ -74,7 +74,7 @@ from judgmentllm.persistence.transport_receipts import (
     publish_transport_commitment,
     read_transport_commitment,
 )
-from judgmentllm.planning import CapabilityProfile, stable_id
+from judgmentllm.planning import CapabilityProfile, bulk_execution_issue, stable_id
 from judgmentllm.preparation.capture import SourceBuilder
 from judgmentllm.preparation.freezing import (
     FileSignature,
@@ -358,7 +358,7 @@ class DecisionsPreparedRun(PreparedRun):
             and self.spec.execution.request_grouping.max_questions_per_request > 1
             and self.context().limits.max_questions != 1
             or capabilities.modes is not None
-            and "live" not in capabilities.modes
+            and checked.execution.mode not in capabilities.modes
         ):
             raise PreparationError("current Decisions capabilities are incompatible")
 
@@ -652,6 +652,8 @@ def prepare_decisions_run(
             else _load_run_spec(cast(Path, origin), document_reader=discover)
         )
         assert isinstance(spec, RunSpecV4)
+        if (issue := bulk_execution_issue(spec)) is not None:
+            raise PreparationError(issue.message)
         route = spec.provider, spec.endpoint
         if route in {("openai", "decisions"), TYPESAFE_ROUTE, GEMINI_DECISIONS_ROUTE}:
             if route == GEMINI_DECISIONS_ROUTE:

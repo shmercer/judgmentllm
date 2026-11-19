@@ -460,8 +460,8 @@ class VertexRequestPolicyV1(_TransportModel):
 
 
 def _request_policy(spec: RunSpecV3) -> VertexRequestPolicyV1:
-    if spec.execution.mode != "live":
-        raise ValueError("Vertex batch and managed bulk-live belong to Milestone 5")
+    if spec.execution.mode not in ("live", "bulk_live"):
+        raise ValueError("Vertex native batch is unavailable")
     if spec.execution.tier is not None or spec.execution.cache_policy == "explicit":
         raise ValueError("Vertex AI tier and explicit caching are unavailable")
     return VertexRequestPolicyV1(
@@ -684,6 +684,7 @@ class TransportCommitmentV5(_TransportModel):
     """Safe production receipt, never an authentication or billable-call grant."""
 
     transport_commitment_version: Literal[5] = 5
+    bulk_live: bool = Field(default=False, exclude_if=lambda value: not value)
     transport_protocol: Literal["vertex-production-v1"] = "vertex-production-v1"
     api_scope: Literal["vertex-generate-content-v1beta1-v1"] = (
         "vertex-generate-content-v1beta1-v1"
@@ -755,6 +756,7 @@ class TransportCommitmentV5(_TransportModel):
             if native != (value is not None):
                 raise ValueError("production receipt artifacts differ")
         plan = TransportPlanV1(
+            bulk_live=self.bulk_live,
             identity=self.identity,
             configuration_sha256=self.configuration_sha256,
             dependency_sha256=self.dependency_sha256,
@@ -884,6 +886,7 @@ class PreparedRequestV7(PreparedRequest, _TransportModel):
                 output=output,
                 generation=self.generation,
             )
+            or self.bulk_live != plan.bulk_live
             or plan.identity.request_uid != self.request_uid
             or plan.context_sha256 != output.context_sha256
             or plan.output_commitment_sha256 != output.commitment_sha256
@@ -1032,6 +1035,7 @@ def prepare_production_request(
             generation=spec.generation,
         )
         plan = TransportPlanV1(
+            bulk_live=spec.execution.mode == "bulk_live",
             identity=identity,
             configuration_sha256=semantic_digest("run-configuration", spec),
             dependency_sha256=dependency.dependency_sha256,
@@ -1064,6 +1068,7 @@ def prepare_production_request(
             output_commitment=output,
             transport_plan=plan,
             transport_commitment=receipt,
+            bulk_live=plan.bulk_live,
             rendered_text=rendered.text,
         )
         if (

@@ -1730,6 +1730,26 @@
         "darwin"
       ],
       "reason": "OS paths, SQLite/ownership, real processes, privacy or actual SDK transport"
+    },
+    "tests/test_bulk_live.py": {
+      "domain": "durable-execution",
+      "cost": "process",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Schema-3 debits, cancellation and independently launched capped recovery with durable provenance."
+    },
+    "tests/test_bulk_live_sdk.py": {
+      "domain": "provider-sdk",
+      "cost": "io",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "All pinned scoring transports and both Vertex auth paths through the active-owner permit and shutdown fence."
     }
   },
   "providers": {
@@ -1750,7 +1770,8 @@
       "tests/test_native_schema_privacy.py",
       "tests/test_native_selection.py",
       "tests/test_native_v2_compatibility.py",
-      "tests/test_service_tiers.py"
+      "tests/test_service_tiers.py",
+      "tests/test_bulk_live_sdk.py"
     ],
     "gemini": [
       "tests/test_decisions_installed_parity.py",
@@ -1774,7 +1795,8 @@
       "tests/test_google_response_equivalence.py",
       "tests/test_google_schema.py",
       "tests/test_native_v2.py",
-      "tests/test_service_tiers.py"
+      "tests/test_service_tiers.py",
+      "tests/test_bulk_live_sdk.py"
     ],
     "google": [
       "tests/test_decisions_installed_parity.py",
@@ -1811,7 +1833,8 @@
       "tests/test_vertex_sdk_adapter.py",
       "tests/test_vertex_security.py",
       "tests/test_vertex_shared_boundaries.py",
-      "tests/test_vertex_transport.py"
+      "tests/test_vertex_transport.py",
+      "tests/test_bulk_live_sdk.py"
     ],
     "openai": [
       "tests/test_anthropic_lifecycle.py",
@@ -1843,7 +1866,8 @@
       "tests/test_openai_validation.py",
       "tests/test_service_tier_integrity.py",
       "tests/test_study_integrity.py",
-      "tests/test_vertex_lifecycle.py"
+      "tests/test_vertex_lifecycle.py",
+      "tests/test_bulk_live_sdk.py"
     ],
     "vertex": [
       "tests/test_google_response_equivalence.py",
@@ -1865,7 +1889,8 @@
       "tests/test_vertex_sdk_adapter.py",
       "tests/test_vertex_security.py",
       "tests/test_vertex_shared_boundaries.py",
-      "tests/test_vertex_transport.py"
+      "tests/test_vertex_transport.py",
+      "tests/test_bulk_live_sdk.py"
     ],
     "together": [
       "tests/test_native_other_providers.py",
@@ -1889,7 +1914,8 @@
       "tests/test_decisions_persistence_boundaries.py",
       "tests/test_typesafe_decisions.py",
       "tests/test_typesafe_decisions_processes.py",
-      "tests/test_typesafe_decisions_r.py"
+      "tests/test_typesafe_decisions_r.py",
+      "tests/test_bulk_live_sdk.py"
     ]
   },
   "schema_version": 1,
@@ -2069,7 +2095,10 @@
     "src/judgmentllm/vertex_transport.py",
     "src/judgmentllm/vertex_types.py",
     "src/judgmentllm/vertex_types.pyi",
-    "src/judgmentllm/vertex_usage.py"
+    "src/judgmentllm/vertex_usage.py",
+    "src/judgmentllm/_bulk_dispatch.py",
+    "src/judgmentllm/execution/bulk_provenance.py",
+    "src/judgmentllm/persistence/bulk.py"
   ],
   "smoke": [
     "tests/test_persistence_hashing.py::test_scalar_subclasses_do_not_bypass_canonical_validation",

@@ -103,6 +103,18 @@ class InputSpec(StrictModel):
         return self
 
 
+class BulkLimits(StrictModel):
+    """Optional per-run limits on managed bulk-live submissions."""
+
+    model_config = ConfigDict(frozen=True)
+    requests_per_minute: int | None = Field(
+        default=None, gt=0, exclude_if=lambda value: value is None
+    )
+    tokens_per_minute: int | None = Field(
+        default=None, gt=0, exclude_if=lambda value: value is None
+    )
+
+
 class ExecutionSpec(StrictModel):
     """Structural request configuration; no execution is implemented here."""
 
@@ -124,9 +136,14 @@ class ExecutionSpec(StrictModel):
     )
     tier: str | None = None
     concurrency: int = Field(default=4, gt=0)
+    bulk_limits: BulkLimits | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
     @model_validator(mode="after")
     def validate_group_configuration(self) -> ExecutionSpec:
+        if self.bulk_limits is not None and self.mode != "bulk_live":
+            raise ValueError("execution.bulk_limits requires mode: bulk_live")
         if self.groups is not None and self.grouping != "grouped":
             raise ValueError("execution.groups requires grouping: grouped")
         return self
@@ -473,11 +490,20 @@ class DecisionsExecutionSpecV1(StrictModel):
     request_grouping: RequestGroupingSpecV1 = Field(
         default_factory=lambda: SingleRequestGroupingV1(mode="single")
     )
-    mode: Literal["live"] = "live"
+    mode: Literal["live", "bulk_live"] = "live"
     explanations: Literal[False] = False
     cache_policy: Literal["off"] = "off"
     tier: ID | None = None
     concurrency: int = Field(default=4, gt=0)
+    bulk_limits: BulkLimits | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
+    @model_validator(mode="after")
+    def validate_bulk_limits(self) -> DecisionsExecutionSpecV1:
+        if self.bulk_limits is not None and self.mode != "bulk_live":
+            raise ValueError("execution.bulk_limits requires mode: bulk_live")
+        return self
 
     @field_validator("explanations", mode="before")
     @classmethod

@@ -7,7 +7,7 @@ The event loop holds only bounded queues and a fixed set of provider workers.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable
+from collections.abc import Callable, Coroutine
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import partial
@@ -16,6 +16,7 @@ from typing import ParamSpec, TypeVar
 
 from pydantic import Field
 
+from judgmentllm._bulk_dispatch import BulkDispatch, BulkPermit, QuotaWait, presenting
 from judgmentllm.config import RunSpecification
 from judgmentllm.execution.retry import DEFAULT_RETRY_POLICY, RetryPolicy
 from judgmentllm.execution.session import ExecutionSession as _Session
@@ -51,6 +52,7 @@ class _CancellationWork:
     response: ProviderResponse | None = None
     invoked: bool = False
     rejection_write: asyncio.Future[None] | None = None
+    drained_failure: TransportNotSubmitted | SubmissionUncertain | None = None
 
 
 T = TypeVar("T")
@@ -94,6 +96,8 @@ async def execute_run(
     # the map is bounded by those existing buffers, never the corpus size.
     cancellation_handoff = getattr(adapter, "_received_response_for_cancellation", None)
     cancellation_work: dict[str, _CancellationWork] = {}
+    bulk: BulkDispatch | None = None
+    bulk_drained = False
 
     def initialize() -> _Session:
         created = _Session(run_id, store, adapter, spec, use_frozen_snapshot, fault)
@@ -108,13 +112,13 @@ async def execute_run(
         if holder:
             holder[0].cancel()
 
-    async def drain_pending(pending_cleanup: asyncio.Future[None]) -> None:
+    async def drain_pending(pending_cleanup: asyncio.Future[T]) -> T:
         while not pending_cleanup.done():
             try:
                 await asyncio.shield(pending_cleanup)
             except asyncio.CancelledError:
                 continue
-        pending_cleanup.result()
+        return pending_cleanup.result()
 
     async def drain(function: Callable[[], None]) -> None:
         # Queue cleanup behind initialization and durable writes on the owned thread.
@@ -128,7 +132,7 @@ async def execute_run(
         If durable storage itself failed, keep the original worker error while
         attempting independent retained work where possible.
         """
-        if not holder or cancellation_handoff is None:
+        if not holder or (cancellation_handoff is None and bulk is None):
             return
         session = holder[0]
         for submission_id, retained in tuple(cancellation_work.items()):
@@ -142,6 +146,37 @@ async def execute_run(
         for retained in tuple(cancellation_work.values()):
             try:
                 work = retained.work
+                failure = retained.drained_failure
+                if isinstance(failure, TransportNotSubmitted):
+                    reject = (
+                        failure.rejection
+                        if isinstance(
+                            failure,
+                            (TypeSafeRequestRejected, GeminiDecisionsRequestRejected),
+                        )
+                        else None
+                    )
+                    await drain(
+                        partial(
+                            session.not_submitted,
+                            work,
+                            invoked=retained.invoked,
+                            usage=failure.usage,
+                            diagnostic_code=failure.diagnostic_code,
+                            rejection=reject,
+                        )
+                    )
+                    continue
+                if isinstance(failure, SubmissionUncertain):
+                    await drain(
+                        partial(
+                            session.uncertain,
+                            work,
+                            invoked=retained.invoked,
+                            usage=failure.usage,
+                        )
+                    )
+                    continue
                 response = retained.response
                 ack_handoff = getattr(
                     adapter, "_received_acknowledgment_for_cancellation", None
@@ -154,10 +189,32 @@ async def execute_run(
                     )
                     retained.invoked |= retained.acknowledgment is not None
                 if response is None and retained.acknowledgment is not None:
-                    response = cancellation_handoff(
-                        work.prepared,
-                        submission_id=work.submission_id,
-                        correlation_id=work.correlation_id,
+                    if cancellation_handoff is not None:
+                        response = cancellation_handoff(
+                            work.prepared,
+                            submission_id=work.submission_id,
+                            correlation_id=work.correlation_id,
+                        )
+                    elif bulk is not None:
+                        try:
+                            response = await adapter.retrieve(
+                                work.prepared,
+                                submission_id=work.submission_id,
+                                correlation_id=work.correlation_id,
+                            )
+                        except RetrievalUnavailable:
+                            pass
+                if response is not None and retained.acknowledgment is not None:
+                    if (
+                        response.observation_key
+                        != retained.acknowledgment.observation_key
+                    ):
+                        raise IntegrityError(
+                            "drained response differs from acknowledgment"
+                        )
+                elif bulk is not None and retained.acknowledgment is not None:
+                    await drain(
+                        partial(session.acknowledge, work, retained.acknowledgment)
                     )
                 await drain(
                     partial(
@@ -173,8 +230,67 @@ async def execute_run(
                     raise
         cancellation_work.clear()
 
+    async def settle_bulk() -> None:
+        nonlocal bulk_drained
+        if bulk is not None and not bulk_drained:
+            bulk.stop()
+            await drain(lambda: None)
+            await drain_pending(asyncio.create_task(bulk.drain()))
+            bulk_drained = True
+
+    async def submit_bulk(
+        permit: BulkPermit, retained: _CancellationWork
+    ) -> ProviderAcknowledgment:
+        work = retained.work
+        with presenting(permit):
+            if not permit.owner.open:
+                raise asyncio.CancelledError
+            flight = asyncio.create_task(
+                adapter.submit(
+                    work.prepared,
+                    submission_id=work.submission_id,
+                    correlation_id=work.correlation_id,
+                )
+            )
+            try:
+                return await asyncio.shield(flight)
+            except asyncio.CancelledError:
+                permit.owner.stop()
+                if not permit.used and not flight.done():
+                    flight.cancel()
+                try:
+                    retained.acknowledgment = await drain_pending(flight)
+                except (
+                    TypeSafeRejectionCancelled,
+                    GeminiDecisionsRejectionCancelled,
+                ) as exc:
+                    retained.drained_failure = exc.rejection
+                except (TransportNotSubmitted, SubmissionUncertain) as exc:
+                    retained.drained_failure = exc
+                except Exception:
+                    # Preserve the initiating failure. The owned debit remains unresolved.
+                    pass
+                except asyncio.CancelledError:
+                    pass
+                retained.invoked = permit.used
+                worker_task = asyncio.current_task()
+                if (
+                    worker_task is not None
+                    and not worker_task.cancelling()
+                    and execution_task is not None
+                    and not execution_task.cancelling()
+                ):
+                    execution_task.cancel()
+                raise
+
     try:
         session = await call(initialize)
+        if session.bulk_live:
+            bulk = BulkDispatch(
+                session.token,
+                session.spec.execution.bulk_limits,
+                prior_debits=session.prior_debits,
+            )
         session.retry_policy = retry_policy
         count = session.concurrency
         pending: asyncio.Queue[_Work | None] = asyncio.Queue(maxsize=2 * count)
@@ -224,18 +340,33 @@ async def execute_run(
             while (work := await pending.get()) is not None:
                 retained = (
                     _CancellationWork(work)
-                    if cancellation_handoff is not None
+                    if cancellation_handoff is not None or bulk is not None
                     else None
                 )
                 if retained is not None:
                     cancellation_work[work.submission_id] = retained
+                permit = None
                 try:
-                    if await call(session.boundary, work):
-                        acknowledgment = await adapter.submit(
-                            work.prepared,
-                            submission_id=work.submission_id,
-                            correlation_id=work.correlation_id,
-                        )
+                    if bulk is None:
+                        admitted = await call(session.boundary, work)
+                    else:
+                        while True:
+                            changed = bulk.changed
+                            admitted = await call(session.boundary, work, bulk)
+                            if not isinstance(admitted, QuotaWait):
+                                break
+                            await bulk.wait(admitted, changed)
+                    if admitted:
+                        if isinstance(admitted, BulkPermit):
+                            assert retained is not None
+                            permit = admitted
+                            acknowledgment = await submit_bulk(permit, retained)
+                        else:
+                            acknowledgment = await adapter.submit(
+                                work.prepared,
+                                submission_id=work.submission_id,
+                                correlation_id=work.correlation_id,
+                            )
                         if retained is not None:
                             retained.acknowledgment = acknowledgment
                             retained.invoked = True
@@ -331,7 +462,7 @@ async def execute_run(
                     await call(
                         session.not_submitted,
                         work,
-                        invoked=True,
+                        invoked=permit.used if permit is not None else True,
                         transient=True,
                         retry_after=exc.retry_after,
                         usage=exc.usage,
@@ -345,7 +476,7 @@ async def execute_run(
                     await call(
                         session.not_submitted,
                         work,
-                        invoked=True,
+                        invoked=permit.used if permit is not None else True,
                         usage=exc.usage,
                         diagnostic_code=exc.diagnostic_code,
                     )
@@ -370,12 +501,22 @@ async def execute_run(
                     await call(session.process, *item)
                     cancellation_work.pop(item[0].submission_id, None)
 
+        async def stop_on_failure(
+            operation: Callable[[], Coroutine[None, None, None]],
+        ) -> None:
+            try:
+                await operation()
+            except BaseException:
+                if bulk is not None:
+                    bulk.stop()
+                raise
+
         while True:
             async with asyncio.TaskGroup() as group:
-                group.create_task(produce())
-                group.create_task(consume())
+                group.create_task(stop_on_failure(produce))
+                group.create_task(stop_on_failure(consume))
                 for _ in range(count):
-                    group.create_task(worker())
+                    group.create_task(stop_on_failure(worker))
             delay = await call(session.retry_delay)
             if delay is None:
                 break
@@ -390,19 +531,30 @@ async def execute_run(
             result_queue_high_water=result_high,
         )
     except asyncio.CancelledError:
-        await retain_known_work()
+        await settle_bulk()
+        await drain_pending(asyncio.create_task(retain_known_work()))
         await drain(cancel)
         raise
     except ExceptionGroup:
         # Ordinary worker errors also cancel sibling SDK calls. Preserve their
         # established evidence without changing the original failure into a
         # successful report or classifying the run as caller-cancelled.
-        await retain_known_work(preserve_original_error=True)
+        await settle_bulk()
+        await drain_pending(
+            asyncio.create_task(retain_known_work(preserve_original_error=True))
+        )
         raise
     finally:
-        # Queued behind any initialization/in-flight write on the same thread.
-        await drain(close)
-        io.shutdown(wait=True, cancel_futures=True)
+        await settle_bulk()
+        try:
+            if bulk is not None:
+                from judgmentllm.lifecycle import _close_adapter  # pyright: ignore[reportPrivateUsage]
+
+                await drain_pending(asyncio.create_task(_close_adapter(adapter)))
+        finally:
+            # All possible scoring sends have ended or are fenced before unlock.
+            await drain(close)
+            io.shutdown(wait=True, cancel_futures=True)
 
 
 async def recover_run(
