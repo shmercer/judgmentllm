@@ -1438,7 +1438,9 @@
     "tests/test_openai_explicit_cache.py": {
       "test_advisory_iteration_failure_does_not_fail_plain_preview": {"": []},
       "test_advisory_never_changes_wire_or_receipt": {"[borderline]": [], "[count-fault]": [], "[disagreement]": [], "[near-minimum]": [], "[short-then-long]": [], "[unknown]": []},
+      "test_advisory_skips_an_incompatible_transport_receipt": {"": []},
       "test_companion_bounds_and_canonical_encoding": {"": []},
+      "test_explicit_preview_pricing_guidance_is_redacted_and_display_only": {"": []},
       "test_failed_changed_subset_leaves_no_new_intent": {"": []},
       "test_four_markers_and_damaged_rank_file": {"": []},
       "test_full_capture_replay_uses_exact_seal_without_estimator": {"[layout]": [], "[missing-sdk]": [], "[none]": [], "[wrong-sdk]": []},

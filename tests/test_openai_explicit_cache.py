@@ -14,7 +14,7 @@ import httpx2
 import pytest
 from durable_evidence_fixture import specification
 from native_transport_fixture import context_for
-from test_openai_lifecycle import envelope
+from test_openai_lifecycle import envelope, production_spec
 from typer.testing import CliRunner
 
 from judgmentllm import (
@@ -23,7 +23,7 @@ from judgmentllm import (
     production_prompts,
     production_transport,
 )
-from judgmentllm.cache_policy import validate_openai_explicit_scope
+from judgmentllm.cache_policy import CacheBreakpoint, validate_openai_explicit_scope
 from judgmentllm.cli import app
 from judgmentllm.config import RunSpecV3, load_run_spec
 from judgmentllm.output_contracts import RubricOutputContract, wire_winner_ids
@@ -39,11 +39,12 @@ from judgmentllm.planning import PlannedRequest
 from judgmentllm.preparation import PreparedRun, open_prepared_run, prepare_run
 from judgmentllm.preparation.freezing import PreparationError
 from judgmentllm.production_transport import (
+    ExplicitCacheLayoutV1,
     PreparedRequestV4,
     TransportCommitmentV2,
     production_context,
 )
-from judgmentllm.prompts import PromptError
+from judgmentllm.prompts import PromptError, _ProtectedSpan
 from judgmentllm.providers import openai
 from judgmentllm.results import PairwiseResult, RubricResult
 from judgmentllm.transport import TransportIntegrityError
@@ -675,6 +676,70 @@ def test_advisory_iteration_failure_does_not_fail_plain_preview(
     assert selected.stderr == "Error: Invalid configuration or prompt selection.\n"
 
 
+def test_explicit_preview_pricing_guidance_is_redacted_and_display_only(
+    tmp_path: Path,
+) -> None:
+    config = _config(tmp_path)
+    args = ["templates", "preview", "--config", str(config)]
+    plain = CliRunner().invoke(app, args, catch_exceptions=False)
+    assert plain.exit_code == 0 and plain.stderr == ""
+    report = json.loads(plain.stdout)
+    assert report.pop("schema_version") == 1
+    assert report == _cli(args)["data"]
+    assert report["requests"]
+    assert report["pricing_guidance"] == (
+        "Cached reads use the cached-input rate. New cache writes can be charged "
+        "even without a later hit. Cost is unknown without complete, consistent "
+        "provider usage and applicable model and tier rates."
+    )
+    assert all(
+        value not in json.dumps(report, ensure_ascii=False)
+        for value in (*_STUDENTS, *_IDS, _EXEMPLAR, _METADATA)
+    )
+    plan = _cli(["plan", "--config", str(config)])["data"]
+    assert "pricing_guidance" not in plan["cache_advisory"]
+
+
+def test_advisory_skips_an_incompatible_transport_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    off = production_spec(
+        tmp_path / "off-sources", capture="minimal", explanations=False
+    )
+    with prepare_run(
+        off,
+        store=tmp_path / "off",
+        run_id=_RUN_ID,
+        capabilities=openai.OpenAIAdapter(off.endpoint, off.model).capabilities(off),
+        transport_context=production_context(off),
+    ) as uncached:
+        attempt = next(uncached.repository.iter_attempts(_RUN_ID))
+        off_receipt = uncached.transport_for_attempt(attempt.attempt_id)
+    assert isinstance(off_receipt, TransportCommitmentV2)
+    assert off_receipt.explicit_cache is None
+
+    with _prepare(_config(tmp_path), tmp_path / "run") as prepared:
+        expected = cache_advisory.cache_advisory_report(prepared)
+        assert expected is not None and len(expected.requests) == 2
+        first = next(prepared.repository.iter_attempts(_RUN_ID))
+        read_receipt = prepared.transport_for_attempt
+
+        def misrouted(attempt_id: str):
+            return (
+                off_receipt
+                if attempt_id == first.attempt_id
+                else read_receipt(attempt_id)
+            )
+
+        with monkeypatch.context() as advisory:
+            advisory.setattr(prepared, "transport_for_attempt", misrouted)
+            report = cache_advisory.cache_advisory_report(prepared)
+        assert report == expected.model_copy(
+            update={"requests": expected.requests[1:], "truncated": True}
+        )
+        assert cache_advisory.cache_advisory_report(prepared) == expected
+
+
 def test_wire_rejects_damaged_cache_layout_and_scope(tmp_path: Path) -> None:
     with _prepare(_config(tmp_path), tmp_path / "run") as prepared:
         wire = _frozen_wires(prepared)[0]
@@ -983,6 +1048,15 @@ def test_failed_changed_subset_leaves_no_new_intent(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     config = _config(tmp_path)
+    instructions = "{{ rubric }}\n{{ exemplars }}\n{{ output_instructions }}"
+    response = "{{ response }}"
+    valid_template = f"{instructions}\n{response}\n"
+    template_file = config.with_name("custom.jinja")
+    template_file.write_text(valid_template, encoding="utf-8")
+    document = json.loads(config.read_text(encoding="utf-8"))
+    document["prompt"]["file"] = str(template_file)
+    config.write_text(json.dumps(document), encoding="utf-8")
+
     spec = load_run_spec(config)
     assert isinstance(spec, RunSpecV3)
     store = tmp_path / "run"
@@ -997,9 +1071,19 @@ def test_failed_changed_subset_leaves_no_new_intent(
         ]
         directory = repo.run_directory(_RUN_ID)
     assert isinstance(failed, RubricResult)
-    files = {path.name for path in (directory / "transports").iterdir()}
+
+    def receipt_files() -> set[Path]:
+        return {
+            path.relative_to(directory)
+            for name in ("transports", "cache-advisories")
+            for path in (directory / name).iterdir()
+        }
+
+    files = receipt_files()
     original_render = production_prompts._render_text_v3
-    changed: list[tuple[str, ...]] = []
+    original_layout = production_prompts._cache_layout
+    changed: list[str] = []
+    layout_failures: list[str] = []
 
     def misplaced(
         spec: RunSpecV3,
@@ -1009,9 +1093,28 @@ def test_failed_changed_subset_leaves_no_new_intent(
         **kwargs: Any,
     ) -> str:
         if request.trait_ids == (failed.trait_id,):
-            changed.append(request.trait_ids)
-            template = "{{ response }}\n{{ rubric }}\n{{ exemplars }}\n{{ output_instructions }}"
+            assert template == valid_template
+            assert tuple(task.task_id for task in request.tasks) == (failed.task_id,)
+            changed.append(request.request_uid)
+            template = f"{response}\n{instructions}\n"
         return original_render(spec, template, request, *args, **kwargs)
+
+    def observe_layout(
+        text: str, spans: list[_ProtectedSpan], selectors: tuple[CacheBreakpoint, ...]
+    ) -> ExplicitCacheLayoutV1:
+        try:
+            return original_layout(text, spans, selectors)
+        except PromptError as error:
+            student = next(span for span in spans if span.kind == "response")
+            assessment_end = max(
+                span.end
+                for span in spans
+                if span.kind in {"rubric", "trait", "criterion"}
+            )
+            assert selectors[0].after == "assessment"
+            assert 0 <= student.start < assessment_end < len(text.encode("utf-8"))
+            layout_failures.append(str(error))
+            raise
 
     retry = [
         "resume",
@@ -1025,13 +1128,18 @@ def test_failed_changed_subset_leaves_no_new_intent(
     ]
     with monkeypatch.context() as invalid:
         invalid.setattr(production_prompts, "_render_text_v3", misplaced)
+        invalid.setattr(production_prompts, "_cache_layout", observe_layout)
         _cli(retry, expected=2)
-    assert changed == [(failed.trait_id,)]
+    assert changed == [failed.request_uid]
+    assert layout_failures == [
+        "Cache breakpoint is out of order or crosses student input."
+    ]
     assert len(calls) == 2 and _seal(store, spec) == before
     after = lifecycle.get_run(_RUN_ID, store=store)
     assert after.retry_operations == before_status.retry_operations == 0
     assert after.submission_certainty == before_status.submission_certainty
-    assert {path.name for path in (directory / "transports").iterdir()} == files
+    assert receipt_files() == files
+    assert template_file.read_text(encoding="utf-8") == valid_template
 
     def unavailable() -> cache_advisory.Estimator:
         raise OSError("private retry-estimator initialization failure")

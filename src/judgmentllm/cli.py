@@ -93,6 +93,14 @@ def templates_init(
     typer.echo(str(output))
 
 
+class _CachePreviewReport(CacheAdvisoryReport):
+    pricing_guidance: str = (
+        "Cached reads use the cached-input rate. New cache writes can be charged "
+        "even without a later hit. Cost is unknown without complete, consistent "
+        "provider usage and applicable model and tier rates."
+    )
+
+
 @templates_app.command("preview")
 def templates_preview(
     config: Annotated[Path, typer.Option(help="YAML/JSON run configuration.")],
@@ -118,7 +126,7 @@ def templates_preview(
             RenderedAssessmentPrompt
             | RenderedProductionPromptV1
             | RenderedDecisionsPreviewV1
-            | CacheAdvisoryReport
+            | _CachePreviewReport
         ):
             spec = load_run_spec(config)
             rendered = preview_prompt(
@@ -130,6 +138,8 @@ def templates_preview(
                         issue.code,
                         "Review the prompt preflight diagnostics; no provider qualification was inferred.",
                     )
+            if isinstance(rendered, CacheAdvisoryReport):
+                return _CachePreviewReport.model_validate(rendered.model_dump())
             return rendered
 
         perform(operation)
@@ -144,7 +154,8 @@ def templates_preview(
             if issue.severity == "warning":
                 typer.echo(f"Warning [{issue.code}]: {issue.message}", err=True)
         if isinstance(rendered, CacheAdvisoryReport):
-            typer.echo(rendered.model_dump_json(indent=2))
+            report = _CachePreviewReport.model_validate(rendered.model_dump())
+            typer.echo(report.model_dump_json(indent=2))
         elif isinstance(spec, (RunSpecV2, RunSpecV3)):
             typer.echo(rendered.text.encode("utf-8"), nl=False)
         else:

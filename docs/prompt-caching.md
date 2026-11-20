@@ -109,10 +109,12 @@ eligibility, acceptance and cache activity require provider evidence.
 
 Preview the candidate with `templates preview --config … --json` and omit
 item, trait and pair selectors. The report contains ordinal coordinates, anchor
-kinds, prefix sizes and hashes, estimator provenance and warning codes. It never
-prints the prompt, exemplar IDs, student IDs or student text. `validate` and
-`plan` expose the same optional report. The first 100 requests are shown with
-the total and truncation flag.
+kinds, prefix sizes and hashes, estimator provenance and warning codes. Both
+preview formats include `pricing_guidance` about cached reads, chargeable
+writes and when cost remains unknown. The report omits the prompt, exemplar
+IDs, student IDs and student text. `validate` and `plan` expose optional
+marker diagnostics. The first 100 requests are shown with the total and
+truncation flag.
 
 Companion diagnostics are best effort at
 `cache-advisories/<transport-commitment-sha256>.json` inside the run directory.
