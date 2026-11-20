@@ -19,7 +19,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 
 from judgmentllm._auth import _resolve_credentials
 from judgmentllm._bulk_dispatch import scoring_forward
-from judgmentllm.config import RunSpecification
+from judgmentllm.config import RunSpecification, RunSpecV3
 from judgmentllm.evidence.usage import (
     InvocationFailureCode,
 )
@@ -107,6 +107,11 @@ class OpenAIConfigurationError(ProviderError):
             + ", ".join(selected)
             + "; revise these settings or obtain reviewed exact-scope evidence"
         )
+
+
+def _require_explicit_cache_authority() -> None:
+    """Issue #57 has an offline candidate and no serving authority."""
+    raise OpenAIConfigurationError(("execution.cache_policy",))
 
 
 class OpenAIReadinessError(ProviderError):
@@ -284,6 +289,10 @@ class OpenAIAdapter:
         )
 
     def capabilities(self, spec: RunSpecification) -> CapabilityProfile:
+        if spec.cache_policy_version == 3 and isinstance(spec, RunSpecV3):
+            from judgmentllm.production_transport import cache_candidate_capabilities
+
+            return cache_candidate_capabilities(spec, self.transport_context.scope)
         if self.transport_context.kind == "openai-study-candidate-v1":
             from judgmentllm.study.admission import guarded_capabilities
 
@@ -311,7 +320,9 @@ class OpenAIAdapter:
             raise ProviderIntegrityError("OpenAI adapter configuration scope differs")
         if spec.schema_version != 3 or spec.execution.mode not in ("live", "bulk_live"):
             raise OpenAIConfigurationError(("schema_version", "execution.mode"))
-        if spec.execution.cache_policy not in (None, "auto", "off"):
+        if spec.cache_policy_version == 3:
+            _require_explicit_cache_authority()
+        elif spec.execution.cache_policy not in (None, "auto", "off"):
             raise OpenAIConfigurationError(
                 tuple(
                     field
@@ -473,6 +484,8 @@ class OpenAIAdapter:
                     else float(policy.read_timeout_seconds),
                 }
                 adapter.serialization_seconds += time.perf_counter() - started
+                if prepared.transport_commitment.explicit_cache is not None:
+                    _require_explicit_cache_authority()
                 adapter._check_authority()
                 if adapter._submission_guard is not None:
                     adapter._submission_guard(prepared)
@@ -544,6 +557,8 @@ class OpenAIAdapter:
                 "OpenAI submission requires its sealed production request"
             )
         prepared = PreparedRequestV4.model_validate(dict(prepared))
+        if prepared.transport_commitment.explicit_cache is not None:
+            _require_explicit_cache_authority()
         from judgmentllm.production_transport import production_context_digest
 
         if (
@@ -594,6 +609,8 @@ class OpenAIAdapter:
             raise ProviderInvocationCancelled(
                 invoked=invocation_state["invoked"]
             ) from None
+        except OpenAIConfigurationError:
+            raise
         except Exception as error:
             if isinstance(
                 error,

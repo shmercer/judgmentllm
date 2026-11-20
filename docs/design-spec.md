@@ -190,7 +190,7 @@ No provider-specific details should leak into normalized assessment interpretati
 
 - New rubric and pairwise runs default to `off`. New policies are `off` and `explicit`; `auto` is historical-only and rejected in new configurations.
 - Supported exact OpenAI routes send explicit-only cache mode with no breakpoints to disable reads/writes. Unsupported scopes fail preflight. Anthropic omits cache controls; Gemini cannot disable provider-managed implicit caching and reports that limitation.
-- `explicit` remains unsupported until the separate semantic-breakpoint feature. [Cache revision 2](prompt-caching.md) preserves historical sealed payloads and records reported cache usage without inferred costs.
+- The explicit-cache offline candidate seals one to four semantic boundaries for exact Luna Responses Standard live with native output. It verifies protected prefixes across physical requests and reports advisory estimates separately. Provider execution requires separate qualification. [Versioned cache policy](prompt-caching.md)
 - Credential secrets, response IDs and private student content must not be embedded into user-visible cache keys. Document per-provider data retention and caching caveats.
 
 ## 9. Submission modes, priorities and retries

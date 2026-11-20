@@ -59,8 +59,15 @@ OpenAI model scopes on each endpoint use explicit-only wire mode with zero
 breakpoints. Unknown routes fail safely. Gemini's inability to disable implicit
 caching is a nonblocking preflight warning. Reported OpenAI cache writes use
 additive usage semantics 2, preserving missing values and all historical bytes.
-See [cache policy and migration](prompt-caching.md). Explicit semantic breakpoints
-remain Issue #57; no live execution or qualification promotion is included.
+See [cache policy and migration](prompt-caching.md).
+
+## Issue #57 offline cache candidate
+
+Seal explicit semantic markers as cache revision 3 for exact
+Luna Responses Standard live with native output and SDK 3.42.1. The
+documented 30-minute default minimum applies. Optional redacted prefix estimates
+are independent of admission, wire and recovery. Provider submission stays
+blocked pending separate qualification. [Cache policy and diagnostics](prompt-caching.md)
 
 ## PR #50 review: explicit sampling and reviewed bounds
 
@@ -86,7 +93,7 @@ Reasoning syntax never upgrades an existing reviewed restriction.
 | Exemplars | Zero to many; IDs, text and optional trait/level scores, rationales, annotations; no automatic dropping/selection; warn/error on context overflow or unknown limit |
 | Prompts | Fully editable text prompts with accessible placeholders; advanced Jinja2 opt-in; no arbitrary JSON API requests |
 | Pairwise | Forced winner default, optional ties where compatible, repetitions and presentation-reversal audits, optional explanations when available |
-| Cache | New runs default off for both tasks; `off` or currently unsupported `explicit`. Historical auto/off retain sealed revision-1 semantics; see [cache policy](prompt-caching.md). |
+| Cache | New runs default off for both tasks. Explicit semantic markers have an offline candidate. Historical auto/off retain sealed revision-1 semantics. [Cache policy](prompt-caching.md) |
 | Execution | Live (provider tiers where supported), native Batch (where supported), and managed bulk-live; no unapproved fallback in model/tier |
 | Generation | Optional strict RunSpec generation controls, separate from execution and pairing seed; preserve omission, validate exact model/endpoint capabilities, commit requested values for reproducibility |
 | Scale | Design for 100,000 response input, hundreds of traits, thousands of stored exemplars; do not hold entire work in RAM |

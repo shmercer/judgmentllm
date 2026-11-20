@@ -1435,6 +1435,28 @@
       "test_one_sdk_read_authentication_status": {"[200-authentication_accepted]": [], "[401-credentials_rejected]": [], "[403-permission_denied]": [], "[429-rate_limited]": [], "[500-network_unavailable]": [], "[503-network_unavailable]": []},
       "test_sync_diagnostics_and_cli_envelope": {"": []}
     },
+    "tests/test_openai_explicit_cache.py": {
+      "test_advisory_iteration_failure_does_not_fail_plain_preview": {"": []},
+      "test_advisory_never_changes_wire_or_receipt": {"[borderline]": [], "[count-fault]": [], "[disagreement]": [], "[near-minimum]": [], "[short-then-long]": [], "[unknown]": []},
+      "test_advisory_skips_an_incompatible_transport_receipt": {"": []},
+      "test_companion_bounds_and_canonical_encoding": {"": []},
+      "test_explicit_preview_pricing_guidance_is_redacted_and_display_only": {"": []},
+      "test_failed_changed_subset_leaves_no_new_intent": {"": []},
+      "test_four_markers_and_damaged_rank_file": {"": []},
+      "test_full_capture_replay_uses_exact_seal_without_estimator": {"[layout]": [], "[missing-sdk]": [], "[none]": [], "[wrong-sdk]": []},
+      "test_installed_sdk_mismatch_and_actual_authority_deny": {"": []},
+      "test_legacy_plain_preview_rethrows_explicit_cache_error": {"": []},
+      "test_local_rank_faults_return_no_estimate": {"[broken-ranks-asset_invalid]": [], "[missing-asset_unavailable]": [], "[missing-tokenizer-tokenizer_unavailable]": [], "[unreadable-asset_unavailable]": [], "[wrong-version-tokenizer_incompatible]": []},
+      "test_local_synthetic_ranks_produce_ready_preview_estimates": {"": []},
+      "test_network_guard_limits_connect_to_stdlib_socketpair": {"": []},
+      "test_optional_companion_faults_across_public_preflight_submit_and_resume": {"[corrupt]": [], "[missing]": [], "[unreadable]": [], "[write]": []},
+      "test_outside_exact_tuple_fails_preflight": {"[endpoint-chat.completions]": [], "[endpoint-decisions]": [], "[execution.cache_policy-auto]": [], "[execution.cache_policy-off]": [], "[execution.mode-batch_native]": [], "[execution.mode-bulk_live]": [], "[execution.tier-flex]": [], "[model-gpt-6.1-terra]": [], "[prompt.advanced-True]": [], "[prompt.cache_breakpoints-value11]": [], "[prompt.cache_breakpoints-value12]": [], "[prompt.cache_breakpoints-value13]": [], "[prompt.cache_breakpoints-value14]": [], "[prompt.cache_ttl-2h]": [], "[prompt.structured_output-auto]": [], "[provider-anthropic]": [], "[provider-gemini]": []},
+      "test_provider_rejection_and_ambiguous_submission_do_not_retry": {"[400-0]": [], "[500-2]": []},
+      "test_reversal_native_parity_and_exports": {"": []},
+      "test_sdk_final_transport_guard_denies_explicit_send": {"": []},
+      "test_unsafe_structures_fail_before_required_seal": {"[cohort]": [], "[duplicate]": [], "[missing]": [], "[order]": [], "[student]": []},
+      "test_wire_rejects_damaged_cache_layout_and_scope": {"": []}
+    },
     "tests/test_openai_invalid_utf8.py": {
       "test_escaped_surrogate_and_empty_text_do_not_lose_observation": {"[ \\t\\n-full-chat.completions]": [], "[ \\t\\n-full-responses]": [], "[ \\t\\n-minimal-chat.completions]": [], "[ \\t\\n-minimal-responses]": [], "[-full-chat.completions]": [], "[-full-responses]": [], "[-minimal-chat.completions]": [], "[-minimal-responses]": [], "[\\ud800-full-chat.completions]": [], "[\\ud800-full-responses]": [], "[\\ud800-minimal-chat.completions]": [], "[\\ud800-minimal-responses]": [], "[\\udfff-full-chat.completions]": [], "[\\udfff-full-responses]": [], "[\\udfff-minimal-chat.completions]": [], "[\\udfff-minimal-responses]": []}
     },

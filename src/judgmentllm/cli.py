@@ -9,6 +9,7 @@ from judgmentllm import __version__
 from judgmentllm._auth import _select_providers  # pyright: ignore[reportPrivateUsage]
 from judgmentllm._lifecycle_store import load_resume_spec
 from judgmentllm.auth import credential_status
+from judgmentllm.cache_advisory import CacheAdvisoryReport
 from judgmentllm.cli_controls import (
     LifecycleGroup,
     _AuthStatusReport,  # pyright: ignore[reportPrivateUsage]
@@ -92,6 +93,14 @@ def templates_init(
     typer.echo(str(output))
 
 
+class _CachePreviewReport(CacheAdvisoryReport):
+    pricing_guidance: str = (
+        "Cached reads use the cached-input rate. New cache writes can be charged "
+        "even without a later hit. Cost is unknown without complete, consistent "
+        "provider usage and applicable model and tier rates."
+    )
+
+
 @templates_app.command("preview")
 def templates_preview(
     config: Annotated[Path, typer.Option(help="YAML/JSON run configuration.")],
@@ -110,13 +119,14 @@ def templates_preview(
         ),
     ] = False,
 ) -> None:
-    """Print one complete prompt locally; no credentials or provider calls."""
+    """Print an offline prompt or the redacted explicit-cache report."""
     if json_output:
 
         def operation() -> (
             RenderedAssessmentPrompt
             | RenderedProductionPromptV1
             | RenderedDecisionsPreviewV1
+            | _CachePreviewReport
         ):
             spec = load_run_spec(config)
             rendered = preview_prompt(
@@ -128,6 +138,8 @@ def templates_preview(
                         issue.code,
                         "Review the prompt preflight diagnostics; no provider qualification was inferred.",
                     )
+            if isinstance(rendered, CacheAdvisoryReport):
+                return _CachePreviewReport.model_validate(rendered.model_dump())
             return rendered
 
         perform(operation)
@@ -141,10 +153,18 @@ def templates_preview(
         for issue in validate_run(spec).issues:
             if issue.severity == "warning":
                 typer.echo(f"Warning [{issue.code}]: {issue.message}", err=True)
-        if isinstance(spec, (RunSpecV2, RunSpecV3)):
+        if isinstance(rendered, CacheAdvisoryReport):
+            report = _CachePreviewReport.model_validate(rendered.model_dump())
+            typer.echo(report.model_dump_json(indent=2))
+        elif isinstance(spec, (RunSpecV2, RunSpecV3)):
             typer.echo(rendered.text.encode("utf-8"), nl=False)
         else:
             typer.echo(rendered.text)
+    except LifecycleError:
+        if spec is None or spec.cache_policy_version != 3:
+            raise
+        typer.echo("Error: Explicit cache preview could not be prepared.", err=True)
+        raise typer.Exit(2) from None
     except (ValueError, OSError) as error:
         message = (
             "Invalid configuration or prompt selection."

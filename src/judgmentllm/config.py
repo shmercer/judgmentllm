@@ -24,7 +24,12 @@ from pydantic import (
 )
 from yaml.nodes import MappingNode
 
-from judgmentllm.cache_policy import CachePolicyVersion
+from judgmentllm.cache_policy import (
+    OPENAI_CACHE_MECHANISM,
+    OPENAI_EXPLICIT_ROUTE,
+    CacheBreakpoint,
+    CachePolicyVersion,
+)
 from judgmentllm.models import (
     ID,
     Exemplar,
@@ -125,7 +130,7 @@ class ExecutionSpec(StrictModel):
     explanations: bool = False
     cache_policy: Literal["off", "auto", "explicit"] | None = Field(
         default=None,
-        description="New runs accept off (default) or explicit (currently unsupported); auto is historical-only.",
+        description="New runs accept off (default) or the scoped explicit candidate; auto is historical-only.",
         json_schema_extra={
             "anyOf": [
                 {"enum": ["off", "explicit"], "type": "string"},
@@ -199,11 +204,18 @@ class PromptSpecV3(PromptSpecV2):
     """Explicit native route intent; never an arbitrary provider request body."""
 
     native_mechanism: NativeTransportMechanism | None = None
+    cache_breakpoints: list[CacheBreakpoint] | None = Field(
+        default=None, min_length=1, max_length=4, exclude_if=lambda value: value is None
+    )
 
     @model_validator(mode="after")
     def explicit_route(self) -> PromptSpecV3:
         if self.structured_output != "text" and self.native_mechanism is None:
             raise ValueError("auto/native transport requires prompt.native_mechanism")
+        if self.cache_breakpoints and len(set(self.cache_breakpoints)) != len(
+            self.cache_breakpoints
+        ):
+            raise ValueError("prompt.cache_breakpoints contains duplicate selectors")
         return self
 
 
@@ -285,14 +297,23 @@ class _RunSpecFields(StrictModel, Generic[_Version, _Prompt]):
         self, info: ValidationInfo
     ) -> _RunSpecFields[_Version, _Prompt]:
         context = cast(dict[str, object], info.context) if info.context else {}
-        revision = context.get("cache_policy_version", 2)
-        if type(revision) is not int or revision not in (1, 2):
+        explicit = (
+            isinstance(self.prompt, PromptSpecV3)
+            and self.prompt.cache_breakpoints is not None
+            and self.execution.cache_policy == "explicit"
+        )
+        revision = context.get("cache_policy_version", 3 if explicit else 2)
+        if type(revision) is not int or revision not in (1, 2, 3):
             raise ValueError("unsupported cache policy version")
+        if (revision == 3) != explicit:
+            raise ValueError(
+                "cache policy version differs from explicit breakpoint intent"
+            )
         self._cache_policy_version = revision
         if self.execution.cache_policy == "auto" and self.cache_policy_version != 1:
             raise ValueError(
                 "execution.cache_policy: auto is legacy-only; replace it with off "
-                "or explicit (unsupported until semantic breakpoints are available)"
+                "or use the scoped explicit candidate with semantic breakpoints"
             )
         if (
             self.schema_version != 3
@@ -410,6 +431,19 @@ class RunSpecV3(_RunSpecFields[Literal[3], PromptSpecV3]):
 
     @model_validator(mode="after")
     def transport_settings(self) -> RunSpecV3:
+        if self.prompt.cache_breakpoints is not None and (
+            self.execution.cache_policy != "explicit"
+            or (self.provider, self.endpoint, self.model) != OPENAI_EXPLICIT_ROUTE
+            or self.execution.mode != "live"
+            or self.execution.tier not in (None, "default")
+            or self.prompt.structured_output != "native"
+            or self.prompt.native_mechanism != OPENAI_CACHE_MECHANISM
+            or self.prompt.advanced
+        ):
+            raise ValueError(
+                "prompt.cache_breakpoints requires explicit caching on Luna Responses "
+                "Standard live with native output and a simple template"
+            )
         if self.prompt.output_order != "together" and (
             self.task_kind == "pairwise" or not self.execution.explanations
         ):
@@ -746,15 +780,16 @@ def validate_run_spec(
         if version == 2
         else RunSpec
     )
-    revision = (
-        value.cache_policy_version
-        if isinstance(value, (RunSpec, RunSpecV2, RunSpecV3, RunSpecV4))
-        and _cache_policy_version is None
-        else 2
-        if _cache_policy_version is None
-        else _cache_policy_version
+    revision = _cache_policy_version
+    if (
+        revision is None
+        and isinstance(value, (RunSpec, RunSpecV2, RunSpecV3))
+        and value.cache_policy_version == 1
+    ):
+        revision = 1
+    checked = model.model_validate(
+        data, context={} if revision is None else {"cache_policy_version": revision}
     )
-    checked = model.model_validate(data, context={"cache_policy_version": revision})
     if (
         isinstance(value, (RunSpec, RunSpecV2, RunSpecV3, RunSpecV4))
         and _spec_snapshot(checked) != snapshot
@@ -775,7 +810,7 @@ def validate_run_spec(
 
 
 def validate_run_spec_json(
-    text: str, *, _cache_policy_version: CachePolicyVersion = 2
+    text: str, *, _cache_policy_version: CachePolicyVersion | None = None
 ) -> RunSpecification:
     """Decode strict JSON, then dispatch without resolving filesystem references."""
     return validate_run_spec(
@@ -916,7 +951,7 @@ def _load_run_spec(
     path: str | Path,
     *,
     document_reader: Callable[[Path], object],
-    cache_policy_version: CachePolicyVersion = 2,
+    cache_policy_version: CachePolicyVersion | None = None,
 ) -> RunSpecification:
     """Resolve a run using a caller-owned, verified document reader.
 

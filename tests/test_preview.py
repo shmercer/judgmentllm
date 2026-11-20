@@ -9,6 +9,7 @@ import pytest
 from judgmentllm import iter_requests, iter_tasks, load_run_spec, preview_prompt
 from judgmentllm.models import PairTask
 from judgmentllm.planning import CapabilityProfile
+from judgmentllm.prompts import RenderedPrompt
 
 EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 
@@ -16,11 +17,13 @@ EXAMPLES = Path(__file__).resolve().parents[1] / "examples"
 def test_bundled_previews_and_streamed_default_inputs() -> None:
     spec = load_run_spec(EXAMPLES / "run.yaml")
     prompt = preview_prompt(spec, item_id="essay_001", trait_id="organization")
+    assert isinstance(prompt, RenderedPrompt)
     assert prompt.exemplar_ids == ["anchor_001", "anchor_002", "anchor_003"]
     assert "essay_001" not in prompt.text
     assert len(list(iter_tasks(spec))) == 4
     assert len(list(iter_requests(spec))) == 4
     grouped = preview_prompt(EXAMPLES / "advanced.yaml", item_id="essay_002")
+    assert isinstance(grouped, RenderedPrompt)
     assert (
         "Trait ID: `organization`" in grouped.text
         and "Trait ID: `evidence`" in grouped.text
@@ -28,7 +31,9 @@ def test_bundled_previews_and_streamed_default_inputs() -> None:
     pair = load_run_spec(EXAMPLES / "pairwise.yaml")
     assert len(list(iter_tasks(pair))) == 2
     assert len(list(iter_requests(pair))) == 2
-    text = preview_prompt(pair, pair_uid="comparison_001_reverse").text
+    reversed_prompt = preview_prompt(pair, pair_uid="comparison_001_reverse")
+    assert isinstance(reversed_prompt, RenderedPrompt)
+    text = reversed_prompt.text
     assert text.index("essay_01:") < text.index("essay_02:")
 
 
@@ -98,6 +103,7 @@ def test_preview_known_capabilities_and_group_selection() -> None:
         trait_id="evidence",
         capabilities=CapabilityProfile(grouped=True, modes=("live",)),
     )
+    assert isinstance(rendered, RenderedPrompt)
     assert (
         "Trait ID: `evidence`" in rendered.text
         and "Trait ID: `organization`" in rendered.text

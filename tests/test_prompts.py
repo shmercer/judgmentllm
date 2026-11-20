@@ -552,6 +552,12 @@ def test_block_integrity_rejects_marker_tampering_and_changed_content() -> None:
     assert (
         _verify_and_unwrap(wrapped, blocks, "audit") == "\nOriginal synthetic text.\n"
     )
+    with pytest.raises(
+        PromptError, match="Protected spans require the exact unwrapped renderer"
+    ):
+        _verify_and_unwrap(
+            wrapped, blocks, "audit", renderer_version=1, protected_spans=[]
+        )
     for malformed in (
         wrapped.replace("BEGIN_0", "BEGIN_1"),
         wrapped.replace("END_0", "END_1"),

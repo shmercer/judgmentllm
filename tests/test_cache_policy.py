@@ -169,8 +169,12 @@ def test_explicit_remains_unsupported_and_gemini_warning_is_nonblocking(
 
 @pytest.mark.parametrize("version", [True, "2", 2.0, 0, 3])
 def test_cache_revision_tokens_are_strict(version: Any) -> None:
-    with pytest.raises(ValueError):
-        TypeAdapter(CachePolicyVersion).validate_python(version)
+    adapter = TypeAdapter(CachePolicyVersion)
+    if version == 3:
+        assert adapter.validate_python(version) == 3
+    else:
+        with pytest.raises(ValueError):
+            adapter.validate_python(version)
 
 
 def test_scope_rejects_untyped_values() -> None:

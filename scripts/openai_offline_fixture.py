@@ -28,6 +28,7 @@ from judgmentllm.persistence.hashing import bytes_digest
 from judgmentllm.persistence.repository import ReadOnlyRepository
 from judgmentllm.preparation import prepare_run
 from judgmentllm.production_transport import PreparedRequestV4, production_context
+from judgmentllm.providers import openai
 from judgmentllm.providers.openai import _INVOKING, OpenAIAdapter
 from judgmentllm.r_exports import export_pairwise_r_csv, export_rubric_r_csv
 from judgmentllm.results import PairwiseResult, RubricResult
@@ -65,6 +66,7 @@ def specification(
     count: int = 1,
     traits: int = 2,
     capture: Literal["full", "minimal"] = "minimal",
+    explicit: bool = False,
 ) -> RunSpecV3:
     directory.mkdir(parents=True)
     responses = directory / "responses.jsonl"
@@ -79,6 +81,11 @@ def specification(
                 )
                 + "\n"
             )
+    execution: dict[str, object] = {
+        "concurrency": 4,
+        "grouping": "grouped" if kind == "rubric" else "independent",
+        "explanations": False,
+    }
     document: dict[str, object] = {
         "schema_version": 3,
         "task_kind": kind,
@@ -90,11 +97,7 @@ def specification(
         "capture": capture,
         "generation": {"max_output_tokens": 256},
         "prompt": {"structured_output": "text"},
-        "execution": {
-            "concurrency": 4,
-            "grouping": "grouped" if kind == "rubric" else "independent",
-            "explanations": False,
-        },
+        "execution": execution,
     }
     if kind == "rubric":
         document["rubric"] = {
@@ -139,6 +142,14 @@ def specification(
                 "description": "Choose the clearer response.",
             }
         ]
+    if explicit:
+        document["strict_capabilities"] = True
+        execution["cache_policy"] = "explicit"
+        document["prompt"] = {
+            "structured_output": "native",
+            "native_mechanism": "openai.responses.text.format",
+            "cache_breakpoints": [{"after": "assessment"}],
+        }
     return RunSpecV3.model_validate(document)
 
 
@@ -149,12 +160,14 @@ class FixtureTransport:
         *,
         invalid_first_group: bool = False,
         assessment_text: str | None = None,
+        cache_read_tokens: int = 5,
         cache_write_tokens: int | None = None,
     ) -> None:
         self.endpoint = endpoint
         self.calls = 0
         self.invalid_first_group = invalid_first_group
         self.assessment_text = assessment_text
+        self.cache_read_tokens = cache_read_tokens
         self.cache_write_tokens = cache_write_tokens
 
     def respond(self, request: httpx2.Request) -> httpx2.Response:
@@ -208,7 +221,7 @@ class FixtureTransport:
                     "input_tokens": 100,
                     "output_tokens": 10,
                     "total_tokens": 110,
-                    "input_tokens_details": {"cached_tokens": 5},
+                    "input_tokens_details": {"cached_tokens": self.cache_read_tokens},
                     "output_tokens_details": {"reasoning_tokens": 2},
                 },
             }
@@ -232,7 +245,7 @@ class FixtureTransport:
                     "prompt_tokens": 100,
                     "completion_tokens": 10,
                     "total_tokens": 110,
-                    "prompt_tokens_details": {"cached_tokens": 5},
+                    "prompt_tokens_details": {"cached_tokens": self.cache_read_tokens},
                     "completion_tokens_details": {"reasoning_tokens": 2},
                 },
             }
@@ -256,18 +269,37 @@ class FixtureTransport:
 
 async def persist_openai(output: Path) -> None:
     output.mkdir(parents=True)
-    with offline():
-        for endpoint in ("responses", "chat.completions"):
-            for kind in ("rubric", "pairwise"):
-                run_id = endpoint + "-" + kind
-                capture = "full" if endpoint == "responses" else "minimal"
-                spec = specification(
-                    output / "inputs" / run_id, endpoint, kind, capture=capture
+    cases: tuple[tuple[Endpoint, bool], ...] = (
+        ("responses", False),
+        ("chat.completions", False),
+        ("responses", True),
+    )
+    for endpoint, explicit in cases:
+        with offline(), ExitStack() as stack:
+            if explicit:
+                # Only this fixture has the injected fake HTTP transport and socket deny.
+                stack.enter_context(
+                    patch.object(openai, "_require_explicit_cache_authority")
                 )
-                if capture == "minimal":
+            for kind in ("rubric", "pairwise"):
+                run_id = ("explicit" if explicit else endpoint) + "-" + kind
+                capture = (
+                    "full" if endpoint == "responses" and not explicit else "minimal"
+                )
+                spec = specification(
+                    output / "inputs" / run_id,
+                    endpoint,
+                    kind,
+                    capture=capture,
+                    explicit=explicit,
+                )
+                if endpoint == "chat.completions":
                     spec.execution.tier = "flex"
                 transport = FixtureTransport(
-                    endpoint, invalid_first_group=kind == "rubric"
+                    endpoint,
+                    invalid_first_group=kind == "rubric",
+                    cache_read_tokens=0 if explicit else 5,
+                    cache_write_tokens=0 if explicit and kind == "rubric" else None,
                 )
                 adapter = transport.adapter(spec)
                 try:
@@ -411,29 +443,39 @@ def export_assessment_diagnostics(output: Path) -> None:
 
 
 def export_openai(output: Path) -> None:
+    _export_runs(
+        output,
+        tuple(
+            f"{endpoint}-{kind}"
+            for endpoint in ("responses", "chat.completions")
+            for kind in ("rubric", "pairwise")
+        ),
+    )
+    _export_runs(output, ("explicit-rubric", "explicit-pairwise"), prefix="explicit-")
+    export_assessment_diagnostics(output)
+
+
+def _export_runs(output: Path, run_ids: tuple[str, ...], *, prefix: str = "") -> None:
     rubric: list[RubricResult] = []
     pairs: list[PairwiseResult] = []
     evidence: list[dict[str, object]] = []
     with ReadOnlyRepository(output / "store") as repository:
-        for endpoint in ("responses", "chat.completions"):
-            for kind in ("rubric", "pairwise"):
-                run_id = endpoint + "-" + kind
-                for row in repository.iter_results(run_id):
-                    if isinstance(row, RubricResult):
-                        rubric.append(row)
-                    else:
-                        pairs.append(row)
-                evidence.extend(
-                    receipt.model_dump(mode="json")
-                    for receipt in repository.iter_evidence(run_id)
-                )
-    export_rubric_r_csv(output / "rubric.csv", rubric)
-    export_pairwise_r_csv(output / "pairs.csv", pairs)
-    write_results_jsonl(output / "results.jsonl", [*rubric, *pairs])
-    with (output / "evidence.jsonl").open("w", encoding="utf-8") as stream:
+        for run_id in run_ids:
+            for row in repository.iter_results(run_id):
+                if isinstance(row, RubricResult):
+                    rubric.append(row)
+                else:
+                    pairs.append(row)
+            evidence.extend(
+                receipt.model_dump(mode="json")
+                for receipt in repository.iter_evidence(run_id)
+            )
+    export_rubric_r_csv(output / f"{prefix}rubric.csv", rubric)
+    export_pairwise_r_csv(output / f"{prefix}pairs.csv", pairs)
+    write_results_jsonl(output / f"{prefix}results.jsonl", [*rubric, *pairs])
+    with (output / f"{prefix}evidence.jsonl").open("w", encoding="utf-8") as stream:
         for receipt in evidence:
             stream.write(json.dumps(receipt, ensure_ascii=False) + "\n")
-    export_assessment_diagnostics(output)
 
 
 def main() -> None:

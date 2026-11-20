@@ -683,6 +683,8 @@ def _profile(
         profile = OpenAIAdapter(
             spec.endpoint, spec.model, concurrency=spec.execution.concurrency
         ).capabilities(spec)
+        if spec.cache_policy_version == 3:
+            return profile
         if allow_invalid and not validate_run(spec, capabilities=profile).valid:
             return profile
         from judgmentllm.providers.openai import OpenAIConfigurationError
@@ -703,6 +705,8 @@ def validate_inputs(
     exhaustive_rendering: bool = False,
 ) -> InputValidationReport:
     """Validate all inputs offline; return at most 100 safe issues, with totals."""
+    from judgmentllm.cache_advisory import cache_advisory_report
+
     issues: tuple[ValidationIssue, ...] = ()
     try:
         with (
@@ -743,6 +747,7 @@ def validate_inputs(
                     issues=issues[:100],
                     total_issues=len(issues),
                     truncated=len(issues) > 100,
+                    cache_advisory=cache_advisory_report(prepared),
                     decisions=DecisionsPreparationV1(
                         logical_tasks=prepared.manifest.logical_task_count,
                         physical_requests=prepared.manifest.initial_transport_count,
@@ -781,6 +786,8 @@ def estimate_run(
     capabilities: CapabilityProfile | None = None,
 ) -> ExecutionPlan | DecisionsExecutionPlanV1:
     """Prepare once privately and derive exact counts without a task product."""
+    from judgmentllm.cache_advisory import cache_advisory_report
+
     with (
         _errors(),
         tempfile.TemporaryDirectory(prefix="judgmentllm-plan-") as temporary,
@@ -899,6 +906,7 @@ def estimate_run(
                 capabilities=profile,
                 cache_policy=spec.execution.cache_policy or "off",
                 cache_report="uncached" if mock else "unknown",
+                cache_advisory=cache_advisory_report(prepared),
                 pricing="not_applicable" if mock else "unknown",
                 transport_protocol="vertex-production-v1"
                 if manifest.schema_version == 7
@@ -1015,6 +1023,7 @@ async def _arun(
             readiness = getattr(adapter, "validate_credentials", None)
             if (
                 not bulk
+                and spec.cache_policy_version != 3
                 and readiness is not None
                 and (spec.provider, spec.endpoint)
                 not in {

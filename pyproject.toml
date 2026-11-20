@@ -38,6 +38,7 @@ judgmentllm = "judgmentllm.cli:app"
 
 [project.optional-dependencies]
 openai = ["openai>=3.42.1,<4"]
+openai-cache = ["openai==3.42.1", "tiktoken==0.14.0"]
 anthropic = ["anthropic>=2.3,<3"]
 google = ["google-genai[httpx]==3.5.0"]
 together = ["together>=3,<4"]
