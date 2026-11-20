@@ -50,7 +50,7 @@ and the intended all-provider qualification requirement.
 | Adapter | Live | Native provider batch | Managed bulk-live | Rubric | Pairwise | Notes |
 |---|---|---|---|---|---|---|
 | OpenAI Chat Completions | implemented; reviewed live scope accepted | target | implemented with RPM | generative | generative | Phase 5A, SDK 3.42.1; exact-model capability unknown until qualified |
-| OpenAI Responses | implemented; reviewed live scope accepted | target | implemented with RPM | generative | generative | Phase 5A, SDK 3.42.1; exact-model capability unknown until qualified |
+| OpenAI Responses | implemented; reviewed live scope accepted | target | implemented with RPM | generative | generative | Phase 5A, SDK 3.42.1; exact-model capability unknown until qualified. [Explicit-cache evidence](prompt-caching.md#scoped-transport-report-and-offline-verification) remains separate; production explicit caching is denied. |
 | OpenAI Decisions | implemented, offline fixtures and bounded `gpt-6-luna` smoke | unsupported | implemented with RPM | typed score, 2–10 levels | forced choice | `/v1/decisions`, 1–400 ordered named questions. Cache OFF uses explicit mode without breakpoints. |
 | Anthropic Messages | implemented; live acceptance pending | target | implemented with RPM | generative | generative | Phase 5B; SDK 2.3.0 / API 2026-10-21; text JSON and controlled native output_config.format |
 | Gemini Developer | implemented, historical four-case live scope accepted | M5 target | implemented with RPM | generative | generative | Offline parity with Google SDK 3.5.0. The [live scope](gemini-live-qualification-acceptance.md) used 2.34.0/v1beta. |
@@ -59,6 +59,13 @@ and the intended all-provider qualification requirement.
 | Together AI | lower-priority live target | target, subject to current API qualification | M5/deferred live target | generative | generative | Use official Together Python SDK v3 (`together>=3,<4`); endpoint/model feature coverage must be tested |
 | Ollama local | lower-priority live target | no native provider batch | M5/deferred live target | generative | generative | Official Ollama SDK, local daemon; local model discovery; optional later cloud support separate |
 | TypeSafe AI Jev | implemented, offline fixtures and live scores at 3, 4, 5 and 10 levels after #66, plus earlier Choice cases | unsupported | implemented with RPM | typed score, up to 10 levels | forced choice | [System One](typesafe-decisions.md) has unverified context fit and no established vendor question cap. |
+
+The 2026-11-20 owner-reported explicit-cache transport smoke requested GPT-6 Luna /
+Responses / Standard: three HTTP200 completions reported cold 1513 writes,
+warm 1513 reads and OFF 0/0. Returned model/tier and actual spend remain
+unestablished. Separate offline compiler/SDK/receipt fixtures establish synthetic
+parity only. Neither evidence class qualifies production explicit caching or
+native batch; the default stays OFF. [Scope, hashes and reserve](prompt-caching.md#scoped-transport-report-and-offline-verification)
 
 ### Native Decisions capability evidence
 

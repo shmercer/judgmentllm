@@ -262,3 +262,58 @@ def test_unsafe_envelope_extensions_force_derivative(extension: Any) -> None:
     assert response.evidence.original_body_safe is False
     assert b"private-envelope-canary" not in (response.evidence.safe_response or b"")
     assert adapter.parse(response).output == {"scores": []}
+
+
+@pytest.mark.parametrize("value", [None, 0])
+def test_responses_cache_details_preserve_partial_and_zero(value: int | None) -> None:
+    adapter = OpenAIAdapter("responses", "offline-model")
+    body = envelope("responses", '{"scores":[]}')
+    body["usage"] = {
+        "input_tokens_details": {"cached_tokens": value, "cache_write_tokens": value},
+        "output_tokens_details": {"reasoning_tokens": value},
+    }
+    response = adapter._response(json.dumps(body).encode(), body, body["id"])
+    assert response.evidence is not None
+    usage = response.evidence.usage
+    assert usage is not None
+    assert (
+        usage.cache_read_tokens,
+        usage.cache_write_tokens,
+        usage.reasoning_tokens,
+    ) == (value, value, value)
+    assert usage.input_tokens is usage.output_tokens is usage.total_tokens is None
+    assert usage.reported_cost is None
+    assert usage.semantics_version == (1 if value is None else 2)
+    assert {row.value for row in usage.breakdown} == (set() if value is None else {0})
+    assert all(row.relationship == "included_in" for row in usage.breakdown)
+    assert adapter.parse(response).output == {"scores": []}
+    assert adapter.actual_call_count == 0 and adapter._client is None
+
+
+@pytest.mark.parametrize(
+    "details,field,value",
+    [
+        ("input_tokens_details", "cache_write_tokens", True),
+        ("input_tokens_details", "cache_write_tokens", "7"),
+        ("input_tokens_details", "cache_write_tokens", 7.0),
+        ("input_tokens_details", "cache_write_tokens", -1),
+        ("input_tokens_details", "cache_write_tokens", 21),
+        ("input_tokens_details", "cached_tokens", True),
+        ("input_tokens_details", "cached_tokens", "7"),
+        ("input_tokens_details", "cached_tokens", 7.5),
+        ("input_tokens_details", "cached_tokens", -1),
+        ("input_tokens_details", "cached_tokens", 21),
+        ("output_tokens_details", "reasoning_tokens", True),
+        ("output_tokens_details", "reasoning_tokens", 11),
+    ],
+)
+def test_responses_invalid_cache_or_reasoning_never_rescores(
+    details: str, field: str, value: Any
+) -> None:
+    adapter = OpenAIAdapter("responses", "offline-model")
+    body = envelope("responses", '{"scores":[]}')
+    body["usage"][details][field] = value
+    response = adapter._response(json.dumps(body).encode(), body, body["id"])
+    assert response.evidence is not None and response.evidence.usage is None
+    assert adapter.parse(response).output == {"scores": []}
+    assert adapter.actual_call_count == 0 and adapter._client is None

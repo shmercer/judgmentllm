@@ -1364,3 +1364,339 @@ def test_provider_rejection_and_ambiguous_submission_do_not_retry(
     resume = _cli(["resume", "--run", _RUN_ID, *options], expected=3)
     assert resume["data"]["unresolved_submissions"] == unresolved
     assert resume["data"]["attempts"] == 2 and len(calls) == 2
+
+
+def test_compiled_cold_warm_off_sdk_bytes_and_physical_usage(tmp_path: Path) -> None:
+    """Generic synthetic SDK/receipt parity, without production send authority."""
+    from judgmentllm.evidence import EvidenceIdentity, UsageContext
+    from judgmentllm.evidence.usage import ProviderUsage
+    from judgmentllm.execution.evidence import committed_authorization
+    from judgmentllm.persistence.evidence import (
+        EvidenceReceipt,
+        publish_evidence_receipt,
+    )
+    from judgmentllm.persistence.models import SubmissionRecord
+    from judgmentllm.persistence.ownership import ExecutorOwnership
+    from judgmentllm.persistence.receipts import (
+        AcknowledgmentReceipt,
+        ResponseReceipt,
+        publish_acknowledgment,
+        publish_receipt,
+    )
+    from judgmentllm.providers.evidence import prepare_evidence
+
+    deny = openai._require_explicit_cache_authority
+    parser = openai.OpenAIAdapter("responses", "gpt-6-luna")
+    store = tmp_path / "explicit"
+    off_store = tmp_path / "off"
+    with _prepare(_config(tmp_path), store) as prepared:
+        cold, warm = _frozen_wires(prepared)
+        document = prepared.spec.model_dump()
+        document["execution"]["cache_policy"] = "off"
+        document["prompt"].pop("cache_breakpoints")
+        off_spec = RunSpecV3.model_validate(document)
+        assert off_spec.cache_policy_version == 2
+        context = production_transport._qualification_context(
+            off_spec, source_commit="a" * 40
+        )
+        with prepare_run(
+            off_spec,
+            store=off_store,
+            run_id=_RUN_ID,
+            capabilities=prepared.capabilities,
+            transport_context=context,
+        ) as off_prepared:
+            off = _frozen_wires(off_prepared)[1]
+            bodies = [json.loads(wire.payload) for wire in (cold, warm, off)]
+            cold_blocks = _assert_wire(cold, bodies[0])
+            warm_blocks = _assert_wire(warm, bodies[1])
+            assert len(cold_blocks) == len(warm_blocks) == 3
+            assert cold_blocks[:2] == warm_blocks[:2]
+            assert (
+                cold_blocks[2]["text"].replace(_STUDENTS[0], _STUDENTS[1])
+                == (warm_blocks[2]["text"])
+            )
+            assert cold.payload_sha256 != warm.payload_sha256 != off.payload_sha256
+            assert bodies[2]["input"] == [
+                {
+                    "role": "user",
+                    "content": [{"type": "input_text", "text": warm.rendered_text}],
+                }
+            ]
+            assert bodies[2]["prompt_cache_options"] == {"mode": "explicit"}
+            assert b"prompt_cache_breakpoint" not in off.payload
+            assert (
+                {k: v for k, v in bodies[0].items() if k != "input"}
+                == {k: v for k, v in bodies[1].items() if k != "input"}
+                == {k: v for k, v in bodies[2].items() if k != "input"}
+            )
+            assert (
+                off.output_commitment.schema_sha256
+                == warm.output_commitment.schema_sha256
+            )
+            assert off.transport_commitment.explicit_cache is None
+            assert (
+                off.transport_commitment.context_kind
+                == "openai-qualification-candidate-v1"
+            )
+
+            rows = (
+                (prepared, cold, 1513, 0),
+                (prepared, warm, 0, 1513),
+                (off_prepared, off, 0, 0),
+            )
+            seen: list[bytes] = []
+
+            def respond(request: httpx2.Request) -> httpx2.Response:
+                _, wire, written, read = rows[len(seen)]
+                assert request.method == "POST"
+                assert str(request.url) == "https://api.openai.com/v1/responses"
+                assert request.content == wire.payload
+                assert (
+                    bytes_digest(request.content)
+                    == wire.transport_commitment.payload_sha256
+                )
+                seen.append(request.content)
+                contract = wire.output_commitment.contract
+                assert isinstance(contract, RubricOutputContract)
+                reply = envelope(
+                    "responses",
+                    json.dumps(
+                        {
+                            "scores": [
+                                {
+                                    "trait_id": trait.trait_id,
+                                    "category_label": trait.levels[0].label,
+                                }
+                                for trait in contract.traits
+                            ]
+                        }
+                    ),
+                )
+                reply["id"] = f"synthetic-cache-{len(seen)}"
+                reply["service_tier"] = "default"
+                if len(seen) == 3:
+                    reply.pop("model")
+                    reply.pop("service_tier")
+                # Only the cache counts mirror the report; all other usage is invented.
+                reply["usage"] = {
+                    "input_tokens": 2000,
+                    "output_tokens": 20,
+                    "total_tokens": 2020,
+                    "input_tokens_details": {
+                        "cached_tokens": read,
+                        "cache_write_tokens": written,
+                    },
+                    "output_tokens_details": {"reasoning_tokens": 5},
+                }
+                return httpx2.Response(200, json=reply, request=request)
+
+            async def exercise() -> None:
+                sdk, _ = openai._sdk()
+                client = openai._protected_client(
+                    sdk,
+                    api_key="synthetic-sdk-key",
+                    base_url="https://api.openai.com/v1",
+                    max_retries=0,
+                    http_client=httpx2.AsyncClient(
+                        transport=httpx2.MockTransport(respond),
+                        trust_env=False,
+                        follow_redirects=False,
+                    ),
+                )
+                try:
+                    for current, wire, written, read in rows:
+                        physical = wire.transport_commitment.identity
+                        repo = current.repository
+                        repo.create_submission(
+                            SubmissionRecord(
+                                run_id=_RUN_ID,
+                                attempt_id=physical.attempt_id,
+                                submission_id=physical.submission_id,
+                                correlation_id=physical.correlation_id,
+                                payload_sha256=wire.payload_sha256,
+                            )
+                        )
+                        for state in ("claimed", "submitting"):
+                            repo.transition(
+                                "attempt", _RUN_ID, physical.attempt_id, state
+                            )
+                        repo.transition(
+                            "submission", _RUN_ID, physical.submission_id, "submitting"
+                        )
+                        raw = await client.responses.with_raw_response.create(
+                            **json.loads(wire.payload)
+                        )
+                        body = json.loads(raw.content)
+                        response = parser._response(
+                            bytes(raw.content), body, body["id"], prepared=wire
+                        )
+                        assert parser.parse(response).kind == "response"
+                        identity = EvidenceIdentity(
+                            run_id=_RUN_ID,
+                            request_uid=wire.request_uid,
+                            attempt_id=physical.attempt_id,
+                            submission_id=physical.submission_id,
+                            observation_id=f"observation-{body['id']}",
+                        )
+                        authorization, authorization_sha256 = committed_authorization(
+                            current.store,
+                            run_id=_RUN_ID,
+                            manifest_sha256=current.manifest_sha256,
+                            provider="openai",
+                            capture="minimal",
+                            adapter=parser,
+                        )
+                        evidence = prepare_evidence(
+                            identity=identity,
+                            context=UsageContext(
+                                provider="openai",
+                                endpoint="responses",
+                                requested_model="gpt-6-luna",
+                                observation_kind="response",
+                            ),
+                            commitment=wire.output_commitment,
+                            response=response,
+                            capture="minimal",
+                            authorization=authorization,
+                            transport_context=current.transport_context,
+                        )
+                        assert (
+                            evidence.usage.cache_write_tokens,
+                            evidence.usage.cache_read_tokens,
+                        ) == (written, read)
+                        assert evidence.usage.requested_model == "gpt-6-luna"
+                        assert evidence.usage.reported_model == (
+                            None if wire is off else "reported-fixture-model"
+                        )
+                        assert evidence.service_tier is not None
+                        assert evidence.service_tier.reported_tier == (
+                            None if wire is off else "default"
+                        )
+                        assert evidence.service_tier.outcome == (
+                            "unknown" if wire is off else "matched"
+                        )
+                        assert len(wire.task_ids) == 2
+                        ack = AcknowledgmentReceipt(
+                            run_id=_RUN_ID,
+                            attempt_id=physical.attempt_id,
+                            submission_id=physical.submission_id,
+                            correlation_id=physical.correlation_id,
+                            payload_sha256=wire.payload_sha256,
+                            remote_id=body["id"],
+                            observation_key=body["id"],
+                        )
+                        publish_acknowledgment(current.store, ack)
+                        safe = evidence.retained_response
+                        assert safe is not None
+                        assert evidence.disposition == "exact"
+                        assert identity.observation_id is not None
+                        retained = ArtifactStore.hash_only(
+                            bytes_digest(safe), len(safe), "application/json"
+                        )
+                        receipt = ResponseReceipt(
+                            run_id=_RUN_ID,
+                            attempt_id=physical.attempt_id,
+                            submission_id=physical.submission_id,
+                            correlation_id=physical.correlation_id,
+                            payload_sha256=wire.payload_sha256,
+                            observation_id=identity.observation_id,
+                            observation_key=body["id"],
+                            kind="response",
+                            raw=retained,
+                            capture="minimal",
+                            received_at="2026-11-20T00:00:00Z",
+                        )
+                        publish_receipt(current.store, receipt)
+                        companion = EvidenceReceipt(
+                            identity=identity,
+                            correlation_id=physical.correlation_id,
+                            payload_sha256=wire.payload_sha256,
+                            acknowledgment_sha256=bytes_digest(canonical_bytes(ack)),
+                            response_receipt_sha256=bytes_digest(
+                                canonical_bytes(receipt)
+                            ),
+                            response_receipt=receipt,
+                            observation_key=body["id"],
+                            remote_id=body["id"],
+                            capture="minimal",
+                            authorization=authorization,
+                            authorization_sha256=authorization_sha256,
+                            usage=evidence.usage,
+                            service_tier=evidence.service_tier,
+                            order=evidence.order,
+                            retained=retained,
+                            original=ArtifactStore.hash_only(
+                                bytes_digest(response.raw),
+                                len(response.raw),
+                                "application/json",
+                            ),
+                            response_retention=evidence.disposition,
+                        )
+                        publish_evidence_receipt(current.store, companion)
+                        with ExecutorOwnership(repo, _RUN_ID) as owner:
+                            assert owner.owner is not None
+                            repo.transition(
+                                "submission",
+                                _RUN_ID,
+                                physical.submission_id,
+                                "acknowledged",
+                                remote_id=body["id"],
+                            )
+                            repo.transition(
+                                "attempt", _RUN_ID, physical.attempt_id, "acknowledged"
+                            )
+                            repo.register_artifact(_RUN_ID, retained)
+                            repo.record_observation(receipt.observation())
+                            repo.record_evidence(
+                                companion, owner_token=owner.owner.token
+                            )
+                            repo.record_evidence(
+                                companion, owner_token=owner.owner.token
+                            )
+                        assert (
+                            len(
+                                list(
+                                    repo.usage_revision_history(
+                                        _RUN_ID, physical.submission_id
+                                    )
+                                )
+                            )
+                            == 1
+                        )
+                finally:
+                    await client.close()
+
+            asyncio.run(exercise())
+            assert seen == [wire.payload for _, wire, _, _ in rows]
+            assert openai._resolve_credentials is _forbidden
+            assert openai._require_explicit_cache_authority is deny
+            with pytest.raises(openai.OpenAIConfigurationError):
+                deny()
+            assert parser.actual_call_count == 0 and parser._client is None
+
+    usage: list[ProviderUsage] = []
+    for directory, count in ((store, 2), (off_store, 1)):
+        with ReadOnlyRepository(directory) as reader:
+            receipts = tuple(reader.iter_evidence(_RUN_ID))
+            assert len(receipts) == count
+            for receipt in receipts:
+                assert (
+                    reader.authoritative_usage(_RUN_ID, receipt.identity.submission_id)
+                    == receipt.usage
+                )
+                usage.append(receipt.usage)
+    assert [
+        (u.input_tokens, u.output_tokens, u.total_tokens, u.reasoning_tokens)
+        for u in usage
+    ] == [(2000, 20, 2020, 5)] * 3
+    assert len({u.submission_id for u in usage}) == 3
+    assert (
+        sum(u.cache_read_tokens for u in usage if u.cache_read_tokens is not None)
+        == 1513
+    )
+    assert (
+        sum(u.cache_write_tokens for u in usage if u.cache_write_tokens is not None)
+        == 1513
+    )
+    assert all(u.reported_cost is None and u.estimated_cost is None for u in usage)
