@@ -85,6 +85,58 @@ minimum. The provider controls actual retention and eligibility. Confirm provide
 retention, account scope and permitted capture before any future live
 qualification. [OpenAI prompt caching guide](https://developers.openai.com/api/docs/guides/prompt-caching)
 
+### Scoped transport report and offline verification
+
+The owner reported a standalone provider transport smoke on 2026-11-20 for
+requested `gpt-6-luna` / Responses / Standard, in sealed row order 1 → 2 → 8.
+All three attempts completed with HTTP200 and no stop. The reported cache counts
+were:
+
+| Row | Control | Cache writes | Cache reads |
+|---|---|---|---|
+| 1 | Explicit, cold | 1513 | 0 |
+| 2 | Explicit, warm | 0 | 1513 |
+| 8 | OFF | 0 | 0 |
+
+The report describes two byte-identical marked prefixes for cold/warm, with only
+the synthetic essay suffix changing. It reports that OFF uses the warm
+concatenated text, schema and settings in one unmarked block. The owner's wire
+bytes have not been independently verified. This standalone transport report
+does not establish JudgmentLLM SDK integration. Exact returned model, served
+tier, other usage fields and actual billing are not established by this summary.
+The **1.7350344 USD reserve is not actual spend or savings**.
+
+Separate repository tests use generic, newly generated synthetic inputs, the
+merged compiler and SDK 3.42.1 with `MockTransport`. They check offline SDK byte
+parity against their own compiled sealed payloads only, for a cold/warm/OFF
+differential, then exercise response extraction and durable receipt/repository
+replay. They do not claim byte parity with the owner's rows or successful
+production submission.
+Only the three cache-count pairs mirror the report; other fake usage is invented.
+Production eligibility is never overridden in this test: explicit requests are
+compiled as offline candidates, native OFF uses the existing qualification
+candidate context, and the independent production denial remains installed.
+
+The pinned [request type](https://github.com/openai/openai-python/blob/v3.42.1/src/openai/types/responses/response_create_params.py)
+documents that `prompt_cache_options.mode="explicit"` disables the implicit
+breakpoint; zero explicit markers means no prompt caching. Both compiler paths
+retain this control. The pinned [usage types](https://github.com/openai/openai-python/blob/v3.42.1/src/openai/types/responses/response_usage.py)
+name integer `input_tokens_details.cached_tokens`,
+`input_tokens_details.cache_write_tokens` and
+`output_tokens_details.reasoning_tokens`. JudgmentLLM preserves unknown counts
+as null and requires strict nonnegative integers when present. Cache details
+are included in input; reasoning is included in output. Neither is added again.
+Repeated receipt replay adds no usage fact, and grouped trait membership does
+not multiply physical usage. Invalid usage does not invalidate otherwise valid
+assessment text or authorize another send.
+
+Production explicit caching remains unqualified and denied; OFF remains the
+default. A later enablement decision needs separately reviewed exact returned
+model/served tier, native schema/presentation and requested controls, SDK
+integration and usage evidence, plus scoped authority and negative gate tests.
+The existing qualification context rejects explicit revision 3. This report
+does not authorize changing that boundary, promoting a registry or making a call.
+
 ### Advisory prefix estimates
 
 The optional `openai-cache` extra pins `tiktoken==0.14.0`. Provision the

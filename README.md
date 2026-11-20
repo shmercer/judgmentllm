@@ -57,6 +57,10 @@ its native serving scope is unqualified, so nonstrict `auto` selects text, while
 explicit `native` and strict unknown `auto` fail before forwarding. Text still
 requires valid route/model/cache controls and strict local assessment validation.
 
+OpenAI explicit caching has an [offline candidate and scoped owner transport
+report](docs/prompt-caching.md#scoped-transport-report-and-offline-verification).
+Production explicit-cache submission remains denied, and new runs default OFF.
+
 Retained live evidence covers only its original sources and contracts:
 
 - OpenAI's [historical acceptance record](docs/provider-matrix.md#phase-5a-openai-production-boundary)
