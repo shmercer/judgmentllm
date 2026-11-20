@@ -59,7 +59,11 @@ def test_core_dependencies_match_contract() -> None:
 
 def test_distribution_exposes_requested_extras() -> None:
     extras = metadata.metadata("judgmentllm").get_all("Provides-Extra")
-    assert set(extras or []) == set(FEATURE_DEPENDENCIES) | {"all"}
+    assert set(extras or []) == set(FEATURE_DEPENDENCIES) | {"all", "openai-cache"}
+    assert extra_requirements("openai-cache") == {
+        ("openai", "==3.42.1"),
+        ("tiktoken", "==0.14.0"),
+    }
 
 
 @pytest.mark.parametrize("extra", FEATURE_DEPENDENCIES)

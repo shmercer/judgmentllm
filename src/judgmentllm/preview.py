@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
 from judgmentllm import gemini_types, vertex_types
+from judgmentllm.cache_advisory import CacheAdvisoryReport
 from judgmentllm.config import (
     RunSpec,
     RunSpecification,
@@ -159,6 +160,7 @@ def preview_prompt(
     | vertex_types.RenderedVertexPromptV1
     | gemini_types.RenderedGeminiPromptV1
     | RenderedDecisionsPreviewV1
+    | CacheAdvisoryReport
 ):
     """Render one planned request without credentials, networking, or execution.
 
@@ -172,6 +174,17 @@ def preview_prompt(
     )
     if isinstance(spec, RunSpecV4):
         return _decisions_preview(spec, item_id, trait_id, pair_uid, capabilities)
+    if spec.cache_policy_version == 3:
+        from judgmentllm.lifecycle import estimate_run
+        from judgmentllm.lifecycle_models import ExecutionPlan
+
+        if (item_id, trait_id, pair_uid) != (None, None, None):
+            raise ValueError(
+                "Explicit cache preview covers all requests; omit request selectors."
+            )
+        plan = estimate_run(spec, capabilities=capabilities)
+        assert isinstance(plan, ExecutionPlan) and plan.cache_advisory is not None
+        return plan.cache_advisory
     if isinstance(spec, RunSpecV3):
         from judgmentllm.lifecycle import _profile  # pyright: ignore[reportPrivateUsage]
 

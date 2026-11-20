@@ -9,6 +9,7 @@ from judgmentllm import __version__
 from judgmentllm._auth import _select_providers  # pyright: ignore[reportPrivateUsage]
 from judgmentllm._lifecycle_store import load_resume_spec
 from judgmentllm.auth import credential_status
+from judgmentllm.cache_advisory import CacheAdvisoryReport
 from judgmentllm.cli_controls import (
     LifecycleGroup,
     _AuthStatusReport,  # pyright: ignore[reportPrivateUsage]
@@ -110,13 +111,14 @@ def templates_preview(
         ),
     ] = False,
 ) -> None:
-    """Print one complete prompt locally; no credentials or provider calls."""
+    """Print an offline prompt or the redacted explicit-cache report."""
     if json_output:
 
         def operation() -> (
             RenderedAssessmentPrompt
             | RenderedProductionPromptV1
             | RenderedDecisionsPreviewV1
+            | CacheAdvisoryReport
         ):
             spec = load_run_spec(config)
             rendered = preview_prompt(
@@ -141,7 +143,9 @@ def templates_preview(
         for issue in validate_run(spec).issues:
             if issue.severity == "warning":
                 typer.echo(f"Warning [{issue.code}]: {issue.message}", err=True)
-        if isinstance(spec, (RunSpecV2, RunSpecV3)):
+        if isinstance(rendered, CacheAdvisoryReport):
+            typer.echo(rendered.model_dump_json(indent=2))
+        elif isinstance(spec, (RunSpecV2, RunSpecV3)):
             typer.echo(rendered.text.encode("utf-8"), nl=False)
         else:
             typer.echo(rendered.text)

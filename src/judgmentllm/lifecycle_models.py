@@ -8,6 +8,7 @@ from typing import Annotated, Literal
 
 from pydantic import ConfigDict, Field, model_validator
 
+from judgmentllm.cache_advisory import CacheAdvisoryReport
 from judgmentllm.decisions.records import (
     GEMINI_DECISIONS_CONTEXT_WARNING,
     GEMINI_DECISIONS_PROTOCOL,
@@ -105,6 +106,9 @@ class InputValidationReport(ExecutionModel):
     issues: tuple[ValidationIssue, ...] = ()
     total_issues: Count = 0
     truncated: bool = False
+    cache_advisory: CacheAdvisoryReport | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     output_selection: SchemaSelectionV2 | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
@@ -176,6 +180,9 @@ class ExecutionPlan(ExecutionModel):
     capabilities: CapabilityProfile | None
     cache_policy: str
     cache_report: Literal["uncached", "unknown"]
+    cache_advisory: CacheAdvisoryReport | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     estimated_input_tokens: Count | None = None
     estimated_output_tokens: Count | None = None
     estimated_cost: float | None = Field(default=None, ge=0)

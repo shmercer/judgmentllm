@@ -10,6 +10,7 @@ from typing import Literal
 
 from pydantic import Field
 
+from judgmentllm.cache_policy import OPENAI_CACHE_TTL
 from judgmentllm.config import (
     RunSpecification,
     RunSpecV2,
@@ -466,12 +467,22 @@ def validate_run(
                 unknown=True,
             )
 
-    if spec.cache_policy_version == 2:
+    if spec.cache_policy_version == 3:
+        try:
+            if version("openai") != "3.42.1":
+                raise ValueError("wrong SDK")
+        except (ValueError, PackageNotFoundError):
+            issue(
+                "unsupported_cache_policy",
+                "execution.cache_policy",
+                "explicit caching requires installed OpenAI SDK 3.42.1",
+            )
+    elif spec.cache_policy_version == 2:
         if spec.execution.cache_policy == "explicit":
             issue(
                 "unsupported_cache_policy",
                 "execution.cache_policy",
-                "explicit prompt caching is not supported yet; use off until semantic breakpoints are implemented",
+                "explicit prompt caching requires the version-3 Responses breakpoint configuration",
             )
         elif spec.provider == "openai" and spec.model not in {
             # These private protocol fixtures cannot enter production transport.
@@ -742,6 +753,19 @@ def request_context_fingerprint(
                 "native_mechanism": spec.prompt.native_mechanism,
             }
         )
+        if spec.cache_policy_version == 3:
+            assert spec.prompt.cache_breakpoints is not None
+            context_parts.append(
+                {
+                    "cache_policy_version": 3,
+                    "cache_identity_version": 1,
+                    "effective_ttl": OPENAI_CACHE_TTL,
+                    "breakpoints": [
+                        selector.model_dump(mode="json")
+                        for selector in spec.prompt.cache_breakpoints
+                    ],
+                }
+            )
     return stable_id("context", *context_parts)
 
 

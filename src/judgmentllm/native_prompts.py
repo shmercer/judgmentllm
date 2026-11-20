@@ -31,6 +31,7 @@ from judgmentllm.prompts import (
     _prompt_context,
     _prompt_source,
     _protect,
+    _ProtectedSpan,
     _trait_text,
     _verify_and_unwrap,
 )
@@ -267,6 +268,8 @@ def _render_text_v3(
     request: PlannedRequest,
     lookup: Callable[[Literal["response", "pair"], str], ResponseItem | PairTask],
     output: OutputCommitmentV3,
+    *,
+    protected_spans: list[_ProtectedSpan] | None = None,
 ) -> str:
     """Render a detached, fully validated output through all protection checks.
 
@@ -398,6 +401,7 @@ def _render_text_v3(
             namespace,
             renderer_version=2,
             presentation_version=contract.presentation_version,
+            protected_spans=protected_spans,
         )
     except (
         ValueError,

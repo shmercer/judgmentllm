@@ -11,17 +11,27 @@ import re
 from collections.abc import Callable
 from copy import deepcopy
 from dataclasses import dataclass
+from importlib.metadata import PackageNotFoundError, version
 from typing import Literal, cast
 
 from pydantic import Field, field_validator, model_validator
 
-from judgmentllm.cache_policy import CachePolicyVersion, validate_openai_off
+from judgmentllm.cache_policy import (
+    OPENAI_CACHE_MECHANISM,
+    OPENAI_CACHE_TTL,
+    CacheAnchor,
+    CacheBreakpoint,
+    CachePolicyVersion,
+    validate_openai_explicit_scope,
+    validate_openai_off,
+)
 from judgmentllm.config import (
     GenerationSpec,
     NativeTransportMechanism,
     RunSpecV3,
     validate_run_spec,
 )
+from judgmentllm.generation import GenerationCapabilities, GenerationParameterCapability
 from judgmentllm.models import PairTask, ResponseItem
 from judgmentllm.native_schema import NativeProjectionScopeV1, NativeSchemaProjectionV1
 from judgmentllm.native_selection import NativeFeature, _features
@@ -43,7 +53,7 @@ from judgmentllm.persistence.hashing import (
     semantic_digest,
 )
 from judgmentllm.persistence.models import SHA256
-from judgmentllm.planning import PlannedRequest, validate_generation
+from judgmentllm.planning import CapabilityProfile, PlannedRequest, validate_generation
 from judgmentllm.preparation.session import RequestDependency
 from judgmentllm.presentation import PresentationVersion
 from judgmentllm.production_registry import (
@@ -321,7 +331,7 @@ def _verify_selection(
         if spec.endpoint == "responses"
         else "openai.chat.response_format"
     )
-    qualifier = context.kind != "openai-production-v1"
+    qualifier = context.kind != "openai-production-v1" or spec.cache_policy_version == 3
     authority_kind = (
         "qualification_probe"
         if qualifier
@@ -348,7 +358,11 @@ def _verify_selection(
         )
     ):
         raise TransportIntegrityError()
-    support = _support(context, selection.features, service, spec.generation)
+    support = (
+        "unknown"
+        if spec.cache_policy_version == 3
+        else _support(context, selection.features, service, spec.generation)
+    )
     if selection.native_support != support:
         raise TransportIntegrityError()
     if selection.mechanism != "text":
@@ -380,8 +394,12 @@ def _selection(
 ) -> ProductionSelectionV1:
     policy = spec.prompt.structured_output
     features = _features(contract)
-    support = _support(context, features, service, spec.generation)
-    qualifier = context.kind != "openai-production-v1"
+    support = (
+        "unknown"
+        if spec.cache_policy_version == 3
+        else _support(context, features, service, spec.generation)
+    )
+    qualifier = context.kind != "openai-production-v1" or spec.cache_policy_version == 3
     if parent is not None:
         mechanism = parent.mechanism
     elif policy == "text":
@@ -418,6 +436,43 @@ def _selection(
     return result
 
 
+class CachePrefixV1(_TransportModel):
+    """A verified cumulative UTF-8 boundary, without content or estimates."""
+
+    anchor: CacheAnchor
+    prefix_bytes: int = Field(gt=0)
+    prefix_sha256: SHA256
+
+
+class ExplicitCacheLayoutV1(_TransportModel):
+    """The sealed layout shared by wire construction and advisory reporting."""
+
+    wire_version: Literal[1] = 1
+    block_layout_version: Literal[1] = 1
+    cache_identity_version: Literal[1] = 1
+    effective_ttl: Literal["30m"] = OPENAI_CACHE_TTL
+    prefixes: tuple[CachePrefixV1, ...] = Field(min_length=1, max_length=4)
+
+    @model_validator(mode="after")
+    def ordered(self) -> ExplicitCacheLayoutV1:
+        lengths = tuple(prefix.prefix_bytes for prefix in self.prefixes)
+        if lengths != tuple(sorted(set(lengths))):
+            raise ValueError("cache breakpoints must strictly increase")
+        return self
+
+    def blocks(self, prompt: str) -> tuple[str, ...]:
+        raw = prompt.encode("utf-8")
+        blocks: list[str] = []
+        start = 0
+        for prefix in self.prefixes:
+            end = prefix.prefix_bytes
+            if end >= len(raw) or bytes_digest(raw[:end]) != prefix.prefix_sha256:
+                raise TransportIntegrityError()
+            blocks.append(raw[start:end].decode("utf-8"))
+            start = end
+        return (*blocks, raw[start:].decode("utf-8"))
+
+
 class OutputCommitmentV4(_TransportModel):
     """Production output commitment; canonical contract and projection stay V2/V1."""
 
@@ -425,6 +480,13 @@ class OutputCommitmentV4(_TransportModel):
     renderer_version: Literal[3] = 3
     cache_policy_version: CachePolicyVersion = Field(
         default=1, exclude_if=lambda value: value == 1
+    )
+    cache_breakpoints: tuple[CacheBreakpoint, ...] | None = Field(
+        default=None,
+        min_length=1,
+        max_length=4,
+        repr=False,
+        exclude_if=lambda value: value is None,
     )
     reasoning_policy: ReasoningPolicyV1 | None = Field(
         default=None, exclude_if=lambda value: value is None
@@ -446,8 +508,21 @@ class OutputCommitmentV4(_TransportModel):
 
     @model_validator(mode="after")
     def exact_representation(self) -> OutputCommitmentV4:
+        if (self.cache_policy_version == 3) != (self.cache_breakpoints is not None):
+            raise ValueError("cache revision differs from breakpoint intent")
         if self.cache_policy_version == 2:
             validate_openai_off(self.scope)
+        if self.cache_policy_version == 3:
+            validate_openai_explicit_scope(self.scope)
+            if (
+                self.contract.presentation_version != 2
+                or self.selection.mechanism != OPENAI_CACHE_MECHANISM
+                or self.selection.policy != "native"
+                or self.service_policy is None
+                or self.service_policy.wire_tier != "default"
+                or self.selection.authority_kind != "qualification_probe"
+            ):
+                raise ValueError("explicit cache candidate scope differs")
         verify_policy_scope(
             self.reasoning_policy,
             self.scope,
@@ -522,6 +597,10 @@ def _build_output_commitment_v4(
         if spec.execution.cache_policy != "off":
             raise ValueError("explicit prompt caching is not supported yet")
         validate_openai_off(context.scope)
+    if cache_revision == 3 and (
+        spec.cache_policy_version != 3 or context.kind != "openai-production-v1"
+    ):
+        raise ValueError("explicit caching cannot use a historical or harness scope")
     profile = _profile_for(context.scope)
     validate_service_support(
         service,
@@ -551,6 +630,11 @@ def _build_output_commitment_v4(
     raw = serialize_output_schema(contract)
     return OutputCommitmentV4(
         cache_policy_version=cache_revision,
+        cache_breakpoints=(
+            tuple(spec.prompt.cache_breakpoints)
+            if spec.prompt.cache_breakpoints is not None
+            else None
+        ),
         reasoning_policy=build_reasoning_policy(spec, context.scope),
         service_policy=service,
         scope=context.scope,
@@ -602,6 +686,7 @@ def build_openai_request_body(
     prompt: str,
     output: OutputCommitmentV4,
     generation: object = None,
+    cache: ExplicitCacheLayoutV1 | None = None,
 ) -> bytes:
     """Complete body in pinned SDK order; never accept caller provider JSON.
 
@@ -615,6 +700,7 @@ def build_openai_request_body(
         or (output.scope.provider, output.scope.endpoint, output.scope.model)
         != ("openai", endpoint, model)
         or type(prompt) is not str
+        or (output.cache_breakpoints is None) != (cache is None)
     ):
         raise TransportIntegrityError()
     settings = (
@@ -635,9 +721,24 @@ def build_openai_request_body(
     if output.service_policy is not None:
         values["service_tier"] = output.service_policy.wire_tier
     if endpoint == "responses":
-        values["input"] = [
-            {"role": "user", "content": [{"type": "input_text", "text": prompt}]}
-        ]
+        content: list[dict[str, object]] = [{"type": "input_text", "text": prompt}]
+        if cache is not None:
+            assert output.cache_breakpoints is not None
+            if tuple(prefix.anchor for prefix in cache.prefixes) != tuple(
+                selector.after for selector in output.cache_breakpoints
+            ):
+                raise TransportIntegrityError()
+            *prefix_blocks, suffix = cache.blocks(prompt)
+            content = [
+                {
+                    "type": "input_text",
+                    "text": block,
+                    "prompt_cache_breakpoint": {"mode": "explicit"},
+                }
+                for block in prefix_blocks
+            ]
+            content.append({"type": "input_text", "text": suffix})
+        values["input"] = [{"role": "user", "content": content}]
     else:
         values["messages"] = [{"role": "user", "content": prompt}]
     if settings is not None and settings.max_output_tokens is not None:
@@ -646,8 +747,9 @@ def build_openai_request_body(
         ] = settings.max_output_tokens
     if endpoint == "chat.completions":
         values["n"] = 1
-    if output.cache_policy_version == 2:
-        validate_openai_off(output.scope)
+    if output.cache_policy_version in (2, 3):
+        if output.cache_policy_version == 2:
+            validate_openai_off(output.scope)
         values["prompt_cache_options"] = {"mode": "explicit"}
     if endpoint == "chat.completions" and fragment:
         values["response_format"] = fragment["response_format"]
@@ -678,6 +780,9 @@ class TransportCommitmentV2(_TransportModel):
     renderer_version: Literal[3] = 3
     cache_policy_version: CachePolicyVersion = Field(
         default=1, exclude_if=lambda value: value == 1
+    )
+    explicit_cache: ExplicitCacheLayoutV1 | None = Field(
+        default=None, exclude_if=lambda value: value is None
     )
     presentation_version: PresentationVersion = Field(
         default=1, exclude_if=lambda value: value == 1
@@ -725,8 +830,24 @@ class TransportCommitmentV2(_TransportModel):
 
     @model_validator(mode="after")
     def exact_commitment(self) -> TransportCommitmentV2:
+        if (self.cache_policy_version == 3) != (self.explicit_cache is not None):
+            raise ValueError("cache revision differs from transport layout")
         if self.cache_policy_version == 2:
             validate_openai_off(self.scope)
+        if self.explicit_cache is not None:
+            validate_openai_explicit_scope(self.scope)
+            if (
+                self.bulk_live
+                or self.presentation_version != 2
+                or self.context_kind != "openai-production-v1"
+                or self.mechanism != OPENAI_CACHE_MECHANISM
+                or self.selection.policy != "native"
+                or self.selection.authority_kind != "qualification_probe"
+                or self.service_policy is None
+                or self.service_policy.wire_tier != "default"
+                or self.explicit_cache.prefixes[-1].prefix_bytes >= self.prompt_bytes
+            ):
+                raise ValueError("explicit cache transport scope differs")
         native = self.mechanism != "text"
         if (
             self.scope.provider != "openai"
@@ -781,6 +902,7 @@ def _receipt(
     prompt: bytes,
     payload: bytes,
     context_kind: ProductionContextKind,
+    cache: ExplicitCacheLayoutV1 | None = None,
 ) -> TransportCommitmentV2:
     projection = output.projection
     native = (
@@ -822,8 +944,10 @@ def _receipt(
     )
     if output.service_policy is not None:
         values["service_policy"] = output.service_policy.model_dump(mode="json")
-    if output.cache_policy_version == 2:
-        values["cache_policy_version"] = 2
+    if output.cache_policy_version != 1:
+        values["cache_policy_version"] = output.cache_policy_version
+    if cache is not None:
+        values["explicit_cache"] = cache.model_dump(mode="json")
     if output.contract.presentation_version == 1:
         values.pop("presentation_version")
     return TransportCommitmentV2.model_validate_json(
@@ -875,6 +999,7 @@ class PreparedRequestV4(PreparedRequest, _TransportModel):
                 prompt=self.rendered_text,
                 output=output,
                 generation=self.generation,
+                cache=receipt.explicit_cache,
             )
             or self.bulk_live != plan.bulk_live
             or plan.identity.request_uid != self.request_uid
@@ -893,6 +1018,7 @@ class PreparedRequestV4(PreparedRequest, _TransportModel):
                 self.rendered_text.encode("utf-8"),
                 self.payload,
                 receipt.context_kind,
+                receipt.explicit_cache,
             )
             or receipt.scope != output.scope
         ):
@@ -919,6 +1045,29 @@ class PreparedRequestV4(PreparedRequest, _TransportModel):
         return artifacts
 
 
+def cache_candidate_capabilities(
+    spec: RunSpecV3, scope: NativeProjectionScopeV1
+) -> CapabilityProfile:
+    """Supported offline wire shapes, with no assertion of serving eligibility."""
+    validate_openai_explicit_scope(scope)
+    generation = GenerationCapabilities(
+        provider=spec.provider,
+        endpoint=spec.endpoint,
+        model=spec.model,
+        source="openai-explicit-cache-offline-candidate-v1",
+        max_output_tokens=GenerationParameterCapability(
+            supported=True, minimum=1, maximum=128000
+        ),
+    )
+    return CapabilityProfile(
+        modes=("live",),
+        grouped=True,
+        explanations=True,
+        ties=True,
+        generation=generation_capabilities(spec, scope, generation),
+    )
+
+
 def _validate_scope(spec: RunSpecV3, context: ProductionContext) -> None:
     checked = validate_run_spec(spec)
     if not isinstance(checked, RunSpecV3) or (
@@ -927,7 +1076,16 @@ def _validate_scope(spec: RunSpecV3, context: ProductionContext) -> None:
         checked.model,
     ) != (context.scope.provider, context.scope.endpoint, context.scope.model):
         raise TransportIntegrityError()
-    if context.kind == "openai-study-candidate-v1":
+    if checked.cache_policy_version == 3:
+        try:
+            if version("openai") != OPENAI_PRODUCTION_SDK_VERSION:
+                raise TransportIntegrityError()
+        except PackageNotFoundError:
+            raise TransportIntegrityError() from None
+        generation_profile = cache_candidate_capabilities(
+            checked, context.scope
+        ).generation
+    elif context.kind == "openai-study-candidate-v1":
         from judgmentllm.study.admission import study_generation
 
         generation_profile = study_generation(checked, context.scope)
@@ -1036,6 +1194,7 @@ def prepare_production_request(
             prompt=rendered.text,
             output=output,
             generation=spec.generation,
+            cache=rendered.explicit_cache,
         )
         plan = TransportPlanV1(
             bulk_live=spec.execution.mode == "bulk_live",
@@ -1051,7 +1210,9 @@ def prepare_production_request(
             context_sha256=context_digest,
             parent_commitment_sha256=output.selection.parent_commitment_sha256,
         )
-        receipt = _receipt(plan, output, prompt, payload, context.kind)
+        receipt = _receipt(
+            plan, output, prompt, payload, context.kind, rendered.explicit_cache
+        )
         if frozen is not None and frozen != receipt:
             raise TransportIntegrityError()
         prepared = PreparedRequestV4(

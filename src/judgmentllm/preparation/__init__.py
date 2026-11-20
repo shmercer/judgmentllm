@@ -186,7 +186,7 @@ def _manifest(
         else TemplateCommitment
     )
     manifest_data: dict[str, object] = dict(
-        cache_policy_version=2,
+        cache_policy_version=spec.cache_policy_version,
         run_id=builder.run_id,
         task_kind=spec.task_kind,
         capture=spec.capture,
@@ -312,7 +312,12 @@ def prepare_run(
         discovered: dict[str, tuple[FileSignature, str]] = {}
         if origin is None:
             assert isinstance(spec_or_path, (RunSpec, RunSpecV2, RunSpecV3))
-            spec = validate_run_spec(spec_or_path, _cache_policy_version=2)
+            spec = validate_run_spec(
+                spec_or_path,
+                _cache_policy_version=2
+                if spec_or_path.cache_policy_version == 1
+                else None,
+            )
         else:
             raw, sig, digest = _memory_source(origin)
             # Bootstrap only in memory: privacy policy is unknown until parsed.
@@ -366,12 +371,21 @@ def prepare_run(
         if transport_context is not None:
             from judgmentllm.transport_dispatch import context_protocol
 
-            if context_protocol(transport_context) == "production":
-                from judgmentllm.cache_policy import validate_openai_off
+            protocol = context_protocol(transport_context)
+            if spec.cache_policy_version == 3 and protocol != "production":
+                raise PreparationError("explicit caching requires the OpenAI transport")
+            if protocol == "production":
+                from judgmentllm.cache_policy import (
+                    validate_openai_explicit_scope,
+                    validate_openai_off,
+                )
                 from judgmentllm.production_transport import ProductionContext
 
                 assert isinstance(transport_context, ProductionContext)
-                validate_openai_off(transport_context.scope)
+                if spec.cache_policy_version == 3:
+                    validate_openai_explicit_scope(transport_context.scope)
+                else:
+                    validate_openai_off(transport_context.scope)
                 if (spec.provider, spec.endpoint, spec.model) != (
                     transport_context.scope.provider,
                     transport_context.scope.endpoint,
@@ -502,6 +516,10 @@ def prepare_run(
             )
         prepared.verify_compatibility(capabilities=profile)
         prepared.verify_transport_index()
+        if prepared.manifest.cache_policy_version == 3:
+            from judgmentllm.cache_advisory import publish_initial_cache_advisories
+
+            publish_initial_cache_advisories(prepared)
         return prepared
     except BaseException as error:
         if prepared is not None:

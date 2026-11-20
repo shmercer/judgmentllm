@@ -1061,6 +1061,16 @@
       "platforms": [],
       "reason": "Deterministic platform-neutral contract; complete primary and Level 4 coverage"
     },
+    "tests/test_openai_explicit_cache.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Pinned SDK mock HTTP, immutable files, SQLite recovery and redacted CLI controls"
+    },
     "tests/test_openai_invalid_utf8.py": {
       "cost": "io",
       "domain": "provider-sdk",
@@ -1867,6 +1877,7 @@
       "tests/test_openai_decisions_r.py",
       "tests/test_openai_decisions_sdk.py",
       "tests/test_openai_diagnostics.py",
+      "tests/test_openai_explicit_cache.py",
       "tests/test_openai_invalid_utf8.py",
       "tests/test_openai_lifecycle.py",
       "tests/test_openai_qualification.py",
@@ -1945,6 +1956,7 @@
     "src/judgmentllm/assessment_errors.py",
     "src/judgmentllm/assessment_inspection.py",
     "src/judgmentllm/auth.py",
+    "src/judgmentllm/cache_advisory.py",
     "src/judgmentllm/cache_policy.py",
     "src/judgmentllm/cli.py",
     "src/judgmentllm/cli_controls.py",

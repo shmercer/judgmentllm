@@ -288,6 +288,14 @@ class _Block:
     wrapped: str
 
 
+@dataclass(frozen=True, repr=False)
+class _ProtectedSpan:
+    kind: str
+    identifier: str
+    start: int
+    end: int
+
+
 def _namespace(contents: Sequence[str], source: str) -> str:
     digest = hashlib.sha256("\0".join(contents).encode()).hexdigest()[:16]
     index = 0
@@ -317,6 +325,7 @@ def _verify_and_unwrap(
     *,
     renderer_version: Literal[1, 2] = 1,
     presentation_version: PresentationVersion = 1,
+    protected_spans: list[_ProtectedSpan] | None = None,
 ) -> str:
     pattern = re.compile(rf"<<JUDGMENTLLM_{namespace}_(BEGIN|END)_(\d+)>>")
     matches = list(pattern.finditer(text))
@@ -365,6 +374,23 @@ def _verify_and_unwrap(
                 "Prompt must preserve the committed essay presentation order."
             )
     # Internal markers are validation machinery, not text for providers.
+    if protected_spans is not None:
+        if renderer_version != 2:
+            raise PromptError("Protected spans require the exact unwrapped renderer.")
+        fragments: list[str] = []
+        cursor = position = 0
+        for begin, end, index in zip(matches[::2], matches[1::2], seen, strict=True):
+            block = blocks[index]
+            gap = text[cursor : begin.start()]
+            start = position + len(gap.encode("utf-8"))
+            position = start + len(block.content.encode("utf-8"))
+            protected_spans.append(
+                _ProtectedSpan(block.kind, block.identifier, start, position)
+            )
+            fragments.extend((gap, block.content))
+            cursor = end.end()
+        fragments.append(text[cursor:])
+        return "".join(fragments)
     if renderer_version == 2:
         for block in blocks:
             text = text.replace(block.wrapped, block.content, 1)

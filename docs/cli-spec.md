@@ -94,7 +94,12 @@ schema/JSON pass-through and incompatible controls are rejected.
 
 `templates preview --json` returns one version-1 control envelope containing the
 actual prompt and typed rendering metadata. Plain preview prints the same prompt
-text. Preview is an explicit local content display: it requires no credentials,
+text. With explicit cache markers, omit item, trait and pair selectors. Preview
+prints only redacted marker diagnostics for the complete offline plan.
+`validate` and `plan` include the same optional `cache_advisory` report.
+[Explicit-cache diagnostics](prompt-caching.md)
+
+Preview is an explicit local content display: it requires no credentials,
 contacts no provider and creates no run/submission. See the installed-package
 [synthetic v2 examples](../examples/v2/README.md) for preview, all layouts,
 partial results/retries, winner-only pairwise, export and base-R import.

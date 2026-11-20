@@ -542,6 +542,11 @@ Missing Rscript/jsonlite fails the required Ubuntu/Python 3.11 step. This gate
 uses neither processx nor an installed rubricLLM wrapper. CLI lifecycle and
 failed-member retry acceptance remain in their assigned later subphases.
 
+The execution gate also joins synthetic explicit-cache Responses evidence to
+grouped rubric rows, a changed subset retry, and reverse-presented pairwise
+output. It verifies once-per-physical-request accounting, leading zeros, missing
+versus zero cache writes, and the existing CSV shapes.
+
 Subphase 4 adds a sixth required offline gate. Its first Python process executes
 grouped rubric observations with two successful members and one invalid member,
 publishes an incomplete export, and authorizes an exact failed-member retry.

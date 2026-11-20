@@ -164,6 +164,12 @@ class ExecutableRunManifest(ExecutionModel):
 
     @model_validator(mode="after")
     def complete(self) -> ExecutableRunManifest:
+        if self.cache_policy_version == 3 and (
+            not isinstance(self, ExecutableRunManifestV4)
+            or self.execution.mode != "live"
+            or self.execution.cache_policy != "explicit"
+        ):
+            raise ValueError("explicit cache manifest scope differs")
         if (self.configuration_origin == "file") != (
             self.configuration_location is not None
         ):

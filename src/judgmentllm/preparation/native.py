@@ -41,7 +41,11 @@ if TYPE_CHECKING:
         ExecutableRunManifestV5,
     )
     from judgmentllm.preparation.session import PreparedRun
-    from judgmentllm.production_transport import PreparedRequestV4, ProductionContext
+    from judgmentllm.production_transport import (
+        ExplicitCacheLayoutV1,
+        PreparedRequestV4,
+        ProductionContext,
+    )
     from judgmentllm.transport import PreparedRequestV3, TransportContext
 
 
@@ -148,11 +152,13 @@ def preseal_transports(
 ) -> tuple[int, str]:
     """Prepare first attempts while created; submission remains impossible."""
     from judgmentllm.preparation.session import _request_dependency  # pyright: ignore[reportPrivateUsage]
+    from judgmentllm.production_transport import PreparedRequestV4
     from judgmentllm.transport import physical_identity
     from judgmentllm.transport_dispatch import prepare_request
 
     repository = builder.repository
     digest = InitialTransportDigest()
+    cache_cohorts: dict[tuple[str, ...], tuple[ExplicitCacheLayoutV1, str | None]] = {}
     task_ordinal = 0
     kind = "response" if spec.task_kind == "rubric" else "pair"
     source_id = next(
@@ -186,6 +192,17 @@ def preseal_transports(
                 template=template,
                 lookup=builder.lookup,
             )
+            if isinstance(wire, PreparedRequestV4):
+                receipt = wire.transport_commitment
+                if receipt.explicit_cache is not None:
+                    signature = (receipt.explicit_cache, receipt.format_sha256)
+                    if (
+                        cache_cohorts.setdefault(planned.trait_ids, signature)
+                        != signature
+                    ):
+                        raise PreparationError(
+                            "cache prefix differs within a request cohort"
+                        )
             artifacts = publish_prepared_transport(
                 repository, builder.store, wire, spec.capture
             )

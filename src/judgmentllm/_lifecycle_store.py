@@ -135,9 +135,12 @@ def load_resume_spec(
     config: Path, run_id: str | Path, store: str | Path | None
 ) -> RunSpecification:
     """Read original configuration only under the verified run's sealed policy."""
-    discovery = _load_run_spec(
-        config, document_reader=read_document, cache_policy_version=1
-    )
+    try:
+        discovery = _load_run_spec(config, document_reader=read_document)
+    except ValueError:
+        discovery = _load_run_spec(
+            config, document_reader=read_document, cache_policy_version=1
+        )
     identifier, root = resolve_run(run_id, store, discovery)
     with ReadOnlyRepository(root) as repository:
         manifest = _load_manifest(repository, identifier, unsealed=False)

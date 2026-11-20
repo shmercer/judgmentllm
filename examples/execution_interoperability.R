@@ -152,6 +152,40 @@ for (order in openai_p$original_order) stopifnot(identical(jsonlite::fromJSON(or
 for (order in openai_p$presented_order) stopifnot(identical(jsonlite::fromJSON(order), c("002", "001")))
 cat("OpenAI adapter interoperability passed: 8 audit rows, 6 physical usage records\n")
 
+# Explicit marker hits are unnecessary for assessment validity.
+explicit_rows <- read_openai("explicit-results.jsonl")
+explicit_usage <- read_openai("explicit-evidence.jsonl")
+explicit_keys <- vapply(explicit_usage, function(x) key(x$identity), character(1))
+explicit_joins <- match(vapply(explicit_rows, key, character(1)), explicit_keys)
+stopifnot(length(explicit_rows) == 4L, length(explicit_usage) == 3L)
+stopifnot(!anyDuplicated(explicit_keys), !anyNA(explicit_joins))
+stopifnot(sum(vapply(explicit_usage, function(x) x$usage$total_tokens, integer(1))) == 330L)
+stopifnot(sum(vapply(explicit_usage[explicit_joins], function(x) x$usage$total_tokens, integer(1))) == 440L)
+stopifnot(sum(vapply(explicit_rows, function(x) x$status == "invalid", logical(1))) == 1L)
+for (entry in explicit_usage) {
+  stopifnot(identical(entry$usage$cache_read_tokens, 0L))
+  if (entry$identity$run_id == "explicit-rubric") {
+    stopifnot(identical(entry$usage$cache_write_tokens, 0L))
+  } else {
+    stopifnot(is.null(entry$usage$cache_write_tokens))
+  }
+}
+explicit_r <- read_audit(file.path("openai", "explicit-rubric.csv"))
+explicit_p <- read_audit(file.path("openai", "explicit-pairs.csv"))
+stopifnot(identical(names(explicit_r), names(openai_r)), identical(names(explicit_p), names(openai_p)))
+stopifnot(nrow(explicit_r) == 3L, all(explicit_r$item_id == "001"))
+stopifnot(identical(sort(unique(explicit_r$trait_id)), c("01", "02")))
+rows_per_attempt <- table(explicit_r$attempt_id)
+stopifnot(identical(sort(as.integer(rows_per_attempt)), c(1L, 2L)))
+retry_row <- explicit_r[explicit_r$attempt_id == names(rows_per_attempt)[rows_per_attempt == 1L], ]
+stopifnot(retry_row$status == "complete", retry_row$trait_id == explicit_r$trait_id[explicit_r$status == "invalid"])
+stopifnot(all(is.na(explicit_r$probabilities_json)), all(is.na(explicit_r$expected_value)))
+stopifnot(nrow(explicit_p) == 1L, explicit_p$ID1 == "002", explicit_p$ID2 == "001")
+stopifnot(explicit_p$better_id == "002", as.integer(explicit_p$winner_pos) == 1L)
+stopifnot(identical(jsonlite::fromJSON(explicit_p$original_order), c("001", "002")))
+stopifnot(identical(jsonlite::fromJSON(explicit_p$presented_order), c("002", "001")))
+stopifnot(is.na(explicit_p$p_left), is.na(explicit_p$p_first))
+cat("OpenAI explicit-cache interoperability passed\n")
 
 # Additive diagnostics join physical observations without adding result columns.
 for (entry in openai_evidence) {

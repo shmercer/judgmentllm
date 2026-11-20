@@ -649,6 +649,12 @@ def prepare_subset_retry(
                 "run", run_id, run_id, "running", authorization_id=operation_id
             )
             repository.transition("run", run_id, run_id, "partial")
+    if prepared_run.manifest.cache_policy_version == 3:
+        from judgmentllm.cache_advisory import publish_retry_cache_advisory
+        from judgmentllm.production_transport import PreparedRequestV4
+
+        assert isinstance(wire, PreparedRequestV4)
+        publish_retry_cache_advisory(prepared_run, wire, dependency, attempt_number)
     checkpoint("after_retry_preparation", request_uid)
     return attempt
 

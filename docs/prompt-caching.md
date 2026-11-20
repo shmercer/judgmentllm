@@ -1,9 +1,8 @@
 # Prompt caching
 
 New rubric and comparative-judgment runs default to `execution.cache_policy: off`.
-The new-run choices are `off` and `explicit`. Explicit caching is recognized but
-fails preflight until [Issue #57](https://github.com/shmercer/judgmentllm/issues/57)
-implements semantic breakpoints. It never silently selects another policy.
+The explicit option has an offline candidate for semantic breakpoints.
+[Issue #57](https://github.com/shmercer/judgmentllm/issues/57)
 
 ```yaml
 execution:
@@ -19,16 +18,14 @@ execution:
 | Mock | Synthetic, uncached execution. |
 
 OpenAI's wire value `mode: explicit` means **only explicit breakpoints may cache**.
-With zero breakpoints it disables prompt-cache reads and writes. This wire value
-does not mean JudgmentLLM accepted `cache_policy: explicit`. Prompt text and output
-schemas remain unchanged. No cache keys, retention overrides or arbitrary SDK
-parameters are accepted. The supported controls are documented in the
+With zero breakpoints it disables prompt-cache reads and writes while preserving
+the prompt text and output schema. The supported controls are documented in the
 [OpenAI caching guide](https://developers.openai.com/api/docs/guides/prompt-caching),
 [Responses reference](https://developers.openai.com/api/reference/resources/responses/methods/create)
 and [Chat reference](https://developers.openai.com/api/reference/resources/chat/subresources/completions/methods/create).
-Offline SDK tests establish serialization, not production assessment qualification.
-The operator's two exploratory Responses requests in
-[Issue #56](https://github.com/shmercer/judgmentllm/issues/56) grant no new qualification.
+Production qualification requires separate evidence. The operator's two
+exploratory Responses requests document the earlier OFF work.
+[Issue #56](https://github.com/shmercer/judgmentllm/issues/56)
 
 Caching can charge for writes even when a changing essay prevents reuse. At the
 2026-11-14 documentation snapshot, OpenAI describes default writes at 1.25 times
@@ -45,18 +42,103 @@ usage semantics 2; read counters retain their documented parent overlap. Zero
 stays zero, missing stays null, and neither counts nor costs are inferred.
 Assessment/result schemas and normalized CSV/R columns remain unchanged.
 
+## Explicit caching offline candidate
+
+Use RunSpec V3 with exact OpenAI `gpt-6-luna`, Responses, installed
+`openai==3.42.1`, ordinary live mode, Standard service and native structured
+output. `validate`, `plan` and `templates preview` can compile this scope.
+Provider submission is blocked pending separately authorized qualification.
+Managed bulk-live (PR #69), native batch, Decisions, other tiers and other
+providers are outside this scope.
+
+```yaml
+schema_version: 3
+provider: openai
+endpoint: responses
+model: gpt-6-luna
+execution:
+  mode: live
+  cache_policy: explicit
+prompt:
+  structured_output: native
+  native_mechanism: openai.responses.text.format
+  cache_breakpoints:
+    - after: assessment
+    - after: exemplar
+      exemplar_id: reference-example
+```
+
+Choose one to four ordered boundaries. `assessment` cuts after the protected
+rubric or comparison criterion. `exemplar` cuts after a named configured
+exemplar, including its annotations and metadata. `output_instructions` cuts
+after the protected native output instructions. The final rendered order governs
+validity. Inspect static rubric, template and exemplar text, IDs, annotations and
+metadata for approved reusable content before opting in. Keep private student
+material out of those static source fields. Student inputs are structurally
+protected and appear after the final marker. A branch-dependent hook, advanced
+template or misplaced marker fails locally. The matching native schema, role
+and concatenated UTF-8 prompt are preserved.
+
+The candidate omits retention overrides and uses the documented 30-minute default
+minimum. The provider controls actual retention and eligibility. Confirm provider
+retention, account scope and permitted capture before any future live
+qualification. [OpenAI prompt caching guide](https://developers.openai.com/api/docs/guides/prompt-caching)
+
+### Advisory prefix estimates
+
+The optional `openai-cache` extra pins `tiktoken==0.14.0`. Provision the
+official `o200k_base` rank file separately. Put the verified file in the
+directory named by `TIKTOKEN_CACHE_DIR` under the filename
+`fb374d419588a4632f3f557e76b4b70aebbca790`. Its SHA-256 is
+`446a9538cb6c348e3516120d7c08b09f57c36495e2acfffe59a5bf8b0cfb1a2d`.
+JudgmentLLM reads this file locally and leaves its lifecycle to the operator.
+[Official encoding definition](https://github.com/openai/tiktoken/blob/0.14.0/tiktoken_ext/openai_public.py)
+[Official rank file](https://openaipublic.blob.core.windows.net/encodings/o200k_base.tiktoken)
+
+Each cumulative marker reports a visible-text estimate over joined text and a
+sum of per-block counts. Counts can differ at boundaries, including with Unicode.
+They omit provider framing and use a proxy encoding. The provider documents a
+1,024-token minimum. The diagnostic is `short` when both estimates are below
+1,024, `borderline` when either equals the minimum or the estimates straddle it,
+`disagreement` when they differ, and `unknown` when a count is unavailable.
+These warnings leave the wire, marker placement, exit status and assessment
+validity independent of the estimate, including in strict mode. Provider
+eligibility, acceptance and cache activity require provider evidence.
+
+Preview the candidate with `templates preview --config … --json` and omit
+item, trait and pair selectors. The report contains ordinal coordinates, anchor
+kinds, prefix sizes and hashes, estimator provenance and warning codes. It never
+prints the prompt, exemplar IDs, student IDs or student text. `validate` and
+`plan` expose the same optional report. The first 100 requests are shown with
+the total and truncation flag.
+
+Companion diagnostics are best effort at
+`cache-advisories/<transport-commitment-sha256>.json` inside the run directory.
+Publication follows the required seal or subset transaction. Missing,
+unreadable, corrupt or unwritable companions have no effect on execution or
+recovery. A changed physical subset gets a fresh receipt and its own structural
+checks. Same-attempt recovery verifies the original sealed bytes and holds
+unresolved sends for reconciliation.
+
+Check provider-reported reads and writes per physical observation. Missing
+counters remain unknown and reported zero remains zero. A native assessment
+can be valid with zero or missing cache activity. A provider rejection follows
+the existing failure path. Prefix warnings and cache outcomes never authorize
+a replacement send. Cost remains unknown without qualified exact-scope rates
+and complete, consistent usage, including read plus write at most input.
+
 ## Historical runs and old configuration files
 
 Sealed manifests omit `cache_policy_version` under historical revision 1. New
-manifests seal revision 2; new OpenAI output and transport commitments also seal
-it. Omission remains omitted when historical records are serialized. Historical
+OFF manifests and their OpenAI commitments seal revision 2. The explicit
+candidate seals revision 3. Omission remains omitted when historical records are serialized. Historical
 `auto` and `off` rebuild their original bodies without the new wire control;
 resume and retry inherit that policy. There is no migration or cancellation of
 in-flight work. Minimal capture still requires unchanged original sources.
 
 For an **unsealed** old YAML/JSON file, replace `cache_policy: auto` with `"off"`
-or omit it. Creating a new run always selects revision 2, even with an older
-RunSpec schema. `auto` is rejected with migration guidance. Leave sealed stores,
+or omit it. New OFF runs select revision 2, including with older RunSpec schemas.
+`auto` is rejected with migration guidance. Leave sealed stores,
 source files, plans and digests untouched; use their stored policy when reopening.
 The CLI's `resume --config` loads the verified run's original revision, including
 legacy `auto`; ordinary configuration loading never enables that selection.
