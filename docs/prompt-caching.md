@@ -99,27 +99,19 @@ were:
 | 8 | OFF | 0 | 0 |
 
 The report describes two byte-identical marked prefixes for cold/warm, with only
-the synthetic essay suffix changing. OFF uses the warm concatenated text,
-schema and settings in one unmarked block. This is owner-reported provider
-transport evidence, not a JudgmentLLM SDK integration result. Exact returned
-model, served tier, other usage fields and actual billing are not established
-by this summary. The **1.7350344 USD reserve is not actual spend or savings**.
+the synthetic essay suffix changing. It reports that OFF uses the warm
+concatenated text, schema and settings in one unmarked block. The owner's wire
+bytes have not been independently verified. This standalone transport report
+does not establish JudgmentLLM SDK integration. Exact returned model, served
+tier, other usage fields and actual billing are not established by this summary.
+The **1.7350344 USD reserve is not actual spend or savings**.
 
-Reported script SHA-256:
-`4fe8eacc5a1febc28c9e5e58e4ca32b2b08b1a61eaf0e3d78f01f74b695c830b`.
-The supplied frozen synthetic row SHA-256 values are provenance references:
-
-| Row | SHA-256 |
-|---|---|
-| 1 | `684d2f04308e8f19592a9684c05806522e8611772a97f9266024852808e03d4b` |
-| 2 | `dd6f0164e97ad3b982966a4904948b6c894fd2510f78f323345c95cef4f56a69` |
-| 8 | `a1eee549908c0fdcfdbe1526e9f3820bcdd5eaee37e54786a24cca6c1c234fe4` |
-
-Separate repository tests use newly generated synthetic inputs, the merged
-compiler and SDK 3.42.1 with `MockTransport`. They compare actual SDK request
-bytes to the compiled sealed payloads for a cold/warm/OFF differential, then
-exercise response extraction and durable receipt/repository replay. They do not
-claim byte parity with the owner's rows or successful production submission.
+Separate repository tests use generic, newly generated synthetic inputs, the
+merged compiler and SDK 3.42.1 with `MockTransport`. They check offline SDK byte
+parity against their own compiled sealed payloads only, for a cold/warm/OFF
+differential, then exercise response extraction and durable receipt/repository
+replay. They do not claim byte parity with the owner's rows or successful
+production submission.
 Only the three cache-count pairs mirror the report; other fake usage is invented.
 Production eligibility is never overridden in this test: explicit requests are
 compiled as offline candidates, native OFF uses the existing qualification
