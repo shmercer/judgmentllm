@@ -1448,6 +1448,7 @@
       "test_legacy_plain_preview_rethrows_explicit_cache_error": {"": []},
       "test_local_rank_faults_return_no_estimate": {"[broken-ranks-asset_invalid]": [], "[missing-asset_unavailable]": [], "[missing-tokenizer-tokenizer_unavailable]": [], "[unreadable-asset_unavailable]": [], "[wrong-version-tokenizer_incompatible]": []},
       "test_local_synthetic_ranks_produce_ready_preview_estimates": {"": []},
+      "test_network_guard_limits_connect_to_stdlib_socketpair": {"": []},
       "test_optional_companion_faults_across_public_preflight_submit_and_resume": {"[corrupt]": [], "[missing]": [], "[unreadable]": [], "[write]": []},
       "test_outside_exact_tuple_fails_preflight": {"[endpoint-chat.completions]": [], "[endpoint-decisions]": [], "[execution.cache_policy-auto]": [], "[execution.cache_policy-off]": [], "[execution.mode-batch_native]": [], "[execution.mode-bulk_live]": [], "[execution.tier-flex]": [], "[model-gpt-6.1-terra]": [], "[prompt.advanced-True]": [], "[prompt.cache_breakpoints-value11]": [], "[prompt.cache_breakpoints-value12]": [], "[prompt.cache_breakpoints-value13]": [], "[prompt.cache_breakpoints-value14]": [], "[prompt.cache_ttl-2h]": [], "[prompt.structured_output-auto]": [], "[provider-anthropic]": [], "[provider-gemini]": []},
       "test_provider_rejection_and_ambiguous_submission_do_not_retry": {"[400-0]": [], "[500-2]": []},

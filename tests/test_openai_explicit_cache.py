@@ -3,13 +3,15 @@
 # pyright: reportPrivateUsage=false
 from __future__ import annotations
 
+import asyncio
 import json
 import socket
 from base64 import b64encode
 from importlib.metadata import PackageNotFoundError
 from pathlib import Path
+from threading import local
 from types import SimpleNamespace
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 import httpx2
 import pytest
@@ -64,10 +66,73 @@ def _forbidden(*_args: Any, **_kwargs: Any) -> Any:
 
 @pytest.fixture(autouse=True)
 def blocked_network_and_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(socket, "getaddrinfo", _forbidden)
-    monkeypatch.setattr(socket.socket, "connect", _forbidden)
+    stdlib_socketpair = socket.socketpair
+    original_connect = socket.socket.connect
+    pair_scope = local()
+    loopback = {socket.AF_INET: "127.0.0.1", socket.AF_INET6: "::1"}
+
+    def scoped_socketpair(
+        *args: Any, **kwargs: Any
+    ) -> tuple[socket.socket, socket.socket]:
+        previous = getattr(pair_scope, "active", False)
+        pair_scope.active = True
+        try:
+            return stdlib_socketpair(*args, **kwargs)
+        finally:
+            pair_scope.active = previous
+
+    def guarded_connect(current: socket.socket, address: object) -> None:
+        # Windows Proactor wakeups use the stdlib TCP socketpair fallback.
+        if getattr(pair_scope, "active", False) and type(address) is tuple:
+            endpoint = cast(tuple[object, ...], address)
+            if (
+                len(endpoint) in (2, 4)
+                and type(endpoint[0]) is str
+                and endpoint[0] == loopback.get(current.family)
+            ):
+                original_connect(current, cast(Any, endpoint))
+                return
+        _forbidden()
+
+    monkeypatch.setattr(socket, "socketpair", scoped_socketpair)
+    monkeypatch.setattr(socket.socket, "connect", guarded_connect)
+    monkeypatch.setattr(socket.socket, "connect_ex", _forbidden)
+    for name in (
+        "create_connection",
+        "getaddrinfo",
+        "gethostbyname",
+        "gethostbyname_ex",
+        "gethostbyaddr",
+        "getnameinfo",
+    ):
+        monkeypatch.setattr(socket, name, _forbidden)
     monkeypatch.setattr(openai, "_resolve_credentials", _forbidden)
     monkeypatch.delenv("TIKTOKEN_CACHE_DIR", raising=False)
+
+
+def test_network_guard_limits_connect_to_stdlib_socketpair() -> None:
+    asyncio.new_event_loop().close()
+    sender, receiver = socket.socketpair()
+    with sender, receiver:
+        receiver.settimeout(1)
+        sender.sendall(b"a")
+        assert receiver.recv(1) == b"a"
+
+    with pytest.raises((ValueError, OSError)):
+        socket.socketpair(type=-1)
+    with socket.socket() as probe:
+        probe.close()
+        for host in ("127.0.0.1", "::1", "203.0.113.1"):
+            with pytest.raises(AssertionError, match="external network"):
+                probe.connect((host, 0))
+        with pytest.raises(AssertionError, match="external network"):
+            probe.connect_ex(("127.0.0.1", 0))
+
+    with pytest.raises(AssertionError, match="external network"):
+        socket.getaddrinfo("127.0.0.1", 0, flags=socket.AI_NUMERICHOST)
+    assert openai._resolve_credentials is _forbidden
+    with pytest.raises(AssertionError, match="credentials"):
+        openai._resolve_credentials("openai")
 
 
 def _config(
