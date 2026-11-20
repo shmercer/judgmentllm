@@ -41,11 +41,7 @@ if TYPE_CHECKING:
         ExecutableRunManifestV5,
     )
     from judgmentllm.preparation.session import PreparedRun
-    from judgmentllm.production_transport import (
-        ExplicitCacheLayoutV1,
-        PreparedRequestV4,
-        ProductionContext,
-    )
+    from judgmentllm.production_transport import PreparedRequestV4, ProductionContext
     from judgmentllm.transport import PreparedRequestV3, TransportContext
 
 
@@ -152,7 +148,10 @@ def preseal_transports(
 ) -> tuple[int, str]:
     """Prepare first attempts while created; submission remains impossible."""
     from judgmentllm.preparation.session import _request_dependency  # pyright: ignore[reportPrivateUsage]
-    from judgmentllm.production_transport import PreparedRequestV4
+    from judgmentllm.production_transport import (
+        ExplicitCacheLayoutV1,
+        PreparedRequestV4,
+    )
     from judgmentllm.transport import physical_identity
     from judgmentllm.transport_dispatch import prepare_request
 

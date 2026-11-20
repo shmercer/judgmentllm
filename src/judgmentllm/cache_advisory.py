@@ -9,22 +9,17 @@ from hashlib import sha1
 from importlib import import_module
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, cast
+from typing import Literal, cast
 
 from pydantic import Field
 
 from judgmentllm.cache_policy import CacheAnchor
+from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.hashing import bytes_digest, canonical_bytes
 from judgmentllm.persistence.models import SHA256, ArtifactIdentity, ExecutionModel
 from judgmentllm.planning import stable_id
-
-if TYPE_CHECKING:
-    from judgmentllm.persistence.artifacts import ArtifactStore
-    from judgmentllm.preparation.session import PreparedRun, RequestDependency
-    from judgmentllm.production_transport import (
-        PreparedRequestV4,
-        TransportCommitmentV2,
-    )
+from judgmentllm.preparation.session import PreparedRun, RequestDependency
+from judgmentllm.production_transport import PreparedRequestV4, TransportCommitmentV2
 
 _TOKENIZER = "0.14.0"
 _ASSET_URL = "https://openaipublic.blob.core.windows.net/encodings/o200k_base.tiktoken"
@@ -243,8 +238,6 @@ def _read(store: ArtifactStore, receipt: TransportCommitmentV2) -> CacheAdvisory
 def _initial_receipts(
     prepared: PreparedRun,
 ) -> Iterator[tuple[int, int, RequestDependency, TransportCommitmentV2]]:
-    from judgmentllm.production_transport import TransportCommitmentV2
-
     groups = {
         group: ordinal
         for ordinal, group in enumerate(prepared.manifest.trait_groups, 1)
@@ -262,8 +255,6 @@ def _initial_receipts(
 
 def publish_initial_cache_advisories(prepared: PreparedRun) -> None:
     """Publish after the necessary seal and its ownership have completed."""
-    from judgmentllm.production_transport import PreparedRequestV4
-
     try:
         estimate = _estimator()
         for ordinal, cohort, dependency, receipt in _initial_receipts(prepared):

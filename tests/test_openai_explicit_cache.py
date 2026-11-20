@@ -516,7 +516,7 @@ def test_four_markers_and_damaged_rank_file(
         ("endpoint", "chat.completions"),
         ("endpoint", "decisions"),
         ("execution.mode", "bulk_live"),
-        ("execution.mode", "batch"),
+        ("execution.mode", "batch_native"),
         ("execution.tier", "flex"),
         ("prompt.structured_output", "auto"),
         ("prompt.advanced", True),
