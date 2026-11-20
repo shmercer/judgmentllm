@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import socket
+from base64 import b64encode
 from importlib.metadata import PackageNotFoundError
 from pathlib import Path
 from types import SimpleNamespace
@@ -621,6 +622,39 @@ def test_local_rank_faults_return_no_estimate(
         assert cache_advisory._estimator() == (status, None)
     if fault != "missing":
         assert asset.read_bytes() == ranks
+
+
+def test_local_synthetic_ranks_produce_ready_preview_estimates(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    config = _config(tmp_path)
+    data = json.loads(config.read_text(encoding="utf-8"))
+    data["exemplars"][0]["text"] += " zz"
+    config.write_text(json.dumps(data), encoding="utf-8")
+
+    # All UTF-8 bytes are encodable, with exactly one merge in the exemplar.
+    tokens = [bytes([value]) for value in range(256)] + [b"zz"]
+    ranks = b"".join(
+        b64encode(token) + f" {rank}\n".encode("ascii")
+        for rank, token in enumerate(tokens)
+    )
+    (tmp_path / "fb374d419588a4632f3f557e76b4b70aebbca790").write_bytes(ranks)
+    monkeypatch.setenv("TIKTOKEN_CACHE_DIR", str(tmp_path))
+    monkeypatch.setattr(cache_advisory, "_ASSET_SHA256", bytes_digest(ranks))
+
+    report = _cli(["templates", "preview", "--config", str(config)])["data"]
+    assert report["physical_requests"] == len(report["requests"]) == 2
+    for request in report["requests"]:
+        assert request["asset_status"] == "ready"
+        assert request["tokenizer_version"] == "0.14.0"
+        assert [marker["anchor"] for marker in request["markers"]] == [
+            "assessment",
+            "exemplar",
+        ]
+        for marker, merges in zip(request["markers"], (0, 1), strict=True):
+            expected = marker["prefix_bytes"] - merges
+            assert marker["joined_estimate"] == marker["block_estimate"] == expected
+            assert marker["warnings"] == ["short"]
 
 
 def test_companion_bounds_and_canonical_encoding(
