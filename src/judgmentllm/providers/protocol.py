@@ -176,6 +176,7 @@ class PreparedRequest(ExecutionModel):
     endpoint: ID
     model: ID
     generation: GenerationSpec | None = None
+    bulk_live: bool = Field(default=False, exclude_if=lambda value: not value)
     payload: bytes
 
     @model_validator(mode="after")

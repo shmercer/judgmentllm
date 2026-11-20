@@ -37,7 +37,12 @@ from judgmentllm.persistence.hashing import (
     semantic_digest,
 )
 from judgmentllm.persistence.models import SHA256, ExecutionModel
-from judgmentllm.planning import CapabilityProfile, stable_id, validate_run
+from judgmentllm.planning import (
+    CapabilityProfile,
+    bulk_capabilities,
+    stable_id,
+    validate_run,
+)
 from judgmentllm.preparation.session import RequestDependency
 from judgmentllm.prompts import (
     RenderedAssessmentPrompt,
@@ -388,7 +393,9 @@ class MockAdapter:
         )
 
     def capabilities(self, spec: RunSpecification) -> CapabilityProfile:
-        return self.capabilities_for(spec.provider, spec.endpoint, spec.model)
+        return bulk_capabilities(
+            spec, self.capabilities_for(spec.provider, spec.endpoint, spec.model)
+        )
 
     def validate(self, spec: RunSpecification) -> None:
         self.validate_configuration(spec, capabilities=self.capabilities(spec))
@@ -400,8 +407,9 @@ class MockAdapter:
         """Pure mock preflight, shared with provider-free public validation."""
         try:
             spec = _revalidate_record(spec)
-            profile = capabilities or MockAdapter.capabilities_for(
-                spec.provider, spec.endpoint, spec.model
+            profile = capabilities or bulk_capabilities(
+                spec,
+                MockAdapter.capabilities_for(spec.provider, spec.endpoint, spec.model),
             )
             report = validate_run(spec, capabilities=profile)
             if not report.valid:
@@ -573,6 +581,7 @@ class MockAdapter:
             )
             prepared_data: dict[str, object] = dict(
                 request_uid=request.request_uid,
+                bulk_live=spec.execution.mode == "bulk_live",
                 task_ids=tuple(task.task_id for task in request.tasks),
                 dependency_sha256=dependency.dependency_sha256,
                 prompt_sha256=bytes_digest(rendered.text.encode("utf-8")),
@@ -853,9 +862,27 @@ class MockAdapter:
             pending.result()
             raise
 
+    def synthetic_token_bound(
+        self, prepared: PreparedRequest, submission_id: str, correlation_id: str
+    ) -> int:
+        """One synthetic unit per UTF-8 byte of the exact input and output."""
+        payload, scenario = self._payload(prepared)
+        observation_key = stable_id(
+            "mock-observation",
+            payload.service_identity,
+            submission_id,
+            correlation_id,
+            prepared.payload_sha256,
+        )
+        selection_index = _selection_index(payload, scenario)
+        response = self._response(payload, scenario, observation_key, selection_index)
+        return len(prepared.payload) + len(response.raw)
+
     async def submit(
         self, prepared: PreparedRequest, *, submission_id: str, correlation_id: str
     ) -> ProviderAcknowledgment:
+        from judgmentllm._bulk_dispatch import scoring_forward
+
         payload, scenario = await asyncio.to_thread(self._payload, prepared)
         self.submit_calls += 1
         if scenario.delay_seconds:
@@ -878,19 +905,20 @@ class MockAdapter:
                 recorded is not None and not recorded.accepted
             )
         if scenario.transport == "not_submitted" or transient:
-            await self._establish(
-                AcceptanceRecord(
-                    submission_id=submission_id,
-                    correlation_id=correlation_id,
-                    payload_sha256=prepared.payload_sha256,
-                    accepted=False,
-                    observation_key=None,
-                    recipe=None,
-                    acceptance_count=0,
-                    retrieval_status="not_accepted",
-                ),
-                payload.service_identity,
-            )
+            with scoring_forward(prepared, submission_id):
+                await self._establish(
+                    AcceptanceRecord(
+                        submission_id=submission_id,
+                        correlation_id=correlation_id,
+                        payload_sha256=prepared.payload_sha256,
+                        accepted=False,
+                        observation_key=None,
+                        recipe=None,
+                        acceptance_count=0,
+                        retrieval_status="not_accepted",
+                    ),
+                    payload.service_identity,
+                )
             if transient:
                 raise TransientNotSubmitted(retry_after=scenario.retry_after)
             raise TransportNotSubmitted(
@@ -914,19 +942,20 @@ class MockAdapter:
             response_sha256=bytes_digest(response.raw),
         )
         _checkpoint("before_acceptance", submission_id)
-        await self._establish(
-            AcceptanceRecord(
-                submission_id=submission_id,
-                correlation_id=correlation_id,
-                payload_sha256=prepared.payload_sha256,
-                accepted=True,
-                observation_key=observation_key,
-                recipe=recipe,
-                acceptance_count=1,
-                retrieval_status="available",
-            ),
-            payload.service_identity,
-        )
+        with scoring_forward(prepared, submission_id):
+            await self._establish(
+                AcceptanceRecord(
+                    submission_id=submission_id,
+                    correlation_id=correlation_id,
+                    payload_sha256=prepared.payload_sha256,
+                    accepted=True,
+                    observation_key=observation_key,
+                    recipe=recipe,
+                    acceptance_count=1,
+                    retrieval_status="available",
+                ),
+                payload.service_identity,
+            )
         _checkpoint("after_acceptance", submission_id)
         if scenario.transport == "timeout_after_acceptance":
             raise SubmissionUncertain(

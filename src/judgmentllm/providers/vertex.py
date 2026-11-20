@@ -20,6 +20,7 @@ from typing import Any, Literal, cast
 
 from judgmentllm import vertex_types
 from judgmentllm._auth import _resolve_credentials
+from judgmentllm._bulk_dispatch import scoring_forward
 from judgmentllm.config import RunSpecification
 from judgmentllm.evidence.reasoning import ReasoningBlockMetadata
 from judgmentllm.evidence.usage import (
@@ -27,7 +28,7 @@ from judgmentllm.evidence.usage import (
 )
 from judgmentllm.google_sdk import GOOGLE_SDK_RUNTIME
 from judgmentllm.output_contracts import decode_assessment_output
-from judgmentllm.planning import CapabilityProfile, validate_run
+from judgmentllm.planning import CapabilityProfile, bulk_capabilities, validate_run
 from judgmentllm.preparation.session import RequestDependency
 from judgmentllm.prompts import RenderedAssessmentPrompt
 from judgmentllm.providers.evidence import (
@@ -443,13 +444,16 @@ class VertexAdapter:
         )
 
     def capabilities(self, spec: RunSpecification) -> CapabilityProfile:
-        return self.capabilities_for(
-            spec.provider,
-            spec.endpoint,
-            spec.model,
-            mechanism=getattr(spec.prompt, "native_mechanism", None),
-            runtime=self.transport_context.runtime,
-            sdk_version=self.transport_context.required_sdk_version,
+        return bulk_capabilities(
+            spec,
+            self.capabilities_for(
+                spec.provider,
+                spec.endpoint,
+                spec.model,
+                mechanism=getattr(spec.prompt, "native_mechanism", None),
+                runtime=self.transport_context.runtime,
+                sdk_version=self.transport_context.required_sdk_version,
+            ),
         )
 
     def validate(self, spec: RunSpecification) -> None:
@@ -459,7 +463,7 @@ class VertexAdapter:
             self.model,
         ):
             raise ProviderIntegrityError("Vertex adapter configuration scope differs")
-        if spec.schema_version != 3 or spec.execution.mode != "live":
+        if spec.schema_version != 3 or spec.execution.mode not in ("live", "bulk_live"):
             raise VertexConfigurationError(("schema_version", "execution.mode"))
         from judgmentllm.vertex_transport import _request_policy
 
@@ -673,43 +677,51 @@ class VertexAdapter:
                 quota_project = request.headers.get("x-goog-user-project")
                 if quota_project is not None:
                     secrets.append(quota_project)
-                state["invoked"] = True
-                adapter.actual_call_count += 1
-                response = await underlying.handle_async_request(request)
-                if isinstance(response, http.Response) and response.status_code == 403:
-                    # The sealed HTTP status establishes rejection independently
-                    # of its body. Discard it before reading, parsing or hashing.
+                with scoring_forward(
+                    prepared, prepared.transport_commitment.identity.submission_id
+                ):
+                    state["invoked"] = True
+                    adapter.actual_call_count += 1
+                    response = await underlying.handle_async_request(request)
+                    if (
+                        isinstance(response, http.Response)
+                        and response.status_code == 403
+                    ):
+                        # The sealed HTTP status establishes rejection independently
+                        # of its body. Discard it before reading, parsing or hashing.
+                        try:
+                            await response.aclose()
+                        finally:
+                            raise VertexRequestRejected("permission_denied") from None
+                    body = bytearray()
                     try:
-                        await response.aclose()
+                        async for chunk in response.aiter_bytes():
+                            if len(body) + len(chunk) > _MAX_RESPONSE_BYTES:
+                                raise SubmissionUncertain(
+                                    "Vertex response exceeds the bounded retention limit",
+                                    invoked=True,
+                                )
+                            body.extend(chunk)
                     finally:
-                        raise VertexRequestRejected("permission_denied") from None
-                body = bytearray()
-                try:
-                    async for chunk in response.aiter_bytes():
-                        if len(body) + len(chunk) > _MAX_RESPONSE_BYTES:
-                            raise SubmissionUncertain(
-                                "Vertex response exceeds the bounded retention limit",
-                                invoked=True,
-                            )
-                        body.extend(chunk)
-                finally:
-                    await response.aclose()
-                if any(_contains_credential(bytes(body), secret) for secret in secrets):
-                    raise SubmissionUncertain(
-                        "Vertex response cannot be retained safely", invoked=True
+                        await response.aclose()
+                    if any(
+                        _contains_credential(bytes(body), secret) for secret in secrets
+                    ):
+                        raise SubmissionUncertain(
+                            "Vertex response cannot be retained safely", invoked=True
+                        )
+                    state["raw"] = bytes(body)
+                    headers = {
+                        key: value
+                        for key, value in response.headers.items()
+                        if key.lower() not in {"content-encoding", "content-length"}
+                    }
+                    return http.Response(
+                        response.status_code,
+                        content=bytes(body),
+                        headers=headers,
+                        request=request,
                     )
-                state["raw"] = bytes(body)
-                headers = {
-                    key: value
-                    for key, value in response.headers.items()
-                    if key.lower() not in {"content-encoding", "content-length"}
-                }
-                return http.Response(
-                    response.status_code,
-                    content=bytes(body),
-                    headers=headers,
-                    request=request,
-                )
 
             async def aclose(self) -> None:
                 await underlying.aclose()

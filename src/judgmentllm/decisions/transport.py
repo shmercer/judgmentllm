@@ -89,6 +89,7 @@ class DecisionsDependencyV1(RequestDependency):
 
 class DecisionsCommitmentV1(DecisionsModel):
     decisions_commitment_version: Literal[1] = 1
+    bulk_live: bool = Field(default=False, exclude_if=lambda value: not value)
     identity: PhysicalRequestIdentityV1
     provider: ID
     endpoint: ID
@@ -147,7 +148,8 @@ class PreparedDecisionsRequestV1(PreparedRequest):
         receipt = self.transport_commitment
         prompt = self.rendered_text.encode("utf-8")
         if (
-            self.request_uid != receipt.identity.request_uid
+            self.bulk_live != receipt.bulk_live
+            or self.request_uid != receipt.identity.request_uid
             or self.task_ids != tuple(q.task_id for q in receipt.questions)
             or self.dependency_sha256 != receipt.dependency_sha256
             or (self.provider, self.endpoint, self.model)
@@ -558,6 +560,7 @@ def prepare_request(
     receipt = receipt_type.model_validate(
         dict(
             **precision,
+            bulk_live=spec.execution.mode == "bulk_live",
             identity=identity,
             provider=spec.provider,
             endpoint=spec.endpoint,
@@ -606,6 +609,7 @@ def prepare_request(
     return prepared_type.model_validate(
         dict(
             request_uid=identity.request_uid,
+            bulk_live=receipt.bulk_live,
             task_ids=tuple(q.task_id for q in dependency.questions),
             dependency_sha256=dependency.dependency_sha256,
             prompt_sha256=receipt.prompt_sha256,

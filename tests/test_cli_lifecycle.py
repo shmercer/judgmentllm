@@ -277,7 +277,7 @@ def test_typed_service_error_preserves_safe_category(
     def fail_service(*_args: object, **_kwargs: object) -> None:
         raise LifecycleError("execution", "Execution is unavailable.", retryable=True)
 
-    monkeypatch.setattr(cli, "run_live", fail_service)
+    monkeypatch.setattr(cli, "_run_config", fail_service)
     envelope, _ = control(["run", "--config", "unused"], 1)
     assert envelope["error"] == {
         "category": "execution",
@@ -297,7 +297,7 @@ def test_interrupted_operation_emits_130_and_observed_run_id(
         )
         raise KeyboardInterrupt
 
-    monkeypatch.setattr(cli, "run_live", interrupted)
+    monkeypatch.setattr(cli, "_run_config", interrupted)
     envelope, _ = control(["run", "--config", "unused"], 130)
     assert envelope["run_id"] == "run-interrupted"
     assert envelope["error"]["category"] == "interrupted"

@@ -765,6 +765,7 @@ class TransportCommitmentV4(_TransportModel):
     """Safe production receipt, never an authentication or billable-call grant."""
 
     transport_commitment_version: Literal[4] = 4
+    bulk_live: bool = Field(default=False, exclude_if=lambda value: not value)
     transport_protocol: Literal["gemini-production-v1"] = "gemini-production-v1"
     api_scope: Literal["gemini-developer-generate-content-v1beta-v1"] = (
         "gemini-developer-generate-content-v1beta-v1"
@@ -838,6 +839,7 @@ class TransportCommitmentV4(_TransportModel):
             if native != (value is not None):
                 raise ValueError("production receipt artifacts differ")
         plan = TransportPlanV1(
+            bulk_live=self.bulk_live,
             identity=self.identity,
             configuration_sha256=self.configuration_sha256,
             dependency_sha256=self.dependency_sha256,
@@ -968,6 +970,7 @@ class PreparedRequestV6(PreparedRequest, _TransportModel):
                 output=output,
                 generation=self.generation,
             )
+            or self.bulk_live != plan.bulk_live
             or plan.identity.request_uid != self.request_uid
             or plan.context_sha256 != output.context_sha256
             or plan.output_commitment_sha256 != output.commitment_sha256
@@ -1125,6 +1128,7 @@ def prepare_production_request(
             generation=spec.generation,
         )
         plan = TransportPlanV1(
+            bulk_live=spec.execution.mode == "bulk_live",
             identity=identity,
             configuration_sha256=semantic_digest("run-configuration", spec),
             dependency_sha256=dependency.dependency_sha256,
@@ -1157,6 +1161,7 @@ def prepare_production_request(
             output_commitment=output,
             transport_plan=plan,
             transport_commitment=receipt,
+            bulk_live=plan.bulk_live,
             rendered_text=rendered.text,
         )
         if (

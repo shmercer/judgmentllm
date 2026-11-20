@@ -14,6 +14,11 @@ from pathlib import Path
 from typing import cast
 
 from judgmentllm import gemini_types, vertex_types
+from judgmentllm._bulk_dispatch import (
+    BulkDispatch,
+    BulkPermit,
+    BulkTokenBoundError,
+)
 from judgmentllm.config import RunSpecification
 from judgmentllm.decisions.transport import (
     PreparedDecisionsRequestV1,
@@ -32,6 +37,12 @@ from judgmentllm.execution.retry import (
     prepare_subset_retry,
 )
 from judgmentllm.output_commitments import validate_output_commitment
+from judgmentllm.persistence.bulk import (
+    BulkReservation,
+    committed_reservations,
+    event_high_water,
+    publish_reservation,
+)
 from judgmentllm.persistence.evidence import (
     DecisionsEvidenceReceiptV3,
     DecisionsEvidenceReceiptV4,
@@ -139,6 +150,18 @@ class ExecutionSession:
             )
             self.repository = self.prepared.repository
             self.spec = self.prepared.spec
+            self.bulk_live = self.spec.execution.mode == "bulk_live"
+            self.prior_debits = False
+            if self.bulk_live:
+                self.repository.require_bulk_storage()
+                for _ in committed_reservations(
+                    self.repository,
+                    self.run_id,
+                    self.prepared.manifest_sha256,
+                    self.spec.execution.bulk_limits,
+                    event_cut=event_high_water(self.repository, self.run_id),
+                ):
+                    self.prior_debits = True
             self.evidence = DurableEvidence(self)
             policy = getattr(self.prepared.manifest, "service_policy", None)
             self.tier_review_required = False
@@ -468,6 +491,7 @@ class ExecutionSession:
                 or (prepared.provider, prepared.endpoint, prepared.model)
                 != (self.spec.provider, self.spec.endpoint, self.spec.model)
                 or prepared.generation != self.spec.generation
+                or prepared.bulk_live != self.bulk_live
             ):
                 raise IntegrityError(
                     "prepared request differs from the frozen dependency"
@@ -655,15 +679,51 @@ class ExecutionSession:
         ):
             raise IntegrityError("committed group membership differs from attempt")
 
-    def boundary(self, work: ExecutionWork) -> bool:
+    def boundary(
+        self, work: ExecutionWork, bulk: BulkDispatch | None = None
+    ) -> bool | BulkPermit:
         """Return true only for safe prepared/claimed work; reconcile all other work."""
         assert self.prepared is not None
         attempt = self.repository.get_attempt(self.run_id, work.attempt_id)
         if self.cancelled or attempt.state not in {"prepared", "claimed"}:
             return False
+        if (
+            self.bulk_live != (bulk is not None)
+            or work.prepared.bulk_live != self.bulk_live
+        ):
+            raise IntegrityError("submission mode differs from the sealed run")
         if self.tier_review_required:
             raise ProviderError(
                 "served tier is unknown; further submission requires review"
+            )
+        reservation = None
+        if bulk is not None:
+            if bulk.owner_token != self.token:
+                raise IntegrityError("bulk-live admission belongs to another owner")
+            tokens = None
+            if bulk.tpm is not None:
+                counter = getattr(self.adapter, "synthetic_token_bound", None)
+                if (self.spec.provider, self.spec.endpoint) != (
+                    "mock",
+                    "synthetic",
+                ) or counter is None:
+                    raise BulkTokenBoundError("bulk-live token bound is unavailable")
+                tokens = counter(work.prepared, work.submission_id, work.correlation_id)
+                if type(tokens) is not int or not 0 < tokens <= bulk.tpm:
+                    raise BulkTokenBoundError(
+                        "bulk-live token bound exceeds the per-minute cap"
+                    )
+            bulk.require_capacity(tokens or 0)
+            reservation = BulkReservation(
+                run_id=self.run_id,
+                request_uid=work.prepared.request_uid,
+                attempt_id=work.attempt_id,
+                submission_id=work.submission_id,
+                manifest_sha256=self.prepared.manifest_sha256,
+                payload_sha256=work.prepared.payload_sha256,
+                limits=self.spec.execution.bulk_limits,
+                method="request_v1" if tokens is None else "synthetic_utf8_v1",
+                tokens=tokens,
             )
         readiness = getattr(self.adapter, "validate_credentials", None)
         check_before_claim = isinstance(
@@ -713,15 +773,47 @@ class ExecutionSession:
             raise IntegrityError("payload changed before submission")
         if readiness is not None and not check_before_claim:
             readiness()
+        artifact = None
+        if reservation is not None:
+            artifact = publish_reservation(self.prepared.store, reservation)
+            self.checkpoint("after_bulk_reservation", work.prepared.request_uid)
         with self.transaction():
+            if bulk is not None:
+                assert reservation is not None and artifact is not None
+                bulk.require_capacity(reservation.tokens or 0)
+                submission = self.repository.get_submission(
+                    self.run_id, work.submission_id
+                )
+                if (
+                    submission.attempt_id != work.attempt_id
+                    or submission.correlation_id != work.correlation_id
+                    or submission.payload_sha256 != reservation.payload_sha256
+                    or submission.state != "prepared"
+                    or self.repository.connection.execute(
+                        "SELECT 1 FROM artifacts WHERE run_id=? AND sha256=?",
+                        (self.run_id, artifact.sha256),
+                    ).fetchone()
+                    is not None
+                ):
+                    raise IntegrityError(
+                        "bulk reservation conflicts with prepared submission"
+                    )
+                self.repository._register_artifact(self.run_id, artifact)  # pyright: ignore[reportPrivateUsage]
             self.repository.transition(
                 "attempt", self.run_id, work.attempt_id, "submitting"
             )
             self.repository.transition(
                 "submission", self.run_id, work.submission_id, "submitting"
             )
+            if bulk is not None:
+                self.checkpoint("during_bulk_debit", work.prepared.request_uid)
+        permit = (
+            bulk.committed(reservation)
+            if bulk is not None and reservation is not None
+            else None
+        )
         self.checkpoint("after_submitting", work.prepared.request_uid)
-        return True
+        return permit if permit is not None else True
 
     def acknowledge(
         self, work: ExecutionWork, acknowledgment: ProviderAcknowledgment

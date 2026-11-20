@@ -7,7 +7,7 @@ import typer
 
 from judgmentllm import __version__
 from judgmentllm._auth import _select_providers  # pyright: ignore[reportPrivateUsage]
-from judgmentllm._lifecycle_store import load_resume_spec, resolve_run
+from judgmentllm._lifecycle_store import load_resume_spec
 from judgmentllm.auth import credential_status
 from judgmentllm.cli_controls import (
     LifecycleGroup,
@@ -18,22 +18,19 @@ from judgmentllm.cli_controls import (
     progress,
 )
 from judgmentllm.config import RunSpecV2, RunSpecV3, load_run_spec
-from judgmentllm.decisions.provenance import (
-    DecisionsProvenanceReportV1,
-    DecisionsProvenanceReportV2,
-    export_decisions_provenance,
-)
 from judgmentllm.lifecycle import (
     LifecycleError,
     MockExecutionOptions,
     RetrySelection,
     RunSummary,
+    _run_config,  # pyright: ignore[reportPrivateUsage]
+    cancel_run,
     estimate_run,
+    export_run_provenance,
     export_run_results,
     get_run,
     list_runs,
     resume_run,
-    run_live,
     validate_inputs,
 )
 from judgmentllm.planning import validate_run
@@ -282,9 +279,9 @@ def run_command(
     mock_no_reconciliation: MockNoReconciliationOption = False,
     json_output: JsonOption = False,
 ) -> None:
-    """Execute within this process and retain durable state for later inspection."""
+    """Run live or managed bulk-live. Production bulk-live supports requests_per_minute only."""
     perform(
-        lambda: run_live(
+        lambda: _run_config(
             config,
             store=store,
             progress=progress,
@@ -393,6 +390,14 @@ def runs_status(
     perform(lambda: get_run(run, store=store))
 
 
+@runs_app.command("cancel")
+def runs_cancel(
+    run: RunOption, store: StoreOption = None, json_output: JsonOption = False
+) -> None:
+    """Stop an idle run under exclusive ownership."""
+    perform(lambda: cancel_run(run, store=store))
+
+
 @results_app.command("export")
 def results_export(
     run: RunOption,
@@ -429,13 +434,8 @@ def results_export(
 def results_provenance(
     run: RunOption, store: StoreOption = None, json_output: JsonOption = False
 ) -> None:
-    """Publish the immutable V4 question/physical companion bundle offline."""
-
-    def operation() -> DecisionsProvenanceReportV1 | DecisionsProvenanceReportV2:
-        identifier, root = resolve_run(run, store)
-        return export_decisions_provenance(identifier, store=root)
-
-    perform(operation)
+    """Publish immutable Decisions or generative bulk-live provenance offline."""
+    perform(lambda: export_run_provenance(run, store=store))
 
 
 # Register explicit online diagnostics; ordinary auth status remains offline.

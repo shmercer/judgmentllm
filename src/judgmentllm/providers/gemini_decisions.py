@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from typing import Any, cast
 
 from judgmentllm._auth import _resolve_credentials  # pyright: ignore[reportPrivateUsage]
+from judgmentllm._bulk_dispatch import scoring_forward
 from judgmentllm.config import RunSpecification, RunSpecV4, validate_run_spec
 from judgmentllm.decisions.records import (
     GEMINI_DECISIONS_BODY_CAP,
@@ -28,7 +29,7 @@ from judgmentllm.decisions.transport import PreparedDecisionsRequestV4
 from judgmentllm.output_contracts import decode_assessment_output
 from judgmentllm.persistence.hashing import canonical_bytes, semantic_digest
 from judgmentllm.persistence.receipts import CompleteResponseEvidenceV4
-from judgmentllm.planning import CapabilityProfile
+from judgmentllm.planning import CapabilityProfile, bulk_capabilities
 from judgmentllm.presentation import ESSAY_ALIASES
 from judgmentllm.providers.evidence import ProviderEvidence, ProviderObservationContext
 from judgmentllm.providers.gemini import (  # pyright: ignore[reportPrivateUsage]
@@ -189,7 +190,9 @@ class GeminiDecisionsAdapter:
         )
 
     def capabilities(self, spec: RunSpecification) -> CapabilityProfile:
-        return self.capabilities_for(spec.provider, spec.endpoint, spec.model)
+        return bulk_capabilities(
+            spec, self.capabilities_for(spec.provider, spec.endpoint, spec.model)
+        )
 
     def validate(self, spec: RunSpecification) -> None:
         expected = decisions_context(spec)
@@ -268,46 +271,51 @@ class GeminiDecisionsAdapter:
                     "read": 60.0,
                     "pool": 10.0,
                 }
-                active.forwarded = True
-                adapter.actual_call_count += 1
-                response = await cast(Any, underlying).handle_async_request(request)
-                body = bytearray()
-                try:
-                    stream = response.stream
-                    if (
-                        not isinstance(stream, http.AsyncByteStream)
-                        or response.headers.get("content-encoding", "identity").lower()
-                        != "identity"
-                    ):
-                        raise SubmissionUncertain(invoked=True)
-                    # Capture EOF before closing so cancellation cannot discard a complete response.
-                    async for chunk in stream:
-                        if len(body) + len(chunk) > _RESPONSE_LIMIT:
+                with scoring_forward(
+                    active.wire, active.wire.transport_commitment.identity.submission_id
+                ):
+                    active.forwarded = True
+                    adapter.actual_call_count += 1
+                    response = await cast(Any, underlying).handle_async_request(request)
+                    body = bytearray()
+                    try:
+                        stream = response.stream
+                        if (
+                            not isinstance(stream, http.AsyncByteStream)
+                            or response.headers.get(
+                                "content-encoding", "identity"
+                            ).lower()
+                            != "identity"
+                        ):
                             raise SubmissionUncertain(invoked=True)
-                        body.extend(chunk)
-                    lengths = response.headers.get_list("content-length")
-                    if lengths and (
-                        len(lengths) != 1
-                        or not re.fullmatch(r"[0-9]{1,10}", lengths[0])
-                        or int(lengths[0]) != len(body)
-                    ):
-                        raise SubmissionUncertain(invoked=True)
-                    raw = bytes(body)
-                    if _contains_credential(raw, key):
-                        raise SubmissionUncertain(invoked=True)
-                    active.received = response.status_code, raw
-                finally:
-                    await response.aclose()
-                return http.Response(
-                    response.status_code,
-                    content=raw,
-                    request=request,
-                    headers={
-                        "content-type": response.headers.get(
-                            "content-type", "application/json"
-                        )
-                    },
-                )
+                        # Capture EOF before closing so cancellation cannot discard a complete response.
+                        async for chunk in stream:
+                            if len(body) + len(chunk) > _RESPONSE_LIMIT:
+                                raise SubmissionUncertain(invoked=True)
+                            body.extend(chunk)
+                        lengths = response.headers.get_list("content-length")
+                        if lengths and (
+                            len(lengths) != 1
+                            or not re.fullmatch(r"[0-9]{1,10}", lengths[0])
+                            or int(lengths[0]) != len(body)
+                        ):
+                            raise SubmissionUncertain(invoked=True)
+                        raw = bytes(body)
+                        if _contains_credential(raw, key):
+                            raise SubmissionUncertain(invoked=True)
+                        active.received = response.status_code, raw
+                    finally:
+                        await response.aclose()
+                    return http.Response(
+                        response.status_code,
+                        content=raw,
+                        request=request,
+                        headers={
+                            "content-type": response.headers.get(
+                                "content-type", "application/json"
+                            )
+                        },
+                    )
 
             async def aclose(self) -> None:
                 await cast(Any, underlying).aclose()

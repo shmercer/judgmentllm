@@ -16,6 +16,7 @@ from typing import Any, Literal, cast
 from pydantic_core import to_json
 
 from judgmentllm._auth import _resolve_credentials  # pyright: ignore[reportPrivateUsage]
+from judgmentllm._bulk_dispatch import scoring_forward
 from judgmentllm.config import RunSpecification, RunSpecV4, validate_run_spec
 from judgmentllm.decisions.records import (
     TYPESAFE_MODEL,
@@ -35,7 +36,7 @@ from judgmentllm.persistence.hashing import (
     semantic_digest,
 )
 from judgmentllm.persistence.receipts import CompleteResponseEvidenceV3
-from judgmentllm.planning import CapabilityProfile
+from judgmentllm.planning import CapabilityProfile, bulk_capabilities
 from judgmentllm.providers.evidence import ProviderEvidence, ProviderObservationContext
 from judgmentllm.providers.protocol import (
     DecisionsReconciliationEvidenceV1,
@@ -187,7 +188,9 @@ class TypeSafeDecisionsAdapter:
         )
 
     def capabilities(self, spec: RunSpecification) -> CapabilityProfile:
-        return self.capabilities_for(spec.provider, spec.endpoint, spec.model)
+        return bulk_capabilities(
+            spec, self.capabilities_for(spec.provider, spec.endpoint, spec.model)
+        )
 
     def validate(self, spec: RunSpecification) -> None:
         if (
@@ -262,37 +265,42 @@ class TypeSafeDecisionsAdapter:
                     raise ProviderIntegrityError(
                         "TypeSafe SDK forwarding differs from sealed request"
                     )
-                active.forwarded = True
-                response = await underlying.handle_async_request(request)
-                body = bytearray()
-                try:
-                    stream = response.stream
-                    if (
-                        not isinstance(stream, httpx2.AsyncByteStream)
-                        or response.headers.get("content-encoding", "identity").lower()
-                        != "identity"
-                    ):
-                        raise SubmissionUncertain(invoked=True)
-                    # HTTPX's response iterators await closing before reporting EOF.
-                    async for chunk in stream:
-                        if len(body) + len(chunk) > _RESPONSE_LIMIT:
+                with scoring_forward(
+                    active.wire, active.wire.transport_commitment.identity.submission_id
+                ):
+                    active.forwarded = True
+                    response = await underlying.handle_async_request(request)
+                    body = bytearray()
+                    try:
+                        stream = response.stream
+                        if (
+                            not isinstance(stream, httpx2.AsyncByteStream)
+                            or response.headers.get(
+                                "content-encoding", "identity"
+                            ).lower()
+                            != "identity"
+                        ):
                             raise SubmissionUncertain(invoked=True)
-                        body.extend(chunk)
-                    raw = bytes(body)
-                    ids = response.headers.get_list("x-typesafe-request-id")
-                    remote_id = (
-                        ids[0]
-                        if len(ids) == 1
-                        and re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", ids[0])
-                        and key not in ids[0]
-                        else None
+                        # HTTPX's response iterators await closing before reporting EOF.
+                        async for chunk in stream:
+                            if len(body) + len(chunk) > _RESPONSE_LIMIT:
+                                raise SubmissionUncertain(invoked=True)
+                            body.extend(chunk)
+                        raw = bytes(body)
+                        ids = response.headers.get_list("x-typesafe-request-id")
+                        remote_id = (
+                            ids[0]
+                            if len(ids) == 1
+                            and re.fullmatch(r"[A-Za-z0-9_.:-]{1,128}", ids[0])
+                            and key not in ids[0]
+                            else None
+                        )
+                        active.received = response.status_code, raw, remote_id
+                    finally:
+                        await response.aclose()
+                    return httpx2.Response(
+                        response.status_code, content=raw, request=request
                     )
-                    active.received = response.status_code, raw, remote_id
-                finally:
-                    await response.aclose()
-                return httpx2.Response(
-                    response.status_code, content=raw, request=request
-                )
 
             async def aclose(self) -> None:
                 await underlying.aclose()

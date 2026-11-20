@@ -27,6 +27,11 @@ from judgmentllm.evidence.usage import ProviderUsage
 from judgmentllm.lifecycle_models import DecisionsRejectionDiagnostic, DecisionsStatusV1
 from judgmentllm.models import ID
 from judgmentllm.persistence.artifacts import ArtifactStore
+from judgmentllm.persistence.bulk import (
+    CommittedBulkReservation,
+    ReservationRows,
+    committed_reservations,
+)
 from judgmentllm.persistence.decisions_invocations import (
     DecisionsInvocationV1,
     DecisionsInvocationV2,
@@ -64,7 +69,7 @@ from judgmentllm.persistence.receipts import (
     TypeSafeRejectionEvidenceV1,
     read_acknowledgment,
 )
-from judgmentllm.persistence.repository import Repository
+from judgmentllm.persistence.repository import ReadOnlyRepository, Repository
 from judgmentllm.persistence.transport_receipts import read_transport_commitment
 from judgmentllm.preparation import _load_manifest  # pyright: ignore[reportPrivateUsage]
 from judgmentllm.preparation.manifest import (
@@ -97,6 +102,9 @@ class PhysicalProvenanceV1(DecisionsModel):
     observation_id: ID | None
     selected_usage: ProviderUsage | None
     usage_selection: Literal["revision", "forwarding_fact", "unavailable"]
+    reservation: CommittedBulkReservation | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 class PhysicalProvenanceV2(PhysicalProvenanceV1):
@@ -400,12 +408,29 @@ class _Totals:
 
 
 def physical_rows(
-    repository: Repository, manifest: ExecutableRunManifestV8, usage_high: int
+    repository: Repository,
+    manifest: ExecutableRunManifestV8,
+    usage_high: int,
+    *,
+    event_cut: int | None = None,
 ) -> Iterator[PhysicalProvenanceV1]:
     run_id = manifest.run_id
     artifacts = ArtifactStore(repository.run_directory(run_id), create=False)
     gemini = isinstance(manifest, ExecutableRunManifestV11)
     typesafe = isinstance(manifest, ExecutableRunManifestV10)
+    reservations = (
+        ReservationRows(
+            committed_reservations(
+                repository,
+                run_id,
+                bytes_digest(canonical_bytes(manifest)),
+                manifest.execution.bulk_limits,
+                event_cut=event_cut,
+            )
+        )
+        if manifest.execution.mode == "bulk_live" and event_cut is not None
+        else None
+    )
     for attempt in repository.iter_attempts(run_id):
         commitment = read_transport_commitment(artifacts, attempt.attempt_id)
         if (
@@ -542,6 +567,9 @@ def physical_rows(
                     else {}
                 ),
                 identity=commitment.identity,
+                reservation=reservations.for_attempt(attempt.attempt_id)
+                if reservations
+                else None,
                 state=submission.state if submission else "prepared",
                 invocation_evidence=invocation,
                 payload_sha256=attempt.payload_sha256,
@@ -575,6 +603,8 @@ def physical_rows(
                 else "unavailable",
             )
         )
+    if reservations is not None:
+        reservations.finish()
 
 
 def decisions_status(
@@ -901,9 +931,12 @@ def export_decisions_provenance(
                     event_high,
                 ],
             )
-            existing = read_decisions_provenance(repository, run_id, bundle_id)
-            if existing is not None:
-                return existing
+            if artifacts.reference_path(_reference(bundle_id)).exists():
+                # A same-cut exporter can publish after this snapshot opens.
+                with ReadOnlyRepository(repository.root) as registry:
+                    existing = read_decisions_provenance(registry, run_id, bundle_id)
+                if existing is not None:
+                    return existing
             totals = _Totals()
             with tempfile.TemporaryDirectory(
                 prefix=".decisions-export-", dir=artifacts.root
@@ -939,13 +972,22 @@ def export_decisions_provenance(
                         if isinstance(manifest, ExecutableRunManifestV9)
                         else PhysicalProvenanceV1
                     )
-                    physical_writer.writerow(physical_type.model_fields)
-                    for physical in physical_rows(repository, manifest, usage_high):
+                    physical_columns = tuple(
+                        name
+                        for name in physical_type.model_fields
+                        if name != "reservation"
+                        or manifest.execution.mode == "bulk_live"
+                    )
+                    physical_writer.writerow(physical_columns)
+                    for physical in physical_rows(
+                        repository, manifest, usage_high, event_cut=event_high
+                    ):
                         totals.add(physical)
                         physicals.write(canonical_bytes(physical) + b"\n")
+                        physical_data = physical.model_dump(mode="json")
                         physical_writer.writerow(
-                            canonical_bytes(v).decode("utf-8")
-                            for v in physical.model_dump(mode="json").values()
+                            canonical_bytes(physical_data.get(column)).decode("utf-8")
+                            for column in physical_columns
                         )
                         counts[1] += 1
                         for question in _question_rows(
