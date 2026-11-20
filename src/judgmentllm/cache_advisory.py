@@ -84,7 +84,7 @@ class MarkerAdvisory(ExecutionModel):
 class CacheAdvisory(ExecutionModel):
     """Safe per-attempt evidence of an optional estimate, including unknowns."""
 
-    estimator_version: Literal[1] = 1
+    estimator_version: Literal[1, 2] = 2
     tokenizer_version: Literal["0.14.0"] = _TOKENIZER
     encoding: Literal["o200k_base"] = "o200k_base"
     encoding_sha256: SHA256 = _ASSET_SHA256
@@ -148,7 +148,7 @@ def _warnings(joined: int | None, blocks: int | None) -> tuple[WarningCode, ...]
     codes: list[WarningCode] = []
     if max(joined, blocks) < _REFERENCE_TOKENS:
         codes.append("short")
-    elif min(joined, blocks) <= _REFERENCE_TOKENS:
+    elif min(joined, blocks) <= _REFERENCE_TOKENS + 1:
         codes.append("borderline")
     if joined != blocks:
         codes.append("disagreement")

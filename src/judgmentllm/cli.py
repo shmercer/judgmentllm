@@ -149,6 +149,11 @@ def templates_preview(
             typer.echo(rendered.text.encode("utf-8"), nl=False)
         else:
             typer.echo(rendered.text)
+    except LifecycleError:
+        if spec is None or spec.cache_policy_version != 3:
+            raise
+        typer.echo("Error: Explicit cache preview could not be prepared.", err=True)
+        raise typer.Exit(2) from None
     except (ValueError, OSError) as error:
         message = (
             "Invalid configuration or prompt selection."

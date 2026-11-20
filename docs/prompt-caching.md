@@ -27,10 +27,11 @@ Production qualification requires separate evidence. The operator's two
 exploratory Responses requests document the earlier OFF work.
 [Issue #56](https://github.com/shmercer/judgmentllm/issues/56)
 
-Caching can charge for writes even when a changing essay prevents reuse. At the
-2026-11-14 documentation snapshot, OpenAI describes default writes at 1.25 times
-ordinary input pricing for the relevant models, with discounted reads. Use current
-model/tier pricing and observed usage; no savings or bill total is inferred.
+Cache reads use the cached-input rate. New writes are charged even when there
+is no later hit. The 2026-11-14 OpenAI documentation listed writes at 1.25 times
+ordinary input for this default retention scope. The remaining input tokens
+use the ordinary input rate. Apply only qualified model and tier rates to
+complete, consistent provider counters. [OpenAI prompt caching guide](https://developers.openai.com/api/docs/guides/prompt-caching)
 Gemini may still report cached reads under OFF. The separate
 [Issue #39 study](https://github.com/shmercer/judgmentllm/issues/39) keeps its
 original evidence and authorizations; this change authorizes no provider calls.
@@ -98,9 +99,10 @@ JudgmentLLM reads this file locally and leaves its lifecycle to the operator.
 Each cumulative marker reports a visible-text estimate over joined text and a
 sum of per-block counts. Counts can differ at boundaries, including with Unicode.
 They omit provider framing and use a proxy encoding. The provider documents a
-1,024-token minimum. The diagnostic is `short` when both estimates are below
-1,024, `borderline` when either equals the minimum or the estimates straddle it,
-`disagreement` when they differ, and `unknown` when a count is unavailable.
+1,024-token minimum. Estimator version 2 reports `short` when both estimates are
+below 1,024 and `borderline` when they span the minimum or the smaller estimate
+is 1,024 or 1,025. It reports `disagreement` when the estimates differ and
+`unknown` when a count is unavailable.
 These warnings leave the wire, marker placement, exit status and assessment
 validity independent of the estimate, including in strict mode. Provider
 eligibility, acceptance and cache activity require provider evidence.

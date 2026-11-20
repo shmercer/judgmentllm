@@ -484,6 +484,8 @@ class OpenAIAdapter:
                     else float(policy.read_timeout_seconds),
                 }
                 adapter.serialization_seconds += time.perf_counter() - started
+                if prepared.transport_commitment.explicit_cache is not None:
+                    _require_explicit_cache_authority()
                 adapter._check_authority()
                 if adapter._submission_guard is not None:
                     adapter._submission_guard(prepared)
@@ -607,6 +609,8 @@ class OpenAIAdapter:
             raise ProviderInvocationCancelled(
                 invoked=invocation_state["invoked"]
             ) from None
+        except OpenAIConfigurationError:
+            raise
         except Exception as error:
             if isinstance(
                 error,
