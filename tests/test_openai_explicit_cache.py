@@ -734,6 +734,39 @@ def test_explicit_preview_pricing_guidance_is_redacted_and_display_only(
     assert "pricing_guidance" not in plan["cache_advisory"]
 
 
+def test_legacy_plain_preview_rethrows_explicit_cache_error(tmp_path: Path) -> None:
+    config = _config(tmp_path)
+    data = json.loads(config.read_text(encoding="utf-8"))
+    data["strict_capabilities"] = False
+    data["prompt"] = {"structured_output": "text"}
+    config.write_text(json.dumps(data), encoding="utf-8")
+    assert load_run_spec(config).cache_policy_version == 2
+
+    with pytest.raises(lifecycle.LifecycleError) as rejected:
+        CliRunner().invoke(
+            app,
+            [
+                "templates",
+                "preview",
+                "--config",
+                str(config),
+                "--item-id",
+                _IDS[0],
+                "--trait",
+                "01",
+            ],
+            catch_exceptions=False,
+        )
+
+    error = rejected.value
+    assert error.category == "unsupported_capability"
+    assert error.message == (
+        "Unsupported or unverified OpenAI settings: execution.cache_policy; "
+        "revise these settings or obtain reviewed exact-scope evidence"
+    )
+    assert error.run_id is None and error.store is None
+
+
 def test_advisory_skips_an_incompatible_transport_receipt(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

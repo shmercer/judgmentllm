@@ -1445,6 +1445,7 @@
       "test_four_markers_and_damaged_rank_file": {"": []},
       "test_full_capture_replay_uses_exact_seal_without_estimator": {"[layout]": [], "[missing-sdk]": [], "[none]": [], "[wrong-sdk]": []},
       "test_installed_sdk_mismatch_and_actual_authority_deny": {"": []},
+      "test_legacy_plain_preview_rethrows_explicit_cache_error": {"": []},
       "test_local_rank_faults_return_no_estimate": {"[broken-ranks-asset_invalid]": [], "[missing-asset_unavailable]": [], "[missing-tokenizer-tokenizer_unavailable]": [], "[unreadable-asset_unavailable]": [], "[wrong-version-tokenizer_incompatible]": []},
       "test_local_synthetic_ranks_produce_ready_preview_estimates": {"": []},
       "test_optional_companion_faults_across_public_preflight_submit_and_resume": {"[corrupt]": [], "[missing]": [], "[unreadable]": [], "[write]": []},
