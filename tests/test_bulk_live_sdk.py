@@ -38,7 +38,11 @@ from judgmentllm.config import (
 from judgmentllm.execution import execute_run, recover_run
 from judgmentllm.execution.session import ExecutionSession, ExecutionWork
 from judgmentllm.lifecycle import _offline_context
-from judgmentllm.persistence.evidence import DecisionsEvidenceReceiptV4
+from judgmentllm.persistence.artifacts import ArtifactStore
+from judgmentllm.persistence.evidence import (
+    DecisionsEvidenceReceiptV4,
+    read_evidence_receipt,
+)
 from judgmentllm.persistence.hashing import bytes_digest
 from judgmentllm.persistence.ownership import executor_is_active
 from judgmentllm.persistence.repository import ReadOnlyRepository
@@ -613,9 +617,27 @@ async def test_sdk_bulk_wire_parity_and_interrupted_partial_replay(
         assert isinstance(live, RunSpecV3)
         live.generation = GenerationSpec(max_output_tokens=output_limit)
     bodies: list[bytes] = []
+    expected_wire: tuple[bytes, ...] = ()
     expected: list[tuple[str, str]] = []
     request_uids: list[set[str]] = []
+    durable_uids: set[str] = set()
+    interrupted_uid: str | None = None
+
+    def fault(stage: str, request_uid: str) -> None:
+        nonlocal interrupted_uid
+        if stage == "after_evidence_receipt":
+            durable_uids.add(request_uid)
+            if interrupted_uid is None and len(durable_uids) == len(expected_wire):
+                interrupted_uid = request_uid
+        # Cleanup can revisit the same response before recovery starts.
+        if request_uid == interrupted_uid and stage in (
+            "after_evidence_receipt",
+            "after_evidence_commit",
+        ):
+            raise RuntimeError("recover original partial response")
+
     for spec in (live, _bulk(live)):
+        assert spec.execution.concurrency == 1
         root = tmp_path / spec.execution.mode
 
         def respond(
@@ -631,32 +653,65 @@ async def test_sdk_bulk_wire_parity_and_interrupted_partial_replay(
         _prepare(spec, root, adapter)
         try:
             if spec.execution.mode == "live":
-                await execute_run("001", store=root, spec=spec, adapter=adapter)
+                baseline = await execute_run(
+                    "001", store=root, spec=spec, adapter=adapter
+                )
+                assert not baseline.recovery_required and bodies
+                expected_wire = tuple(bodies)
             else:
-
-                def fault(stage: str, request_uid: str) -> None:
-                    if stage == "after_evidence_receipt":
-                        raise RuntimeError("recover original partial response")
-
-                with pytest.raises(ExceptionGroup, match="TaskGroup"):
+                with pytest.raises(ExceptionGroup, match="TaskGroup") as stopped:
                     await execute_run(
                         "001", store=root, spec=spec, adapter=adapter, fault=fault
                     )
-                await recover_run("001", store=root, spec=spec, adapter=new_adapter())
+                assert stopped.group_contains(
+                    RuntimeError, match="recover original partial response"
+                )
+                assert interrupted_uid is not None
+                assert len(durable_uids) == len(expected_wire)
+                assert tuple(bodies) == expected_wire + expected_wire
+                with ReadOnlyRepository(root) as repository:
+                    (interrupted,) = (
+                        attempt
+                        for attempt in repository.iter_attempts("001")
+                        if attempt.request_uid == interrupted_uid
+                    )
+                    submission = repository.get_submission_for_attempt(
+                        "001", interrupted.attempt_id
+                    )
+                    assert submission is not None
+                    retained = read_evidence_receipt(
+                        ArtifactStore(repository.run_directory("001")),
+                        submission.submission_id,
+                    )
+                    assert (
+                        retained is not None and retained.response_receipt is not None
+                    )
+                    retained.response_receipt.verify_submission(submission)
+                    assert not repository.get_results_for_attempt(
+                        "001", interrupted.attempt_id
+                    )
                 calls = len(bodies)
-                await recover_run("001", store=root, spec=spec, adapter=new_adapter())
-                assert len(bodies) == calls
+                for _ in range(2):
+                    recovered = await recover_run(
+                        "001", store=root, spec=spec, adapter=new_adapter()
+                    )
+                    assert not recovered.recovery_required and len(bodies) == calls
+                    with ReadOnlyRepository(root) as repository:
+                        assert [
+                            (row.task_id, row.status)
+                            for row in repository.iter_results("001")
+                        ] == expected
             with ReadOnlyRepository(root) as repository:
                 attempts = list(repository.iter_attempts("001"))
                 request_uids.append({attempt.request_uid for attempt in attempts})
-                results = [
-                    (row.task_id, row.status) for row in repository.iter_results("001")
-                ]
-                assert {status for _, status in results} == {"complete", "invalid"}
+                assert len(request_uids[-1]) == len(attempts) == len(expected_wire)
                 if spec.execution.mode == "live":
-                    expected = results
+                    expected = [
+                        (row.task_id, row.status)
+                        for row in repository.iter_results("001")
+                    ]
+                    assert {status for _, status in expected} == {"complete", "invalid"}
                 else:
-                    assert results == expected
                     evidence = list(repository.iter_evidence("001"))
                     assert len(evidence) == len(attempts)
                     assert {e.usage.invocation_kind for e in evidence} == {
@@ -665,5 +720,3 @@ async def test_sdk_bulk_wire_parity_and_interrupted_partial_replay(
         finally:
             await adapter.aclose()
     assert request_uids[0].isdisjoint(request_uids[1])
-    halfway = len(bodies) // 2
-    assert halfway and bodies[:halfway] == bodies[halfway:]
