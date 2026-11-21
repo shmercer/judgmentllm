@@ -549,7 +549,11 @@ def read_evidence_receipt(
 
 
 def _supports(repository: Repository) -> bool:
-    return repository.connection.execute("PRAGMA user_version").fetchone()[0] in (2, 3)
+    return repository.connection.execute("PRAGMA user_version").fetchone()[0] in (
+        2,
+        3,
+        4,
+    )
 
 
 _VERIFICATION_AUTHORITY = object()

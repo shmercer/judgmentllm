@@ -85,6 +85,7 @@ from judgmentllm.preparation.session import RequestDependency as RequestDependen
 if TYPE_CHECKING:
     from judgmentllm.anthropic_transport import AnthropicProductionContext
     from judgmentllm.production_transport import ProductionContext
+    from judgmentllm.providers.batch_protocol import NativeBatchAdapter
     from judgmentllm.transport import TransportContext
 
 
@@ -269,6 +270,7 @@ def prepare_run(
     | vertex_types.VertexProductionContext
     | gemini_types.GeminiProductionContext
     | None = None,
+    _batch_adapter: NativeBatchAdapter | None = None,
 ) -> PreparedRun:
     """Freeze, validate, index and seal a new run under exclusive OS ownership.
 
@@ -352,6 +354,16 @@ def prepare_run(
             spec = _load_run_spec(origin, document_reader=discover_document)
             initial = sig, digest
         profile = _revalidate_record(capabilities) if capabilities else None
+        if spec.execution.mode == "batch_native":
+            from judgmentllm.persistence.native_batch import require_storage
+            from judgmentllm.providers.batch_mock import require_mock_batch
+
+            require_mock_batch(spec)
+            require_storage(repository)
+            if _batch_adapter is None:
+                raise PreparationError(
+                    "native batch requires explicit batch preparation"
+                )
         if spec.execution.mode == "bulk_live":
             repository.require_bulk_storage()
             if transport_context is not None and getattr(
@@ -452,6 +464,31 @@ def prepare_run(
             manifest = _manifest(
                 builder, spec, origin, template, profile, transport_context
             )
+            if _batch_adapter is not None:
+                from judgmentllm.preparation.batch import preseal_batches
+                from judgmentllm.preparation.manifest import ExecutableRunManifestV12
+
+                assert isinstance(spec, RunSpecV2)
+                manifest = ExecutableRunManifestV12.model_validate(
+                    {
+                        **manifest.model_dump(),
+                        "schema_version": 12,
+                        "batch_context": _batch_adapter.context(),
+                        "batch_shard_count": 0,
+                        "batch_member_count": 0,
+                        "batch_index_sha256": "0" * 64,
+                    }
+                )
+                shard_count, member_count, digest = preseal_batches(
+                    builder, spec, template, manifest, _batch_adapter, _checkpoint
+                )
+                manifest = manifest.model_copy(
+                    update={
+                        "batch_shard_count": shard_count,
+                        "batch_member_count": member_count,
+                        "batch_index_sha256": digest,
+                    }
+                )
             if isinstance(
                 manifest,
                 (
@@ -573,6 +610,18 @@ def _load_manifest(
     if not unsealed and repository.get_manifest(run_id).artifact != identity:
         raise PreparationError("published manifest conflicts with the database seal")
     run = repository.get_run(run_id)
+    if repository.connection.execute("PRAGMA user_version").fetchone()[0] == 4:
+        marker = repository.connection.execute(
+            "SELECT context_json FROM batch_runs WHERE run_id=?", (run_id,)
+        ).fetchone()
+        if (marker is not None) != (manifest.schema_version == 12):
+            raise PreparationError("batch marker differs from frozen manifest")
+        if marker is not None:
+            from judgmentllm.preparation.manifest import ExecutableRunManifestV12
+
+            assert isinstance(manifest, ExecutableRunManifestV12)
+            if marker[0] != canonical_bytes(manifest.batch_context).decode():
+                raise PreparationError("batch context differs from frozen manifest")
     if (repository.decisions_version(run_id) == 4) != (
         manifest.schema_version in (8, 9, 10, 11)
     ):

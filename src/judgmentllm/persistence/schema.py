@@ -12,7 +12,7 @@ import sqlite3
 
 from judgmentllm.persistence.models import TRANSITIONS, SchemaVersionError, utc_now
 
-SCHEMA_VERSION = 3
+SCHEMA_VERSION = 4
 
 
 def _choices(values: tuple[str, ...] | list[str]) -> str:
@@ -758,7 +758,7 @@ _V3_RESULT_EVIDENCE = _V2_RESULT_EVIDENCE.replace(
                   AND EXISTS(SELECT 1 FROM runs r WHERE r.run_id=NEW.run_id
                     AND r.decisions_version=4))))""",
 )
-_STATEMENTS = (
+_V3_STATEMENTS = (
     *(s for s in _V2_STATEMENTS if s != _V2_RESULT_EVIDENCE),
     "ALTER TABLE runs ADD COLUMN decisions_version INTEGER CHECK(decisions_version IS NULL OR decisions_version=4)",
     """CREATE TRIGGER runs_decisions_version_immutable BEFORE UPDATE OF decisions_version ON runs
@@ -769,8 +769,188 @@ _STATEMENTS = (
     _index("presentation_inputs", "ordered", "run_id,ordinal"),
     *_PRESENTATION_GUARDS,
 )
+SCHEMA_3_CHECKSUM = hashlib.sha256(
+    "\n".join(_V3_STATEMENTS).encode("utf-8")
+).hexdigest()
+
+# A job has many scientific attempts. Only the explicit bridge admits their
+# observations; historical direct-submission evidence keeps its original guard.
+_BATCH_TABLES = (
+    """CREATE TABLE batch_runs (
+        run_id TEXT PRIMARY KEY, context_json TEXT NOT NULL CHECK(json_valid(context_json)),
+        FOREIGN KEY(run_id) REFERENCES runs(run_id))""",
+    """CREATE TABLE batch_preparations (
+        run_id TEXT NOT NULL, shard_id TEXT NOT NULL, ordinal INTEGER NOT NULL CHECK(ordinal>=0),
+        receipt_sha256 TEXT NOT NULL, record_json TEXT NOT NULL CHECK(json_valid(record_json)),
+        PRIMARY KEY(run_id,shard_id), UNIQUE(run_id,ordinal),
+        FOREIGN KEY(run_id,shard_id) REFERENCES batches(run_id,batch_uid),
+        FOREIGN KEY(run_id,receipt_sha256) REFERENCES artifacts(run_id,sha256))""",
+    """CREATE TABLE batch_prepared_members (
+        run_id TEXT NOT NULL, shard_id TEXT NOT NULL, member_key TEXT NOT NULL,
+        attempt_id TEXT NOT NULL, position INTEGER NOT NULL CHECK(position>=0),
+        receipt_sha256 TEXT NOT NULL, record_json TEXT NOT NULL CHECK(json_valid(record_json)),
+        PRIMARY KEY(run_id,member_key), UNIQUE(run_id,attempt_id), UNIQUE(run_id,position),
+        FOREIGN KEY(run_id,shard_id,attempt_id) REFERENCES batch_members(run_id,batch_uid,attempt_id),
+        FOREIGN KEY(run_id,receipt_sha256) REFERENCES artifacts(run_id,sha256))""",
+    """CREATE TABLE batch_operations (
+        run_id TEXT NOT NULL, logical_id TEXT NOT NULL, instance_id TEXT NOT NULL,
+        sequence INTEGER NOT NULL CHECK(sequence BETWEEN 1 AND 3),
+        kind TEXT NOT NULL CHECK(kind IN ('upload','create','cancel')),
+        shard_id TEXT NOT NULL, intent_sha256 TEXT NOT NULL,
+        record_json TEXT NOT NULL CHECK(json_valid(record_json)),
+        PRIMARY KEY(run_id,instance_id), UNIQUE(run_id,logical_id,sequence),
+        UNIQUE(run_id,shard_id,kind,sequence),
+        FOREIGN KEY(run_id,shard_id) REFERENCES batch_preparations(run_id,shard_id),
+        FOREIGN KEY(run_id,intent_sha256) REFERENCES artifacts(run_id,sha256))""",
+    """CREATE TABLE batch_facts (
+        fact_seq INTEGER PRIMARY KEY, run_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK(kind IN ('operation','stop','cancel_all','status','cursor','conflict','withheld')),
+        entity_id TEXT NOT NULL, receipt_sha256 TEXT NOT NULL,
+        record_json TEXT NOT NULL CHECK(json_valid(record_json)),
+        UNIQUE(run_id,kind,entity_id,receipt_sha256),
+        FOREIGN KEY(run_id,receipt_sha256) REFERENCES artifacts(run_id,sha256))""",
+    """CREATE TABLE batch_member_receipts (
+        run_id TEXT NOT NULL, submission_id TEXT NOT NULL, shard_id TEXT NOT NULL,
+        member_key TEXT NOT NULL, attempt_id TEXT NOT NULL, observation_id TEXT NOT NULL,
+        observation_key TEXT NOT NULL, receipt_sha256 TEXT NOT NULL,
+        record_json TEXT NOT NULL CHECK(json_valid(record_json)),
+        PRIMARY KEY(run_id,submission_id,member_key), UNIQUE(run_id,attempt_id),
+        UNIQUE(run_id,observation_id),
+        FOREIGN KEY(run_id,submission_id) REFERENCES submissions(run_id,submission_id),
+        FOREIGN KEY(run_id,shard_id,attempt_id) REFERENCES batch_members(run_id,batch_uid,attempt_id),
+        FOREIGN KEY(run_id,member_key) REFERENCES batch_prepared_members(run_id,member_key),
+        FOREIGN KEY(run_id,receipt_sha256) REFERENCES artifacts(run_id,sha256))""",
+)
+_BATCH_KEYS = {
+    "batch_runs": (("run_id",),),
+    "batch_preparations": (("run_id", "shard_id"), ("run_id", "ordinal")),
+    "batch_prepared_members": (
+        ("run_id", "member_key"),
+        ("run_id", "attempt_id"),
+        ("run_id", "position"),
+    ),
+    "batch_operations": (
+        ("run_id", "instance_id"),
+        ("run_id", "logical_id", "sequence"),
+    ),
+    "batch_facts": (("fact_seq",), ("run_id", "kind", "entity_id", "receipt_sha256")),
+    "batch_member_receipts": (
+        ("run_id", "submission_id", "member_key"),
+        ("run_id", "attempt_id"),
+        ("run_id", "observation_id"),
+    ),
+}
+_V4_BASE = tuple(
+    s.replace(
+        "UNIQUE(run_id, batch_uid), UNIQUE(run_id, submission_id, attempt_id)",
+        "UNIQUE(run_id, submission_id, attempt_id)",
+    )
+    if s.startswith("CREATE TABLE submissions ")
+    else s.replace(
+        "FOREIGN KEY(run_id, submission_id, attempt_id)\n          REFERENCES submissions(run_id, submission_id, attempt_id)",
+        "FOREIGN KEY(run_id, submission_id) REFERENCES submissions(run_id, submission_id)",
+    )
+    if s.startswith("CREATE TABLE observations ")
+    else s
+    for s in _V3_STATEMENTS
+    if not s.startswith("CREATE TRIGGER observations_require_acceptance ")
+    and not s.startswith("CREATE TRIGGER submissions_no_replace ")
+)
+_STATEMENTS = (
+    *_V4_BASE,
+    *_BATCH_TABLES,
+    "CREATE UNIQUE INDEX idx_batch_active_create ON submissions(run_id,batch_uid) WHERE batch_uid IS NOT NULL AND certainty!='not_submitted'",
+    _index("batch_facts", "ordered", "run_id,kind,entity_id,fact_seq"),
+    _index("batch_operations", "ordered", "run_id,logical_id,sequence"),
+    *(
+        statement
+        for table, keys in _BATCH_KEYS.items()
+        for statement in (
+            _guard(f"{table}_immutable_update", "UPDATE", table),
+            _guard(f"{table}_immutable_delete", "DELETE", table),
+            _no_replace(table, keys),
+        )
+    ),
+    _no_replace(
+        "submissions",
+        (("run_id", "submission_id"), ("correlation_id",), ("run_id", "attempt_id")),
+    ),
+    """CREATE TRIGGER batch_members_prepared BEFORE INSERT ON batch_prepared_members
+        WHEN ((SELECT state FROM runs WHERE run_id=NEW.run_id)!='created'
+          AND NOT EXISTS(SELECT 1 FROM attempts a JOIN retry_operations r
+            ON r.run_id=a.run_id AND r.operation_id=a.authorization_id
+            WHERE a.run_id=NEW.run_id AND a.attempt_id=NEW.attempt_id AND a.attempt_number>1))
+          OR EXISTS(SELECT 1 FROM batch_facts WHERE run_id=NEW.run_id AND kind='stop')
+          OR NOT EXISTS(SELECT 1 FROM batch_runs WHERE run_id=NEW.run_id)
+        BEGIN SELECT RAISE(ABORT,'batch membership must precede sealing'); END""",
+    """CREATE TRIGGER batch_bridge_acceptance BEFORE INSERT ON batch_member_receipts
+        WHEN json_extract(NEW.record_json,'$.identity.run_id') IS NOT NEW.run_id
+          OR json_extract(NEW.record_json,'$.identity.submission_id') IS NOT NEW.submission_id
+          OR json_extract(NEW.record_json,'$.identity.attempt_id') IS NOT NEW.attempt_id
+          OR json_extract(NEW.record_json,'$.identity.observation_id') IS NOT NEW.observation_id
+          OR json_extract(NEW.record_json,'$.member_key') IS NOT NEW.member_key
+          OR json_extract(NEW.record_json,'$.observation_key') IS NOT NEW.observation_key
+          OR NOT EXISTS(SELECT 1 FROM submissions s JOIN batch_prepared_members m
+          ON m.run_id=s.run_id AND m.shard_id=s.batch_uid
+          WHERE s.run_id=NEW.run_id AND s.submission_id=NEW.submission_id
+            AND s.batch_uid=NEW.shard_id AND s.certainty='accepted'
+            AND s.state IN ('acknowledged','resolved')
+            AND m.member_key=NEW.member_key AND m.attempt_id=NEW.attempt_id)
+        BEGIN SELECT RAISE(ABORT,'batch member requires exact accepted job'); END""",
+    """CREATE TRIGGER observations_require_acceptance BEFORE INSERT ON observations
+        WHEN NOT EXISTS(SELECT 1 FROM submissions s JOIN attempts a
+          ON a.run_id=s.run_id AND a.attempt_id=s.attempt_id
+          WHERE s.run_id=NEW.run_id AND s.submission_id=NEW.submission_id
+            AND s.attempt_id=NEW.attempt_id AND s.state IN ('acknowledged','resolved')
+            AND s.certainty='accepted' AND a.state IN ('submitting','acknowledged','response_saved','normalized'))
+        AND NOT EXISTS(SELECT 1 FROM batch_member_receipts b JOIN submissions s
+          ON s.run_id=b.run_id AND s.submission_id=b.submission_id
+          WHERE b.run_id=NEW.run_id AND b.submission_id=NEW.submission_id
+            AND b.attempt_id=NEW.attempt_id AND b.observation_id=NEW.observation_id
+            AND b.observation_key=NEW.observation_key AND s.certainty='accepted'
+            AND json_extract(b.record_json,'$.kind')=NEW.kind
+            AND json_extract(b.record_json,'$.retained.sha256')=NEW.raw_sha256
+            AND s.state IN ('acknowledged','resolved'))
+        BEGIN SELECT RAISE(ABORT,'observation requires accepted submission'); END""",
+    """CREATE TRIGGER batch_operation_chain BEFORE INSERT ON batch_operations
+        WHEN NEW.sequence != 1+(SELECT count(*) FROM batch_operations
+          WHERE run_id=NEW.run_id AND shard_id=NEW.shard_id AND kind=NEW.kind)
+          OR json_extract(NEW.record_json,'$.instance_id') IS NOT NEW.instance_id
+          OR json_extract(NEW.record_json,'$.logical_id') IS NOT NEW.logical_id
+          OR json_extract(NEW.record_json,'$.sequence') IS NOT NEW.sequence
+          OR json_extract(NEW.record_json,'$.owner_token') IS NOT
+            (SELECT owner_token FROM runs WHERE run_id=NEW.run_id)
+          OR (NEW.sequence>1 AND NOT EXISTS(SELECT 1 FROM batch_operations p JOIN batch_facts f
+            ON f.run_id=p.run_id AND f.entity_id=p.instance_id AND f.kind='operation'
+            WHERE p.run_id=NEW.run_id AND p.logical_id=NEW.logical_id AND p.sequence=NEW.sequence-1
+              AND json_extract(f.record_json,'$.outcome')='not_accepted'
+              AND json_extract(f.record_json,'$.fence.instance_id')=p.instance_id
+              AND json_extract(f.record_json,'$.fence.intent_sha256')=p.intent_sha256
+              AND json_extract(f.record_json,'$.fence.sender_token')=json_extract(p.record_json,'$.owner_token')
+              AND json_extract(NEW.record_json,'$.predecessor_sha256')=f.receipt_sha256
+              AND json_extract(NEW.record_json,'$.payload_sha256')=json_extract(p.record_json,'$.payload_sha256')))
+          OR (NEW.kind IN ('upload','create') AND EXISTS(SELECT 1 FROM batch_facts
+            WHERE run_id=NEW.run_id AND kind='stop'))
+          OR (NEW.kind='cancel' AND (NOT EXISTS(SELECT 1 FROM batch_facts
+            WHERE run_id=NEW.run_id AND kind='cancel_all')
+            OR NOT EXISTS(SELECT 1 FROM submissions s WHERE s.run_id=NEW.run_id
+              AND s.batch_uid=NEW.shard_id AND s.certainty='accepted'
+              AND s.remote_id=json_extract(NEW.record_json,'$.remote_id'))))
+        BEGIN SELECT RAISE(ABORT,'batch mutation is stopped or exceeds its chain'); END""",
+    """CREATE TRIGGER batch_submission_prepared BEFORE INSERT ON submissions
+        WHEN NEW.batch_uid IS NOT NULL AND NOT EXISTS(SELECT 1 FROM batch_preparations p JOIN runs r USING(run_id)
+          WHERE p.run_id=NEW.run_id AND p.shard_id=NEW.batch_uid AND r.manifest_sha256 IS NOT NULL
+            AND json_extract(p.record_json,'$.member_count')=(SELECT count(*) FROM batch_members m
+              WHERE m.run_id=NEW.run_id AND m.batch_uid=NEW.batch_uid))
+        BEGIN SELECT RAISE(ABORT,'batch submission requires sealed membership'); END""",
+)
 SCHEMA_CHECKSUM = hashlib.sha256("\n".join(_STATEMENTS).encode("utf-8")).hexdigest()
-_CHECKSUMS = {1: LEGACY_SCHEMA_CHECKSUM, 2: SCHEMA_2_CHECKSUM, 3: SCHEMA_CHECKSUM}
+_CHECKSUMS = {
+    1: LEGACY_SCHEMA_CHECKSUM,
+    2: SCHEMA_2_CHECKSUM,
+    3: SCHEMA_3_CHECKSUM,
+    4: SCHEMA_CHECKSUM,
+}
 
 
 def _schema_digest(connection: sqlite3.Connection) -> str:

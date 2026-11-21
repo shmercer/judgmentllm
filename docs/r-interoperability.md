@@ -829,3 +829,17 @@ files in strict R/jsonlite. The fixture checks 12 grouped trait rows against one
 physical reservation, original request/attempt identities, complete category
 mappings and absent fabricated probabilities. All seven standing strict gates
 remain required locally. No normalized CSV/JSONL/R schema changes.
+
+## M5 PR2 native batch
+
+The existing seventh strict gate sources `examples/batch_cli_interoperability.R`.
+R launches installed separate CLI processes outside the checkout for prepare,
+submit, status, partial collect, resume/recovery and export. It checks envelopes,
+artifact bytes and JSON-cell companions, leading-zero IDs, pair orientations,
+missing values and exactly-once physical usage. The terminal two-row fixture
+proves a success with 7 input/3 output tokens and an explicitly cancelled sibling
+after late cancellation; missing sibling evidence stays unresolved. Full/minimal
+and error-only fixtures remain synthetic and offline. The total gate deadline
+stays 180 seconds, all seven gates remain required, and source-process OS
+correctness and focused R export consumers do not replace installed acceptance.
+[Native-batch contracts and qualification boundaries](native-batch.md)

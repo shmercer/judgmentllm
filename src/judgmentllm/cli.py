@@ -9,6 +9,7 @@ from judgmentllm import __version__
 from judgmentllm._auth import _select_providers  # pyright: ignore[reportPrivateUsage]
 from judgmentllm._lifecycle_store import load_resume_spec
 from judgmentllm.auth import credential_status
+from judgmentllm.batch_cli import register_commands as _register_batch_commands
 from judgmentllm.cache_advisory import CacheAdvisoryReport
 from judgmentllm.cli_controls import (
     LifecycleGroup,
@@ -53,6 +54,8 @@ templates_app = typer.Typer(
     help="List, initialize, and preview text templates offline."
 )
 app.add_typer(templates_app, name="templates")
+
+_register_batch_commands(app)
 
 
 @app.callback(invoke_without_command=True)

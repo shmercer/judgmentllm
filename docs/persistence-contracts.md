@@ -123,7 +123,7 @@ while the existing Pydantic models validate complete scoring semantics.
 | `results` | Append-only validated normalized records, unique per run/task/attempt, with observation or definitive failure evidence. |
 | `retry_operations` | Immutable authorization identity, selected membership/prior-outcome digest and explicit completed-task permission. The shared retry service prepares exact subsets under ownership. |
 | `events` | Append-only typed event kind, entity identity, state transition, owner reference and timestamp. No arbitrary message or payload dictionary. |
-| `batches`, `batch_members` | Reserved future batch identities/membership; no batch submission methods. |
+| `batches`, `batch_members` | Historical reserved identities; schema 4 uses sealed native-batch shard/attempt membership through the explicit evidence bridge. [Native batch](native-batch.md) |
 | `exports` | Internal all-attempt export publication/high-water metadata; published rows immutable. Publication references retained exact output bytes and never overwrites earlier snapshots. |
 
 Primary/foreign/unique constraints are run-scoped, except correlation IDs, which
@@ -777,3 +777,16 @@ by default, and reads retained full-capture text only on explicit `include_text`
 Text remains excluded from result representations and serializers. Missing old
 records and omitted old content are not reconstructed. Normalized exports and
 all existing result/evidence joins retain their established meanings.
+
+## M5 PR2 schema 4 / manifest 12
+
+The [native-batch bridge](native-batch.md) is additive to schema 3. New stores use
+4; existing versions 1/2/3 are verified without migration. `batch_runs`,
+`batch_preparations` and `batch_prepared_members` freeze context and membership;
+`batch_operations` bounds immutable instances; `batch_facts` journals authorized
+control/cursor evidence; `batch_member_receipts` binds each scientific attempt
+to an accepted job before admitting its observation. Direct observations retain
+the original guard. Operation instances and scientific attempt caps cannot reset
+on restart. Receipt publication precedes SQL projection; replay is idempotent.
+Stop command references replay before forwarding. No schema-3 receipt is
+reinterpreted as a native-batch receipt. Normalized result schema 1 is unchanged.

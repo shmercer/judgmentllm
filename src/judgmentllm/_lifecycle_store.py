@@ -197,6 +197,14 @@ def inspect_run(repository: Repository, run_id: str) -> RunStatus:
             if isinstance(manifest, ExecutableRunManifestV8)
             else None
         )
+        from judgmentllm.persistence.native_batch import detail
+        from judgmentllm.preparation.manifest import ExecutableRunManifestV12
+
+        batch = (
+            detail(repository, run_id, manifest.batch_shard_count)
+            if isinstance(manifest, ExecutableRunManifestV12)
+            else None
+        )
         row = repository.connection.execute(
             "SELECT (SELECT COUNT(*) FROM requests WHERE run_id=?) requests,"
             "(SELECT COUNT(*) FROM tasks WHERE run_id=? AND state IN ('invalid','refused','errored')) failed,"
@@ -309,9 +317,11 @@ def inspect_run(repository: Repository, run_id: str) -> RunStatus:
         executor_active=active,
         recovery_required=bool(
             summary.unresolved_submissions
+            or (batch is not None and batch.recovery_required)
             or (active is False and run.state in {"created", "submitted", "running"})
         ),
         decisions=decisions,
+        batch=batch,
         artifacts=ArtifactPaths(**paths),
         output_selection=manifest.output_selection
         if isinstance(manifest, ExecutableRunManifestV2)

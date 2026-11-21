@@ -831,6 +831,9 @@ class PreparedRun:
 
     def verify_transport_index(self) -> None:
         """Verify the complete initial index once, never select a replacement."""
+        from judgmentllm.preparation.batch import verify_batches
+
+        verify_batches(self)
         if (
             isinstance(
                 self.manifest,
