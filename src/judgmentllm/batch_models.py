@@ -155,6 +155,7 @@ class BatchCursorV1(EvidenceModel):
     source_id: SHA256
     position: int = Field(ge=0)
     prefix_sha256: SHA256
+    exhausted: bool = Field(default=False, exclude_if=lambda value: value is False)
 
 
 class BatchMemberReceiptV1(EvidenceModel):

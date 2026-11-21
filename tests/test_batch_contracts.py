@@ -11,6 +11,7 @@ from judgmentllm.batch_models import (
     BatchOperationIntentV1,
     BatchOperationReceiptV1,
 )
+from judgmentllm.persistence.hashing import canonical_bytes
 
 
 @pytest.mark.parametrize("value", [True, 0, -1, 1.5, "2"])
@@ -68,3 +69,19 @@ def test_cursor_is_typed_frozen_and_not_a_provider_token(tmp_path: Path) -> None
         cursor.model_copy(update={"provider_token": "untrusted"})
     with pytest.raises(ValueError):
         cursor.position = 2  # type: ignore[misc]
+
+
+def test_historical_cursor_does_not_gain_source_exhaustion_proof() -> None:
+    raw = (
+        b'{"position":1,"prefix_sha256":"'
+        + b"b" * 64
+        + b'","run_id":"001","schema_version":1,"source_id":"'
+        + b"a" * 64
+        + b'","submission_id":"s-01"}'
+    )
+    cursor = BatchCursorV1.model_validate_json(raw)
+    assert cursor.exhausted is False
+    assert canonical_bytes(cursor) == raw
+    assert b'"exhausted":true' in canonical_bytes(
+        cursor.model_copy(update={"exhausted": True})
+    )

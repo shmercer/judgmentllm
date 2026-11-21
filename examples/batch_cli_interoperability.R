@@ -1,4 +1,5 @@
 # Sourced by the seventh gate: R owns every installed CLI lifecycle process.
+source(file.path(dirname(helper), "..", "examples", "batch_interoperability.R"), local = TRUE)
 batch_companion <- function(bundle, name) {
   entry <- one(bundle$manifest$files, function(x) x$name == name)
   path <- file.path(dirname(dirname(dirname(bundle$manifest_path))), entry$artifact$relative_path)
@@ -40,11 +41,13 @@ for (name in c("batch-terminal-full", "batch-terminal-minimal", "batch-missing")
   cli(c("batch", "status", selection, settings, "--refresh"))
   cli(c("batch", "collect", selection, settings, "--max-result-rows", "1"), expected = 3L)
   partial <- cli(c("results", "provenance", selection))$data
+  check_batch_audit(partial$manifest_path)
   old_file <- batch_companion(partial, "results.jsonl")
   old_bytes <- readBin(old_file, "raw", n = file.info(old_file)$size)
   stopifnot(length(records(old_file)) == 1L)
   cli(c("batch", "resume", selection, settings), expected = if (missing) 3L else 0L)
   final <- cli(c("results", "provenance", selection))$data
+  final_snapshot <- check_batch_audit(final$manifest_path)
   output <- records(batch_companion(final, "results.jsonl"))
   members <- records(batch_companion(final, "members.jsonl"))
   cells <- read.csv(batch_companion(final, "members.csv"), colClasses = "character", check.names = FALSE)
@@ -58,6 +61,9 @@ for (name in c("batch-terminal-full", "batch-terminal-minimal", "batch-missing")
   if (!missing) {
     cancelled <- one(output, function(x) x$status == "cancelled")
     stopifnot(cancelled$item_id == "002", is.null(cancelled$primary_score), is.null(cancelled$probabilities))
+    sibling <- one(members, function(x) !is.null(x$evidence) && x$evidence$kind == "confirmed_cancellation")
+    stopifnot(is.null(sibling$evidence$usage$input_tokens), is.null(sibling$evidence$usage$output_tokens),
+      is.null(sibling$evidence$usage$total_tokens), is.null(sibling$evidence$usage$reported_cost))
   }
   physical <- Filter(function(x) !is.null(x$evidence), members)
   usage <- lapply(physical, function(x) x$evidence$usage)
@@ -68,6 +74,10 @@ for (name in c("batch-terminal-full", "batch-terminal-minimal", "batch-missing")
   replay <- fixture("batch-inspect", directory)
   stopifnot(replay$forwards == 3L, identical(replay$attempts, known$attempts),
     length(replay$receipts) == if (missing) 1L else 2L)
+  replay_bundle <- cli(c("results", "provenance", selection))$data
+  replay_snapshot <- check_batch_audit(replay_bundle$manifest_path)
+  stopifnot(identical(replay_snapshot$members, final_snapshot$members),
+    identical(replay_snapshot$results, final_snapshot$results))
   status <- cli(c("batch", "status", selection))
   stopifnot(status$data$batch$missing_members == if (missing) 1L else 0L)
 }
@@ -80,9 +90,15 @@ cli(c("batch", "submit", selection, settings))
 cli(c("batch", "status", selection, settings, "--refresh"))
 cli(c("batch", "collect", selection, settings))
 bundle <- cli(c("results", "provenance", selection))$data
+pair_snapshot <- check_batch_audit(bundle$manifest_path)
 pairs <- records(batch_companion(bundle, "results.jsonl"))
 stopifnot(length(pairs) == 2L, all(vapply(pairs, function(x)
   x$mode == "batch_native" && x$winner_id == x$presented_order[[1L]] &&
   identical(x$original_order, list("001", "002")) && abs(x$p_left + x$p_right - 1) < 1e-10, logical(1L))))
 pair_audit <- read.csv(batch_companion(bundle, "results_r.csv"), colClasses = "character", na.strings = "NA")
 stopifnot(nrow(pair_audit) == 2L, all(pair_audit$better_id %in% c("001", "002")))
+cli(c("batch", "resume", selection, settings))
+pair_replay <- cli(c("results", "provenance", selection))$data
+replayed_pairs <- check_batch_audit(pair_replay$manifest_path)
+stopifnot(identical(replayed_pairs$members, pair_snapshot$members),
+  identical(replayed_pairs$results, pair_snapshot$results))

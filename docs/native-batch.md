@@ -49,6 +49,13 @@ durable before forwarding. An authorized receipt is durable before acceptance,
 member accounting or results are projected into SQL. Recovery reads that receipt
 first, then reconciles only the original operation if needed.
 
+The operation journal is its transactionally registered immutable intent artifact
+and `batch_operations` row. Unregistered content-addressed artifacts authorize
+no forward and consume no instance debit. No named owner-specific intent reference
+is published before that transaction; death there cannot poison a later permitted
+initial send. A registered operation with unknown acceptance still requires the
+original receipt/reconciliation and cannot use this uninvoked boundary to resend.
+
 Unknown acceptance remains unresolved. Absence, stale status, timeout, a 503 or
 an unavailable lookup never proves nonacceptance. A later explicitly initiated
 invocation may allocate a successor only after authoritative nonacceptance for
@@ -107,6 +114,14 @@ Output and error sources are consumed independently and may arrive out of order
 or contain only errors. Attribution uses immutable member keys, never response
 position. A typed cursor binds the accepted submission, immutable source,
 position and approved-prefix chain. It advances after durable member/result work.
+Member completeness is separate from source exhaustion. Collection keeps reading
+bounded unread output and error suffixes after every member has an outcome.
+Resuming a cursor streams the original source from position zero and verifies its
+screened prefix before admitting any suffix row. Prefix reads share the invocation
+byte, deadline and step budgets; exhaustion cannot advance the cursor. Only an
+observed source EOF records `exhausted=true`. Historical cursor bytes omit this
+additive false-by-default field and establish no EOF proof. Unread sources keep
+current recovery status unresolved even when all member outcomes are proven.
 Duplicates are idempotent. A conflicting member or terminal status preserves
 proven prior results and old exports while adding current unresolved conflict
 evidence. Terminal job status never fills in missing members. Usage belongs once
@@ -168,6 +183,9 @@ single stdout envelopes, stderr diagnostics, artifacts, both retention modes,
 late cancellation and original/presented pair identities. It retains its existing
 **180-second total deadline**. All seven gates and separate Windows/macOS process
 correctness remain mandatory; focused R export checks do not replace this gate.
+The installed driver reuses `check_batch_audit` from the standalone R consumer for
+actual canonical and R CSV contents, compares complete member/evidence records on
+replay, and requires unknown sibling usage to remain NULL, including output counts.
 
 This change is at least **Level 3**. After independent code review and a committed
 candidate freeze, record the protected-base automatic plan and require complete

@@ -231,6 +231,7 @@
       "test_batch_control_has_finite_shared_bounds": {"": []},
       "test_batch_limits_are_strict": {"[-1]": [], "[0]": [], "[1.5]": [], "[2]": [], "[True]": []},
       "test_cursor_is_typed_frozen_and_not_a_provider_token": {"": []},
+      "test_historical_cursor_does_not_gain_source_exhaustion_proof": {"": []},
       "test_operation_cap_and_receipt_binding_are_explicit": {"": []}
     },
     "tests/test_batch_exports_retry.py": {
@@ -247,6 +248,7 @@
     },
     "tests/test_batch_io.py": {
       "test_each_protocol_boundary_obeys_shared_deadline": {"[cancel]": [], "[create]": [], "[reconcile]": [], "[source]": [], "[status]": [], "[stream]": [], "[upload]": []},
+      "test_mock_connections_close_without_gc_and_keep_rollback": {"": []},
       "test_oversized_chunk_never_enters_staging_or_observations": {"": []},
       "test_poll_counter_stops_without_spinning_or_sending": {"": []}
     },
@@ -259,6 +261,7 @@
       "test_upload_and_cancel_caps_survive_explicit_continuations": {"[cancel]": [], "[upload]": []}
     },
     "tests/test_batch_r.py": {
+      "test_r_consumer_rejects_changed_csv_and_zero_unknown_usage": {"[lossless_identity]": ["r_interop"], "[r_score]": ["r_interop"], "[unknown_usage]": ["r_interop"]},
       "test_real_r_consumes_python_batch_exports": {"[batch-missing]": ["r_interop"], "[batch-pairwise]": ["r_interop"], "[batch-terminal-full]": ["r_interop"], "[batch-terminal-minimal]": ["r_interop"]}
     },
     "tests/test_batch_recovery.py": {
@@ -270,6 +273,12 @@
       "test_lost_create_ack_stop_late_discovery_single_cancel_and_two_rows": {"[full]": [], "[minimal]": []},
       "test_member_receipt_recovers_without_retrieval_only_when_retained": {"[full]": [], "[minimal]": []},
       "test_missing_sibling_after_terminal_job_stays_unresolved": {"": []}
+    },
+    "tests/test_batch_source_recovery.py": {
+      "test_complete_members_do_not_hide_unread_suffix_on_restart": {"[duplicate-conflict-full]": [], "[duplicate-conflict-minimal]": [], "[duplicate-full]": [], "[duplicate-minimal]": [], "[trailing-error-full]": [], "[trailing-error-minimal]": []},
+      "test_death_before_intent_registration_does_not_charge_or_poison_instance": {"[cancel]": [], "[create]": [], "[upload]": []},
+      "test_prefix_validation_uses_invocation_bounds_without_advancing": {"[bytes]": [], "[deadline]": [], "[steps]": []},
+      "test_restart_verifies_prefix_before_admitting_suffix": {"[changed-prefix]": [], "[stored-prefix]": []}
     },
     "tests/test_bulk_live.py": {
       "test_bulk_cancellation_keeps_only_verified_outcomes": {"[acknowledgment]": [], "[failure]": [], "[response]": [], "[uncertain]": [], "[wrong_identity]": []},

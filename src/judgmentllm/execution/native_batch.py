@@ -435,12 +435,8 @@ class BatchSession(AbstractContextManager["BatchSession"]):
             remote_id=remote_id,
             predecessor_sha256=predecessor,
         )
-        artifact = put(
-            self.repository,
-            self.run_id,
-            intent,
-            reference=f"batch/intents/{instance}.json",
-        )
+        # Only SQL registration makes this immutable artifact a sender journal.
+        artifact = put(self.repository, self.run_id, intent)
         body = (
             self.store.put(payload, "application/json")
             if self.manifest.capture == "full"
@@ -797,6 +793,24 @@ class BatchSession(AbstractContextManager["BatchSession"]):
         self.checkpoint("after_batch_member_results", member.member_key)
         return safe_sha
 
+    def result_cursor(
+        self, shard: BatchShardV1, submission: SubmissionRecord, source: str
+    ) -> tuple[str, BatchCursorV1 | None]:
+        source_id = semantic_digest(
+            "batch-result-source-v1",
+            [submission.submission_id, source, shard.context.fixture_sha256],
+        )
+        cursor = latest(
+            self.repository, self.run_id, "cursor", source_id, BatchCursorV1
+        )
+        if cursor is not None and (
+            cursor.run_id,
+            cursor.submission_id,
+            cursor.source_id,
+        ) != (self.run_id, submission.submission_id, source_id):
+            raise IntegrityError("batch cursor differs from its accepted source")
+        return source_id, cursor
+
     async def collect(self) -> None:
         assert self.prepared is not None
         for shard in rows(
@@ -832,7 +846,14 @@ class BatchSession(AbstractContextManager["BatchSession"]):
                             "completed batch member lacks matching evidence"
                         )
                     self.store.verify(prior.retained)
-                continue
+                source_cursors = (
+                    self.result_cursor(shard, submission, source)[1]
+                    for source in ("output", "error")
+                )
+                if all(
+                    cursor is not None and cursor.exhausted for cursor in source_cursors
+                ):
+                    continue
             if shard.context != self.adapter.context():
                 raise IntegrityError("unfinished shard requires its original fixture")
             by_key = {m.member_key: m for m in members}
@@ -871,14 +892,9 @@ class BatchSession(AbstractContextManager["BatchSession"]):
                             self.store.read(prior.retained),
                         )
             for source in ("output", "error"):
-                source_id = semantic_digest(
-                    "batch-result-source-v1",
-                    [
-                        submission.submission_id,
-                        source,
-                        shard.context.fixture_sha256,
-                    ],
-                )
+                source_id, cursor = self.result_cursor(shard, submission, source)
+                if cursor is not None and cursor.exhausted:
+                    continue
                 try:
                     returned_source = await self.budget.call(
                         lambda submission=submission, source=source: (
@@ -894,23 +910,14 @@ class BatchSession(AbstractContextManager["BatchSession"]):
                         "withheld", source_id, BatchDiagnosticV1(code="unsafe_evidence")
                     )
                     continue
-                cursor = latest(
-                    self.repository, self.run_id, "cursor", source_id, BatchCursorV1
-                )
-                if cursor is not None and (
-                    cursor.run_id,
-                    cursor.submission_id,
-                    cursor.source_id,
-                ) != (self.run_id, submission.submission_id, source_id):
-                    raise IntegrityError(
-                        "batch cursor differs from its accepted source"
-                    )
-                prefix = (
-                    cursor.prefix_sha256
-                    if cursor
-                    else bytes_digest(b"judgmentllm.batch-result-prefix.v1\n")
-                )
-                position = cursor.position if cursor else 0
+                prefix = bytes_digest(b"judgmentllm.batch-result-prefix.v1\n")
+                position = 0
+                if (
+                    cursor is not None
+                    and cursor.position == 0
+                    and cursor.prefix_sha256 != prefix
+                ):
+                    raise IntegrityError("batch result prefix differs from its cursor")
                 buffer = bytearray()
                 assert submission.remote_id is not None
                 stream = self.adapter.results(
@@ -931,6 +938,22 @@ class BatchSession(AbstractContextManager["BatchSession"]):
                                 raise IntegrityError(
                                     "batch result source ended within a record"
                                 ) from None
+                            if cursor is not None and position < cursor.position:
+                                raise IntegrityError(
+                                    "batch source no longer contains its saved prefix"
+                                ) from None
+                            self.write_fact(
+                                "cursor",
+                                source_id,
+                                BatchCursorV1(
+                                    run_id=self.run_id,
+                                    submission_id=submission.submission_id,
+                                    source_id=source_id,
+                                    position=position,
+                                    prefix_sha256=prefix,
+                                    exhausted=True,
+                                ),
+                            )
                             break
                         self.budget.bytes += len(chunk)
                         if len(chunk) > 65_536:
@@ -954,12 +977,16 @@ class BatchSession(AbstractContextManager["BatchSession"]):
                             )
                         while b"\n" in buffer:
                             self.budget.remaining()
-                            if (
-                                self.budget.result_rows
-                                >= self.budget.options.max_result_rows
-                            ):
-                                raise BudgetExhausted
-                            self.budget.result_rows += 1
+                            verifying_prefix = (
+                                cursor is not None and position < cursor.position
+                            )
+                            if not verifying_prefix:
+                                if (
+                                    self.budget.result_rows
+                                    >= self.budget.options.max_result_rows
+                                ):
+                                    raise BudgetExhausted
+                                self.budget.result_rows += 1
                             raw, _, rest = buffer.partition(b"\n")
                             buffer = bytearray(rest)
                             if (
@@ -973,18 +1000,19 @@ class BatchSession(AbstractContextManager["BatchSession"]):
                                 bytes(raw), expected_wires
                             )
                             if screened is None:
-                                self.write_fact(
-                                    "withheld",
-                                    source_id + ":" + str(position),
-                                    BatchDiagnosticV1(code="unsafe_evidence"),
-                                )
+                                if not verifying_prefix:
+                                    self.write_fact(
+                                        "withheld",
+                                        source_id + ":" + str(position),
+                                        BatchDiagnosticV1(code="unsafe_evidence"),
+                                    )
                                 digest = semantic_digest(
                                     "batch-withheld-v1", [source_id, position]
                                 )
                             else:
                                 key = screened[0]
                                 digest = bytes_digest(screened[3])
-                                if cursor is None or position >= cursor.position:
+                                if not verifying_prefix:
                                     self.save_member(
                                         by_key[key],
                                         submission,
@@ -997,6 +1025,14 @@ class BatchSession(AbstractContextManager["BatchSession"]):
                                 [prefix, position, digest],
                             )
                             position += 1
+                            if (
+                                cursor is not None
+                                and position == cursor.position
+                                and prefix != cursor.prefix_sha256
+                            ):
+                                raise IntegrityError(
+                                    "batch result prefix differs from its cursor"
+                                )
                             if cursor is None or position > cursor.position:
                                 self.write_fact(
                                     "cursor",
@@ -1010,6 +1046,11 @@ class BatchSession(AbstractContextManager["BatchSession"]):
                                     ),
                                 )
                                 self.checkpoint("after_batch_cursor", source_id)
+                                if (
+                                    self.budget.result_rows
+                                    >= self.budget.options.max_result_rows
+                                ):
+                                    raise BudgetExhausted
                     if cursor is not None and position < cursor.position:
                         raise IntegrityError(
                             "batch result source no longer contains its saved prefix"

@@ -181,7 +181,7 @@ async def _control(
     status = get_batch_status(identifier, store=root)
     partial = exhausted or status.batch.unresolved_operations or status.batch.conflicts
     if action in ("collect", "resume"):
-        partial = partial or status.batch.missing_members
+        partial = partial or status.batch.recovery_required
     if action == "submit":
         partial = partial or status.batch.accepted_jobs != status.batch.jobs
     return status.model_copy(update={"outcome": "partial" if partial else "ok"})

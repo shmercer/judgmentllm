@@ -227,6 +227,18 @@ def detail(repository: Repository, run_id: str, shard_count: int) -> BatchDetail
             (run_id,),
         ).fetchone()[0]
     )
+    unread_sources = bool(
+        connection.execute(
+            "SELECT EXISTS(SELECT 1 FROM submissions s LEFT JOIN ("
+            "SELECT json_extract(f.record_json,'$.submission_id') submission_id,count(*) sources "
+            "FROM batch_facts f WHERE f.run_id=? AND f.kind='cursor' "
+            "AND json_extract(f.record_json,'$.exhausted')=1 AND NOT EXISTS(SELECT 1 FROM batch_facts n "
+            "WHERE n.run_id=f.run_id AND n.kind=f.kind AND n.entity_id=f.entity_id AND n.fact_seq>f.fact_seq) "
+            "GROUP BY submission_id) e ON e.submission_id=s.submission_id "
+            "WHERE s.run_id=? AND s.batch_uid IS NOT NULL AND s.certainty='accepted' AND coalesce(e.sources,0)<2)",
+            (run_id, run_id),
+        ).fetchone()[0]
+    )
     return BatchDetailV1(
         local_stop=stopped(repository, run_id),
         cancel_all=stopped(repository, run_id, "cancel_all"),
@@ -235,5 +247,5 @@ def detail(repository: Repository, run_id: str, shard_count: int) -> BatchDetail
         unresolved_operations=unresolved,
         missing_members=missing,
         conflicts=conflicts,
-        recovery_required=bool(unresolved or missing or conflicts),
+        recovery_required=bool(unresolved or missing or conflicts or unread_sources),
     )

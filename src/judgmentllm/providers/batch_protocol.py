@@ -67,7 +67,10 @@ class NativeBatchAdapter(Protocol):
         source: str,
         members: list[tuple[str, int, PreparedRequestV2]],
         cursor: BatchCursorV1 | None = None,
-    ) -> AsyncGenerator[bytes, None]: ...
+    ) -> AsyncGenerator[bytes, None]:
+        """Stream from position zero so the collector can verify the saved prefix."""
+        ...
+
     def screen_result(
         self, raw: bytes, expected_keys: Mapping[str, PreparedRequestV2]
     ) -> tuple[str, ProviderResponse, ReportedUsageInput, bytes, bool] | None: ...

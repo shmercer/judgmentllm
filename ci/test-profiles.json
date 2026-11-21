@@ -1862,6 +1862,16 @@
         "darwin"
       ],
       "reason": "Sealed preparation, SQLite, private artifacts and offline public lifecycle on OS paths"
+    },
+    "tests/test_batch_source_recovery.py": {
+      "domain": "process-ownership",
+      "cost": "process",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Real process death before operation registration and fresh-process suffix/prefix recovery with immutable evidence and finite I/O bounds"
     }
   },
   "providers": {

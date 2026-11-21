@@ -1,14 +1,18 @@
 """One finite admission budget covers every protocol read, write and stream."""
 
 import asyncio
+import sqlite3
 from collections.abc import AsyncIterator, Callable
+from contextlib import closing
 from pathlib import Path
+from typing import Any
 
 import pytest
 from test_native_batch import batch_spec, mock_fixture, service_counts
 
 from judgmentllm import (
     BatchControlOptionsV1,
+    BatchMockOptions,
     acancel_batch,
     acollect_batch,
     apoll_batch,
@@ -19,6 +23,73 @@ from judgmentllm.batch_models import BatchOperationIntentV1
 from judgmentllm.persistence.ownership import executor_is_active
 from judgmentllm.persistence.repository import ReadOnlyRepository
 from judgmentllm.providers.batch_mock import MockBatchAdapter
+
+
+@pytest.mark.asyncio
+async def test_mock_connections_close_without_gc_and_keep_rollback(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from judgmentllm.persistence.hashing import bytes_digest
+    from judgmentllm.persistence.models import IntegrityError
+
+    ledger = tmp_path / "service.sqlite3"
+    opened: list[sqlite3.Connection] = []
+    original = sqlite3.connect
+
+    def tracked(database: Any, *arguments: Any, **options: Any) -> sqlite3.Connection:
+        connection = original(database, *arguments, **options)
+        if Path(database) == ledger:
+            opened.append(connection)
+        return connection
+
+    monkeypatch.setattr(sqlite3, "connect", tracked)
+    mock = BatchMockOptions(ledger_path=ledger)
+    adapter = MockBatchAdapter(ledger, mock, create=True)
+    # Strong references prevent garbage collection from hiding leaked handles.
+    for connection in opened:
+        with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+            connection.execute("SELECT 1")
+    intent = BatchOperationIntentV1(
+        run_id="001",
+        shard_id="shard",
+        logical_id="1" * 64,
+        instance_id="2" * 64,
+        sequence=1,
+        kind="cancel",
+        service_id=adapter.identity,
+        manifest_sha256="3" * 64,
+        payload_sha256=bytes_digest(b"{}"),
+        owner_token="owner",
+        remote_id="mock_job_" + "4" * 64,
+    )
+
+    async def payload() -> AsyncIterator[bytes]:
+        yield b"{}"
+
+    with pytest.raises(IntegrityError, match="unknown job"):
+        await adapter.invoke(intent, payload(), lambda: None)
+    assert await adapter.reconcile_operation(intent) is None
+    await adapter.fence_unsent(intent)
+    assert await adapter.reconcile_operation(intent) is not None
+    with closing(original(ledger)) as connection:
+        assert connection.execute("SELECT forwards FROM operations").fetchall() == [
+            (0,)
+        ]
+    spec = batch_spec(tmp_path)
+    root = tmp_path / "store"
+    prepare_batch(spec, store=root, run_id="001", mock=mock)
+    await asubmit_batch("001", store=root, spec=spec, mock=mock)
+    from judgmentllm import acancel_batch, aresume_batch
+
+    await acancel_batch("001", store=root, mock=mock)
+    await aresume_batch("001", store=root, spec=spec, mock=mock)
+    for connection in opened:
+        with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+            connection.execute("SELECT 1")
+    # Windows must be able to remove the service family while handles are held
+    # strongly by this test; no gc.collect() or process exit establishes cleanup.
+    for path in tmp_path.glob("service.sqlite3*"):
+        path.unlink()
 
 
 @pytest.mark.asyncio

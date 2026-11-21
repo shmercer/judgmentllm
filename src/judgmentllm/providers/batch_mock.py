@@ -8,6 +8,7 @@ import re
 import sqlite3
 import uuid
 from collections.abc import AsyncGenerator, AsyncIterator, Callable, Mapping
+from contextlib import closing
 from pathlib import Path
 from typing import Literal, cast
 
@@ -114,7 +115,7 @@ class MockBatchAdapter(MockAdapter):
         )
         self.scenario = MockScenario()
         self.scenarios: dict[str, MockScenario] = {}
-        with self.connect() as connection:
+        with closing(self.connect()) as connection, connection:
             if create:
                 connection.executescript("""
                     CREATE TABLE IF NOT EXISTS service(identity TEXT PRIMARY KEY);
@@ -144,10 +145,14 @@ class MockBatchAdapter(MockAdapter):
 
     def connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.path, timeout=0, isolation_level="IMMEDIATE")
-        connection.row_factory = sqlite3.Row
-        connection.execute("PRAGMA synchronous=FULL")
-        connection.execute("PRAGMA journal_mode=WAL")
-        return connection
+        try:
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA synchronous=FULL")
+            connection.execute("PRAGMA journal_mode=WAL")
+            return connection
+        except BaseException:
+            connection.close()
+            raise
 
     def context(self) -> BatchContextV1:
         return BatchContextV1(
@@ -235,7 +240,7 @@ class MockBatchAdapter(MockAdapter):
             raise IntegrityError("batch service was replaced")
         requested = getattr(self.fixture, intent.kind)
         digest = bytes_digest(canonical_bytes(intent))
-        with self.connect() as connection:
+        with closing(self.connect()) as connection, connection:
             connection.execute("BEGIN IMMEDIATE")
             previous = connection.execute(
                 "SELECT * FROM operations WHERE instance_id=?", (intent.instance_id,)
@@ -347,7 +352,7 @@ class MockBatchAdapter(MockAdapter):
         await self.pause()
         if not self.options.reconciliation_available:
             return None
-        with self.connect() as connection:
+        with closing(self.connect()) as connection, connection:
             row = connection.execute(
                 "SELECT * FROM operations WHERE instance_id=?", (intent.instance_id,)
             ).fetchone()
@@ -358,7 +363,7 @@ class MockBatchAdapter(MockAdapter):
     async def fence_unsent(self, intent: BatchOperationIntentV1) -> bytes:
         """Synthetic authoritative retirement, used by stale-sender fault tests."""
         await self.pause()
-        with self.connect() as connection:
+        with closing(self.connect()) as connection, connection:
             connection.execute(
                 "INSERT INTO operations VALUES (?,?,?,?, 'not_accepted',NULL,1,0)",
                 (
@@ -377,7 +382,7 @@ class MockBatchAdapter(MockAdapter):
     async def status(self, submission_id: str, remote_id: str) -> BatchStatusEvidenceV1:
         await self.pause()
         self.check_remote(remote_id)
-        with self.connect() as connection:
+        with closing(self.connect()) as connection, connection:
             row = connection.execute(
                 "SELECT * FROM jobs WHERE remote_id=? AND instance_id=?",
                 (remote_id, submission_id),
@@ -447,7 +452,7 @@ class MockBatchAdapter(MockAdapter):
         cursor: BatchCursorV1 | None = None,
     ) -> AsyncGenerator[bytes, None]:
         self.check_remote(remote_id)
-        with self.connect() as connection:
+        with closing(self.connect()) as connection, connection:
             if (
                 connection.execute(
                     "SELECT 1 FROM jobs WHERE remote_id=? AND instance_id=?",
@@ -481,9 +486,6 @@ class MockBatchAdapter(MockAdapter):
             ):
                 continue
             for _ in range(2 if self.fixture.duplicate_results else 1):
-                if cursor is not None and emitted < cursor.position:
-                    emitted += 1
-                    continue
                 raw = await self.read_row(prepared, position, key, source)
                 if raw is None:
                     raise IntegrityError("immutable result source changed")
