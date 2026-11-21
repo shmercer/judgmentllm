@@ -239,6 +239,13 @@
       "test_empty_audit_companions_keep_typed_csv_headers": {"": []},
       "test_explicit_retry_creates_scientific_attempt_and_child_shard": {"": []}
     },
+    "tests/test_batch_indexed_source.py": {
+      "test_600_members_finish_repeated_same_default_fresh_collects": {"": ["serial"]},
+      "test_authoritative_index_rejection_precedes_range_and_counts_io": {"[identity]": [], "[oversize]": [], "[prefix]": [], "[replacement]": [], "[scope]": [], "[unsafe]": []},
+      "test_index_deadline_holds_ownership_until_read_drains": {"": []},
+      "test_original_index_is_immutable_and_authenticates_historical_cursor": {"": []},
+      "test_range_must_match_commitment_before_outcome_or_eof": {"[changed-suffix]": [], "[early-eof]": []}
+    },
     "tests/test_batch_integrity.py": {
       "test_conflicting_duplicate_retains_original_result_and_usage": {"": []},
       "test_conflicting_terminal_status_preserves_proven_bundle": {"": []},

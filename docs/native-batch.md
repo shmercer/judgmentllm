@@ -116,9 +116,15 @@ position. A typed cursor binds the accepted submission, immutable source,
 position and approved-prefix chain. It advances after durable member/result work.
 Member completeness is separate from source exhaustion. Collection keeps reading
 bounded unread output and error suffixes after every member has an outcome.
-Resuming a cursor streams the original source from position zero and verifies its
-screened prefix before admitting any suffix row. Prefix reads share the invocation
-byte, deadline and step budgets; exhaustion cannot advance the cursor. Only an
+The original mock service commits an immutable, job/payload-scoped index of
+screened prefix hashes before returning results. Collection authenticates that
+bounded typed metadata and compares the saved prefix before requesting its unread
+range. Each new screened row must match the index before receipt/cursor admission.
+The cursor pins the service commitment; a historical cursor without that pin must
+still match the authoritative prefix. This is source evidence, not a cached local
+verification claim. Index reads and range streams share the fixed invocation
+byte, deadline and step budgets; exhaustion cannot advance the cursor. No budget
+is raised to fit a prefix, and no scientific attempt or send is added. Only an
 observed source EOF records `exhausted=true`. Historical cursor bytes omit this
 additive false-by-default field and establish no EOF proof. Unread sources keep
 current recovery status unresolved even when all member outcomes are proven.

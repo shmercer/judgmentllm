@@ -8,10 +8,12 @@ from judgmentllm.batch_models import (
     BatchCursorV1,
     BatchOperationIntentV1,
     BatchOperationReceiptV1,
+    BatchSourceCommitmentV1,
     BatchStatusEvidenceV1,
 )
 from judgmentllm.config import RunSpecification
 from judgmentllm.evidence.usage import ReportedUsageInput
+from judgmentllm.persistence.hashing import semantic_digest
 from judgmentllm.planning import CapabilityProfile
 from judgmentllm.preparation.session import RequestDependency
 from judgmentllm.prompts import RenderedAssessmentPrompt
@@ -24,6 +26,25 @@ from judgmentllm.providers.protocol import (
 
 class BatchEvidenceWithheld(Exception):
     """An untrusted identity or representation cannot cross the durable boundary."""
+
+
+def result_index_scope(
+    service_id: str,
+    submission_id: str,
+    remote_id: str,
+    source_id: str,
+    members: list[tuple[str, int, PreparedRequestV2]],
+) -> str:
+    return semantic_digest(
+        "batch-result-index-scope-v1",
+        [
+            service_id,
+            submission_id,
+            remote_id,
+            source_id,
+            [[key, position, wire.payload_sha256] for key, position, wire in members],
+        ],
+    )
 
 
 class NativeBatchAdapter(Protocol):
@@ -60,6 +81,16 @@ class NativeBatchAdapter(Protocol):
         self, submission_id: str, remote_id: str
     ) -> BatchStatusEvidenceV1: ...
     async def result_source(self, submission_id: str, source: str) -> str: ...
+    async def result_index(
+        self,
+        submission_id: str,
+        remote_id: str,
+        source: str,
+        members: list[tuple[str, int, PreparedRequestV2]],
+    ) -> tuple[BatchSourceCommitmentV1, bytes]:
+        """Read bounded typed metadata from the original source authority."""
+        ...
+
     def results(
         self,
         submission_id: str,
@@ -68,7 +99,7 @@ class NativeBatchAdapter(Protocol):
         members: list[tuple[str, int, PreparedRequestV2]],
         cursor: BatchCursorV1 | None = None,
     ) -> AsyncGenerator[bytes, None]:
-        """Stream from position zero so the collector can verify the saved prefix."""
+        """Stream a range only after its cursor matches the authoritative index."""
         ...
 
     def screen_result(

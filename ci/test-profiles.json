@@ -1872,6 +1872,16 @@
         "darwin"
       ],
       "reason": "Real process death before operation registration and fresh-process suffix/prefix recovery with immutable evidence and finite I/O bounds"
+    },
+    "tests/test_batch_indexed_source.py": {
+      "domain": "process-ownership",
+      "cost": "process",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Same-default fresh-process progress with authoritative immutable source proofs, SQLite retention, tamper rejection and bounded read ownership"
     }
   },
   "providers": {

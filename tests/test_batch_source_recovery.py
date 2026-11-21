@@ -42,7 +42,15 @@ if mode.startswith('orphan-'):
             os._exit(73)
         return artifact
     core.put = orphan
-if mode in ('changed-prefix', 'duplicate-conflict'):
+if mode == 'changed-prefix':
+    original_index = MockBatchAdapter.result_index
+    async def changed_index(self, *arguments):
+        commitment, raw = await original_index(self, *arguments)
+        data = json.loads(raw)
+        data['prefix_sha256'][1] = 'f'*64
+        return commitment, core.canonical_bytes(data)
+    MockBatchAdapter.result_index = changed_index
+if mode == 'duplicate-conflict':
     original_read = MockBatchAdapter.read_row
     reads = 0
     async def changed(self, *arguments):
@@ -50,7 +58,8 @@ if mode in ('changed-prefix', 'duplicate-conflict'):
         raw = await original_read(self, *arguments)
         if raw is not None:
             reads += 1
-            if reads == (1 if mode == 'changed-prefix' else 2):
+            # The authenticated range starts with the unread duplicate.
+            if reads == 1:
                 data = json.loads(raw)
                 data['usage']['input_tokens'] = 99
                 return json.dumps(data).encode() + b'\\n'
@@ -256,8 +265,8 @@ def test_prefix_validation_uses_invocation_bounds_without_advancing(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, bound: str
 ) -> None:
     if bound == "bytes":
-        # Three large, individually valid prefix records exceed the next call's
-        # common byte budget without exceeding its per-record bound.
+        # A full-size range record plus its authenticated metadata exceeds the
+        # common byte budget without exceeding the per-record bound.
         from test_native_batch import batch_spec, mock_fixture
 
         from judgmentllm import prepare_batch
@@ -293,7 +302,9 @@ def test_prefix_validation_uses_invocation_bounds_without_advancing(
         if bound == "deadline":
             await asyncio.sleep(2)
         raw = await original(self, prepared, position, key, source)
-        return b" " * 400_000 + raw if raw is not None and bound == "bytes" else raw
+        if raw is not None and bound == "bytes":
+            return b" " * (self.options.limits.max_record_bytes - len(raw)) + raw
+        return raw
 
     monkeypatch.setattr(MockBatchAdapter, "read_row", limited)
     result = collect_batch(

@@ -155,7 +155,25 @@ class BatchCursorV1(EvidenceModel):
     source_id: SHA256
     position: int = Field(ge=0)
     prefix_sha256: SHA256
+    index_sha256: SHA256 | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     exhausted: bool = Field(default=False, exclude_if=lambda value: value is False)
+
+
+class BatchSourceCommitmentV1(EvidenceModel):
+    """Original service's immutable, job/payload-scoped source commitment."""
+
+    source_id: SHA256
+    scope_sha256: SHA256
+    index_sha256: SHA256
+
+
+class BatchSourceIndexV1(EvidenceModel):
+    """Screened prefix hashes, including the empty prefix and final position."""
+
+    scope_sha256: SHA256
+    prefix_sha256: tuple[SHA256, ...] = Field(min_length=1)
 
 
 class BatchMemberReceiptV1(EvidenceModel):

@@ -7,7 +7,7 @@ import json
 import re
 import sqlite3
 import uuid
-from collections.abc import AsyncGenerator, AsyncIterator, Callable, Mapping
+from collections.abc import AsyncGenerator, AsyncIterator, Callable, Iterator, Mapping
 from contextlib import closing
 from pathlib import Path
 from typing import Literal, cast
@@ -21,6 +21,8 @@ from judgmentllm.batch_models import (
     BatchMockOptions,
     BatchOperationIntentV1,
     BatchOperationReceiptV1,
+    BatchSourceCommitmentV1,
+    BatchSourceIndexV1,
     BatchStatusEvidenceV1,
 )
 from judgmentllm.config import RunSpecification, RunSpecV2, parse_json
@@ -36,7 +38,10 @@ from judgmentllm.persistence.models import IntegrityError
 from judgmentllm.planning import CapabilityProfile
 from judgmentllm.preparation.session import RequestDependency
 from judgmentllm.prompts import RenderedAssessmentPrompt
-from judgmentllm.providers.batch_protocol import BatchEvidenceWithheld
+from judgmentllm.providers.batch_protocol import (
+    BatchEvidenceWithheld,
+    result_index_scope,
+)
 from judgmentllm.providers.mock import MockAdapter, MockPayloadV2, MockScenario
 from judgmentllm.providers.protocol import PreparedRequestV2, ProviderResponse
 
@@ -140,6 +145,21 @@ class MockBatchAdapter(MockAdapter):
             if len(identities) != 1:
                 raise IntegrityError("batch service identity is invalid")
             self.identity = str(identities[0][0])
+            connection.executescript("""
+                CREATE TABLE IF NOT EXISTS result_indexes(
+                    source_id TEXT PRIMARY KEY, scope_sha256 TEXT NOT NULL,
+                    index_sha256 TEXT NOT NULL, record_json TEXT NOT NULL);
+                CREATE TRIGGER IF NOT EXISTS result_index_no_update
+                    BEFORE UPDATE ON result_indexes BEGIN
+                    SELECT RAISE(ABORT, 'immutable result index'); END;
+                CREATE TRIGGER IF NOT EXISTS result_index_no_delete
+                    BEFORE DELETE ON result_indexes BEGIN
+                    SELECT RAISE(ABORT, 'immutable result index'); END;
+                CREATE TRIGGER IF NOT EXISTS result_index_no_replace
+                    BEFORE INSERT ON result_indexes
+                    WHEN EXISTS(SELECT 1 FROM result_indexes WHERE source_id=NEW.source_id)
+                    BEGIN SELECT RAISE(ABORT, 'immutable result index'); END;
+            """)
         # The inherited pure compiler reads only ledger.identity.
         self.ledger = self  # type: ignore[assignment]
 
@@ -421,6 +441,11 @@ class MockBatchAdapter(MockAdapter):
         await self.pause()
         if not self.options.retrieval_available:
             raise OSError("synthetic result retrieval unavailable")
+        return self.source_row(prepared, position, member_key, source)
+
+    def source_row(
+        self, prepared: PreparedRequestV2, position: int, member_key: str, source: str
+    ) -> bytes | None:
         if position in self.fixture.missing_positions:
             return None
         key = semantic_digest("batch-observation-v1", [member_key, source])
@@ -443,33 +468,10 @@ class MockBatchAdapter(MockAdapter):
             data["member_key"] = "PROHIBITED_BATCH_MEMBER_SECRET"
         return canonical_bytes(data) + b"\n"
 
-    async def results(
-        self,
-        submission_id: str,
-        remote_id: str,
-        source: str,
-        members: list[tuple[str, int, PreparedRequestV2]],
-        cursor: BatchCursorV1 | None = None,
-    ) -> AsyncGenerator[bytes, None]:
-        self.check_remote(remote_id)
-        with closing(self.connect()) as connection, connection:
-            if (
-                connection.execute(
-                    "SELECT 1 FROM jobs WHERE remote_id=? AND instance_id=?",
-                    (remote_id, submission_id),
-                ).fetchone()
-                is None
-            ):
-                raise IntegrityError("result retrieval lacks original job acceptance")
-        expected_source = semantic_digest(
-            "batch-result-source-v1", [submission_id, source, self.fixture.commitment()]
-        )
-        if cursor is not None and (
-            cursor.submission_id != submission_id or cursor.source_id != expected_source
-        ):
-            raise IntegrityError("result cursor differs from immutable source")
+    def source_members(
+        self, source: str, members: list[tuple[str, int, PreparedRequestV2]]
+    ) -> Iterator[tuple[str, int, PreparedRequestV2]]:
         ordered = reversed(members) if self.fixture.reverse_results else iter(members)
-        emitted = 0
         for key, position, prepared in ordered:
             scenario = (
                 self.fixture.rows[position % len(self.fixture.rows)]
@@ -481,19 +483,158 @@ class MockBatchAdapter(MockAdapter):
                 "provider_error",
                 "confirmed_cancellation",
             )
-            if position in self.fixture.missing_positions or (
-                (source == "error") != error
+            if (
+                position in self.fixture.missing_positions
+                or (source == "error") != error
             ):
                 continue
             for _ in range(2 if self.fixture.duplicate_results else 1):
-                raw = await self.read_row(prepared, position, key, source)
-                if raw is None:
-                    raise IntegrityError("immutable result source changed")
-                async for chunk in self.chunks(raw):
-                    yield chunk
-                emitted += 1
-        if cursor is not None and emitted < cursor.position:
-            raise IntegrityError("result cursor exceeds immutable source")
+                yield key, position, prepared
+
+    def source_scope(
+        self,
+        submission_id: str,
+        remote_id: str,
+        source: str,
+        members: list[tuple[str, int, PreparedRequestV2]],
+    ) -> tuple[str, str]:
+        self.check_remote(remote_id)
+        if source not in ("output", "error") or self.fixture.unsafe_cursor:
+            raise BatchEvidenceWithheld("synthetic source identity was withheld")
+        with closing(self.connect()) as connection, connection:
+            if (
+                connection.execute(
+                    "SELECT 1 FROM jobs WHERE remote_id=? AND instance_id=?",
+                    (remote_id, submission_id),
+                ).fetchone()
+                is None
+            ):
+                raise IntegrityError("result retrieval lacks original job acceptance")
+        source_id = semantic_digest(
+            "batch-result-source-v1", [submission_id, source, self.fixture.commitment()]
+        )
+        return source_id, result_index_scope(
+            self.identity, submission_id, remote_id, source_id, members
+        )
+
+    async def result_index(
+        self,
+        submission_id: str,
+        remote_id: str,
+        source: str,
+        members: list[tuple[str, int, PreparedRequestV2]],
+    ) -> tuple[BatchSourceCommitmentV1, bytes]:
+        await self.pause()
+        if not self.options.retrieval_available:
+            raise OSError("synthetic result retrieval unavailable")
+        source_id, scope = self.source_scope(submission_id, remote_id, source, members)
+        select = (
+            "SELECT scope_sha256,index_sha256, "
+            "substr(CAST(record_json AS BLOB),1,?) AS record_bytes "
+            "FROM result_indexes WHERE source_id=?"
+        )
+        parameters = (self.options.limits.max_record_bytes + 1, source_id)
+        with closing(self.connect()) as connection, connection:
+            row = connection.execute(select, parameters).fetchone()
+        if row is None:
+            prefixes = [bytes_digest(b"judgmentllm.batch-result-prefix.v1\n")]
+            expected = {key: wire for key, _, wire in members}
+            for position, (key, scientific_position, wire) in enumerate(
+                self.source_members(source, members)
+            ):
+                # Source production is cancellable and bounded by the admitted shard.
+                await asyncio.sleep(0)
+                raw = self.source_row(wire, scientific_position, key, source)
+                if raw is None or len(raw) > self.options.limits.max_record_bytes:
+                    raise IntegrityError(
+                        "immutable result source exceeds its record bound"
+                    )
+                screened = self.screen_result(raw.rstrip(b"\n"), expected)
+                digest = (
+                    bytes_digest(screened[3])
+                    if screened is not None
+                    else semantic_digest("batch-withheld-v1", [source_id, position])
+                )
+                prefixes.append(
+                    semantic_digest(
+                        "batch-result-prefix-step-v1", [prefixes[-1], position, digest]
+                    )
+                )
+                if len(prefixes) * 67 > self.options.limits.max_record_bytes:
+                    raise IntegrityError("result index exceeds its metadata bound")
+            raw_index = canonical_bytes(
+                BatchSourceIndexV1(scope_sha256=scope, prefix_sha256=tuple(prefixes))
+            )
+            if len(raw_index) > self.options.limits.max_record_bytes:
+                raise IntegrityError("result index exceeds its metadata bound")
+            # This is producer-owned evidence, never a client verification cache.
+            with closing(self.connect()) as connection, connection:
+                connection.execute(
+                    "INSERT INTO result_indexes VALUES (?,?,?,?)",
+                    (source_id, scope, bytes_digest(raw_index), raw_index.decode()),
+                )
+                row = connection.execute(select, parameters).fetchone()
+        assert row is not None
+        raw_index = bytes(row["record_bytes"])
+        if len(raw_index) > self.options.limits.max_record_bytes:
+            raise IntegrityError("result index exceeds its metadata bound")
+        # Parse/authorize metadata before hashing it, including stored evidence.
+        commitment = BatchSourceCommitmentV1(
+            source_id=source_id,
+            scope_sha256=row["scope_sha256"],
+            index_sha256=row["index_sha256"],
+        )
+        index = BatchSourceIndexV1.model_validate_json(raw_index)
+        if (
+            commitment.scope_sha256 != scope
+            or index.scope_sha256 != scope
+            or (
+                canonical_bytes(index) != raw_index
+                or bytes_digest(raw_index) != commitment.index_sha256
+            )
+        ):
+            raise IntegrityError(
+                "original result index differs from its immutable scope"
+            )
+        return commitment, raw_index
+
+    async def results(
+        self,
+        submission_id: str,
+        remote_id: str,
+        source: str,
+        members: list[tuple[str, int, PreparedRequestV2]],
+        cursor: BatchCursorV1 | None = None,
+    ) -> AsyncGenerator[bytes, None]:
+        source_id, scope = self.source_scope(submission_id, remote_id, source, members)
+        if cursor is None:
+            raise IntegrityError("indexed result retrieval requires a verified cursor")
+        with closing(self.connect()) as connection, connection:
+            proof = connection.execute(
+                "SELECT scope_sha256,index_sha256, "
+                "json_extract(record_json, ?) AS prefix FROM result_indexes WHERE source_id=?",
+                (f"$.prefix_sha256[{cursor.position}]", source_id),
+            ).fetchone()
+        if proof is None or (
+            cursor.submission_id != submission_id
+            or cursor.source_id != source_id
+            or cursor.index_sha256 != proof["index_sha256"]
+            or scope != proof["scope_sha256"]
+            or cursor.prefix_sha256 != proof["prefix"]
+        ):
+            raise IntegrityError(
+                "result cursor differs from authoritative source index"
+            )
+        for position, (key, scientific_position, wire) in enumerate(
+            self.source_members(source, members)
+        ):
+            if position < cursor.position:
+                continue
+            raw = await self.read_row(wire, scientific_position, key, source)
+            if raw is None:
+                raise IntegrityError("immutable result source changed")
+            async for chunk in self.chunks(raw):
+                yield chunk
 
     async def chunks(self, raw: bytes) -> AsyncIterator[bytes]:
         for position in range(0, len(raw), 65_536):
