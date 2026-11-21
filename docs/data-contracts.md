@@ -286,8 +286,9 @@ route), V3 (production generative routes) and V4 (Decisions) admit
 positive integers. Absent fields are omitted. Production TPM requires a
 verified input, output and reasoning bound and is currently unsupported.
 Synthetic fixtures count UTF-8 bytes of the exact input and deterministic
-response as synthetic units. Native-batch, timeout and spending budget
-configuration remain reserved.
+response as synthetic units. Native batch uses separate typed invocation bounds
+and an offline V2 mock consumer; real provider limits and spending budgets remain
+deferred. [Native-batch versions and evidence](native-batch.md)
 
 ### Generation configuration and extensibility
 

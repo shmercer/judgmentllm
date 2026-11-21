@@ -1,0 +1,10 @@
+{
+  "producer_commit": "49623bad468d41909d7032f87a010cb495cac663",
+  "producer_tree": "3217edd44d347e22fe88d5eafc21eb7cf459f132",
+  "producer_pipeline": "unchanged synchronous prepare_run; sealed synthetic V2 full-capture preparation, no submission",
+  "storage_schema_version": 3,
+  "run_id": "schema3-offline",
+  "results": 0,
+  "synthetic_only": true,
+  "archive_sha256": "5d439c99fb7d5e57f9f7fe2684aa26cbb22884eebe1f8c2870d36f0139de3be6"
+}

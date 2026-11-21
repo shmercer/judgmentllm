@@ -507,8 +507,10 @@ remain readable without rewriting their identities or artifacts.
 
 ## Future commands and integrations
 
-Additional provider integrations, native `batch submit/status/collect/cancel`,
-actual caching controls, and model catalogs remain assigned to later milestones.
+The offline `batch prepare/submit/status/collect/resume/cancel` namespace is
+implemented through the shared [native-batch services](native-batch.md). Real
+provider batch integrations, actual caching controls and model catalogs retain
+their separately assigned workstreams.
 The functional CLI-first `rubricLLM` wrapper arrives in Milestone 6; ordinary R
 workflows need no resident Python process or HTTP server. Optional local-loopback
 FastAPI and `serve` arrive in Milestone 7. No future command is implemented as

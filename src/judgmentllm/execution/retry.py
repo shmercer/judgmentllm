@@ -35,6 +35,7 @@ from judgmentllm.planning import stable_id
 from judgmentllm.preparation import PreparedRun, RequestDependency, open_prepared_run
 from judgmentllm.prompts import RenderedPrompt, RenderedPromptV2
 from judgmentllm.providers import ProviderAdapter
+from judgmentllm.providers.batch_protocol import NativeBatchAdapter
 
 
 class RetryPolicy(ExecutionModel):
@@ -309,7 +310,7 @@ def authorize_automatic_retry(
 
 def prepare_subset_retry(
     prepared_run: PreparedRun,
-    adapter: ProviderAdapter,
+    adapter: ProviderAdapter | NativeBatchAdapter,
     *,
     dependency: RequestDependency,
     task_ids: Sequence[str],
@@ -634,16 +635,17 @@ def prepare_subset_retry(
             repository._register_artifact(run_id, artifact)  # pyright: ignore[reportPrivateUsage]
         repository.create_attempt(attempt, selected)
         checkpoint("during_retry_preparation", request_uid)
-        submission_id = stable_id("submission", run_id, attempt_id)
-        repository.create_submission(
-            SubmissionRecord(
-                run_id=run_id,
-                submission_id=submission_id,
-                correlation_id=stable_id("correlation", run_id, submission_id),
-                payload_sha256=wire.payload_sha256,
-                attempt_id=attempt_id,
+        if version != 12:
+            submission_id = stable_id("submission", run_id, attempt_id)
+            repository.create_submission(
+                SubmissionRecord(
+                    run_id=run_id,
+                    submission_id=submission_id,
+                    correlation_id=stable_id("correlation", run_id, submission_id),
+                    payload_sha256=wire.payload_sha256,
+                    attempt_id=attempt_id,
+                )
             )
-        )
         if repository.get_run(run_id).state == "completed":
             repository.transition(
                 "run", run_id, run_id, "running", authorization_id=operation_id

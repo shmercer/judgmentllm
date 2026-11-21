@@ -502,3 +502,12 @@ policy evidence. Omitted historical requests retain their bytes and identities;
 new control combinations require exact capability validation and independent
 native qualification. Reasoning retention stays disabled. This prerequisite
 does not alter the 30/50 default-control study grid or execute any live suite.
+
+## M5 PR2 native batch
+
+The [native-batch core](native-batch.md) adds deterministic sealed preparation,
+receipt-first operation recovery, explicit job/member evidence, sticky local
+stop and independent remote cancel-all intent. SQLite 4 and executable manifest
+12 are additive; historical runs retain their original contracts. Only the
+offline public V2 mock consumes this core. Real routes and qualifications belong
+to later adapters. Cache stays OFF; no production registry decision is made.

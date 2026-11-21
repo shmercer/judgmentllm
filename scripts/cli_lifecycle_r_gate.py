@@ -28,6 +28,8 @@ def main() -> None:
     # Never forward developer authentication settings to retained R/CLI evidence.
     # Windows environment keys are case insensitive; use the same comparison here.
     excluded = {
+        "PYTHONPATH",
+        "PYTHONHOME",
         "OPENAI_API_KEY",
         "ANTHROPIC_API_KEY",
         "GOOGLE_API_KEY",

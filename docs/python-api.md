@@ -1345,3 +1345,15 @@ credential operations. No public assessment/result fields or exports change.
 
 Current service-tier configuration, historical compatibility, account-scoped
 qualification and served-tier evidence are documented in [service tiers](service-tiers.md).
+
+## M5 PR2 native-batch services
+
+`prepare_batch`, `submit_batch`, `get_batch_status`, `poll_batch`, `collect_batch`,
+`resume_batch`, `cancel_batch`, `stop_batch` and `export_batch_provenance` are public.
+Mutating/read-through controls have `a`-prefixed async variants. The only executable
+consumer is V2 `mock/synthetic`, `batch_native`, cache OFF. Typed
+`BatchControlOptionsV1` bounds each invocation; `BatchMockOptions` supplies the
+original synthetic service context. Resume accepts the existing explicit
+`RetrySelection`. Generic `resume_run`, local `cancel_run` and result/provenance
+exports dispatch from manifest 12 without weakening ordinary mode gates. See
+[native-batch signatures, recovery and audit contracts](native-batch.md).

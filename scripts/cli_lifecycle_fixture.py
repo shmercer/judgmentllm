@@ -152,6 +152,9 @@ def create(root: Path) -> None:
             )
 
     create_v2(root)
+    from batch_cli_fixture import create as create_batch
+
+    create_batch(root)
     for name, original, version in (
         ("bulk-generative", "recovery-minimal", 2),
         ("bulk-decisions", "grouped-full", 4),
@@ -271,7 +274,9 @@ def read_store(directory: Path) -> dict[str, Any]:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--phase", choices=("create", "inspect", "interrupt"), required=True
+        "--phase",
+        choices=("create", "inspect", "interrupt", "batch-inspect", "batch-kill"),
+        required=True,
     )
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--executable", type=Path)
@@ -279,6 +284,16 @@ def main() -> None:
     root = options.output.resolve()
     if options.phase == "create":
         create(root)
+    elif options.phase in ("batch-inspect", "batch-kill"):
+        from batch_cli_fixture import inspect, kill_after_create
+
+        print(
+            json.dumps(
+                inspect(root)
+                if options.phase == "batch-inspect"
+                else kill_after_create(root)
+            )
+        )
     elif options.phase == "interrupt":
         from cli_process_supervisor import interrupt_run
 

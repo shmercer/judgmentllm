@@ -888,6 +888,34 @@ class ExecutableRunManifestV11(ExecutableRunManifestV9):
         return self
 
 
+class ExecutableRunManifestV12(ExecutableRunManifestV2):
+    """Native batch preparation; no live manifest is upgraded or reinterpreted."""
+
+    schema_version: Literal[12] = 12  # pyright: ignore[reportIncompatibleVariableOverride]
+    batch_context: BatchContextV1
+    batch_shard_count: int = Field(ge=0)
+    batch_member_count: int = Field(ge=0)
+    batch_index_sha256: SHA256
+
+    @field_validator(
+        "schema_version",
+        "run_spec_version",
+        "output_contract_version",
+        "request_identity_version",
+        mode="before",
+    )
+    @classmethod
+    def _version(cls, value: object, info: ValidationInfo) -> object:  # pyright: ignore[reportIncompatibleMethodOverride]
+        expected = 12 if info.field_name == "schema_version" else 2
+        if type(value) is not int or value != expected:
+            raise ValueError("unsupported batch manifest version")
+        return value
+
+
+from judgmentllm.batch_models import BatchContextV1  # noqa: E402
+
+ExecutableRunManifestV12.model_rebuild()
+
 ExecutableManifest = (
     ExecutableRunManifest
     | ExecutableRunManifestV2
@@ -900,6 +928,7 @@ ExecutableManifest = (
     | ExecutableRunManifestV9
     | ExecutableRunManifestV10
     | ExecutableRunManifestV11
+    | ExecutableRunManifestV12
 )
 
 
@@ -915,6 +944,8 @@ def parse_executable_manifest(raw: bytes) -> ExecutableManifest:
         if isinstance(value, dict)
         else None
     )
+    if type(version) is int and version == 12:
+        return ExecutableRunManifestV12.model_validate_json(raw)
     if type(version) is int and version == 11:
         return ExecutableRunManifestV11.model_validate_json(raw)
     if type(version) is int and version == 10:

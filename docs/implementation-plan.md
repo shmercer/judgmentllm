@@ -432,6 +432,14 @@ and release go/no-go evidence are in
 
 Begin after PR F acceptance. Alpha remains a separate post-M5 decision.
 
+PR2 implements the [provider-neutral native-batch core](native-batch.md) with
+schema 4/manifest 12 and an offline public mock consumer only. Its contract-first
+matrix, sticky-stop/late-cancel amendment and seventh R-driven installed CLI gate
+are binding. Real route encoding, idempotency capabilities, SDK/transport
+qualification and paid tests belong to PR3+. Freeze for independent code review
+before final Level 3 qualification; retain all seven local R gates and the
+existing 180-second deadline. Cache stays OFF with no registry promotion.
+
 - Add native batch adapters only for supported endpoints: OpenAI generative, Anthropic, Gemini Developer `generateContent`, Vertex Gemini and Together (subject to live qualification). Gemini Decisions is a separate Developer endpoint with no native Batch support; do not inherit the generative route's capability.
 - Implement deterministic splitting, upload, durable submission ID registry, cancel/status/collect, partial outputs, reordered results and safe resumption.
 - Deliver managed bulk-live for every implemented live provider, including OpenAI Decisions, Jev and Gemini Decisions; retain Ollama/Together completion in their deferred workstream. Multi-question packing is orthogonal to asynchronous batching and does not imply batch prices/latency.
