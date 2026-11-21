@@ -520,6 +520,80 @@ async def test_unsupported_execution_fails_before_submission(
         setattr(spec.execution, setting, value)
     spec = RunSpec.model_validate(spec.model_dump())
     store = tmp_path / "store"
+    if setting == "mode":
+        import builtins
+        from collections.abc import Sequence
+        from types import ModuleType
+        from typing import NoReturn
+
+        from judgmentllm.lifecycle_models import LifecycleError
+        from judgmentllm.providers.batch_mock import MockBatchAdapter
+
+        blocked: list[bool] = []
+
+        def forbidden(*_: object, **__: object) -> NoReturn:
+            blocked.append(True)
+            raise AssertionError("unsupported mode reached a provider boundary")
+
+        original_import = builtins.__import__
+
+        def without_sdk(
+            name: str,
+            globals: dict[str, object] | None = None,
+            locals: dict[str, object] | None = None,
+            fromlist: Sequence[str] = (),
+            level: int = 0,
+        ) -> ModuleType:
+            if name.split(".", 1)[0] in {
+                "anthropic",
+                "google",
+                "keyring",
+                "ollama",
+                "openai",
+                "together",
+                "typesafe",
+            }:
+                forbidden()
+            return original_import(name, globals, locals, fromlist, level)
+
+        with pytest.MonkeyPatch.context() as guard:
+            guard.setattr("judgmentllm._auth._inspect_credentials", forbidden)
+            guard.setattr(MockBatchAdapter, "__init__", forbidden)
+            guard.setattr(MockBatchAdapter, "invoke", forbidden)
+            guard.setattr(MockAdapter, "submit", forbidden)
+            guard.setattr("socket.create_connection", forbidden)
+            guard.setattr("socket.getaddrinfo", forbidden)
+            guard.setattr("socket.socket.connect", forbidden)
+            guard.setattr(builtins, "__import__", without_sdk)
+            with pytest.raises(AssertionError, match="reached a provider boundary"):
+                __import__("openai")
+            assert blocked == [True]
+            blocked.clear()
+            with pytest.raises(
+                LifecycleError,
+                match="Native batch currently requires V2 mock/synthetic",
+            ) as error:
+                with prepare_run(spec, store=store, run_id="001"):
+                    pass
+            assert error.value.category == "unsupported_capability"
+            assert error.value.retryable is False
+            assert blocked == []
+        with Repository(store) as repository:
+            for table in (
+                "runs",
+                "requests",
+                "attempts",
+                "submissions",
+                "observations",
+                "results",
+            ):
+                assert (
+                    repository.connection.execute(
+                        f"SELECT COUNT(*) FROM {table}"
+                    ).fetchone()[0]
+                    == 0
+                )
+        return
     if setting in {"provider", "cache_policy"}:
         adapter = MockAdapter(tmp_path / "ledger")
         assert any(
