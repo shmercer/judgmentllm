@@ -3,6 +3,7 @@
 import asyncio
 import json
 import sqlite3
+import sys
 from collections.abc import AsyncIterator, Callable
 from contextlib import closing
 from pathlib import Path
@@ -38,8 +39,8 @@ from judgmentllm.persistence.hashing import (
     semantic_digest,
 )
 from judgmentllm.persistence.native_batch import latest
-from judgmentllm.persistence.ownership import executor_is_active
-from judgmentllm.persistence.repository import ReadOnlyRepository
+from judgmentllm.persistence.ownership import ExecutorOwnership, executor_is_active
+from judgmentllm.persistence.repository import ReadOnlyRepository, Repository
 from judgmentllm.preparation.manifest import (
     ExecutableRunManifestV12,
     parse_executable_manifest,
@@ -121,9 +122,9 @@ def test_screening_precedes_all_durable_content_and_hashes(
         ),
     )
     root = tmp_path / "store"
+    prepare_batch(spec, store=root, run_id="001", mock=mock)
     audit = PrivacyAudit(root)
     audit.install(monkeypatch)
-    prepare_batch(spec, store=root, run_id="001", mock=mock)
     audit.inspect("prepared", "")
     with ReadOnlyRepository(root) as repository:
         attempts = {a.attempt_id for a in repository.iter_attempts("001")}
@@ -255,9 +256,9 @@ def test_pre_screening_partial_does_not_prove_privacy(
 ) -> None:
     spec, mock = batch_spec(tmp_path), mock_fixture(tmp_path)
     root = tmp_path / "store"
+    prepare_batch(spec, store=root, run_id="001", mock=mock)
     audit = PrivacyAudit(root)
     audit.install(monkeypatch)
-    prepare_batch(spec, store=root, run_id="001", mock=mock)
     with ReadOnlyRepository(root) as repository:
         attempts = {a.attempt_id for a in repository.iter_attempts("001")}
     submitted = audit.checked(
@@ -307,6 +308,66 @@ def test_pre_screening_partial_does_not_prove_privacy(
             ).fetchone()[0]
             == 0
         )
+
+
+def test_privacy_audit_defers_only_the_live_windows_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "store"
+    prepare_batch(batch_spec(tmp_path), store=root, run_id="001")
+    audit = PrivacyAudit(root)
+    sqlite_opens: list[bool] = []
+
+    def forbidden_connect(*args: object, **kwargs: object) -> sqlite3.Connection:
+        sqlite_opens.append(True)
+        raise AssertionError("SQLite opened during privacy inspection")
+
+    def owned(inspector: PrivacyAudit) -> None:
+        with Repository(root) as repository, ExecutorOwnership(repository, "001"):
+            assert executor_is_active(repository, "001") is True
+            with monkeypatch.context() as patch:
+                patch.setattr(sqlite3, "connect", forbidden_connect)
+                inspector.inspect("owned", "")
+                assert sqlite_opens == []
+
+    audit.checked(lambda: owned(audit))
+    assert audit.deferred == (
+        {audit.executor_lock} if sys.platform == "win32" else set()
+    )
+    assert audit.executor_lock.read_bytes() == b"\0"
+    original = Path.read_bytes
+    foreign = root / "pending.tmp"
+    foreign.write_bytes(b"synthetic")
+    for path in (audit.executor_lock, foreign):
+        fresh = PrivacyAudit(root)
+        unowned = PrivacyAudit(root) if path == audit.executor_lock else None
+
+        def denied(self: Path, denied_path: Path = path) -> bytes:
+            if self == denied_path:
+                raise PermissionError("synthetic access denial")
+            return original(self)
+
+        with monkeypatch.context() as patch:
+            patch.setattr(Path, "read_bytes", denied)
+            with pytest.raises(AssertionError, match="unexpected unreadable"):
+                if path == audit.executor_lock:
+                    fresh.inspect("released", "")
+                else:
+                    fresh.checked(lambda inspector=fresh: owned(inspector))
+            if unowned is not None and sys.platform == "win32":
+                with pytest.raises(
+                    AssertionError, match="deferred executor lock is not held"
+                ):
+                    unowned.checked(
+                        lambda inspector=unowned: inspector.inspect("unowned", "")
+                    )
+        assert audit.executor_lock.read_bytes() == b"\0"
+    audit.executor_lock.write_bytes(b"X")
+    try:
+        with pytest.raises(AssertionError):
+            PrivacyAudit(root).inspect("released", "")
+    finally:
+        audit.executor_lock.write_bytes(b"\0")
 
 
 def test_rejections_require_explicit_invocations_and_stop_at_three(

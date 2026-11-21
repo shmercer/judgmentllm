@@ -463,7 +463,7 @@ raise AssertionError('required publication death boundary was not reached')
 @pytest.mark.parametrize("capture", ["full", "minimal"])
 @pytest.mark.parametrize("fault", ["unsafe_control", "unsafe_result", "raw_marker"])
 def test_privacy_at_real_publication_death_precedes_recovery(
-    tmp_path: Path, capture: str, fault: str
+    tmp_path: Path, capture: str, fault: str, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     spec = batch_spec(tmp_path, capture=capture)
     spec.output_path = tmp_path / "store"
@@ -479,6 +479,7 @@ def test_privacy_at_real_publication_death_precedes_recovery(
     )
     root = tmp_path / "store"
     prepare_batch(config, store=root, run_id="001", mock=mock)
+    audit = PrivacyAudit(root)
     action = "submit" if fault == "unsafe_control" else "collect"
     if action == "collect":
         assert submit_batch("001", store=root, spec=spec, mock=mock).outcome == "ok"
@@ -488,18 +489,28 @@ def test_privacy_at_real_publication_death_precedes_recovery(
         "PYTHONDONTWRITEBYTECODE": "1",
         "PYTHONPATH": os.pathsep.join((str(source / "tests"), str(source / "src"))),
     }
-    child = subprocess.run(
-        [sys.executable, "-B", "-c", PRIVACY_DEATH, str(tmp_path), action],
-        cwd=tmp_path,
-        env=environment,
-        capture_output=True,
-        text=True,
-        timeout=30,
-        check=False,
-    )
-    assert child.returncode == 73, (child.stdout, child.stderr)
-    audit = PrivacyAudit(root)
-    audit.inspect("after_process_death_before_recovery", "")
+    sqlite_opens: list[bool] = []
+
+    def forbidden_connect(*args: object, **kwargs: object) -> sqlite3.Connection:
+        sqlite_opens.append(True)
+        raise AssertionError("SQLite opened before the first postdeath privacy scan")
+
+    assert audit.checkpoints == []
+    with monkeypatch.context() as patch:
+        patch.setattr(sqlite3, "connect", forbidden_connect)
+        child = subprocess.run(
+            [sys.executable, "-B", "-c", PRIVACY_DEATH, str(tmp_path), action],
+            cwd=tmp_path,
+            env=environment,
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        assert child.returncode == 73, (child.stdout, child.stderr)
+        audit.inspect("after_process_death_before_recovery", "")
+        assert sqlite_opens == []
+        assert audit.checkpoints == ["after_process_death_before_recovery"]
     assert audit.failures == []
     assert service_counts(root) == {"forwards": 2, "jobs": 1, "cancelled": 0}
     with ReadOnlyRepository(root) as repository:

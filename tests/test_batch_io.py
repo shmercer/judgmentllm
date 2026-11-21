@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from batch_clock import batch_clock
 from test_native_batch import batch_spec, mock_fixture, service_counts
 
 from judgmentllm import (
@@ -19,7 +20,7 @@ from judgmentllm import (
     asubmit_batch,
     prepare_batch,
 )
-from judgmentllm.batch_models import BatchOperationIntentV1
+from judgmentllm.batch_models import BatchOperationIntentV1, BatchStatusEvidenceV1
 from judgmentllm.persistence.ownership import executor_is_active
 from judgmentllm.persistence.repository import ReadOnlyRepository
 from judgmentllm.providers.batch_mock import MockBatchAdapter
@@ -109,37 +110,102 @@ async def test_each_protocol_boundary_obeys_shared_deadline(
     if boundary not in ("upload", "create"):
         await asubmit_batch("001", store=root, spec=spec, mock=mock)
     before = service_counts(root)["forwards"]
-    entered = asyncio.Event()
+    pending = None
+    with ReadOnlyRepository(root) as repository:
+        attempts = {a.attempt_id for a in repository.iter_attempts("001")}
+        submissions = repository.connection.execute(
+            "SELECT submission_id,remote_id FROM submissions"
+        ).fetchall()
+        if boundary == "reconcile":
+            records = repository.connection.execute(
+                "SELECT record_json FROM batch_operations WHERE kind='create'"
+            ).fetchall()
+            assert len(records) == 1
+            pending = BatchOperationIntentV1.model_validate_json(records[0][0])
+    assert len(attempts) == 2
+    if boundary in ("upload", "create"):
+        assert submissions == []
+        submission = remote = None
+    else:
+        assert len(submissions) == 1
+        submission, remote = submissions[0]
+        assert (remote is None) == (boundary == "reconcile")
+    entered, closing, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
 
-    async def slow_pause(self: MockBatchAdapter) -> None:
+    async def hold() -> None:
+        assert not entered.is_set()
         entered.set()
-        await asyncio.Event().wait()
+        try:
+            await asyncio.Event().wait()
+        finally:
+            closing.set()
+            await release.wait()
+        raise AssertionError("cancelled protocol operation must not return evidence")
 
-    if boundary == "create":
-        original = MockBatchAdapter.invoke
+    if boundary in ("upload", "create", "cancel"):
+        invoke = MockBatchAdapter.invoke
 
-        async def slow_create(
+        async def slow_invoke(
             self: MockBatchAdapter,
             intent: BatchOperationIntentV1,
             payload: AsyncIterator[bytes],
             guard: Callable[[], None],
         ) -> bytes:
-            if intent.kind == "create":
-                await slow_pause(self)
-            return await original(self, intent, payload, guard)
+            if intent.kind == boundary:
+                assert intent.run_id == "001"
+                if boundary == "cancel":
+                    assert remote is not None and intent.remote_id == remote
+                await hold()
+            return await invoke(self, intent, payload, guard)
 
-        monkeypatch.setattr(MockBatchAdapter, "invoke", slow_create)
-    elif boundary == "stream":
+        monkeypatch.setattr(MockBatchAdapter, "invoke", slow_invoke)
+    elif boundary == "reconcile":
+        reconcile = MockBatchAdapter.reconcile_operation
+
+        async def slow_reconcile(
+            self: MockBatchAdapter, intent: BatchOperationIntentV1
+        ) -> bytes | None:
+            if intent.kind == "create":
+                assert intent == pending and intent.instance_id == submission
+                await hold()
+            return await reconcile(self, intent)
+
+        monkeypatch.setattr(MockBatchAdapter, "reconcile_operation", slow_reconcile)
+    elif boundary == "status":
+        status = MockBatchAdapter.status
+
+        async def slow_status(
+            self: MockBatchAdapter, submission_id: str, remote_id: str
+        ) -> BatchStatusEvidenceV1:
+            assert (submission_id, remote_id) == (submission, remote)
+            await hold()
+            return await status(self, submission_id, remote_id)
+
+        monkeypatch.setattr(MockBatchAdapter, "status", slow_status)
+    elif boundary == "source":
+        source = MockBatchAdapter.result_source
+
+        async def slow_source(
+            self: MockBatchAdapter, submission_id: str, kind: str
+        ) -> str:
+            if kind == "output":
+                assert submission_id == submission
+                await hold()
+            return await source(self, submission_id, kind)
+
+        monkeypatch.setattr(MockBatchAdapter, "result_source", slow_source)
+    else:
+        chunks = MockBatchAdapter.chunks
 
         async def slow_chunks(
             self: MockBatchAdapter, raw: bytes
         ) -> AsyncIterator[bytes]:
-            await slow_pause(self)
-            yield raw
+            assert raw
+            await hold()
+            async for chunk in chunks(self, raw):
+                yield chunk
 
         monkeypatch.setattr(MockBatchAdapter, "chunks", slow_chunks)
-    else:
-        monkeypatch.setattr(MockBatchAdapter, "pause", slow_pause)
     action = (
         acancel_batch
         if boundary == "cancel"
@@ -149,18 +215,42 @@ async def test_each_protocol_boundary_obeys_shared_deadline(
         if boundary in ("source", "stream")
         else asubmit_batch
     )
-    result = await action(
-        "001",
-        store=root,
-        spec=spec,
-        mock=mock,
-        options=BatchControlOptionsV1(deadline_seconds=0.5),
-    )
-    assert entered.is_set() and result.outcome == "partial"
+    with batch_clock(monkeypatch) as clock:
+        task = asyncio.create_task(
+            action(
+                "001",
+                store=root,
+                spec=spec,
+                mock=mock,
+                options=BatchControlOptionsV1(deadline_seconds=0.5),
+            )
+        )
+        try:
+            await clock.gate(entered, task)
+            assert len(clock.budgets) == 1
+            budget = clock.budgets[0]
+            assert budget.options.deadline_seconds == 0.5
+            assert budget.deadline == clock.start + 0.5
+            counters = budget.steps, budget.bytes, budget.result_rows
+            assert budget.steps > 0 and budget.result_rows == 0
+            assert service_counts(root)["forwards"] == before + (boundary == "create")
+            clock.advance(0.5)
+            await clock.gate(closing, task)
+            with ReadOnlyRepository(root) as repository:
+                assert executor_is_active(repository, "001") is True
+            assert not task.done() and clock.now >= budget.deadline
+            assert (budget.steps, budget.bytes, budget.result_rows) == counters
+            release.set()
+            assert (await clock.wait(task)).outcome == "partial"
+            assert budget.closed and budget.deadline == clock.start + 0.5
+            assert (budget.steps, budget.bytes, budget.result_rows) == counters
+        finally:
+            await clock.cleanup(task, release)
     assert service_counts(root)["forwards"] == before + (boundary == "create")
     with ReadOnlyRepository(root) as repository:
         assert not executor_is_active(repository, "001")
         assert repository.summary("001").results == 0
+        assert {a.attempt_id for a in repository.iter_attempts("001")} == attempts
 
 
 @pytest.mark.asyncio

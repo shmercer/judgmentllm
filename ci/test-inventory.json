@@ -267,6 +267,7 @@
       "test_inspector_failure_cannot_become_a_partial_control_result": {"[assertion]": [], "[oserror]": [], "[timeout]": []},
       "test_io_step_exhaustion_cannot_forward_or_reset_ambiguity": {"": []},
       "test_pre_screening_partial_does_not_prove_privacy": {"[budget]": [], "[oserror]": [], "[timeout]": []},
+      "test_privacy_audit_defers_only_the_live_windows_lock": {"": []},
       "test_rejections_require_explicit_invocations_and_stop_at_three": {"": []},
       "test_screening_precedes_all_durable_content_and_hashes": {"[raw_marker-full]": [], "[raw_marker-minimal]": [], "[unsafe_control-full]": [], "[unsafe_control-minimal]": [], "[unsafe_cursor-full]": [], "[unsafe_cursor-minimal]": [], "[unsafe_key-full]": [], "[unsafe_key-minimal]": [], "[unsafe_result-full]": [], "[unsafe_result-minimal]": []},
       "test_upload_and_cancel_caps_survive_explicit_continuations": {"[cancel]": [], "[upload]": []}
