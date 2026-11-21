@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from batch_clock import batch_clock
+from batch_privacy_audit import PrivacyAudit
 from test_batch_recovery import setup
 from test_batch_source_recovery import cursors, member_evidence
 from test_native_batch import batch_spec, mock_fixture, service_counts
@@ -399,23 +401,108 @@ async def test_index_deadline_holds_ownership_until_read_drains(
         raise AssertionError("cancelled index read must not return evidence")
 
     monkeypatch.setattr(MockBatchAdapter, "result_index", slow)
-    task = asyncio.create_task(
-        acollect_batch(
-            "001",
-            store=root,
-            spec=spec,
-            mock=mock,
-            options=BatchControlOptionsV1(deadline_seconds=0.15),
+    with batch_clock(monkeypatch) as clock:
+        task = asyncio.create_task(
+            acollect_batch(
+                "001",
+                store=root,
+                spec=spec,
+                mock=mock,
+                options=BatchControlOptionsV1(deadline_seconds=0.15),
+            )
         )
-    )
-    await asyncio.wait_for(entered.wait(), 5)
-    await asyncio.wait_for(closing_read.wait(), 5)
-    with ReadOnlyRepository(root) as repository:
-        assert executor_is_active(repository, "001")
-    assert not task.done()
-    drained.set()
-    assert (await task).outcome == "partial"
+        try:
+            await clock.gate(entered, task)
+            budget = clock.budgets[0]
+            assert budget.options.deadline_seconds == 0.15
+            assert budget.deadline == clock.start + 0.15
+            clock.advance(0.15)
+            await clock.gate(closing_read, task)
+            with ReadOnlyRepository(root) as repository:
+                assert executor_is_active(repository, "001")
+            assert not task.done() and clock.now >= budget.deadline
+            assert budget.deadline == clock.start + 0.15
+            drained.set()
+            assert (await clock.wait(task)).outcome == "partial"
+            assert budget.closed
+        finally:
+            await clock.cleanup(task, drained)
     with ReadOnlyRepository(root) as repository:
         assert not executor_is_active(repository, "001")
         assert repository.summary("001").results == 0
     assert cursors(root) == [] and service_counts(root)["forwards"] == 2
+
+
+PRIVACY_DEATH = """
+import os,sys
+from pathlib import Path
+import pytest
+from batch_privacy_audit import PrivacyAudit
+from judgmentllm import BatchMockOptions, load_run_spec, submit_batch, collect_batch
+from judgmentllm.persistence.repository import ReadOnlyRepository
+directory=Path(sys.argv[1]); action=sys.argv[2]; root=directory/'store'
+audit=PrivacyAudit(root)
+def fault(stage, identity):
+    audit.inspect(stage, identity)
+    target='after_batch_operation_receipt' if action=='submit' else 'after_batch_member_receipt'
+    if stage != target: return
+    if action=='submit':
+        with ReadOnlyRepository(root) as repository:
+            row=repository.connection.execute('SELECT kind FROM batch_operations WHERE instance_id=?',(identity,)).fetchone()
+        if row is None or row[0]!='create': return
+    assert audit.originals, 'privacy death boundary was not exercised'
+    os._exit(73)
+with pytest.MonkeyPatch.context() as patch:
+    audit.install(patch)
+    operation=submit_batch if action=='submit' else collect_batch
+    result=audit.checked(lambda: operation('001',store=root,spec=load_run_spec(directory/'run.json'),mock=BatchMockOptions(fixture_path=directory/'batch-fixture.json'),_fault=fault))
+raise AssertionError('required publication death boundary was not reached')
+"""
+
+
+@pytest.mark.parametrize("capture", ["full", "minimal"])
+@pytest.mark.parametrize("fault", ["unsafe_control", "unsafe_result", "raw_marker"])
+def test_privacy_at_real_publication_death_precedes_recovery(
+    tmp_path: Path, capture: str, fault: str
+) -> None:
+    spec = batch_spec(tmp_path, capture=capture)
+    spec.output_path = tmp_path / "store"
+    config = tmp_path / "run.json"
+    config.write_text(spec.model_dump_json(), encoding="utf-8")
+    mock = mock_fixture(
+        tmp_path,
+        **(
+            {"rows": [{"raw_marker": "PROHIBITED_BATCH_MARKER_SECRET"}]}
+            if fault == "raw_marker"
+            else {fault: True}
+        ),
+    )
+    root = tmp_path / "store"
+    prepare_batch(config, store=root, run_id="001", mock=mock)
+    action = "submit" if fault == "unsafe_control" else "collect"
+    if action == "collect":
+        assert submit_batch("001", store=root, spec=spec, mock=mock).outcome == "ok"
+    source = Path(__file__).resolve().parents[1]
+    environment = {
+        **os.environ,
+        "PYTHONDONTWRITEBYTECODE": "1",
+        "PYTHONPATH": os.pathsep.join((str(source / "tests"), str(source / "src"))),
+    }
+    child = subprocess.run(
+        [sys.executable, "-B", "-c", PRIVACY_DEATH, str(tmp_path), action],
+        cwd=tmp_path,
+        env=environment,
+        capture_output=True,
+        text=True,
+        timeout=30,
+        check=False,
+    )
+    assert child.returncode == 73, (child.stdout, child.stderr)
+    audit = PrivacyAudit(root)
+    audit.inspect("after_process_death_before_recovery", "")
+    assert audit.failures == []
+    assert service_counts(root) == {"forwards": 2, "jobs": 1, "cancelled": 0}
+    with ReadOnlyRepository(root) as repository:
+        assert not executor_is_active(repository, "001")
+        assert repository.summary("001").attempts == 2
+        assert repository.summary("001").results == 0

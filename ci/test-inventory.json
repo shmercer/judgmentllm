@@ -244,6 +244,7 @@
       "test_authoritative_index_rejection_precedes_range_and_counts_io": {"[identity]": [], "[oversize]": [], "[prefix]": [], "[replacement]": [], "[scope]": [], "[unsafe]": []},
       "test_index_deadline_holds_ownership_until_read_drains": {"": []},
       "test_original_index_is_immutable_and_authenticates_historical_cursor": {"": []},
+      "test_privacy_at_real_publication_death_precedes_recovery": {"[raw_marker-full]": [], "[raw_marker-minimal]": [], "[unsafe_control-full]": [], "[unsafe_control-minimal]": [], "[unsafe_result-full]": [], "[unsafe_result-minimal]": []},
       "test_range_must_match_commitment_before_outcome_or_eof": {"[changed-suffix]": [], "[early-eof]": []}
     },
     "tests/test_batch_integrity.py": {
@@ -260,9 +261,12 @@
       "test_poll_counter_stops_without_spinning_or_sending": {"": []}
     },
     "tests/test_batch_privacy_bounds.py": {
+      "test_deadline_before_adapter_entry_has_no_result_evidence": {"[collect]": [], "[submit]": []},
       "test_deadline_keeps_ownership_until_slow_sender_drains": {"": []},
       "test_delayed_stale_sender_is_rejected_before_effect": {"": []},
+      "test_inspector_failure_cannot_become_a_partial_control_result": {"[assertion]": [], "[oserror]": [], "[timeout]": []},
       "test_io_step_exhaustion_cannot_forward_or_reset_ambiguity": {"": []},
+      "test_pre_screening_partial_does_not_prove_privacy": {"[budget]": [], "[oserror]": [], "[timeout]": []},
       "test_rejections_require_explicit_invocations_and_stop_at_three": {"": []},
       "test_screening_precedes_all_durable_content_and_hashes": {"[raw_marker-full]": [], "[raw_marker-minimal]": [], "[unsafe_control-full]": [], "[unsafe_control-minimal]": [], "[unsafe_cursor-full]": [], "[unsafe_cursor-minimal]": [], "[unsafe_key-full]": [], "[unsafe_key-minimal]": [], "[unsafe_result-full]": [], "[unsafe_result-minimal]": []},
       "test_upload_and_cancel_caps_survive_explicit_continuations": {"[cancel]": [], "[upload]": []}
