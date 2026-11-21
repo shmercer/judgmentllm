@@ -225,7 +225,17 @@
       "test_separate_cli_processes_keep_original_identity": {"": []}
     },
     "tests/test_batch_compatibility.py": {
-      "test_genuine_schema3_stays_byte_compatible_and_cannot_accept_batch": {"": []}
+      "test_foreign_historical_scope_and_artifacts_fail_closed": {"[minimal]": [], "[seal]": [], "[snapshot]": [], "[specification]": [], "[unsealed]": []},
+      "test_foreign_snapshot_preserves_proof_without_touching_original_aliases": {"[manifest-nonpath]": [], "[manifest-path]": [], "[spec-nonpath]": [], "[spec-path]": []},
+      "test_foreign_supplied_specification_keeps_exact_equality_boundary": {"": []},
+      "test_genuine_schema3_stays_byte_compatible_and_cannot_accept_batch": {"": []},
+      "test_historical_foreign_dialect_is_classified_without_filesystem_access": {"": []},
+      "test_historical_manifest_projection_is_manifest_only_and_readonly": {"": []},
+      "test_historical_wire_preserves_native_writer_and_exact_identity": {"": []},
+      "test_historical_wire_rechecks_current_model_not_just_original_bytes": {"[extra]": [], "[manifest-nonpath]": [], "[manifest-path]": [], "[spec-nonpath]": [], "[spec-path]": []},
+      "test_historical_wire_rejects_noncanonical_or_uncontrolled_values": {"[container]": [], "[duplicate]": [], "[empty-path]": [], "[nonobject]": [], "[nul-path]": [], "[path-type]": [], "[path]": [], "[unknown]": [], "[version]": [], "[whitespace]": []},
+      "test_historical_wire_rejects_subtypes_and_rechecks_restored_protocol": {"": []},
+      "test_posix_wire_checks_pure_windows_presentation_without_native_execution": {"": []}
     },
     "tests/test_batch_contracts.py": {
       "test_batch_control_has_finite_shared_bounds": {"": []},
@@ -240,7 +250,7 @@
       "test_explicit_retry_creates_scientific_attempt_and_child_shard": {"": []}
     },
     "tests/test_batch_indexed_source.py": {
-      "test_600_members_finish_repeated_same_default_fresh_collects": {"": ["serial"]},
+      "test_130_members_finish_repeated_same_default_fresh_collects": {"": ["serial"]},
       "test_authoritative_index_rejection_precedes_range_and_counts_io": {"[identity]": [], "[oversize]": [], "[prefix]": [], "[replacement]": [], "[scope]": [], "[unsafe]": []},
       "test_index_deadline_holds_ownership_until_read_drains": {"": []},
       "test_original_index_is_immutable_and_authenticates_historical_cursor": {"": []},

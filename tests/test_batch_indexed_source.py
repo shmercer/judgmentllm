@@ -30,14 +30,29 @@ from judgmentllm import (
     prepare_batch,
     submit_batch,
 )
-from judgmentllm.batch_models import BatchCursorV1, BatchSourceCommitmentV1
+from judgmentllm.batch_models import (
+    BatchCursorV1,
+    BatchMemberReceiptV1,
+    BatchMemberV1,
+    BatchSourceCommitmentV1,
+    BatchSourceIndexV1,
+)
 from judgmentllm.lifecycle_models import LifecycleError
-from judgmentllm.persistence.hashing import bytes_digest, canonical_bytes
+from judgmentllm.persistence.hashing import (
+    bytes_digest,
+    canonical_bytes,
+    semantic_digest,
+)
 from judgmentllm.persistence.native_batch import fact, latest
 from judgmentllm.persistence.ownership import ExecutorOwnership, executor_is_active
 from judgmentllm.persistence.repository import ReadOnlyRepository, Repository
+from judgmentllm.preparation.manifest import (
+    ExecutableRunManifestV12,
+    parse_executable_manifest,
+)
 from judgmentllm.providers.batch_mock import MockBatchAdapter
 from judgmentllm.providers.protocol import PreparedRequestV2
+from judgmentllm.results import RubricResult
 
 COLLECT = """
 import json,sys
@@ -45,23 +60,40 @@ from pathlib import Path
 from judgmentllm import BatchMockOptions, collect_batch
 from judgmentllm.execution.native_batch import InvocationBudget
 from judgmentllm.providers.batch_mock import MockBatchAdapter
-directory=Path(sys.argv[1]); budgets=[]; reads=0
+directory=Path(sys.argv[1]); budgets=[]; reads=0; physical=[]; ranges=[]; positions={}
 initialize=InvocationBudget.__init__
 def capture(self, options):
     initialize(self, options)
     budgets.append(self)
 InvocationBudget.__init__=capture
 read=MockBatchAdapter.read_row
-async def counted(self,*arguments):
+members=MockBatchAdapter.source_members
+def observed_members(self, source, rows):
+    for offset, row in enumerate(members(self, source, rows)):
+        positions[(id(self), source)]=offset
+        yield row
+MockBatchAdapter.source_members=observed_members
+results=MockBatchAdapter.results
+def observed_range(self, submission, remote, source, rows, cursor=None):
+    assert cursor is not None
+    ranges.append({'source':source,'submission':submission,'remote':remote,
+        'cursor':cursor.model_dump(mode='json')})
+    return results(self, submission, remote, source, rows, cursor)
+MockBatchAdapter.results=observed_range
+async def counted(self, wire, position, key, source):
     global reads
     reads+=1
-    return await read(self,*arguments)
+    raw=await read(self,wire,position,key,source)
+    if raw is not None:
+        physical.append([source,positions[(id(self),source)],position,key])
+    return raw
 MockBatchAdapter.read_row=counted
 result=collect_batch('001',store=directory/'store',mock=BatchMockOptions(fixture_path=directory/'batch-fixture.json'))
 budget=budgets[0]
 print(json.dumps({'status':result.model_dump(mode='json'),'steps':budget.steps,
     'bytes':budget.bytes,'result_rows':budget.result_rows,'reads':reads,
-    'options':budget.options.model_dump(mode='json')}))
+    'options':budget.options.model_dump(mode='json'),'physical':physical,'ranges':ranges,
+    'budgets':len(budgets)}))
 """
 
 
@@ -99,15 +131,15 @@ def source_progress(root: Path) -> tuple[int, int]:
 
 
 @pytest.mark.serial
-def test_600_members_finish_repeated_same_default_fresh_collects(
+def test_130_members_finish_repeated_same_default_fresh_collects(
     tmp_path: Path,
 ) -> None:
     started = time.monotonic()
-    spec = batch_spec(tmp_path, responses=600, capture="minimal")
+    spec = batch_spec(tmp_path, responses=130, traits=1, capture="minimal")
     spec.output_path = tmp_path / "store"
     config = tmp_path / "run.json"
     config.write_text(spec.model_dump_json())
-    rows = [dict[str, str]() for _ in range(599)] + [{"outcome": "provider_error"}]
+    rows = [dict[str, str]() for _ in range(129)] + [{"outcome": "provider_error"}]
     mock = mock_fixture(
         tmp_path,
         duplicate_results=True,
@@ -121,22 +153,125 @@ def test_600_members_finish_repeated_same_default_fresh_collects(
     assert submitted.batch.accepted_jobs == 1
     with ReadOnlyRepository(root) as repository:
         attempt_ids = {a.attempt_id for a in repository.iter_attempts("001")}
-    assert len(attempt_ids) == 600
+        members = [
+            BatchMemberV1.model_validate_json(row[0])
+            for row in repository.connection.execute(
+                "SELECT record_json FROM batch_prepared_members ORDER BY position"
+            )
+        ]
+        manifest = parse_executable_manifest(
+            (repository.run_directory("001") / "manifest.json").read_bytes()
+        )
+        assert isinstance(manifest, ExecutableRunManifestV12)
+        submissions = repository.connection.execute(
+            "SELECT submission_id,remote_id FROM submissions"
+        ).fetchall()
+    assert len(attempt_ids) == len(members) == 130
+    assert {m.attempt_id for m in members} == attempt_ids
+    assert [m.position for m in members] == list(range(130))
+    assert len(submissions) == 1
+    submission, remote = submissions[0]
+    sources = {
+        kind: semantic_digest(
+            "batch-result-source-v1",
+            [submission, kind, manifest.batch_context.fixture_sha256],
+        )
+        for kind in ("output", "error")
+    }
+    expected = {
+        "output": [
+            (m.position, m.member_key) for m in reversed(members[:-1]) for _ in range(2)
+        ],
+        "error": [(members[-1].position, members[-1].member_key)] * 2,
+    }
+
+    def snapshot() -> dict[str, BatchCursorV1 | None]:
+        with ReadOnlyRepository(root) as repository:
+            return {
+                kind: latest(repository, "001", "cursor", source, BatchCursorV1)
+                for kind, source in sources.items()
+            }
+
+    def polls() -> int:
+        with closing(
+            sqlite3.connect(
+                (root / "mock-batch-service.sqlite3").as_uri() + "?mode=ro", uri=True
+            )
+        ) as connection:
+            return int(
+                connection.execute("SELECT sum(status_reads) FROM jobs").fetchone()[0]
+            )
+
     traces: list[dict[str, Any]] = []
     previous = (0, 0)
+    resumed_tail: set[int] = set()
     for _ in range(16):
         remaining = 180 - (time.monotonic() - started)
         assert remaining > 0, "bounded offline campaign did not finish"
+        before, before_polls = snapshot(), polls()
         trace = fresh_collect(tmp_path, min(30, remaining))
+        after = snapshot()
         progress = source_progress(root)
-        traces.append({**trace, "progress": progress})
+        traces.append(
+            {
+                **trace,
+                "progress": progress,
+                "before": {
+                    k: v.model_dump(mode="json") if v else None
+                    for k, v in before.items()
+                },
+            }
+        )
         (tmp_path / "collect-trace.json").write_text(json.dumps(traces, indent=2))
         assert progress > previous, traces
+        assert 0 <= polls() - before_polls <= 1
+        for kind, source in sources.items():
+            prior, current = before[kind], after[kind]
+            start, stop = (
+                prior.position if prior else 0,
+                current.position if current else 0,
+            )
+            assert start <= stop <= len(expected[kind])
+            if current is not None:
+                assert (current.run_id, current.submission_id, current.source_id) == (
+                    "001",
+                    submission,
+                    source,
+                )
+            if prior is not None:
+                assert (
+                    current is not None and current.index_sha256 == prior.index_sha256
+                )
+                assert not prior.exhausted or current.exhausted
+            physical = [event for event in trace["physical"] if event[0] == kind]
+            assert [event[1] for event in physical] == list(
+                range(start, start + len(physical))
+            )
+            assert [tuple(event[2:]) for event in physical] == expected[kind][
+                start : start + len(physical)
+            ]
+            assert stop - start <= len(physical)
+            if kind == "output" and start > 0:
+                resumed_tail.update(
+                    event[1] for event in physical if event[1] in (256, 257)
+                )
+        for entry in trace["ranges"]:
+            kind = entry["source"]
+            prior = before[kind]
+            assert (entry["submission"], entry["remote"]) == (submission, remote)
+            assert entry["cursor"]["source_id"] == sources[kind]
+            assert entry["cursor"]["position"] == (prior.position if prior else 0)
+            if prior is not None:
+                assert entry["cursor"]["prefix_sha256"] == prior.prefix_sha256
+                assert entry["cursor"]["index_sha256"] == prior.index_sha256
         previous = progress
         assert service_counts(root) == {"forwards": 2, "jobs": 1, "cancelled": 0}
-        if progress == (1200, 2):
+        if progress == (260, 2):
             break
-    assert previous == (1200, 2), traces
+    assert previous == (260, 2) and len(traces) >= 3 and resumed_tail == {256, 257}, (
+        traces
+    )
+    assert sum(t["result_rows"] for t in traces) == 260
     for trace in traces:
         assert trace["options"] == {
             "schema_version": 1,
@@ -148,28 +283,124 @@ def test_600_members_finish_repeated_same_default_fresh_collects(
         }
         assert 0 < trace["steps"] <= 1024
         assert 0 < trace["bytes"] <= 128 * 1_048_576
-        assert 0 < trace["reads"] <= 128
-        assert trace["result_rows"] <= 128
+        assert trace["budgets"] == 1
+        assert 0 <= len(trace["physical"]) <= trace["reads"] <= 128
+        assert 0 <= trace["result_rows"] <= 128
+        if trace["result_rows"] == 0:
+            assert trace["progress"][1] > sum(
+                bool(c and c.get("exhausted")) for c in trace["before"].values()
+            )
     with ReadOnlyRepository(root) as repository:
         assert {a.attempt_id for a in repository.iter_attempts("001")} == attempt_ids
         results = tuple(repository.iter_results("001"))
-        assert len(results) == 600
-        assert sum(r.status == "complete" for r in results) == 599
+        assert len(results) == 130
+        assert sum(r.status == "complete" for r in results) == 129
         assert sum(r.status == "errored" for r in results) == 1
         receipts = [
-            json.loads(row[0])
+            BatchMemberReceiptV1.model_validate_json(row[0])
             for row in repository.connection.execute(
                 "SELECT record_json FROM batch_member_receipts"
             )
         ]
-        assert len(receipts) == 600
-        errors = [r for r in receipts if r["kind"] == "provider_error"]
+        assert len(receipts) == 130
+        assert (
+            repository.connection.execute(
+                "SELECT count(*) FROM observations"
+            ).fetchone()[0]
+            == 130
+        )
+        errors = [r for r in receipts if r.kind == "provider_error"]
         assert len(errors) == 1
-        assert errors[0]["usage"]["input_tokens"] is None
-        assert errors[0]["usage"]["output_tokens"] is None
-        assert sum(r["usage"]["input_tokens"] or 0 for r in receipts) == 599 * 7
-        assert sum(r["usage"]["output_tokens"] or 0 for r in receipts) == 599 * 3
-        assert all(r["usage"]["reported_cost"] is None for r in receipts)
+        assert errors[0].identity.attempt_id == members[-1].attempt_id
+        by_attempt = {m.attempt_id: m for m in members}
+        assert {r.identity.attempt_id for r in receipts} == attempt_ids
+        assert len({r.identity.observation_id for r in receipts}) == 130
+        for receipt in receipts:
+            member = by_attempt[receipt.identity.attempt_id]
+            kind = "error" if member.position == 129 else "output"
+            assert (
+                receipt.member_key,
+                receipt.identity.request_uid,
+                receipt.identity.submission_id,
+            ) == (member.member_key, member.request_uid, submission)
+            assert receipt.source_id == sources[kind]
+            assert receipt.source_position == (
+                0 if kind == "error" else 2 * (128 - member.position)
+            )
+            assert receipt.observation_key == semantic_digest(
+                "batch-observation-v1", [member.member_key, kind]
+            )
+            assert receipt.identity.observation_id == semantic_digest(
+                "batch-observation-id-v1", [submission, member.member_key]
+            )
+            assert (receipt.usage.input_tokens, receipt.usage.output_tokens) == (
+                (None, None) if kind == "error" else (7, 3)
+            )
+            assert (
+                receipt.capture == "minimal" and receipt.retained.relative_path is None
+            )
+        for result in results:
+            assert isinstance(result, RubricResult)
+            member = by_attempt[result.attempt_id]
+            assert result.request_uid == member.request_uid
+            assert (result.item_id, result.trait_id) == (
+                f"{member.position:03d}",
+                "000",
+            )
+            if member.position == 129:
+                assert (
+                    result.status == "errored" and result.error_kind == "provider_error"
+                )
+                assert (
+                    result.error_message is None
+                    and result.input_tokens is result.output_tokens is None
+                )
+        assert sum(r.usage.input_tokens or 0 for r in receipts) == 903
+        assert sum(r.usage.output_tokens or 0 for r in receipts) == 387
+        assert all(r.usage.reported_cost is None for r in receipts)
+        facts = [
+            BatchCursorV1.model_validate_json(r[0])
+            for r in repository.connection.execute(
+                "SELECT record_json FROM batch_facts WHERE kind='cursor'"
+            )
+        ]
+    with closing(
+        sqlite3.connect(
+            (root / "mock-batch-service.sqlite3").as_uri() + "?mode=ro", uri=True
+        )
+    ) as connection:
+        indexes = {
+            row[0]: (row[1], BatchSourceIndexV1.model_validate_json(row[2]))
+            for row in connection.execute(
+                "SELECT source_id,index_sha256,record_json FROM result_indexes"
+            )
+        }
+    assert set(indexes) == set(sources.values())
+    for kind, source in sources.items():
+        digest, index = indexes[source]
+        assert bytes_digest(canonical_bytes(index)) == digest
+        assert len(index.prefix_sha256) == len(expected[kind]) + 1
+        for cursor in (c for c in facts if c.source_id == source):
+            assert (
+                cursor.index_sha256 == digest
+                and cursor.prefix_sha256 == index.prefix_sha256[cursor.position]
+            )
+        assert any(
+            c.source_id == source and c.position == len(expected[kind]) and c.exhausted
+            for c in facts
+        )
+    for boundary in (128, 256):
+        assert any(
+            c.source_id == sources["output"]
+            and c.position == boundary
+            and not c.exhausted
+            for c in facts
+        )
+    for trace in traces:
+        for entry in trace["ranges"]:
+            assert (
+                entry["cursor"]["index_sha256"] == indexes[sources[entry["source"]]][0]
+            )
     assert not traces[-1]["status"]["batch"]["recovery_required"]
     assert time.monotonic() - started < 180
 

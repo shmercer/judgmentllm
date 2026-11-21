@@ -58,6 +58,11 @@ from judgmentllm.preparation.freezing import (
     signature,
     verify_original,
 )
+from judgmentllm.preparation.historical_wire import (
+    HistoricalWire,
+    foreign_original,
+    manifest_wire,
+)
 from judgmentllm.preparation.index import ParsingContext, RecordLocator, read_record
 from judgmentllm.preparation.manifest import (
     CategoryCommitment,
@@ -600,7 +605,15 @@ def _load_manifest(
         manifest = parse_executable_manifest(raw)
     except (ValueError, OSError):
         raise PreparationError("published manifest is invalid or incomplete") from None
-    if manifest.run_id != run_id or canonical_bytes(manifest) != raw:
+    encoding = canonical_bytes(manifest)
+    if encoding != raw and (
+        not unsealed
+        and type(manifest) is ExecutableRunManifestV2
+        and manifest.capture == "full"
+        and repository.connection.execute("PRAGMA user_version").fetchone()[0] == 3
+    ):
+        encoding = manifest_wire(manifest, raw).encode(manifest)
+    if manifest.run_id != run_id or encoding != raw:
         raise PreparationError(
             "published manifest identity or encoding is inconsistent"
         )
@@ -672,12 +685,17 @@ def _restore_context(
     repository: Repository,
     manifest: ExecutableManifest,
     supplied: RunSpecification | None,
+    historical_wire: HistoricalWire | None = None,
 ) -> tuple[RunSpecification, str | None]:
     store = ArtifactStore(repository.run_directory(manifest.run_id))
     if manifest.capture == "full":
-        frozen = validate_run_spec_json(
-            store.read(manifest.specification).decode("utf-8"),
-            _cache_policy_version=manifest.cache_policy_version,
+        frozen = (
+            historical_wire.restore()
+            if historical_wire is not None
+            else validate_run_spec_json(
+                store.read(manifest.specification).decode("utf-8"),
+                _cache_policy_version=manifest.cache_policy_version,
+            )
         )
         spec = (
             validate_run_spec(
@@ -720,14 +738,28 @@ def _restore_context(
         spec = validate_run_spec(
             supplied, _cache_policy_version=manifest.cache_policy_version
         )
+    if historical_wire is not None and supplied is not None:
+        if canonical_bytes(spec) != historical_wire.specification.raw:
+            raise PreparationError(
+                "supplied specification differs from historical wire"
+            )
+    configuration = (
+        historical_wire.configuration_digest(spec)
+        if historical_wire is not None
+        else configuration_digest(spec)
+    )
     if (
-        configuration_digest(spec) != manifest.configuration_sha256
+        configuration != manifest.configuration_sha256
         or assessment_digest(spec) != manifest.assessment_sha256
     ):
         raise PreparationError(
             "configuration or assessment differs from immutable manifest"
         )
-    raw = canonical_bytes(spec)
+    raw = (
+        historical_wire.specification.encode(spec)
+        if historical_wire is not None
+        else canonical_bytes(spec)
+    )
     if (bytes_digest(raw), len(raw)) != (
         manifest.specification.sha256,
         manifest.specification.byte_length,
@@ -761,6 +793,15 @@ def _source_discrepancies(
 ) -> tuple[SourceDiscrepancy, ...]:
     discrepancies: list[SourceDiscrepancy] = []
     for source in manifest.sources:
+        if foreign_original(source.original_location):
+            discrepancies.append(
+                SourceDiscrepancy(
+                    source_id=source.source_id,
+                    reason="missing_or_unreadable",
+                    expected_sha256=source.raw_sha256,
+                )
+            )
+            continue
         path = Path(source.original_location)
         try:
             verify_original(
@@ -820,6 +861,29 @@ def open_prepared_run(
             manifest = _load_manifest(repository, run_id, unsealed=unsealed)
             _verify_metadata(repository, manifest)
             artifacts = ArtifactStore(repository.run_directory(run_id))
+            historical_wire = None
+            if any(
+                foreign_original(source.original_location)
+                for source in manifest.sources
+            ):
+                if (
+                    unsealed
+                    or not use_frozen_snapshot
+                    or manifest.capture != "full"
+                    or type(manifest) is not ExecutableRunManifestV2
+                    or repository.connection.execute("PRAGMA user_version").fetchone()[
+                        0
+                    ]
+                    != 3
+                ):
+                    raise PreparationError(
+                        "foreign originals require a sealed full historical snapshot"
+                    )
+                historical_wire = HistoricalWire.checked(
+                    manifest,
+                    artifacts.read(repository.get_manifest(run_id).artifact),
+                    artifacts.read(manifest.specification),
+                )
             for source in manifest.sources:
                 if source.snapshot is not None:
                     artifacts.verify(source.snapshot)
@@ -830,7 +894,9 @@ def open_prepared_run(
                 raise PreparationError(
                     "original sources changed or disappeared; continuation is blocked"
                 )
-            current, template = _restore_context(repository, manifest, spec)
+            current, template = _restore_context(
+                repository, manifest, spec, historical_wire
+            )
             if capability_resolver is not None:
                 capabilities = capability_resolver(current)
             profile = _revalidate_record(capabilities) if capabilities else None
@@ -850,6 +916,7 @@ def open_prepared_run(
                 profile,
                 record_reader=_read_record,
                 transport_context=transport_context,
+                historical_wire=historical_wire,
                 authorized_sources=frozenset(d.source_id for d in discrepancies)
                 if use_frozen_snapshot and manifest.capture == "full"
                 else frozenset(),

@@ -1,5 +1,24 @@
 # Data contracts and scoring semantics
 
+## Historical full-snapshot path identity
+
+Sealed storage-schema-3 preparations using executable manifest 2 and RunSpec 2
+may retain producer-normal POSIX path spelling when inspected on Windows.
+The private reader checks only the declared input, pair, prompt and output path
+leaves against their expected native representation. Every other typed field and
+the complete projected canonical document must still match the original bytes.
+The manifest/specification hashes, immutable objects, database seal, schema,
+package, generation and provider checks remain authoritative. Native writers,
+public `Path` fields and canonicalization versions are unchanged.
+
+Inspection reads manifest metadata only. Foreign originals are unavailable and
+their consumer-filesystem aliases are never traversed. Only an explicit sealed
+full frozen-snapshot reopen may use verified retained source artifacts, recording
+the existing operation-scoped authorization with the original manifest identity.
+Minimal capture, implicit reopen, unsupported foreign dialects, incomplete seals
+and damaged snapshots fail closed. Prior snapshot authorization is not permission
+for a later operation. This reader establishes no new transport capability.
+
 ## PR E Gemini Decisions
 
 The [Gemini Decisions contract](gemini-decisions.md) adds manifest 11,
