@@ -10,8 +10,16 @@ from typing import Any, Literal, get_args
 import pytest
 from pydantic import BaseModel
 from test_native_batch import batch_spec
+from test_version_compatibility import old_store as old_store
 
-from judgmentllm import export_run_results, get_run, prepare_batch
+from judgmentllm import (
+    MockExecutionOptions,
+    RetrySelection,
+    export_run_results,
+    get_run,
+    prepare_batch,
+    resume_run,
+)
 from judgmentllm.config import PromptSpec, RunSpec, RunSpecV2, validate_run_spec_json
 from judgmentllm.lifecycle_models import ErrorCategory, LifecycleError
 from judgmentllm.persistence.artifacts import ArtifactStore
@@ -23,6 +31,7 @@ from judgmentllm.preparation.manifest import (
     ExecutableRunManifestV2,
     parse_executable_manifest,
 )
+from scripts.version_compatibility_fixture import evidence
 
 HistoricalCopy = tuple[Path, str, ExecutableRunManifestV2, bytes, bytes]
 
@@ -67,13 +76,11 @@ def test_historical_wire_preserves_native_writer_and_exact_identity(
     assert bytes_digest(wire.manifest.raw) == bytes_digest(raw)
 
 
-def test_posix_wire_checks_pure_windows_presentation_without_native_execution(
-    historical_copy: HistoricalCopy, monkeypatch: pytest.MonkeyPatch
-) -> None:
+@pytest.fixture
+def windows_wire_presentation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Exercise Path presentation only; this does not run native Windows."""
     import judgmentllm.preparation.historical_wire as wire_module
-    from judgmentllm.preparation.manifest import ExecutableRunManifestV2
 
-    _, _, manifest, raw, specification = historical_copy
     for model_type, paths in (
         (ExecutableRunManifestV2, (("input", "path"), ("pairs", "path"))),
         (
@@ -109,10 +116,315 @@ def test_posix_wire_checks_pure_windows_presentation_without_native_execution(
 
         monkeypatch.setattr(model_type, "model_dump", windows_dump)
     monkeypatch.setattr(wire_module, "Path", PureWindowsPath)
+
+
+def unavailable_originals(
+    monkeypatch: pytest.MonkeyPatch, originals: set[str]
+) -> list[str]:
+    import judgmentllm.preparation as preparation
+
+    attempts: list[str] = []
+
+    def classified(location: str) -> bool:
+        return location in originals
+
+    monkeypatch.setattr(preparation, "foreign_original", classified)
+    for method in ("open", "stat", "resolve"):
+        original = getattr(Path, method)
+
+        def forbidden(
+            self: Path, *args: Any, call: Any = original, **kwargs: Any
+        ) -> Any:
+            if str(self) in originals:
+                attempts.append(str(self))
+                raise AssertionError("foreign source alias was accessed")
+            return call(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, method, forbidden)
+    return attempts
+
+
+@pytest.fixture
+def canonical_without_wire(monkeypatch: pytest.MonkeyPatch) -> None:
+    from judgmentllm.preparation.historical_wire import HistoricalWire
+
+    def unexpected_wire(*args: object, **kwargs: object) -> None:
+        raise AssertionError("canonical manifest entered the special wire proof")
+
+    monkeypatch.setattr(HistoricalWire, "checked", unexpected_wire)
+
+
+def test_posix_wire_checks_pure_windows_presentation_without_native_execution(
+    historical_copy: HistoricalCopy, windows_wire_presentation: None
+) -> None:
+    import judgmentllm.preparation.historical_wire as wire_module
+
+    _, _, manifest, raw, specification = historical_copy
     wire = wire_module.HistoricalWire.checked(manifest, raw, specification)
     assert canonical_bytes(manifest) != raw
     assert wire.manifest.encode(manifest) == raw
     assert wire.specification.encode(wire.restore()) == specification
+
+
+def test_canonical_a2_foreign_provenance_uses_existing_snapshot_gate(
+    old_store: tuple[Path, dict[str, Any]],
+    monkeypatch: pytest.MonkeyPatch,
+    canonical_without_wire: None,
+) -> None:
+    root, metadata = old_store
+    store, run_id = root / "store", metadata["producer"]["run_id"]
+    with ReadOnlyRepository(store) as repository:
+        identity = repository.get_manifest(run_id).artifact
+        raw = ArtifactStore(repository.run_directory(run_id), create=False).read(
+            identity
+        )
+    manifest = parse_executable_manifest(raw)
+    assert canonical_bytes(manifest) == raw
+    aliases = unavailable_originals(
+        monkeypatch, {s.original_location for s in manifest.sources}
+    )
+    with pytest.raises(IntegrityError):
+        open_prepared_run(run_id, store=store)
+    with open_prepared_run(run_id, store=store, use_frozen_snapshot=True) as prepared:
+        assert prepared.manifest_sha256 == identity.sha256 == bytes_digest(raw)
+        response = next(prepared.iter_responses())
+        assert next(prepared.iter_request_dependencies()).request.response == response
+    assert aliases == []
+    with ReadOnlyRepository(store) as repository:
+        assert repository.get_manifest(run_id).artifact == identity
+        assert (repository.run_directory(run_id) / "manifest.json").read_bytes() == raw
+
+
+def test_canonical_a2_foreign_snapshot_authorizes_subset_without_submission(
+    old_store: tuple[Path, dict[str, Any]],
+    monkeypatch: pytest.MonkeyPatch,
+    canonical_without_wire: None,
+) -> None:
+    from judgmentllm.execution.retry import authorize_subset_retry
+    from judgmentllm.preparation import iter_snapshot_authorizations
+    from judgmentllm.providers import MockAdapter
+
+    root, metadata = old_store
+    store, run_id = root / "store", metadata["producer"]["run_id"]
+    with ReadOnlyRepository(store) as repository:
+        seal = repository.get_manifest(run_id)
+        raw = ArtifactStore(repository.run_directory(run_id), create=False).read(
+            seal.artifact
+        )
+        assert repository.get_run(run_id).manifest_sha256 == seal.artifact.sha256
+    manifest = parse_executable_manifest(raw)
+    assert manifest.schema_version == 1 and canonical_bytes(manifest) == raw
+    aliases = unavailable_originals(
+        monkeypatch, {s.original_location for s in manifest.sources}
+    )
+    before = evidence(root)
+    failed = [row for row in before["results"] if row["status"] == "invalid"]
+    assert len(failed) == 1
+    selected = (failed[0]["task_id"],)
+    audit_before = {
+        a.operation_id for a in iter_snapshot_authorizations(run_id, store=store)
+    }
+    adapter = MockAdapter(root / "ledger.sqlite3")
+
+    def no_submit(*args: object, **kwargs: object) -> None:
+        raise AssertionError("authorization must not submit provider work")
+
+    monkeypatch.setattr(adapter, "submit", no_submit)
+    operation_id = "canonical-foreign-a2-authorization"
+    attempt = authorize_subset_retry(
+        run_id,
+        store=store,
+        adapter=adapter,
+        task_ids=selected,
+        operation_id=operation_id,
+        use_frozen_snapshot=True,
+    )
+    assert attempt.state == "prepared" and attempt.attempt_number == 2
+    assert attempt.authorization_id == operation_id
+    after = evidence(root)
+    for table in ("attempts", "attempt_tasks", "retry_operations", "submissions"):
+        assert after[table][: len(before[table])] == before[table]
+        assert len(after[table]) == len(before[table]) + 1
+    for table in ("observations", "results", "submission_failures", "acceptances"):
+        assert after[table] == before[table]
+    assert after["retry_operations"][-1]["operation_id"] == operation_id
+    assert after["attempt_tasks"][-1]["task_id"] == selected[0]
+    assert after["attempt_tasks"][-1]["attempt_id"] == attempt.attempt_id
+    replay = authorize_subset_retry(
+        run_id,
+        store=store,
+        adapter=adapter,
+        task_ids=selected,
+        operation_id=operation_id,
+        use_frozen_snapshot=True,
+    )
+    assert replay == attempt
+    assert evidence(root) == after
+    assert adapter.submit_calls == 0 and aliases == []
+    with ReadOnlyRepository(store) as repository:
+        assert repository.get_attempt(run_id, attempt.attempt_id) == attempt
+        assert repository.attempt_task_ids(run_id, attempt.attempt_id) == selected
+        original = repository.get_attempt(run_id, failed[0]["attempt_id"])
+        assert attempt.request_uid == original.request_uid
+        submission = repository.get_submission_for_attempt(run_id, attempt.attempt_id)
+        assert submission is not None and submission.state == "prepared"
+        assert submission.certainty == "not_started" and submission.remote_id is None
+        assert submission.payload_sha256 == attempt.payload_sha256
+        assert repository.get_manifest(run_id) == seal
+        assert repository.get_run(run_id).manifest_sha256 == seal.artifact.sha256
+        artifacts = ArtifactStore(repository.run_directory(run_id), create=False)
+        assert artifacts.read(seal.artifact) == raw
+        assert seal.artifact.sha256 == bytes_digest(raw)
+        assert (artifacts.root / "manifest.json").read_bytes() == raw
+    audit = [
+        a
+        for a in iter_snapshot_authorizations(run_id, store=store)
+        if a.operation_id not in audit_before
+    ]
+    assert len(audit) >= 2
+    expected = tuple(
+        (s.source_id, "missing_or_unreadable", s.raw_sha256) for s in manifest.sources
+    )
+    assert expected
+    for authorization in audit:
+        assert authorization.run_id == run_id
+        assert authorization.manifest_sha256 == seal.artifact.sha256
+        assert authorization.explicit_caller_decision is True
+        assert authorization.scope == "this_prepared_run_session"
+        assert (
+            tuple(
+                (d.source_id, d.reason, d.expected_sha256)
+                for d in authorization.discrepancies
+            )
+            == expected
+        )
+
+
+def test_canonical_a2_foreign_snapshot_keeps_authorized_retry_and_replay(
+    old_store: tuple[Path, dict[str, Any]],
+    monkeypatch: pytest.MonkeyPatch,
+    canonical_without_wire: None,
+) -> None:
+    root, archive = old_store
+    store, run_id = root / "store", archive["producer"]["run_id"]
+    with ReadOnlyRepository(store) as repository:
+        identity = repository.get_manifest(run_id).artifact
+        raw = ArtifactStore(repository.run_directory(run_id), create=False).read(
+            identity
+        )
+    manifest = parse_executable_manifest(raw)
+    assert manifest.schema_version == 1 and canonical_bytes(manifest) == raw
+    aliases = unavailable_originals(
+        monkeypatch, {s.original_location for s in manifest.sources}
+    )
+
+    before = evidence(root)
+    with pytest.raises(IntegrityError):
+        open_prepared_run(run_id, store=store)
+    with open_prepared_run(run_id, store=store, use_frozen_snapshot=True) as prepared:
+        assert prepared.manifest_sha256 == identity.sha256 == bytes_digest(raw)
+        response = next(prepared.iter_responses())
+        assert next(prepared.iter_request_dependencies()).request.response == response
+        wrong = prepared.spec.model_copy(update={"model": "changed-synthetic-model"})
+        prepared.spec.output_path = Path("changed-after-verification")
+        with pytest.raises(IntegrityError):
+            prepared.verify_compatibility()
+    with pytest.raises(IntegrityError):
+        open_prepared_run(run_id, store=store, spec=wrong, use_frozen_snapshot=True)
+    failed = [r for r in before["results"] if r["status"] == "invalid"]
+    assert len(failed) == 1
+    fixture = root / "valid.json"
+    fixture.write_text(
+        '{"schema_version":1,"scenario":{"probabilities":true,"category_index":0}}'
+    )
+    options = MockExecutionOptions(
+        ledger_path=root / "ledger.sqlite3", fixture_path=fixture
+    )
+    retry = RetrySelection(
+        task_ids=(failed[0]["task_id"],), operation_id="canonical-foreign-a2-retry"
+    )
+    resumed = resume_run(
+        run_id, store=store, use_frozen_snapshot=True, mock=options, retry=retry
+    )
+    assert (resumed.completed_tasks, resumed.results, resumed.unsuccessful_results) == (
+        3,
+        4,
+        1,
+    )
+    after = evidence(root)
+    for table in ("submissions", "attempts", "results", "acceptances"):
+        assert after[table][: len(before[table])] == before[table]
+    assert len(after["submissions"]) == len(after["acceptances"]) == 2
+    assert all(r["acceptance_count"] == 1 for r in after["acceptances"])
+    assert after["attempt_tasks"][-1]["task_id"] == failed[0]["task_id"]
+    resume_run(run_id, store=store, use_frozen_snapshot=True, mock=options, retry=retry)
+    assert evidence(root)["acceptances"] == after["acceptances"]
+    assert aliases == []
+    with ReadOnlyRepository(store) as repository:
+        assert (
+            ArtifactStore(repository.run_directory(run_id), create=False).read(identity)
+            == raw
+        )
+
+
+def test_canonical_archive_does_not_project_a_damaged_frozen_specification(
+    old_store: tuple[Path, dict[str, Any]],
+    monkeypatch: pytest.MonkeyPatch,
+    canonical_without_wire: None,
+) -> None:
+    root, metadata = old_store
+    store, run_id = root / "store", metadata["producer"]["run_id"]
+    with ReadOnlyRepository(store) as repository:
+        artifacts = ArtifactStore(repository.run_directory(run_id), create=False)
+        raw = artifacts.read(repository.get_manifest(run_id).artifact)
+    manifest = parse_executable_manifest(raw)
+    assert canonical_bytes(manifest) == raw
+    aliases = unavailable_originals(
+        monkeypatch, {s.original_location for s in manifest.sources}
+    )
+    original = evidence(root)
+    changed = json.loads(artifacts.read(manifest.specification))
+    changed["model"] = "changed-frozen-context"
+    assert manifest.specification.relative_path is not None
+    (artifacts.root / manifest.specification.relative_path).write_bytes(
+        canonical_bytes(changed)
+    )
+    with pytest.raises(IntegrityError):
+        open_prepared_run(run_id, store=store, use_frozen_snapshot=True)
+    assert (artifacts.root / "manifest.json").read_bytes() == raw
+    assert aliases == []
+    after = evidence(root)
+    for table in ("attempts", "submissions", "results", "acceptances"):
+        assert after[table] == original[table]
+
+
+def test_foreign_canonical_unsealed_preparation_is_not_recovered(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from test_preparation_recovery import fixture_spec, interrupt_at
+
+    import judgmentllm.preparation as preparation
+
+    config, store = fixture_spec(tmp_path), tmp_path / "store"
+    with monkeypatch.context() as interruption:
+        interrupt_at(interruption, "before_seal")
+        with pytest.raises(KeyboardInterrupt):
+            preparation.prepare_run(config, store=store, run_id="001")
+    with ReadOnlyRepository(store) as repository:
+        assert repository.get_run("001").manifest_sha256 is None
+        raw = (repository.run_directory("001") / "manifest.json").read_bytes()
+    manifest = parse_executable_manifest(raw)
+    assert canonical_bytes(manifest) == raw
+    aliases = unavailable_originals(
+        monkeypatch, {s.original_location for s in manifest.sources}
+    )
+    with pytest.raises(IntegrityError, match="foreign originals"):
+        open_prepared_run("001", store=store, use_frozen_snapshot=True)
+    assert aliases == []
+    with ReadOnlyRepository(store) as repository:
+        assert repository.get_run("001").manifest_sha256 is None
+        assert repository.get_owner("001") is None
+        assert not tuple(repository.iter_attempts("001"))
 
 
 @pytest.mark.parametrize(
@@ -229,33 +541,20 @@ def test_historical_wire_rejects_subtypes_and_rechecks_restored_protocol(
     "mutation", ["manifest-path", "manifest-nonpath", "spec-path", "spec-nonpath"]
 )
 def test_foreign_snapshot_preserves_proof_without_touching_original_aliases(
-    historical_copy: HistoricalCopy, monkeypatch: pytest.MonkeyPatch, mutation: str
+    historical_copy: HistoricalCopy,
+    monkeypatch: pytest.MonkeyPatch,
+    windows_wire_presentation: None,
+    mutation: str,
 ) -> None:
     import judgmentllm.preparation as preparation
 
     root, run_id, manifest, raw, _ = historical_copy
-    originals = {source.original_location for source in manifest.sources}
-    attempts: list[str] = []
-
-    # Unit-test the foreign-source boundary on Linux; this is not a Windows run.
-    def classified(location: str) -> bool:
-        return location in originals
-
-    monkeypatch.setattr(preparation, "foreign_original", classified)
-    for method in ("open", "stat", "resolve"):
-        original = getattr(Path, method)
-
-        def forbidden(
-            self: Path, *args: Any, call: Any = original, **kwargs: Any
-        ) -> Any:
-            if str(self) in originals:
-                attempts.append(str(self))
-                raise AssertionError("foreign source alias was accessed")
-            return call(self, *args, **kwargs)
-
-        monkeypatch.setattr(Path, method, forbidden)
+    attempts = unavailable_originals(
+        monkeypatch, {source.original_location for source in manifest.sources}
+    )
+    assert canonical_bytes(manifest) != raw
     assert get_run(run_id, store=root).batch is None
-    with pytest.raises(IntegrityError, match="foreign originals"):
+    with pytest.raises(IntegrityError, match="non-native manifest"):
         open_prepared_run(run_id, store=root)
     with open_prepared_run(run_id, store=root, use_frozen_snapshot=True) as prepared:
         assert prepared.manifest_sha256 == bytes_digest(raw)
@@ -277,16 +576,16 @@ def test_foreign_snapshot_preserves_proof_without_touching_original_aliases(
     assert {d.source_id for d in records[0].discrepancies} == {
         s.source_id for s in manifest.sources
     }
-    with pytest.raises(IntegrityError, match="foreign originals"):
+    with pytest.raises(IntegrityError, match="non-native manifest"):
         open_prepared_run(run_id, store=root)
     assert attempts == []
 
 
 def test_historical_manifest_projection_is_manifest_only_and_readonly(
-    historical_copy: HistoricalCopy, monkeypatch: pytest.MonkeyPatch
+    historical_copy: HistoricalCopy,
+    monkeypatch: pytest.MonkeyPatch,
+    windows_wire_presentation: None,
 ) -> None:
-    import judgmentllm.preparation as preparation
-
     root, run_id, _, raw, _ = historical_copy
     reads: list[str] = []
     read = ArtifactStore.read
@@ -295,15 +594,6 @@ def test_historical_manifest_projection_is_manifest_only_and_readonly(
         reads.append(identity.sha256)
         return read(self, identity)
 
-    def native_presentation(model: object) -> bytes:
-        data = json.loads(canonical_bytes(model))
-        if isinstance(model, ExecutableRunManifestV2):
-            data["input"]["path"] = str(PureWindowsPath(data["input"]["path"]))
-            if data["pairs"] is not None:
-                data["pairs"]["path"] = str(PureWindowsPath(data["pairs"]["path"]))
-        return canonical_bytes(data)
-
-    monkeypatch.setattr(preparation, "canonical_bytes", native_presentation)
     monkeypatch.setattr(ArtifactStore, "read", watched)
     with ReadOnlyRepository(root) as repository:
         before = repository.connection.execute(
@@ -369,7 +659,9 @@ def test_historical_foreign_dialect_is_classified_without_filesystem_access(
 
 
 def test_foreign_supplied_specification_keeps_exact_equality_boundary(
-    historical_copy: HistoricalCopy, monkeypatch: pytest.MonkeyPatch
+    historical_copy: HistoricalCopy,
+    monkeypatch: pytest.MonkeyPatch,
+    windows_wire_presentation: None,
 ) -> None:
     import judgmentllm.preparation as preparation
 
@@ -403,6 +695,7 @@ def test_foreign_supplied_specification_keeps_exact_equality_boundary(
 def test_foreign_historical_scope_and_artifacts_fail_closed(
     historical_copy: HistoricalCopy,
     monkeypatch: pytest.MonkeyPatch,
+    windows_wire_presentation: None,
     damage: str,
 ) -> None:
     import judgmentllm.preparation as preparation

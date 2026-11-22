@@ -172,11 +172,17 @@ async def _control(
                     await session.poll()
                 if action in ("collect", "resume"):
                     await session.collect()
+            if budget.external_cancelled():
+                raise asyncio.CancelledError
             session.finish()
         except (BudgetExhausted, TimeoutError, OSError):
+            if budget.external_cancelled():
+                session.stop(remote=False)
+                raise asyncio.CancelledError from None
             exhausted = True
-        except asyncio.CancelledError:
-            session.stop(remote=False)
+        except BaseException:
+            if budget.external_cancelled():
+                session.stop(remote=False)
             raise
     status = get_batch_status(identifier, store=root)
     partial = exhausted or status.batch.unresolved_operations or status.batch.conflicts

@@ -862,13 +862,19 @@ def open_prepared_run(
             _verify_metadata(repository, manifest)
             artifacts = ArtifactStore(repository.run_directory(run_id))
             historical_wire = None
-            if any(
+            if unsealed and any(
                 foreign_original(source.original_location)
                 for source in manifest.sources
             ):
+                raise PreparationError("foreign originals require a sealed preparation")
+            raw_manifest = (
+                None
+                if unsealed
+                else artifacts.read(repository.get_manifest(run_id).artifact)
+            )
+            if raw_manifest is not None and canonical_bytes(manifest) != raw_manifest:
                 if (
-                    unsealed
-                    or not use_frozen_snapshot
+                    not use_frozen_snapshot
                     or manifest.capture != "full"
                     or type(manifest) is not ExecutableRunManifestV2
                     or repository.connection.execute("PRAGMA user_version").fetchone()[
@@ -877,11 +883,11 @@ def open_prepared_run(
                     != 3
                 ):
                     raise PreparationError(
-                        "foreign originals require a sealed full historical snapshot"
+                        "non-native manifest requires a sealed full historical snapshot"
                     )
                 historical_wire = HistoricalWire.checked(
                     manifest,
-                    artifacts.read(repository.get_manifest(run_id).artifact),
+                    raw_manifest,
                     artifacts.read(manifest.specification),
                 )
             for source in manifest.sources:

@@ -225,6 +225,11 @@
       "test_separate_cli_processes_keep_original_identity": {"": []}
     },
     "tests/test_batch_compatibility.py": {
+      "test_canonical_a2_foreign_provenance_uses_existing_snapshot_gate": {"": []},
+      "test_canonical_a2_foreign_snapshot_authorizes_subset_without_submission": {"": []},
+      "test_canonical_a2_foreign_snapshot_keeps_authorized_retry_and_replay": {"": []},
+      "test_canonical_archive_does_not_project_a_damaged_frozen_specification": {"": []},
+      "test_foreign_canonical_unsealed_preparation_is_not_recovered": {"": []},
       "test_foreign_historical_scope_and_artifacts_fail_closed": {"[minimal]": [], "[seal]": [], "[snapshot]": [], "[specification]": [], "[unsealed]": []},
       "test_foreign_snapshot_preserves_proof_without_touching_original_aliases": {"[manifest-nonpath]": [], "[manifest-path]": [], "[spec-nonpath]": [], "[spec-path]": []},
       "test_foreign_supplied_specification_keeps_exact_equality_boundary": {"": []},
@@ -246,11 +251,14 @@
     },
     "tests/test_batch_exports_retry.py": {
       "test_audit_files_share_one_cut_and_old_bundle_survives_collection": {"": []},
+      "test_changed_retry_fixture_cannot_replace_authorized_child": {"": []},
+      "test_cross_request_batch_retry_preserves_seal_and_selected_order": {"": []},
       "test_empty_audit_companions_keep_typed_csv_headers": {"": []},
       "test_explicit_retry_creates_scientific_attempt_and_child_shard": {"": []}
     },
     "tests/test_batch_indexed_source.py": {
       "test_130_members_finish_repeated_same_default_fresh_collects": {"": ["serial"]},
+      "test_authenticated_suffix_framing_failure_preserves_proven_member": {"[record-limit]": [], "[unterminated]": []},
       "test_authoritative_index_rejection_precedes_range_and_counts_io": {"[identity]": [], "[oversize]": [], "[prefix]": [], "[replacement]": [], "[scope]": [], "[unsafe]": []},
       "test_index_deadline_holds_ownership_until_read_drains": {"": []},
       "test_original_index_is_immutable_and_authenticates_historical_cursor": {"": []},
@@ -265,10 +273,19 @@
       "test_sql_rejects_cross_job_member_bridge_and_replacement": {"": []}
     },
     "tests/test_batch_io.py": {
+      "test_accepted_ack_completion_cancellation_keeps_original_receipt": {"[direct]": [], "[reconcile]": []},
+      "test_actual_nested_payload_deadline_has_no_external_stop": {"": []},
+      "test_awaited_stream_close_cannot_mask_external_cancellation": {"": []},
+      "test_caller_cancellation_drains_before_recording_stop": {"": []},
+      "test_child_self_cancellation_has_no_external_stop": {"": []},
+      "test_deadline_drain_survives_repeated_cancellation": {"": []},
+      "test_deadline_normal_evidence_is_not_external_cancellation": {"[eof]": [], "[status]": []},
       "test_each_protocol_boundary_obeys_shared_deadline": {"[cancel]": [], "[create]": [], "[reconcile]": [], "[source]": [], "[status]": [], "[stream]": [], "[upload]": []},
+      "test_late_cleanup_distinguishes_invocation_cancellation": {"[caller-cancel]": [], "[deadline-only]": [], "[inherited]": [], "[repeat-caller-cancel]": []},
       "test_mock_connections_close_without_gc_and_keep_rollback": {"": []},
       "test_oversized_chunk_never_enters_staging_or_observations": {"": []},
-      "test_poll_counter_stops_without_spinning_or_sending": {"": []}
+      "test_poll_counter_stops_without_spinning_or_sending": {"": []},
+      "test_receipt_publication_failure_is_not_transport_ambiguity": {"[fresh-cancel]": [], "[no-fresh-cancel]": []}
     },
     "tests/test_batch_privacy_bounds.py": {
       "test_deadline_before_adapter_entry_has_no_result_evidence": {"[collect]": [], "[submit]": []},
@@ -292,9 +309,12 @@
       "test_error_only_results_are_explicit_outcomes": {"[full]": [], "[minimal]": []},
       "test_every_mutation_death_boundary_keeps_one_forward_per_instance": {"[after_batch_forward-cancel]": [], "[after_batch_forward-create]": [], "[after_batch_forward-upload]": [], "[after_batch_intent-cancel]": [], "[after_batch_intent-create]": [], "[after_batch_intent-upload]": [], "[after_batch_operation_commit-cancel]": [], "[after_batch_operation_commit-create]": [], "[after_batch_operation_commit-upload]": [], "[after_batch_operation_receipt-cancel]": [], "[after_batch_operation_receipt-create]": [], "[after_batch_operation_receipt-upload]": []},
       "test_known_job_503_is_a_safe_read_not_submission_retry": {"": []},
+      "test_local_create_receipt_recovers_before_remote_reads": {"[accepted]": [], "[rejected]": []},
       "test_lost_create_ack_stop_late_discovery_single_cancel_and_two_rows": {"[full]": [], "[minimal]": []},
+      "test_malformed_create_ack_recovers_original_operation": {"[nonobject]": [], "[wrong-operation]": []},
       "test_member_receipt_recovers_without_retrieval_only_when_retained": {"[full]": [], "[minimal]": []},
-      "test_missing_sibling_after_terminal_job_stays_unresolved": {"": []}
+      "test_missing_sibling_after_terminal_job_stays_unresolved": {"": []},
+      "test_native_snapshot_authority_is_store_and_session_scoped": {"": []}
     },
     "tests/test_batch_source_recovery.py": {
       "test_complete_members_do_not_hide_unread_suffix_on_restart": {"[duplicate-conflict-full]": [], "[duplicate-conflict-minimal]": [], "[duplicate-full]": [], "[duplicate-minimal]": [], "[trailing-error-full]": [], "[trailing-error-minimal]": []},

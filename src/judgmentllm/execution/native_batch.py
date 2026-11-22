@@ -35,6 +35,7 @@ from judgmentllm.persistence.hashing import (
 from judgmentllm.persistence.models import (
     IntegrityError,
     ObservationRecord,
+    PersistenceError,
     SubmissionRecord,
 )
 from judgmentllm.persistence.native_batch import (
@@ -76,10 +77,29 @@ class InvocationBudget:
         self.deadline = asyncio.get_running_loop().time() + options.deadline_seconds
         self.steps = self.result_rows = self.bytes = 0
         self.closed = False
+        invocation = asyncio.current_task()
+        assert invocation is not None
+        self._invocation = invocation
+        self._initial_cancels = invocation.cancelling()
+        self._external_cancel = False
+
+    def external_cancelled(self) -> bool:
+        # Sample only after the invocation's wait_for/timeout context unwinds.
+        if asyncio.current_task() is self._invocation:
+            self._external_cancel |= (
+                self._invocation.cancelling() > self._initial_cancels
+            )
+        return self._external_cancel
 
     def remaining(self) -> float:
         remaining = self.deadline - asyncio.get_running_loop().time()
-        if self.closed or remaining <= 0 or self.steps >= self.options.max_io_steps:
+        # Pending requests close admission; only settled sampling authorizes stop.
+        if (
+            self.closed
+            or remaining <= 0
+            or self.steps >= self.options.max_io_steps
+            or self._invocation.cancelling() > self._initial_cancels
+        ):
             self.closed = True
             raise BudgetExhausted
         return remaining
@@ -89,8 +109,21 @@ class InvocationBudget:
         self.steps += 1
         task = asyncio.ensure_future(function())
         try:
-            return await asyncio.wait_for(task, timeout)
-        except (TimeoutError, asyncio.CancelledError):
+            result = await asyncio.wait_for(task, timeout)
+        except (
+            TimeoutError,
+            asyncio.CancelledError,
+            OSError,
+            StopAsyncIteration,
+        ) as error:
+            external = self.external_cancelled()
+            if asyncio.get_running_loop().time() >= self.deadline:
+                self.closed = True
+            if (
+                not isinstance(error, (TimeoutError, asyncio.CancelledError))
+                and not external
+            ):
+                raise
             self.closed = True
             task.cancel()
             # Never detach a sender while releasing the lifetime run lock.
@@ -98,10 +131,26 @@ class InvocationBudget:
                 try:
                     await asyncio.shield(task)
                 except asyncio.CancelledError:
-                    continue
-            if not task.cancelled():
-                task.exception()
+                    self.external_cancelled()
+                except Exception:
+                    if not task.done():
+                        raise
+            terminal = None if task.cancelled() else task.exception()
+            if terminal is not None and not isinstance(
+                terminal, (OSError, StopAsyncIteration)
+            ):
+                raise terminal from None
+            if self.external_cancelled():
+                raise asyncio.CancelledError from None
+            if terminal is not None and terminal is not error:
+                raise terminal from None
             raise
+        if asyncio.get_running_loop().time() >= self.deadline:
+            self.closed = True
+        if self.external_cancelled():
+            self.closed = True
+            raise asyncio.CancelledError
+        return result
 
     def reconcile_step(self) -> None:
         self.remaining()
@@ -245,12 +294,17 @@ class BatchSession(AbstractContextManager["BatchSession"]):
             or receipt.fence.sender_token != intent.owner_token
         ):
             raise IntegrityError("nonacceptance fence differs from earlier sender")
-        artifact = put(
-            self.repository,
-            self.run_id,
-            receipt,
-            reference=self.receipt_reference(intent.instance_id),
-        )
+        try:
+            artifact = put(
+                self.repository,
+                self.run_id,
+                receipt,
+                reference=self.receipt_reference(intent.instance_id),
+            )
+        except OSError:
+            raise PersistenceError(
+                "batch receipt could not be durably published"
+            ) from None
         self.checkpoint("after_batch_operation_receipt", intent.instance_id)
         with self.repository.execution_transaction(self.run_id, self.token):
             register(self.repository, self.run_id, artifact)
@@ -357,14 +411,21 @@ class BatchSession(AbstractContextManager["BatchSession"]):
                 if receipt.outcome != "accepted":
                     self.blocked_logicals.add(intent.logical_id)
                 continue
-            raw = await self.budget.call(
-                lambda intent=intent: self.adapter.reconcile_operation(intent)
-            )
-            if raw is None:
+
+            async def reconcile_and_record(
+                intent: BatchOperationIntentV1 = intent,
+            ) -> BatchOperationReceiptV1 | None:
+                raw = await self.adapter.reconcile_operation(intent)
+                if raw is None:
+                    return None
+                receipt = self.adapter.decode_receipt(raw, intent)
+                self.accept_receipt(intent, receipt)
+                return receipt
+
+            receipt = await self.budget.call(reconcile_and_record)
+            if receipt is None:
                 self.block_mutations = True
                 continue
-            receipt = self.adapter.decode_receipt(raw, intent)
-            self.accept_receipt(intent, receipt)
             # Newly learned nonacceptance is not an automatic successor grant.
             if receipt.outcome != "accepted":
                 self.block_mutations = True
@@ -476,20 +537,23 @@ class BatchSession(AbstractContextManager["BatchSession"]):
                     "submission", self.run_id, instance, "submitting"
                 )
         self.checkpoint("after_batch_intent", instance)
-        try:
-            raw = await self.budget.call(
-                lambda: self.adapter.invoke(
-                    intent,
-                    self.budget.payload(payload),
-                    lambda: self.forward_guard(intent),
-                )
+
+        async def invoke_and_record() -> BatchOperationReceiptV1:
+            raw = await self.adapter.invoke(
+                intent,
+                self.budget.payload(payload),
+                lambda: self.forward_guard(intent),
             )
             self.checkpoint("after_batch_forward", instance)
             receipt = self.adapter.decode_receipt(raw, intent)
+            self.accept_receipt(intent, receipt)
+            return receipt
+
+        try:
+            receipt = await self.budget.call(invoke_and_record)
         except (TimeoutError, OSError):
             self.block_mutations = True
             return None
-        self.accept_receipt(intent, receipt)
         if receipt.outcome != "accepted":
             self.block_mutations = True
         return receipt

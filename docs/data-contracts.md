@@ -11,6 +11,11 @@ The manifest/specification hashes, immutable objects, database seal, schema,
 package, generation and provider checks remain authoritative. Native writers,
 public `Path` fields and canonicalization versions are unchanged.
 
+This proof applies only when native typed manifest canonical bytes differ from
+the verified sealed artifact. Canonical-exact earlier protocols retain their
+ordinary restoration and integrity checks, including explicit snapshot support;
+foreign provenance alone does not select the special wire proof.
+
 Inspection reads manifest metadata only. Foreign originals are unavailable and
 their consumer-filesystem aliases are never traversed. Only an explicit sealed
 full frozen-snapshot reopen may use verified retained source artifacts, recording

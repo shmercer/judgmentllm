@@ -748,3 +748,376 @@ def test_privacy_at_real_publication_death_precedes_recovery(
         assert not executor_is_active(repository, "001")
         assert repository.summary("001").attempts == 2
         assert repository.summary("001").results == 0
+
+
+@pytest.mark.parametrize("fault", ["unterminated", "record-limit"])
+def test_authenticated_suffix_framing_failure_preserves_proven_member(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fault: str
+) -> None:
+    from batch_privacy_audit import MARKERS
+    from test_batch_exports_retry import file_path
+
+    from judgmentllm import (
+        BatchLimitsV1,
+        BatchMockOptions,
+        export_batch_provenance,
+        resume_batch,
+    )
+    from judgmentllm.persistence.artifacts import ArtifactStore
+
+    spec = batch_spec(tmp_path)
+    recipe = mock_fixture(tmp_path, input_tokens=7, output_tokens=3)
+    mock = BatchMockOptions(
+        fixture_path=recipe.fixture_path,
+        limits=BatchLimitsV1(max_record_bytes=4096),
+    )
+    root = tmp_path / "store"
+    prepare_batch(spec, store=root, run_id="001", mock=mock)
+    audit = PrivacyAudit(root)
+    audit.install(monkeypatch)
+    submitted = audit.checked(
+        lambda: submit_batch(
+            "001", store=root, spec=spec, mock=mock, _fault=audit.inspect
+        )
+    )
+    assert submitted.batch.accepted_jobs == 1
+    partial = audit.checked(
+        lambda: collect_batch(
+            "001",
+            store=root,
+            spec=spec,
+            mock=mock,
+            options=BatchControlOptionsV1(max_result_rows=1),
+            _fault=audit.inspect,
+        )
+    )
+    assert partial.outcome == "partial" and partial.batch.missing_members == 1
+    before_cursors, before_evidence = cursors(root), member_evidence(root)
+    assert len(before_cursors) == len(before_evidence) == 1
+    cursor = BatchCursorV1.model_validate_json(before_cursors[0][1])
+    first = BatchMemberReceiptV1.model_validate_json(before_evidence[0])
+    assert cursor.position == 1 and not cursor.exhausted
+    assert cursor.index_sha256 is not None and cursor.source_id == first.source_id
+    assert first.capture == "full" and first.disposition == "exact"
+    assert (first.usage.input_tokens, first.usage.output_tokens) == (7, 3)
+    with ReadOnlyRepository(root) as repository:
+        manifest = parse_executable_manifest(
+            ArtifactStore(repository.run_directory("001"), create=False).read(
+                repository.get_manifest("001").artifact
+            )
+        )
+        assert isinstance(manifest, ExecutableRunManifestV12)
+        assert manifest.batch_context.limits.max_record_bytes == 4096
+        members = [
+            BatchMemberV1.model_validate_json(row[0])
+            for row in repository.connection.execute(
+                "SELECT record_json FROM batch_prepared_members ORDER BY position"
+            )
+        ]
+        assert len(members) == 2
+        sibling = next(m for m in members if m.attempt_id != first.identity.attempt_id)
+        attempts = tuple(
+            a.model_dump(exclude={"state"}) for a in repository.iter_attempts("001")
+        )
+        results = tuple(repository.iter_results("001"))
+        assert len(attempts) == 2 and len(results) == 1
+        assert results[0].attempt_id == first.identity.attempt_id
+        assert results[0].status == "complete"
+        submission = repository.get_submission("001", first.identity.submission_id)
+        assert submission.certainty == "accepted" and submission.remote_id is not None
+        assert submission.batch_uid == sibling.shard_id == members[0].shard_id
+        assert cursor.submission_id == submission.submission_id
+        assert (
+            repository.connection.execute(
+                "SELECT count(*) FROM submissions"
+            ).fetchone()[0]
+            == 1
+        )
+        retained = ArtifactStore(repository.run_directory("001"), create=False).read(
+            first.retained
+        )
+    with closing(
+        sqlite3.connect(
+            (root / "mock-batch-service.sqlite3").as_uri() + "?mode=ro", uri=True
+        )
+    ) as connection:
+        indexes = connection.execute(
+            "SELECT source_id,scope_sha256,index_sha256,record_json FROM result_indexes ORDER BY source_id"
+        ).fetchall()
+    assert len(indexes) == 1
+    source_id, scope, index_sha256, index_json = indexes[0]
+    index = BatchSourceIndexV1.model_validate_json(index_json)
+    assert canonical_bytes(index) == index_json.encode()
+    assert bytes_digest(index_json.encode()) == index_sha256 == cursor.index_sha256
+    assert index.scope_sha256 == scope and source_id == cursor.source_id
+    assert len(index.prefix_sha256) == 3
+    assert index.prefix_sha256[cursor.position] == cursor.prefix_sha256
+    original_audit = audit.checked(lambda: export_batch_provenance("001", store=root))
+    original_manifest = Path(original_audit.manifest_path).read_bytes()
+    original_files = {
+        f.name: file_path(original_audit, f.name).read_bytes()
+        for f in original_audit.manifest.files
+    }
+    accepted_counts = service_counts(root)
+    assert accepted_counts == {"forwards": 2, "jobs": 1, "cancelled": 0}
+    budgets: list[core.InvocationBudget] = []
+    initialize = core.InvocationBudget.__init__
+    original_results = MockBatchAdapter.results
+    entered = closed = False
+    reached_eof = False
+    altered = 0
+    metadata_bytes = injected_bytes = 0
+    read_start = len(audit.reads)
+
+    def capture(self: core.InvocationBudget, options: BatchControlOptionsV1) -> None:
+        initialize(self, options)
+        budgets.append(self)
+
+    async def damaged_suffix(
+        self: MockBatchAdapter,
+        submission_id: str,
+        remote_id: str,
+        source: str,
+        compiled: list[tuple[str, int, PreparedRequestV2]],
+        verified: BatchCursorV1 | None = None,
+    ) -> AsyncGenerator[bytes, None]:
+        nonlocal entered, closed, reached_eof, altered, metadata_bytes, injected_bytes
+        delegated = original_results(
+            self, submission_id, remote_id, source, compiled, verified
+        )
+        try:
+            assert source == "output"
+            assert (submission_id, remote_id) == (
+                submission.submission_id,
+                submission.remote_id,
+            )
+            assert verified is not None
+            assert verified == cursor and verified.index_sha256 == index_sha256
+            assert [(key, position) for key, position, _ in compiled] == [
+                (m.member_key, m.position) for m in members
+            ]
+            entered = True
+            async for raw in delegated:
+                assert altered == 0 and raw.endswith(b"\n")
+                data = json.loads(raw)
+                assert data["member_key"] == sibling.member_key
+                assert len(raw) <= 4096
+                if fault == "unterminated":
+                    chunk = raw[:-1]
+                    valid = bool(chunk) and b"\n" not in chunk
+                else:
+                    data["api_key"] = MARKERS[1].decode("ascii")
+                    body = canonical_bytes(data)
+                    fits = len(body) <= 4097
+                    assert fits, "synthetic body does not fit the approved fault"
+                    body += b" " * (4097 - len(body))
+                    chunk = body + b"\n"
+                    valid = (
+                        len(body) == 4097
+                        and len(chunk) == 4098
+                        and json.loads(body) == data
+                    )
+                    audit.observe(body)
+                    audit.observe(chunk)
+                    registered = audit.originals[-2:] == [body, chunk]
+                    assert registered, "both prohibited originals must precede yield"
+                assert valid, "synthetic framing fault differs from its contract"
+                assert len(budgets) == 1
+                metadata_bytes, injected_bytes = budgets[0].bytes, len(chunk)
+                assert 0 < metadata_bytes and metadata_bytes + injected_bytes <= 8192
+                assert budgets[0].options == BatchControlOptionsV1(max_result_rows=2)
+                altered += 1
+                audit.inspect("before_suffix_yield", "")
+                yield chunk
+            reached_eof = True
+        finally:
+            await delegated.aclose()
+            closed = True
+            audit.inspect("after_suffix_close", "")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(core.InvocationBudget, "__init__", capture)
+        patch.setattr(MockBatchAdapter, "results", damaged_suffix)
+        with pytest.raises(LifecycleError) as raised:
+            audit.checked(
+                lambda: collect_batch(
+                    "001",
+                    store=root,
+                    spec=spec,
+                    mock=mock,
+                    options=BatchControlOptionsV1(max_result_rows=2),
+                    _fault=audit.inspect,
+                )
+            )
+    safe_error = (
+        raised.value.category == "execution"
+        and not raised.value.retryable
+        and raised.value.message == "durable run integrity or storage operation failed"
+    )
+    assert safe_error, "framing failure must expose only the safe integrity error"
+    assert entered and closed and altered == 1
+    assert reached_eof == (fault == "unterminated")
+    assert audit.reads[read_start:] == [("output", sibling.position)]
+    assert len(budgets) == 1
+    budget = budgets[0]
+    assert 0 < budget.steps <= budget.options.max_io_steps
+    assert budget.bytes == metadata_bytes + injected_bytes <= 8192
+    assert budget.result_rows == (1 if fault == "record-limit" else 0)
+    assert cursors(root) == before_cursors and member_evidence(root) == before_evidence
+    failed = get_batch_status("001", store=root)
+    assert failed.batch.missing_members == 1 and failed.batch.recovery_required
+    assert failed.batch.accepted_jobs == 1 and failed.batch.conflicts == 0
+    with ReadOnlyRepository(root) as repository:
+        assert tuple(repository.iter_results("001")) == results
+        assert repository.get_results_for_attempt("001", sibling.attempt_id) == ()
+        assert (
+            repository.connection.execute(
+                "SELECT count(*) FROM observations WHERE attempt_id=?",
+                (sibling.attempt_id,),
+            ).fetchone()[0]
+            == 0
+        )
+        assert (
+            repository.connection.execute(
+                "SELECT count(*) FROM batch_member_receipts WHERE attempt_id=?",
+                (sibling.attempt_id,),
+            ).fetchone()[0]
+            == 0
+        )
+        assert not (
+            repository.run_directory("001")
+            / "batch/members"
+            / (sibling.member_key + ".json")
+        ).exists()
+        assert repository.get_owner("001") is None
+        assert not executor_is_active(repository, "001")
+        assert (
+            ArtifactStore(repository.run_directory("001"), create=False).read(
+                first.retained
+            )
+            == retained
+        )
+    reopened = audit.checked(
+        lambda: export_batch_provenance(
+            "001", store=root, bundle_id=original_audit.manifest.bundle_id
+        )
+    )
+    assert Path(reopened.manifest_path).read_bytes() == original_manifest
+    assert {
+        f.name: file_path(reopened, f.name).read_bytes()
+        for f in reopened.manifest.files
+    } == original_files
+    with closing(
+        sqlite3.connect(
+            (root / "mock-batch-service.sqlite3").as_uri() + "?mode=ro", uri=True
+        )
+    ) as connection:
+        assert (
+            connection.execute(
+                "SELECT source_id,scope_sha256,index_sha256,record_json FROM result_indexes ORDER BY source_id"
+            ).fetchall()
+            == indexes
+        )
+    assert service_counts(root) == accepted_counts
+
+    recovered = audit.checked(
+        lambda: resume_batch(
+            "001",
+            store=root,
+            spec=spec,
+            mock=mock,
+            options=BatchControlOptionsV1(max_result_rows=2),
+            _fault=audit.inspect,
+        )
+    )
+    assert recovered.outcome == "ok" and recovered.batch.missing_members == 0
+    assert not recovered.batch.recovery_required
+    final_cursors = [BatchCursorV1.model_validate_json(raw) for _, raw in cursors(root)]
+    assert final_cursors[0] == cursor
+    exhausted = [c for c in final_cursors if c.exhausted]
+    assert len(exhausted) == 2
+    assert {(c.source_id == source_id, c.position) for c in exhausted} == {
+        (True, 2),
+        (False, 0),
+    }
+    final_evidence = member_evidence(root)
+    assert before_evidence[0] in final_evidence
+    receipts = [BatchMemberReceiptV1.model_validate_json(raw) for raw in final_evidence]
+    assert len(receipts) == 2 and first in receipts
+    assert {r.identity.attempt_id for r in receipts} == {m.attempt_id for m in members}
+    assert len({r.identity.observation_id for r in receipts}) == 2
+    assert all(
+        (r.usage.input_tokens, r.usage.output_tokens) == (7, 3) for r in receipts
+    )
+    assert all(r.capture == "full" and r.disposition == "exact" for r in receipts)
+    assert sum(r.usage.input_tokens or 0 for r in receipts) == 14
+    assert sum(r.usage.output_tokens or 0 for r in receipts) == 6
+    with ReadOnlyRepository(root) as repository:
+        assert (
+            tuple(
+                a.model_dump(exclude={"state"}) for a in repository.iter_attempts("001")
+            )
+            == attempts
+        )
+        assert repository.get_submission("001", submission.submission_id).model_dump(
+            exclude={"state"}
+        ) == submission.model_dump(exclude={"state"})
+        final_results = tuple(repository.iter_results("001"))
+        assert len(final_results) == 2 and results[0] in final_results
+        assert all(r.status == "complete" for r in final_results)
+        assert (
+            repository.connection.execute(
+                "SELECT count(*) FROM submissions"
+            ).fetchone()[0]
+            == 1
+        )
+        assert (
+            repository.connection.execute(
+                "SELECT count(*) FROM observations"
+            ).fetchone()[0]
+            == 2
+        )
+        assert (
+            repository.connection.execute(
+                "SELECT count(*) FROM retry_operations"
+            ).fetchone()[0]
+            == 0
+        )
+        assert repository.get_owner("001") is None
+        assert not executor_is_active(repository, "001")
+        artifacts = ArtifactStore(repository.run_directory("001"), create=False)
+        assert artifacts.read(first.retained) == retained
+        for receipt in receipts:
+            assert artifacts.verify(receipt.retained) is not None
+    with closing(
+        sqlite3.connect(
+            (root / "mock-batch-service.sqlite3").as_uri() + "?mode=ro", uri=True
+        )
+    ) as connection:
+        final_indexes = connection.execute(
+            "SELECT source_id,scope_sha256,index_sha256,record_json FROM result_indexes ORDER BY source_id"
+        ).fetchall()
+    assert len(final_indexes) == 2 and indexes[0] in final_indexes
+    for c in exhausted:
+        source_index = next(row for row in final_indexes if row[0] == c.source_id)
+        proof = BatchSourceIndexV1.model_validate_json(source_index[3])
+        assert canonical_bytes(proof) == source_index[3].encode()
+        assert bytes_digest(canonical_bytes(proof)) == c.index_sha256 == source_index[2]
+        assert proof.scope_sha256 == source_index[1]
+        assert c.position == len(proof.prefix_sha256) - 1
+        assert c.prefix_sha256 == proof.prefix_sha256[-1]
+    reopened = audit.checked(
+        lambda: export_batch_provenance(
+            "001", store=root, bundle_id=original_audit.manifest.bundle_id
+        )
+    )
+    assert Path(reopened.manifest_path).read_bytes() == original_manifest
+    assert {
+        f.name: file_path(reopened, f.name).read_bytes()
+        for f in reopened.manifest.files
+    } == original_files
+    assert service_counts(root) == accepted_counts
+    assert audit.failures == []
+    assert "before_suffix_yield" in audit.checkpoints
+    assert "after_suffix_close" in audit.checkpoints
+    audit.scan()

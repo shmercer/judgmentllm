@@ -84,6 +84,14 @@ the lifetime run lock. Cleanup can outlast the admission deadline; there is no
 detached sender or background mode. These are admission bounds, not guaranteed
 provider spending limits. Unknown token counts and costs remain null.
 
+Fresh cancellation of the public invocation task drains owned work, records one
+local scheduling stop under ownership, then propagates cancellation. A deadline,
+child self-cancellation, inherited cancellation count or nested payload timeout
+does not authorize that stop. Already-returned mutation acknowledgments are
+screened and durably published before acceptance is projected and before the
+stop; this permits later receipt-first recovery without another send. Integrity,
+storage and stop-publication failures retain their existing safe diagnostics.
+
 ## Screening and result evidence
 
 The adapter must authorize control/result representations, member keys and
