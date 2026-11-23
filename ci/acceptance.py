@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 from environment import clean_environment
+from local.coverage_authority import admission_identity
 from risk import R_GATES, admit, git, lane_profile, make_plan, required_steps
 from selection import read
 from suite_evidence import validate_suite
@@ -506,6 +507,11 @@ def main() -> int:
         "--execution-scope", choices=("local", "hosted"), default="hosted"
     )
     args = parser.parse_args()
+    if (
+        os.environ.get("GITHUB_EVENT_NAME") == "pull_request_target"
+        and args.operation != "r-gate"
+    ):
+        args.base, args.head = admission_identity(args.base, args.head)
     if args.operation in {"plan", "aggregate", "verify-local"} and args.base:
         # Dispatch has no event.before SHA. Resolve main to a literal commit
         # before classification; never compare a feature branch to itself.
@@ -531,6 +537,29 @@ def main() -> int:
         return r_gate(args.name, args.source, args.output, run_id=args.run_id)
     plan = read(args.plan)
     if args.operation == "lane":
+        # Non-PR hosted lanes keep their legacy CLI and cannot run coverage;
+        # their separate aggregator still reconstructs the independently bound plan.
+        if plan.get("coverage_policy") is not None and (
+            args.execution_scope == "local"
+            or (
+                os.environ.get("GITHUB_ACTIONS") == "true"
+                and os.environ.get("GITHUB_EVENT_NAME") == "pull_request_target"
+            )
+        ):
+            args.base, args.head = admission_identity(args.base, args.head)
+            expected_plan = make_plan(
+                args.source,
+                args.base,
+                args.head,
+                minimum=plan["requested_minimum"],
+                purpose="pr"
+                if os.environ.get("GITHUB_EVENT_NAME") == "pull_request_target"
+                else plan.get("purpose", args.purpose),
+            )
+            if plan != expected_plan:
+                raise ValueError(
+                    "Lane plan differs from independently supplied authority"
+                )
         return run_lane(
             plan,
             args.source,
