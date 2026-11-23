@@ -290,7 +290,28 @@ def validate_suite_coverage(
                 output, source, plan["base_sha"], plan["source_sha"], targets, baseline
             )
         else:
-            result = compare(output, baseline, source, reviewed_ref=plan["source_sha"])
+            result = compare(
+                output,
+                baseline,
+                source,
+                reviewed_ref=plan["source_sha"],
+                **(
+                    {
+                        "coverage_policy": plan["coverage_policy"],
+                        "protected_base": plan["base_sha"],
+                    }
+                    if plan.get("coverage_policy") is not None
+                    else {}
+                ),
+            )
+            if plan.get("coverage_policy") is not None and (
+                result.get("coverage_policy_sha256")
+                != plan.get("coverage_policy_sha256")
+                or result.get("source_tree_sha") != plan.get("source_tree_sha")
+            ):
+                raise ValueError(
+                    "Rebuilt coverage authority/tree differs from the trusted plan"
+                )
         if result.get("passed") is not True:
             raise ValueError(
                 f"Independently rebuilt coverage fails admission: {result}"

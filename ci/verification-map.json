@@ -267,7 +267,7 @@
         "ci/local/test_optimization.py"
       ],
       "execution": "Primary quality job before expensive matrix execution.",
-      "guarantees": "Source/lock/archive integrity, exact case receipts, missing shard/worker failure propagation, recovery and ownership",
+      "guarantees": "Source/lock/archive integrity, exact case receipts, missing shard/worker failure propagation, recovery and ownership; exact protected exclusion-delta authority, strict evidence/report-all separation, newly exposed outcomes and genuine independent coverage reconstruction",
       "risk_levels": [
         3,
         4

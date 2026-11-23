@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from additions import additive_tests, independent_module, loads, metadata_additions
+from local.coverage_authority import commit_tree, describe
 from selection import HERE as SELECTION_ROOT
 from selection import digest, impact, read, validate_registry
 
@@ -97,12 +98,14 @@ def sensitive_provider_edit(before: str | None, after: str) -> bool:
 
 
 def git(source: Path, *args: str) -> str:
-    return subprocess.check_output(["git", *args], cwd=source, text=True).strip()
+    return subprocess.check_output(
+        ["git", "--no-replace-objects", *args], cwd=source, text=True
+    ).strip()
 
 
 def blob(source: Path, ref: str, filename: str) -> str | None:
     result = subprocess.run(
-        ["git", "show", f"{ref}:{filename}"],
+        ["git", "--no-replace-objects", "show", f"{ref}:{filename}"],
         cwd=source,
         text=True,
         capture_output=True,
@@ -671,11 +674,15 @@ def make_plan(
                 resource_reasons.append(
                     "All newly collected resource cases are mandatory"
                 )
+    coverage_policy = describe(source, base)
     plan: dict[str, Any] = {
         "schema_version": 2,
         "purpose": purpose,
         "base_sha": base,
         "source_sha": head,
+        "source_tree_sha": commit_tree(source, head),
+        "coverage_policy": coverage_policy,
+        "coverage_policy_sha256": digest(coverage_policy),
         "lockfile_sha256": hashlib.sha256(lock.encode()).hexdigest()
         if (lock := blob(source, head, "uv.lock")) is not None
         else None,

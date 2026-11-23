@@ -61,6 +61,36 @@ without a separate troubleshooting-only status that could qualify a PR.
 Do not run both complete grids by default. Release evidence must identify actual
 platform/version coverage, including hosted macOS 3.15 when using the native grid.
 
+## Local coverage authority and review
+
+Local coverage reconciliation supports trusted reviewer-supervised execution and
+independent replay, not automatic attestation against a hostile same-UID process.
+Use the existing protected `acceptance.py` plan/lane/verify-local interfaces with
+independently supplied exact base/head identities. The local PR launcher passes
+those existing arguments through; candidate-runner output alone is a claim.
+Hosted PR admission binds them to the literal event base/head, never a mutable
+ref, manual dispatch or the candidate's registry.
+
+The reviewer authenticates a fresh policy copy from the known protected Git
+commit/tree, uses a trusted locked interpreter without candidate import paths or
+editable installations, and freezes inputs after owned candidate execution has
+ended. Reconstruct the plan and raw coverage independently. A writable policy
+copy, hashes, disabled bytecode, locks and systemd ownership are not tamper
+isolation. This process trusts the supervisor/host and absence of hostile
+same-user processes. The repository has no enforced helper establishing the
+stronger boundary; installed sandbox software alone proves nothing. If that
+stronger guarantee is required, it is a blocker, not permission to claim
+isolation or change OS settings in this workstream.
+
+The proposed reconciliation registry is not adopted. No execution coverage,
+qualification, installation or adoption is implied by its presence. Before
+future execution, independently review the unstaged source and its byte manifest;
+then obtain fresh source-bound Level 3 quality/infrastructure, full primary
+coverage, all seven strict R gates, required resources/package checks and hosted
+protected-base evidence under the old policy. Preserve all previous failures,
+locks, ownership, original limits and deadlines. Do not substitute candidate
+policy success, a bare hash or hosted deferral for an unrun gate.
+
 ## Existing infrastructure and isolation
 
 | Platform | Reused environment | JudgmentLLM state |

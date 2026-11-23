@@ -18,8 +18,21 @@ def assess(
     *,
     complete: Path | None = None,
     resource_data: Path | None = None,
+    coverage_policy: dict[str, Any] | None = None,
+    protected_base: str | None = None,
 ) -> dict[str, Any]:
-    comparison = compare(functional, baseline, source, reviewed_ref=head)
+    authority: dict[str, Any] = (
+        {"coverage_policy": coverage_policy, "protected_base": protected_base}
+        if coverage_policy is not None
+        else {}
+    )
+    comparison = compare(
+        functional,
+        baseline,
+        source,
+        reviewed_ref=head,
+        **authority,
+    )
     result: dict[str, Any] = {
         "schema_version": 1,
         "source_sha": head,

@@ -722,6 +722,7 @@ def test_planned_runner_executes_real_disjoint_partitions_and_propagates_failure
         "local/process.py",
         "local/orchestrator.py",
         "local/policy.py",
+        "local/coverage_authority.py",
         "local/allocation.py",
     ):
         path = policy / name
