@@ -59,11 +59,13 @@ def historical_copy(tmp_path: Path) -> HistoricalCopy:
 
 
 def test_historical_wire_preserves_native_writer_and_exact_identity(
-    historical_copy: HistoricalCopy,
+    historical_copy: HistoricalCopy, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    import judgmentllm.preparation as preparation
+    from judgmentllm.preparation import _restore_context  # pyright: ignore[reportPrivateUsage]
     from judgmentllm.preparation.historical_wire import HistoricalWire
 
-    _, _, manifest, raw, specification = historical_copy
+    root, run_id, manifest, raw, specification = historical_copy
     wire = HistoricalWire.checked(manifest, raw, specification)
     restored = wire.restore()
     assert wire.manifest.encode(manifest) == raw
@@ -74,6 +76,33 @@ def test_historical_wire_preserves_native_writer_and_exact_identity(
         restored.output_path
     )
     assert bytes_digest(wire.manifest.raw) == bytes_digest(raw)
+    # Foreign native spelling still requires implicit restoration of the wire.
+    supplied = restored if canonical_bytes(restored) == specification else None
+    with Repository(root) as repository:
+        current, template = _restore_context(repository, manifest, supplied, wire)
+    assert template is None
+    assert wire.specification.encode(current) == specification
+    assert wire.configuration_digest(current) == manifest.configuration_sha256
+    attempts = unavailable_originals(
+        monkeypatch, {source.original_location for source in manifest.sources}
+    )
+    with open_prepared_run(
+        run_id, store=root, spec=supplied, use_frozen_snapshot=True
+    ) as prepared:
+        assert prepared.manifest_sha256 == bytes_digest(raw)
+        responses = tuple(prepared.iter_responses())
+        assert [response.item_id for response in responses] == ["000", "001"]
+        assert [
+            dependency.request.response
+            for dependency in prepared.iter_request_dependencies()
+        ] == list(responses)
+        prepared.verify_compatibility()
+    (authorization,) = preparation.iter_snapshot_authorizations(run_id, store=root)
+    assert authorization.manifest_sha256 == bytes_digest(raw)
+    assert {d.source_id for d in authorization.discrepancies} == {
+        source.source_id for source in manifest.sources
+    }
+    assert attempts == []
 
 
 @pytest.fixture
