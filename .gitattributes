@@ -1,4 +1,7 @@
 # These artifacts are compared or hashed byte-for-byte across all platforms.
+# Policy fingerprints must agree with the Linux plan on Windows.
+/ci/**/*.py text eol=lf
+/ci/verification-map.json text eol=lf
 /tests/fixtures/presentation-history/producer.py.txt -text
 /tests/fixtures/presentation-history/store.tar.gz.base64 -text
 /tests/fixtures/presentation-history/portable/producer.py.txt -text
