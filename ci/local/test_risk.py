@@ -106,6 +106,81 @@ def freeze(source: Path) -> str:
     ).strip()
 
 
+def test_git_text_and_plan_are_utf8_under_windows_legacy_locale(
+    repository: tuple[Path, str],
+) -> None:
+    source, base = repository
+    text = "Quoted \u201csource\u201d and \u03bb.\n"
+    (source / "README.md").write_text(text, encoding="utf-8")
+    head = freeze(source)
+    expected = make_plan(source, base, head)
+    program = """
+import json, locale, sys
+from pathlib import Path
+locale.getencoding = lambda: "cp1252"
+sys.path.insert(0, sys.argv[1])
+from risk import blob, git, make_plan
+source = Path(sys.argv[2])
+base, head = sys.argv[3:5]
+text = json.loads(sys.argv[5])
+assert sys.flags.utf8_mode == 0
+assert blob(source, head, "README.md") == text
+assert git(source, "show", head + ":README.md") == text.strip()
+print(json.dumps(make_plan(source, base, head), sort_keys=True))
+"""
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-X",
+            "utf8=0",
+            "-B",
+            "-c",
+            program,
+            str(Path(__file__).resolve().parents[1]),
+            str(source),
+            base,
+            head,
+            json.dumps(text),
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == expected
+
+
+def test_policy_fingerprints_survive_windows_checkout(
+    repository: tuple[Path, str],
+) -> None:
+    source, _ = repository
+    root = Path(__file__).resolve().parents[2]
+    inputs = {
+        path.relative_to(root): path.read_bytes()
+        for path in (root / "ci").rglob("*.py")
+    }
+    inputs[Path("ci/verification-map.json")] = (
+        root / "ci/verification-map.json"
+    ).read_bytes()
+    (source / ".gitattributes").write_bytes((root / ".gitattributes").read_bytes())
+    for name, content in inputs.items():
+        assert b"\r\n" not in content
+        path = source / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+    freeze(source)
+    for name in inputs:
+        (source / name).unlink()
+    subprocess.run(
+        ["git", "-c", "core.autocrlf=true", "checkout", "--", "ci"],
+        cwd=source,
+        check=True,
+    )
+    for name, content in inputs.items():
+        assert (source / name).read_bytes() == content, name
+
+
 @pytest.mark.parametrize(
     "after",
     [
