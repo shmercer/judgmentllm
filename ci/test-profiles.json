@@ -1882,6 +1882,56 @@
         "darwin"
       ],
       "reason": "Same-default fresh-process progress with authoritative immutable source proofs, SQLite retention, tamper rejection and bounded read ownership"
+    },
+    "tests/test_batch_adapter_rejections.py": {
+      "cost": "io",
+      "domain": "native-transport",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Original synthetic service ledger, SQLite handle cleanup, immutable indexes and scoped job/cursor checks"
+    },
+    "tests/test_batch_audit_rejections.py": {
+      "cost": "io",
+      "domain": "immutable-evidence",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Native SQLite corruption, canonical audit files and preserved earlier export cuts"
+    },
+    "tests/test_batch_execution_rejections.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Real executor locks and async cancellation with exact operation, member and source attribution"
+    },
+    "tests/test_batch_preparation_rejections.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Real source preparation, schema markers and original/child membership integrity across native paths"
+    },
+    "tests/test_batch_rejections.py": {
+      "cost": "io",
+      "domain": "immutable-evidence",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Real SQLite records, artifact references, metadata bounds and receipt identity checks"
     }
   },
   "providers": {

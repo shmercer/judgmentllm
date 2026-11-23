@@ -85,3 +85,114 @@ def test_historical_cursor_does_not_gain_source_exhaustion_proof() -> None:
     assert b'"exhausted":true' in canonical_bytes(
         cursor.model_copy(update={"exhausted": True})
     )
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"sequence": 2},
+        {"predecessor_sha256": "f" * 64},
+        {"kind": "cancel"},
+    ],
+)
+def test_operation_rejects_missing_or_unexpected_predecessor_and_job(
+    changes: dict[str, object],
+) -> None:
+    fields: dict[str, object] = dict(
+        run_id="001",
+        shard_id="shard",
+        logical_id="a" * 64,
+        instance_id="b" * 64,
+        sequence=1,
+        kind="upload",
+        service_id="service",
+        manifest_sha256="c" * 64,
+        payload_sha256="d" * 64,
+        owner_token="owner",
+    )
+    assert BatchOperationIntentV1.model_validate(fields).sequence == 1
+    with pytest.raises(ValueError):
+        BatchOperationIntentV1.model_validate({**fields, **changes})
+
+
+@pytest.mark.parametrize("outcome", ["accepted", "unresolved"])
+def test_receipt_rejects_missing_job_or_inapplicable_fence(outcome: str) -> None:
+    fields: dict[str, object] = dict(
+        instance_id="a" * 64,
+        intent_sha256="b" * 64,
+        outcome=outcome,
+    )
+    if outcome == "unresolved":
+        fields["fence"] = dict(
+            service_id="service",
+            instance_id="a" * 64,
+            intent_sha256="b" * 64,
+            sender_token="owner",
+            proof_sha256="c" * 64,
+        )
+    with pytest.raises(ValueError):
+        BatchOperationReceiptV1.model_validate(fields)
+
+
+@pytest.mark.parametrize(
+    "fault",
+    [
+        "original-path",
+        "minimal-path",
+        "redacted-original",
+        "submission",
+        "attempt",
+        "observation",
+    ],
+)
+def test_member_receipt_rejects_retention_and_physical_identity_conflicts(
+    fault: str,
+) -> None:
+    from judgmentllm.batch_models import BatchMemberReceiptV1
+
+    identity = dict(
+        run_id="001",
+        request_uid="request",
+        attempt_id="attempt",
+        submission_id="submission",
+        observation_id="observation",
+    )
+    original: dict[str, object] = dict(
+        sha256="c" * 64,
+        byte_length=1,
+        media_type="application/json",
+        relative_path=None,
+    )
+    retained = {**original, "sha256": "d" * 64}
+    usage: dict[str, object] = dict(
+        **identity,
+        provider="mock",
+        endpoint="synthetic",
+        requested_model="mock",
+        observation_kind="response",
+    )
+    fields: dict[str, object] = dict(
+        identity=identity,
+        member_key="a" * 64,
+        source_id="b" * 64,
+        source_position=0,
+        observation_key="key",
+        kind="response",
+        capture="full",
+        original=original,
+        retained=retained,
+        disposition="exact",
+        usage=usage,
+    )
+    assert BatchMemberReceiptV1.model_validate(fields).identity.run_id == "001"
+    if fault == "original-path":
+        original["relative_path"] = "objects/cc/" + "c" * 64
+    elif fault == "minimal-path":
+        fields["capture"] = "minimal"
+        retained["relative_path"] = "objects/dd/" + "d" * 64
+    elif fault == "redacted-original":
+        fields["disposition"] = "redacted"
+    else:
+        usage[fault + "_id"] = "different"
+    with pytest.raises(ValueError):
+        BatchMemberReceiptV1.model_validate(fields)
