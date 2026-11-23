@@ -677,3 +677,16 @@ caps, request bytes and recovery semantics. `check-admission` validates private
 proofs and consent without keys or starting execution. Final live proposals must
 be regenerated at the independently accepted merged commit. No implementation
 test, lookup or readiness check authorizes generation.
+
+## M5 PR2: native-batch ownership and evidence
+
+Adopt the [provider-neutral native-batch contract](native-batch.md). Scientific
+attempts and submission/control operations have separate identities. Durable
+intent precedes a forward; authorized durable receipt precedes accounting.
+Ambiguity is unresolved, not permission to resend. Successors require a later
+explicit invocation, exact authoritative nonacceptance and a fenced old sender,
+with a durable maximum of three instances including the initial operation.
+Local stop and remote cancel-all are independent durable facts. Late job discovery
+may admit only eligible cancellation for its exact accepted ID. Screen returned
+bytes/keys/cursors before durable hashes. One audit cut preserves old exports
+and all proven outcomes while reporting current conflicts separately.

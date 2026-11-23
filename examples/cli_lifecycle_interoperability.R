@@ -487,4 +487,5 @@ for (kind in c("generative", "decisions")) {
       !is.null(x$members[[1L]]$result_sha256), logical(1L))))
   }
 }
+source(file.path(dirname(helper), "..", "examples", "batch_cli_interoperability.R"), local = TRUE)
 cat(sprintf("Installed CLI lifecycle interoperability passed: helper setup %.2fs; lifecycle %.2fs\n", setup_seconds, proc.time()[["elapsed"]] - lifecycle_started))

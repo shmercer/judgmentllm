@@ -183,6 +183,50 @@ __all__ += [
     "RunSummary",
 ]
 
+from judgmentllm.batch_models import (  # noqa: E402
+    BatchControlOptionsV1,
+    BatchLimitsV1,
+    BatchMockOptions,
+    BatchRunStatusV1,
+)
+from judgmentllm.native_batch import (  # noqa: E402
+    acancel_batch,
+    acollect_batch,
+    apoll_batch,
+    aresume_batch,
+    asubmit_batch,
+    cancel_batch,
+    collect_batch,
+    export_batch_provenance,
+    get_batch_status,
+    poll_batch,
+    prepare_batch,
+    resume_batch,
+    stop_batch,
+    submit_batch,
+)
+
+__all__ += [
+    "BatchControlOptionsV1",
+    "BatchLimitsV1",
+    "BatchMockOptions",
+    "BatchRunStatusV1",
+    "prepare_batch",
+    "submit_batch",
+    "asubmit_batch",
+    "get_batch_status",
+    "poll_batch",
+    "apoll_batch",
+    "collect_batch",
+    "acollect_batch",
+    "resume_batch",
+    "aresume_batch",
+    "cancel_batch",
+    "stop_batch",
+    "acancel_batch",
+    "export_batch_provenance",
+]
+
 __all__ += [
     "RunSpecV4",
     "RequestGroupingSpecV1",

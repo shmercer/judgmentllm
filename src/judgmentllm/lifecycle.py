@@ -102,6 +102,7 @@ from judgmentllm.providers import MockAdapter, MockScenario, ProviderError
 
 if TYPE_CHECKING:
     from judgmentllm.anthropic_transport import AnthropicProductionContext
+    from judgmentllm.execution.batch_exports import BatchAuditReportV1
     from judgmentllm.production_transport import ProductionContext
     from judgmentllm.providers.protocol import ProviderAdapter
 
@@ -1236,6 +1237,23 @@ async def aresume_run(
                 else isinstance(sealed, ExecutableRunManifestV8)
             )
         decisions_manifest = None
+        if sealed is not None and sealed.schema_version == 12:
+            from judgmentllm.batch_models import BatchMockOptions
+            from judgmentllm.native_batch import aresume_batch
+
+            batch = await aresume_batch(
+                identifier,
+                store=root,
+                spec=spec,
+                retry=retry,
+                use_frozen_snapshot=use_frozen_snapshot,
+                mock=BatchMockOptions(**mock.model_dump())
+                if mock is not None
+                else None,
+            )
+            return RunSummary(
+                **get_run(identifier, store=root).model_dump(), outcome=batch.outcome
+            )
         if decisions and run.provider in {"openai", "typesafe", "gemini"}:
             with ReadOnlyRepository(root) as repository:
                 manifest = _load_manifest(
@@ -1363,7 +1381,7 @@ def resume_run(
 
 def export_run_provenance(
     run_id: str | Path, *, store: str | Path | None = None
-) -> DecisionsProvenanceReportV1 | BulkProvenanceReport:
+) -> DecisionsProvenanceReportV1 | BulkProvenanceReport | BatchAuditReportV1:
     """Publish the immutable companion selected by a run's sealed manifest."""
     from judgmentllm.preparation import _load_manifest  # pyright: ignore[reportPrivateUsage]
 
@@ -1372,6 +1390,10 @@ def export_run_provenance(
     with _errors(identifier, root):
         with ReadOnlyRepository(root) as repository:
             manifest = _load_manifest(repository, identifier, unsealed=False)
+        if manifest.schema_version == 12:
+            from judgmentllm.native_batch import export_batch_provenance
+
+            return export_batch_provenance(identifier, store=root)
         if isinstance(manifest, ExecutableRunManifestV8):
             return export_decisions_provenance(identifier, store=root)
         return export_bulk_provenance(identifier, root=root)
@@ -1380,10 +1402,23 @@ def export_run_provenance(
 def cancel_run(run_id: str | Path, *, store: str | Path | None = None) -> RunStatus:
     """Cancel local scheduling for an idle run."""
     from judgmentllm.execution.cancellation import cancel_run as cancel_idle
+    from judgmentllm.preparation import _load_manifest  # pyright: ignore[reportPrivateUsage]
 
     with _errors():
         identifier, root = resolve_run(run_id, store)
     with _errors(identifier, root):
+        with ReadOnlyRepository(root) as repository:
+            batch = (
+                _load_manifest(repository, identifier, unsealed=False).schema_version
+                == 12
+                if repository.get_run(identifier).manifest_sha256 is not None
+                else False
+            )
+        if batch:
+            from judgmentllm.native_batch import stop_batch
+
+            stop_batch(identifier, store=root)
+            return get_run(identifier, store=root)
         cancel_idle(identifier, store=root)
         return get_run(identifier, store=root)
 
@@ -1467,7 +1502,8 @@ def export_run_results(
             view=report.view,
             row_count=report.row_count,
             result_high_water_mark=report.result_high_water_mark,
-            incomplete_source=not report.run_complete,
+            incomplete_source=not report.run_complete
+            or bool(status.batch and status.batch.recovery_required),
             files=(
                 ExportFile(
                     path=report.artifact_path,

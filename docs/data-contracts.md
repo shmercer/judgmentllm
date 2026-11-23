@@ -1,5 +1,29 @@
 # Data contracts and scoring semantics
 
+## Historical full-snapshot path identity
+
+Sealed storage-schema-3 preparations using executable manifest 2 and RunSpec 2
+may retain producer-normal POSIX path spelling when inspected on Windows.
+The private reader checks only the declared input, pair, prompt and output path
+leaves against their expected native representation. Every other typed field and
+the complete projected canonical document must still match the original bytes.
+The manifest/specification hashes, immutable objects, database seal, schema,
+package, generation and provider checks remain authoritative. Native writers,
+public `Path` fields and canonicalization versions are unchanged.
+
+This proof applies only when native typed manifest canonical bytes differ from
+the verified sealed artifact. Canonical-exact earlier protocols retain their
+ordinary restoration and integrity checks, including explicit snapshot support;
+foreign provenance alone does not select the special wire proof.
+
+Inspection reads manifest metadata only. Foreign originals are unavailable and
+their consumer-filesystem aliases are never traversed. Only an explicit sealed
+full frozen-snapshot reopen may use verified retained source artifacts, recording
+the existing operation-scoped authorization with the original manifest identity.
+Minimal capture, implicit reopen, unsupported foreign dialects, incomplete seals
+and damaged snapshots fail closed. Prior snapshot authorization is not permission
+for a later operation. This reader establishes no new transport capability.
+
 ## PR E Gemini Decisions
 
 The [Gemini Decisions contract](gemini-decisions.md) adds manifest 11,
@@ -286,8 +310,9 @@ route), V3 (production generative routes) and V4 (Decisions) admit
 positive integers. Absent fields are omitted. Production TPM requires a
 verified input, output and reasoning bound and is currently unsupported.
 Synthetic fixtures count UTF-8 bytes of the exact input and deterministic
-response as synthetic units. Native-batch, timeout and spending budget
-configuration remain reserved.
+response as synthetic units. Native batch uses separate typed invocation bounds
+and an offline V2 mock consumer; real provider limits and spending budgets remain
+deferred. [Native-batch versions and evidence](native-batch.md)
 
 ### Generation configuration and extensibility
 

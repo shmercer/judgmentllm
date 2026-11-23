@@ -47,6 +47,7 @@ from judgmentllm.preparation.freezing import (
     PreparationError,
     require_signature,
 )
+from judgmentllm.preparation.historical_wire import HistoricalWire, foreign_original
 from judgmentllm.preparation.index import (
     read_record,
 )
@@ -173,6 +174,7 @@ class PreparedRun:
         capabilities: CapabilityProfile | None,
         *,
         authorized_sources: frozenset[str] = frozenset(),
+        historical_wire: HistoricalWire | None = None,
         record_reader: RecordReader = read_record,
         transport_context: TransportContext
         | ProductionContext
@@ -190,7 +192,12 @@ class PreparedRun:
         self.transport_context = transport_context
         self._transport_index_verified = False
         self.store = ArtifactStore(repository.run_directory(manifest.run_id))
-        self.manifest_sha256 = bytes_digest(canonical_bytes(manifest))
+        self._historical_wire = historical_wire
+        self.manifest_sha256 = bytes_digest(
+            historical_wire.manifest.encode(manifest)
+            if historical_wire is not None
+            else canonical_bytes(manifest)
+        )
         self._sealed_manifest_sha256 = self.manifest_sha256
         self._context: _VerifiedContext | None = None
         self._handles: dict[str, BinaryIO] = {}
@@ -199,11 +206,16 @@ class PreparedRun:
         self._authorized_sources = authorized_sources
 
     def _source_guard(self) -> None:
+        if self._historical_wire is not None:
+            self._historical_wire.manifest.encode(self.manifest)
+            self._historical_wire.specification.encode(self.spec)
         manifest = (
             self._context.manifest if self._context is not None else self.manifest
         )
         for source in manifest.sources:
             if source.source_id not in self._authorized_sources:
+                if foreign_original(source.original_location):
+                    raise PreparationError("foreign original source is unavailable")
                 require_signature(Path(source.original_location), source.generation)
 
     def close(self) -> None:
@@ -396,14 +408,24 @@ class PreparedRun:
                 != tokens
             ):
                 raise PreparationError("configuration changed during verification")
-        if bytes_digest(canonical_bytes(manifest)) != self._sealed_manifest_sha256:
+        manifest_bytes = (
+            self._historical_wire.manifest.encode(manifest)
+            if self._historical_wire is not None
+            else canonical_bytes(manifest)
+        )
+        if bytes_digest(manifest_bytes) != self._sealed_manifest_sha256:
             raise PreparationError("manifest context was mutated after verification")
         current = _revalidate_record(spec)
         if isinstance(manifest, ExecutableRunManifestV2):
             validate_schema_selection(
                 current, manifest.output_selection, current_capabilities
             )
-        if configuration_digest(current) != manifest.configuration_sha256:
+        configuration = (
+            self._historical_wire.configuration_digest(current)
+            if self._historical_wire is not None
+            else configuration_digest(current)
+        )
+        if configuration != manifest.configuration_sha256:
             raise PreparationError("configuration differs from the immutable manifest")
         profile = (
             _revalidate_record(current_capabilities)
@@ -831,6 +853,9 @@ class PreparedRun:
 
     def verify_transport_index(self) -> None:
         """Verify the complete initial index once, never select a replacement."""
+        from judgmentllm.preparation.batch import verify_batches
+
+        verify_batches(self)
         if (
             isinstance(
                 self.manifest,

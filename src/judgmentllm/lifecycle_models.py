@@ -8,6 +8,7 @@ from typing import Annotated, Literal
 
 from pydantic import ConfigDict, Field, model_validator
 
+from judgmentllm.batch_models import BatchDetailV1
 from judgmentllm.cache_advisory import CacheAdvisoryReport
 from judgmentllm.decisions.records import (
     GEMINI_DECISIONS_CONTEXT_WARNING,
@@ -282,6 +283,9 @@ class RunStatus(ExecutionModel):
         default=None, exclude_if=lambda value: value is None
     )
     decisions: DecisionsStatusV1 | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    batch: BatchDetailV1 | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
 

@@ -219,6 +219,173 @@
       "test_r_gate_excludes_inherited_authentication_settings": {"": []},
       "test_status_isolated_from_io_discovery_sdk_and_runtime_boundaries": {"": []}
     },
+    "tests/test_batch_adapter_rejections.py": {
+      "test_acknowledgment_delay_and_unavailable_or_wrong_result_sources": {"": []},
+      "test_batch_compiler_rejects_an_incompatible_parent_compiler": {"": []},
+      "test_connection_setup_failure_closes_the_actual_sqlite_handle": {"": []},
+      "test_control_receipt_rejects_unproven_operation_identity": {"[cancel-job]": [], "[fence]": [], "[malformed]": [], "[remote]": []},
+      "test_fixture_commitment_rejects_prohibited_output_material": {"": []},
+      "test_missing_or_ambiguous_original_service_is_rejected": {"": []},
+      "test_operation_body_and_service_are_checked_before_forward": {"[payload]": [], "[service]": []},
+      "test_original_result_index_rejects_changed_or_oversized_evidence": {"[index-bound]": [], "[missing]": [], "[oversized-row]": [], "[prefix-bound]": [], "[stored-bound]": [], "[stored-scope]": []},
+      "test_reconciliation_rejects_changed_sender_without_a_second_forward": {"": []},
+      "test_remote_identity_is_not_arbitrary_provider_text": {"[job]": [], "[mock_file_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]": [], "[mock_job_zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz]": []},
+      "test_result_reads_require_the_original_accepted_job_and_index": {"[cursor]": [], "[job]": [], "[no-cursor]": [], "[source]": [], "[status]": []},
+      "test_result_stream_rechecks_immutable_source_after_index_admission": {"": []},
+      "test_row_screening_withholds_unsafe_or_unattributable_material": {"[body]": [], "[indices]": [], "[json]": [], "[output]": [], "[probabilities]": [], "[root]": [], "[secret]": []}
+    },
+    "tests/test_batch_audit_rejections.py": {
+      "test_audit_reference_must_name_its_original_run_and_bundle": {"[bundle]": [], "[missing]": [], "[run]": []},
+      "test_native_audit_rejects_an_ordinary_manifest": {"": []},
+      "test_new_audit_rejects_corrupt_records_without_rewriting_old_bundle": {"[control]": [], "[member]": [], "[operation]": []},
+      "test_pairwise_audit_exports_the_presented_and_original_identities": {"": []}
+    },
+    "tests/test_batch_cli.py": {
+      "test_batch_machine_controls_use_public_services": {"": []},
+      "test_batch_namespace_cannot_change_execution_mode": {"[bulk_live]": [], "[live]": []},
+      "test_local_status_and_explicit_cli_retry_keep_original_task": {"": []},
+      "test_local_status_does_not_fall_through_when_output_handler_returns": {"": []},
+      "test_retry_controls_fail_before_opening_a_store": {"[resume-arguments1]": [], "[status-arguments2]": [], "[status-arguments3]": [], "[submit-arguments0]": []},
+      "test_separate_cli_processes_keep_original_identity": {"": []}
+    },
+    "tests/test_batch_compatibility.py": {
+      "test_canonical_a2_foreign_provenance_uses_existing_snapshot_gate": {"": []},
+      "test_canonical_a2_foreign_snapshot_authorizes_subset_without_submission": {"": []},
+      "test_canonical_a2_foreign_snapshot_keeps_authorized_retry_and_replay": {"": []},
+      "test_canonical_archive_does_not_project_a_damaged_frozen_specification": {"": []},
+      "test_foreign_canonical_unsealed_preparation_is_not_recovered": {"": []},
+      "test_foreign_historical_scope_and_artifacts_fail_closed": {"[minimal]": [], "[seal]": [], "[snapshot]": [], "[specification]": [], "[unsealed]": []},
+      "test_foreign_snapshot_preserves_proof_without_touching_original_aliases": {"[manifest-nonpath]": [], "[manifest-path]": [], "[spec-nonpath]": [], "[spec-path]": []},
+      "test_foreign_supplied_specification_keeps_exact_equality_boundary": {"": []},
+      "test_genuine_schema3_stays_byte_compatible_and_cannot_accept_batch": {"": []},
+      "test_historical_foreign_dialect_is_classified_without_filesystem_access": {"": []},
+      "test_historical_manifest_projection_is_manifest_only_and_readonly": {"": []},
+      "test_historical_wire_preserves_native_writer_and_exact_identity": {"": []},
+      "test_historical_wire_rechecks_current_model_not_just_original_bytes": {"[extra]": [], "[manifest-nonpath]": [], "[manifest-path]": [], "[spec-nonpath]": [], "[spec-path]": []},
+      "test_historical_wire_rejects_noncanonical_or_uncontrolled_values": {"[container]": [], "[duplicate]": [], "[empty-path]": [], "[nonobject]": [], "[nul-path]": [], "[path-type]": [], "[path]": [], "[unknown]": [], "[version]": [], "[whitespace]": []},
+      "test_historical_wire_rejects_subtypes_and_rechecks_restored_protocol": {"": []},
+      "test_posix_wire_checks_pure_windows_presentation_without_native_execution": {"": []}
+    },
+    "tests/test_batch_contracts.py": {
+      "test_batch_control_has_finite_shared_bounds": {"": []},
+      "test_batch_limits_are_strict": {"[-1]": [], "[0]": [], "[1.5]": [], "[2]": [], "[True]": []},
+      "test_cursor_is_typed_frozen_and_not_a_provider_token": {"": []},
+      "test_historical_cursor_does_not_gain_source_exhaustion_proof": {"": []},
+      "test_member_receipt_rejects_retention_and_physical_identity_conflicts": {"[attempt]": [], "[minimal-path]": [], "[observation]": [], "[original-path]": [], "[redacted-original]": [], "[submission]": []},
+      "test_operation_cap_and_receipt_binding_are_explicit": {"": []},
+      "test_operation_rejects_missing_or_unexpected_predecessor_and_job": {"[changes0]": [], "[changes1]": [], "[changes2]": []},
+      "test_receipt_rejects_missing_job_or_inapplicable_fence": {"[accepted]": [], "[unresolved]": []}
+    },
+    "tests/test_batch_execution_rejections.py": {
+      "test_cancellation_after_collection_records_stop_before_returning": {"": []},
+      "test_cancellation_during_final_storage_failure_still_records_stop": {"": []},
+      "test_cleanup_exception_survives_invocation_cancellation": {"": []},
+      "test_collection_rejects_unverified_index_metadata_before_results": {"[budget]": [], "[index-size]": [], "[prefix]": [], "[source]": []},
+      "test_collection_requires_matching_local_and_service_evidence": {"[cursor]": [], "[member]": [], "[withheld]": []},
+      "test_completed_error_member_still_requires_unread_source_eof": {"": []},
+      "test_completion_overlap_cannot_return_after_external_cancellation": {"": []},
+      "test_control_evidence_cannot_create_or_repeat_an_unproven_forward": {"[fence]": [], "[intent]": [], "[replay]": [], "[stale-sender]": [], "[unresolved]": []},
+      "test_exhausted_row_budget_does_not_commit_an_extra_member": {"": []},
+      "test_internal_stop_control_opens_no_sources_or_mutations": {"": []},
+      "test_member_acceptance_rechecks_attribution_and_durable_bridge": {"[bridge]": [], "[conflict]": [], "[observation]": [], "[withheld]": []},
+      "test_mismatched_status_is_withheld_without_inventing_a_terminal_job": {"": []},
+      "test_missing_fence_readback_never_authorizes_a_successor": {"": []},
+      "test_replay_keeps_active_tasks_without_duplicate_results": {"": []},
+      "test_scientific_retry_is_rejected_outside_explicit_resume": {"": []},
+      "test_session_initialization_releases_ownership_on_rejection": {"[context]": [], "[plain-manifest]": []},
+      "test_unexpected_shield_failure_is_propagated_with_owned_cleanup": {"": []},
+      "test_unfinished_shards_require_the_original_fixture_and_bytes": {"[collect]": [], "[payload]": [], "[submit]": []},
+      "test_unterminated_record_is_rejected_before_cursor_or_result_commit": {"": []}
+    },
+    "tests/test_batch_exports_retry.py": {
+      "test_audit_files_share_one_cut_and_old_bundle_survives_collection": {"": []},
+      "test_changed_retry_fixture_cannot_replace_authorized_child": {"": []},
+      "test_cross_request_batch_retry_preserves_seal_and_selected_order": {"": []},
+      "test_empty_audit_companions_keep_typed_csv_headers": {"": []},
+      "test_explicit_retry_creates_scientific_attempt_and_child_shard": {"": []}
+    },
+    "tests/test_batch_indexed_source.py": {
+      "test_130_members_finish_repeated_same_default_fresh_collects": {"": ["serial"]},
+      "test_authenticated_suffix_framing_failure_preserves_proven_member": {"[record-limit]": [], "[unterminated]": []},
+      "test_authoritative_index_rejection_precedes_range_and_counts_io": {"[identity]": [], "[oversize]": [], "[prefix]": [], "[replacement]": [], "[scope]": [], "[unsafe]": []},
+      "test_index_deadline_holds_ownership_until_read_drains": {"": []},
+      "test_original_index_is_immutable_and_authenticates_historical_cursor": {"": []},
+      "test_privacy_at_real_publication_death_precedes_recovery": {"[raw_marker-full]": [], "[raw_marker-minimal]": [], "[unsafe_control-full]": [], "[unsafe_control-minimal]": [], "[unsafe_result-full]": [], "[unsafe_result-minimal]": []},
+      "test_range_must_match_commitment_before_outcome_or_eof": {"[changed-suffix]": [], "[early-eof]": []}
+    },
+    "tests/test_batch_integrity.py": {
+      "test_conflicting_duplicate_retains_original_result_and_usage": {"": []},
+      "test_conflicting_terminal_status_preserves_proven_bundle": {"": []},
+      "test_grouped_result_transaction_dies_without_partial_vector": {"": []},
+      "test_retry_subset_recovers_original_authorization": {"[after_batch_retry_attempt]": [], "[after_batch_retry_context]": [], "[after_batch_retry_shard]": []},
+      "test_sql_rejects_cross_job_member_bridge_and_replacement": {"": []}
+    },
+    "tests/test_batch_io.py": {
+      "test_accepted_ack_completion_cancellation_keeps_original_receipt": {"[direct]": [], "[reconcile]": []},
+      "test_actual_nested_payload_deadline_has_no_external_stop": {"": []},
+      "test_awaited_stream_close_cannot_mask_external_cancellation": {"": []},
+      "test_caller_cancellation_drains_before_recording_stop": {"": []},
+      "test_child_self_cancellation_has_no_external_stop": {"": []},
+      "test_deadline_drain_survives_repeated_cancellation": {"": []},
+      "test_deadline_normal_evidence_is_not_external_cancellation": {"[eof]": [], "[status]": []},
+      "test_each_protocol_boundary_obeys_shared_deadline": {"[cancel]": [], "[create]": [], "[reconcile]": [], "[source]": [], "[status]": [], "[stream]": [], "[upload]": []},
+      "test_late_cleanup_distinguishes_invocation_cancellation": {"[caller-cancel]": [], "[deadline-only]": [], "[inherited]": [], "[repeat-caller-cancel]": []},
+      "test_mock_connections_close_without_gc_and_keep_rollback": {"": []},
+      "test_oversized_chunk_never_enters_staging_or_observations": {"": []},
+      "test_poll_counter_stops_without_spinning_or_sending": {"": []},
+      "test_receipt_publication_failure_is_not_transport_ambiguity": {"[fresh-cancel]": [], "[no-fresh-cancel]": []}
+    },
+    "tests/test_batch_preparation_rejections.py": {
+      "test_child_shard_requires_its_original_authorization_and_parent": {"[authorization]": [], "[context]": [], "[crosswalk]": [], "[member-count]": [], "[parent-identity]": [], "[parent-missing]": []},
+      "test_database_batch_marker_cannot_replace_the_frozen_manifest": {"[context]": [], "[marker]": []},
+      "test_initial_batch_crosschecks_every_frozen_membership_layer": {"[attempt]": [], "[child-order]": [], "[context]": [], "[crosswalk]": [], "[index]": [], "[membership]": [], "[plan]": [], "[position]": [], "[reconstruct]": [], "[shard-order]": []},
+      "test_manifest_versions_cannot_be_coerced_or_silently_upgraded": {"[output_contract_version]": [], "[request_identity_version]": [], "[run_spec_version]": [], "[schema_version]": []},
+      "test_member_index_hash_is_verified_before_reconstruction": {"": []},
+      "test_preparation_rejects_incompatible_compiler_and_unsealed_admission": {"[compiler]": [], "[explicit-adapter]": [], "[input-limit]": []},
+      "test_retry_admission_requires_original_parent_and_sealed_limits": {"[input-bound]": [], "[parent-member]": [], "[parent-outcome]": [], "[stop]": []}
+    },
+    "tests/test_batch_privacy_bounds.py": {
+      "test_deadline_before_adapter_entry_has_no_result_evidence": {"[collect]": [], "[submit]": []},
+      "test_deadline_keeps_ownership_until_slow_sender_drains": {"": []},
+      "test_delayed_stale_sender_is_rejected_before_effect": {"": []},
+      "test_inspector_failure_cannot_become_a_partial_control_result": {"[assertion]": [], "[oserror]": [], "[timeout]": []},
+      "test_io_step_exhaustion_cannot_forward_or_reset_ambiguity": {"": []},
+      "test_pre_screening_partial_does_not_prove_privacy": {"[budget]": [], "[oserror]": [], "[timeout]": []},
+      "test_privacy_audit_defers_only_the_live_windows_lock": {"": []},
+      "test_rejections_require_explicit_invocations_and_stop_at_three": {"": []},
+      "test_screening_precedes_all_durable_content_and_hashes": {"[raw_marker-full]": [], "[raw_marker-minimal]": [], "[unsafe_control-full]": [], "[unsafe_control-minimal]": [], "[unsafe_cursor-full]": [], "[unsafe_cursor-minimal]": [], "[unsafe_key-full]": [], "[unsafe_key-minimal]": [], "[unsafe_result-full]": [], "[unsafe_result-minimal]": []},
+      "test_upload_and_cancel_caps_survive_explicit_continuations": {"[cancel]": [], "[upload]": []}
+    },
+    "tests/test_batch_r.py": {
+      "test_r_consumer_rejects_changed_csv_and_zero_unknown_usage": {"[lossless_identity]": ["r_interop"], "[r_score]": ["r_interop"], "[unknown_usage]": ["r_interop"]},
+      "test_real_r_consumes_python_batch_exports": {"[batch-missing]": ["r_interop"], "[batch-pairwise]": ["r_interop"], "[batch-terminal-full]": ["r_interop"], "[batch-terminal-minimal]": ["r_interop"]}
+    },
+    "tests/test_batch_recovery.py": {
+      "test_ambiguous_cancel_not_redelivered_and_local_stop_not_cancel_all": {"": []},
+      "test_death_boundaries_never_repeat_a_send": {"[after_batch_cursor-]": [], "[after_batch_intent-create]": [], "[after_batch_member_observation-]": [], "[after_batch_member_receipt-]": [], "[after_batch_member_results-]": [], "[after_batch_operation_commit-create]": [], "[after_batch_operation_receipt-create]": [], "[during_batch_results-]": []},
+      "test_error_only_results_are_explicit_outcomes": {"[full]": [], "[minimal]": []},
+      "test_every_mutation_death_boundary_keeps_one_forward_per_instance": {"[after_batch_forward-cancel]": [], "[after_batch_forward-create]": [], "[after_batch_forward-upload]": [], "[after_batch_intent-cancel]": [], "[after_batch_intent-create]": [], "[after_batch_intent-upload]": [], "[after_batch_operation_commit-cancel]": [], "[after_batch_operation_commit-create]": [], "[after_batch_operation_commit-upload]": [], "[after_batch_operation_receipt-cancel]": [], "[after_batch_operation_receipt-create]": [], "[after_batch_operation_receipt-upload]": []},
+      "test_known_job_503_is_a_safe_read_not_submission_retry": {"": []},
+      "test_local_create_receipt_recovers_before_remote_reads": {"[accepted]": [], "[rejected]": []},
+      "test_lost_create_ack_stop_late_discovery_single_cancel_and_two_rows": {"[full]": [], "[minimal]": []},
+      "test_malformed_create_ack_recovers_original_operation": {"[nonobject]": [], "[wrong-operation]": []},
+      "test_member_receipt_recovers_without_retrieval_only_when_retained": {"[full]": [], "[minimal]": []},
+      "test_missing_sibling_after_terminal_job_stays_unresolved": {"": []},
+      "test_native_snapshot_authority_is_store_and_session_scoped": {"": []}
+    },
+    "tests/test_batch_rejections.py": {
+      "test_general_resume_dispatches_the_frozen_native_batch": {"[False]": [], "[True]": []},
+      "test_metadata_reference_rejects_unsafe_files_before_acceptance": {"[noncanonical]": [], "[oversized]": [], "[symlink]": []},
+      "test_registered_batch_artifact_cannot_change_its_length": {"": []},
+      "test_stop_reference_cannot_authorize_a_different_run": {"": []},
+      "test_stored_records_are_checked_against_their_immutable_receipts": {"[fact]": [], "[member]": []}
+    },
+    "tests/test_batch_source_recovery.py": {
+      "test_complete_members_do_not_hide_unread_suffix_on_restart": {"[duplicate-conflict-full]": [], "[duplicate-conflict-minimal]": [], "[duplicate-full]": [], "[duplicate-minimal]": [], "[trailing-error-full]": [], "[trailing-error-minimal]": []},
+      "test_death_before_intent_registration_does_not_charge_or_poison_instance": {"[cancel]": [], "[create]": [], "[upload]": []},
+      "test_prefix_validation_uses_invocation_bounds_without_advancing": {"[bytes]": [], "[deadline]": [], "[steps]": []},
+      "test_restart_verifies_prefix_before_admitting_suffix": {"[changed-prefix]": [], "[stored-prefix]": []}
+    },
     "tests/test_bulk_live.py": {
       "test_bulk_cancellation_keeps_only_verified_outcomes": {"[acknowledgment]": [], "[failure]": [], "[response]": [], "[uncertain]": [], "[wrong_identity]": []},
       "test_bulk_cli_interrupt_during_adapter_close_keeps_completed_state": {"": []},
@@ -1167,6 +1334,12 @@
       "test_partial_mapping_and_source_mismatch": {"": ["smoke"]},
       "test_schema_version_and_unknown_fields": {"": ["smoke"]},
       "test_schema_version_requires_supported_integer": {"[0]": ["smoke"], "[1.0]": ["smoke"], "[1]": ["smoke"], "[2]": ["smoke"], "[False]": ["smoke"], "[None]": ["smoke"], "[True]": ["smoke"]}
+    },
+    "tests/test_native_batch.py": {
+      "test_batch_controls_reject_other_manifest_before_control_writes": {"[cancel_batch]": [], "[stop_batch]": [], "[submit_batch]": []},
+      "test_deterministic_shards_are_sealed_before_upload": {"": []},
+      "test_terminal_two_row_partial_replay_and_missing_sibling": {"[full]": [], "[minimal]": []},
+      "test_unsupported_route_fails_before_store_or_service": {"": []}
     },
     "tests/test_native_memory_accounting.py": {
       "test_child_native_peak_keeps_transient_touched_allocation": {"": ["resource"]},

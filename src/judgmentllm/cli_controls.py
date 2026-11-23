@@ -85,6 +85,7 @@ class Invocation:
 
 _invocation: ContextVar[Invocation | None] = ContextVar("lifecycle_cli", default=None)
 _LIFECYCLE = {
+    "batch",
     "validate",
     "plan",
     "run",
@@ -98,6 +99,12 @@ _USAGE = {"usage", "validation", "unsupported_capability", "not_found"}
 
 
 def _command_name(args: Sequence[str]) -> str:
+    if (
+        len(args) > 1
+        and args[0] == "batch"
+        and args[1] in {"prepare", "submit", "status", "collect", "resume", "cancel"}
+    ):
+        return " ".join(args[:2])
     if list(args[:2]) == ["templates", "preview"]:
         return "templates preview"
     if not args or args[0] not in _LIFECYCLE:

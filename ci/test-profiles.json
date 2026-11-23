@@ -1770,6 +1770,168 @@
         "darwin"
       ],
       "reason": "All pinned scoring transports and both Vertex auth paths through the active-owner permit and shutdown fence."
+    },
+    "tests/test_batch_cli.py": {
+      "cost": "process",
+      "domain": "durable-execution",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Public machine envelopes and separate source CLI process correctness; installed gate remains independent"
+    },
+    "tests/test_batch_compatibility.py": {
+      "cost": "io",
+      "domain": "immutable-evidence",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Genuine historical SQLite/schema/manifest bytes, portable extraction and no migration"
+    },
+    "tests/test_batch_contracts.py": {
+      "cost": "quick",
+      "domain": "core-contract",
+      "platforms": [],
+      "reason": "Strict immutable value contracts; no OS boundary. Complete primary and comprehensive coverage"
+    },
+    "tests/test_batch_exports_retry.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "SQLite audit cuts and immutable artifact publication with explicit scientific retry ancestry"
+    },
+    "tests/test_batch_integrity.py": {
+      "cost": "process",
+      "domain": "durable-execution",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Real process death during grouped transaction, immutable exports, SQL bridge and retry recovery"
+    },
+    "tests/test_batch_io.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Deadline/counter admission, stream bounds and lifetime SQLite ownership"
+    },
+    "tests/test_batch_privacy_bounds.py": {
+      "cost": "io",
+      "domain": "immutable-evidence",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Pre-hash privacy across WAL/temp/artifacts, real SQLite ownership, caps and stale sender fencing"
+    },
+    "tests/test_batch_r.py": {
+      "cost": "io",
+      "domain": "r-interface",
+      "platforms": [],
+      "reason": "Actual R/jsonlite export consumption executes locally; OS process guarantees have separate cross-platform cases"
+    },
+    "tests/test_batch_recovery.py": {
+      "cost": "process",
+      "domain": "process-ownership",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Real fresh Python processes and death/receipt/cancellation recovery with OS ownership"
+    },
+    "tests/test_native_batch.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Sealed preparation, SQLite, private artifacts and offline public lifecycle on OS paths"
+    },
+    "tests/test_batch_source_recovery.py": {
+      "domain": "process-ownership",
+      "cost": "process",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Real process death before operation registration and fresh-process suffix/prefix recovery with immutable evidence and finite I/O bounds"
+    },
+    "tests/test_batch_indexed_source.py": {
+      "domain": "process-ownership",
+      "cost": "process",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Same-default fresh-process progress with authoritative immutable source proofs, SQLite retention, tamper rejection and bounded read ownership"
+    },
+    "tests/test_batch_adapter_rejections.py": {
+      "cost": "io",
+      "domain": "native-transport",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Original synthetic service ledger, SQLite handle cleanup, immutable indexes and scoped job/cursor checks"
+    },
+    "tests/test_batch_audit_rejections.py": {
+      "cost": "io",
+      "domain": "immutable-evidence",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Native SQLite corruption, canonical audit files and preserved earlier export cuts"
+    },
+    "tests/test_batch_execution_rejections.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Real executor locks and async cancellation with exact operation, member and source attribution"
+    },
+    "tests/test_batch_preparation_rejections.py": {
+      "cost": "io",
+      "domain": "durable-execution",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Real source preparation, schema markers and original/child membership integrity across native paths"
+    },
+    "tests/test_batch_rejections.py": {
+      "cost": "io",
+      "domain": "immutable-evidence",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Real SQLite records, artifact references, metadata bounds and receipt identity checks"
     }
   },
   "providers": {
@@ -2121,7 +2283,17 @@
     "src/judgmentllm/vertex_usage.py",
     "src/judgmentllm/_bulk_dispatch.py",
     "src/judgmentllm/execution/bulk_provenance.py",
-    "src/judgmentllm/persistence/bulk.py"
+    "src/judgmentllm/persistence/bulk.py",
+    "src/judgmentllm/batch_cli.py",
+    "src/judgmentllm/batch_models.py",
+    "src/judgmentllm/execution/batch_exports.py",
+    "src/judgmentllm/execution/native_batch.py",
+    "src/judgmentllm/native_batch.py",
+    "src/judgmentllm/persistence/native_batch.py",
+    "src/judgmentllm/preparation/batch.py",
+    "src/judgmentllm/preparation/batch_retry.py",
+    "src/judgmentllm/providers/batch_mock.py",
+    "src/judgmentllm/providers/batch_protocol.py"
   ],
   "smoke": [
     "tests/test_persistence_hashing.py::test_scalar_subclasses_do_not_bypass_canonical_validation",

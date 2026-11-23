@@ -115,15 +115,15 @@ class Repository:
     @property
     def evidence_supported(self) -> bool:
         """Historical schema-1 executions have no fabricated evidence."""
-        return self.connection.execute("PRAGMA user_version").fetchone()[0] in (2, 3)
+        return self.connection.execute("PRAGMA user_version").fetchone()[0] in (2, 3, 4)
 
     def require_decisions_storage(self) -> None:
         """Never migrate historical stores merely to prepare a new native run."""
-        if self.connection.execute("PRAGMA user_version").fetchone()[0] != 3:
+        if self.connection.execute("PRAGMA user_version").fetchone()[0] not in (3, 4):
             raise IntegrityError("Decisions V4 requires a fresh schema-3 store")
 
     def require_bulk_storage(self) -> None:
-        if self.connection.execute("PRAGMA user_version").fetchone()[0] != 3:
+        if self.connection.execute("PRAGMA user_version").fetchone()[0] not in (3, 4):
             raise IntegrityError("Managed bulk-live requires a schema-3 store")
 
     def prepare_evidence_commit(
@@ -372,7 +372,7 @@ class Repository:
 
     def decisions_version(self, run_id: str) -> int | None:
         self.get_run(run_id)
-        if self.connection.execute("PRAGMA user_version").fetchone()[0] != 3:
+        if self.connection.execute("PRAGMA user_version").fetchone()[0] not in (3, 4):
             return None
         return self.connection.execute(
             "SELECT decisions_version FROM runs WHERE run_id=?", (run_id,)
@@ -739,6 +739,16 @@ class Repository:
             "SELECT submission_id FROM submissions WHERE run_id=? AND attempt_id=?",
             (run_id, attempt_id),
         ).fetchone()
+        if (
+            row is None
+            and self.connection.execute("PRAGMA user_version").fetchone()[0] == 4
+        ):
+            row = self.connection.execute(
+                "SELECT s.submission_id FROM submissions s JOIN batch_members m "
+                "ON m.run_id=s.run_id AND m.batch_uid=s.batch_uid "
+                "WHERE m.run_id=? AND m.attempt_id=? AND s.certainty='accepted'",
+                (run_id, attempt_id),
+            ).fetchone()
         return self.get_submission(run_id, _text(row, "submission_id")) if row else None
 
     def get_observation_for_submission(
@@ -1119,9 +1129,10 @@ class Repository:
                 raise IntegrityError("result attempt lacks submission")
             if observation_id is not None:
                 self.transition("attempt", run_id, attempt_id, "normalized")
-                self.transition(
-                    "submission", run_id, submission.submission_id, "resolved"
-                )
+                if submission.state != "resolved":
+                    self.transition(
+                        "submission", run_id, submission.submission_id, "resolved"
+                    )
             for result in results:
                 task = self.get_task(run_id, result.task_id)
                 if task.state != result.status:

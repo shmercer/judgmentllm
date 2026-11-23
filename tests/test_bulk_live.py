@@ -31,6 +31,7 @@ from judgmentllm.config import (
     validate_run_spec,
 )
 from judgmentllm.execution import execute_run, recover_run
+from judgmentllm.execution.batch_exports import BatchAuditReportV1
 from judgmentllm.execution.retry import RetryPolicy
 from judgmentllm.lifecycle import (
     LifecycleError,
@@ -76,6 +77,7 @@ def bulk_spec(
 
 def physical_rows(run_id: str, store: Path) -> tuple[str, list[dict[str, Any]]]:
     report = export_run_provenance(run_id, store=store)
+    assert not isinstance(report, BatchAuditReportV1)
     file = next(file for file in report.manifest.files if file.name == "physical.jsonl")
     assert file.artifact.relative_path is not None
     path = Path(report.manifest_path).parent.parent / file.artifact.relative_path
@@ -275,6 +277,7 @@ async def test_concurrent_export_verifies_publication_at_its_original_cut(
     finally:
         release.set()
         original_cut = await asyncio.wait_for(first, 10)
+    assert not isinstance(original_cut, BatchAuditReportV1)
     assert original_cut == published
     newer_bundle, rows = physical_rows("001", root)
     assert newer_bundle != original_cut.bundle_id
