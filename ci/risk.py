@@ -99,7 +99,7 @@ def sensitive_provider_edit(before: str | None, after: str) -> bool:
 
 def git(source: Path, *args: str) -> str:
     return subprocess.check_output(
-        ["git", "--no-replace-objects", *args], cwd=source, text=True
+        ["git", "--no-replace-objects", *args], cwd=source, text=True, encoding="utf-8"
     ).strip()
 
 
@@ -108,6 +108,7 @@ def blob(source: Path, ref: str, filename: str) -> str | None:
         ["git", "--no-replace-objects", "show", f"{ref}:{filename}"],
         cwd=source,
         text=True,
+        encoding="utf-8",
         capture_output=True,
         check=False,
     )
