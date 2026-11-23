@@ -4,11 +4,37 @@ from __future__ import annotations
 
 import difflib
 import hashlib
-import json
+import math
+import re
 import subprocess
+import sys
+import tempfile
 import tomllib
 from pathlib import Path
 from typing import Any, cast
+
+if __package__:
+    from .coverage_authority import (
+        AuthorityError,
+        commit_tree,
+        disk_bytes,
+        document,
+        fingerprint,
+        integer_list,
+        load,
+    )
+    from .coverage_authority import git_bytes as source_blob
+else:
+    from coverage_authority import (
+        AuthorityError,
+        commit_tree,
+        disk_bytes,
+        document,
+        fingerprint,
+        integer_list,
+        load,
+    )
+    from coverage_authority import git_bytes as source_blob
 
 
 def digest(data: bytes) -> str:
@@ -16,9 +42,204 @@ def digest(data: bytes) -> str:
 
 
 def git_bytes(source: Path, ref: str, filename: str) -> bytes:
-    return subprocess.check_output(
-        ["git", "show", f"{ref}:{filename}"], cwd=source, stderr=subprocess.PIPE
+    raw = source_blob(source, ref, filename)
+    if raw is None:
+        raise ValueError(f"Missing historical source: {filename}")
+    return raw
+
+
+def base_analysis(raw: bytes, config: Path) -> dict[str, Any]:
+    """Analyze committed Python without importing it; only actual runs need Coverage."""
+    from coverage import Coverage
+    from coverage.exceptions import CoverageException
+
+    with tempfile.TemporaryDirectory(
+        prefix="judgmentllm-coverage-analysis-"
+    ) as temporary:
+        root = Path(temporary)
+        path = root / "previous.py"
+        path.write_bytes(raw)
+        coverage = Coverage(
+            config_file=str(config), data_file=str(root / ".coverage"), branch=True
+        )
+        coverage.get_data().add_arcs({str(path): []})
+        output = root / "analysis.json"
+        try:
+            coverage.json_report(morfs=[str(path)], outfile=str(output))
+        except CoverageException as error:
+            raise ValueError(f"Coverage source analysis failed: {error}") from error
+        return next(iter(document(output.read_bytes())["files"].values()))
+
+
+def correspondence(old: bytes, current: bytes) -> dict[int, int]:
+    mapping: dict[int, int] = {}
+    for a, b, length in difflib.SequenceMatcher(
+        None,
+        old.decode("utf-8").splitlines(),
+        current.decode("utf-8").splitlines(),
+        autojunk=False,
+    ).get_matching_blocks():
+        mapping.update({a + i + 1: b + i + 1 for i in range(length)})
+    return mapping
+
+
+def projected_exclusions(
+    old: bytes,
+    current: bytes,
+    expected: dict[str, Any] | None,
+    actual: dict[str, Any],
+    mapping: dict[int, int],
+) -> list[int]:
+    if expected is None:
+        return []
+    exclusions = {mapping[n] for n in expected["excluded_lines"] if n in mapping}
+    old_eof, new_eof = (
+        len(old.decode().splitlines()) + 1,
+        len(current.decode().splitlines()) + 1,
     )
+    if old_eof in expected["excluded_lines"] and new_eof in actual["excluded_lines"]:
+        # Virtual EOF correspondence never enters the executable/arc mapping.
+        exclusions.add(new_eof)
+    return sorted(exclusions)
+
+
+def validate_lists(item: dict[str, Any]) -> None:
+    for key in ("executed_lines", "excluded_lines"):
+        integer_list(item[key])
+    integer_list(item["executed_branches"], arcs=True)
+    for key in ("missing_lines", "missing_branches"):
+        if key in item:
+            integer_list(item[key], arcs=key.endswith("branches"))
+
+
+def bounds(item: dict[str, Any], content: bytes) -> None:
+    size = len(content.decode("utf-8").splitlines())
+    if any(n > size + 1 for n in item["excluded_lines"]):
+        raise ValueError("Invalid exclusions beyond virtual EOF")
+    if any(
+        n > size
+        for key in ("executed_lines", "missing_lines")
+        for n in item.get(key, [])
+    ):
+        raise ValueError("Measured line beyond source")
+    if any(
+        abs(n) > size
+        for key in ("executed_branches", "missing_branches")
+        for arc in item.get(key, [])
+        for n in arc
+    ):
+        raise ValueError("Measured branch endpoint beyond source")
+
+
+def arcs(item: dict[str, Any]) -> set[tuple[int, int]]:
+    return {
+        (a, b) for a, b in item["executed_branches"] + item.get("missing_branches", [])
+    }
+
+
+def reconcile(
+    entry: dict[str, Any],
+    expected: dict[str, Any] | None,
+    actual: dict[str, Any],
+    old: bytes,
+    current: bytes,
+    mapping: dict[int, int],
+    exclusions: list[int],
+    config: Path,
+    parser: dict[str, str],
+    version: Any,
+) -> dict[str, Any]:
+    from coverage import __version__
+
+    if (
+        sys.implementation.name != parser["implementation"]
+        or f"{sys.version_info.major}.{sys.version_info.minor}" != parser["python"]
+        or __version__ != parser["coverage"]
+        or version != __version__
+    ):
+        raise ValueError(
+            "Reconciliation requires the locked interpreter/Coverage context"
+        )
+    before: dict[str, Any] = (
+        base_analysis(old, config)
+        if old
+        else {
+            "missing_lines": [],
+            "executed_lines": [],
+            "excluded_lines": [],
+            "missing_branches": [],
+            "executed_branches": [],
+            "summary": {"num_statements": 0, "num_branches": 0},
+        }
+    )
+    after = base_analysis(current, config)
+    for measured, parsed, historical in (
+        (expected, before, True),
+        (actual, after, False),
+    ):
+        if measured is None:
+            continue
+        if (
+            measured["excluded_lines"] != parsed["excluded_lines"]
+            or any(
+                measured["denominators" if historical else "summary"][key]
+                != parsed["summary"][key]
+                for key in ("num_statements", "num_branches")
+            )
+            or not set(measured["executed_lines"]) <= set(parsed["missing_lines"])
+            or not arcs(measured) <= arcs(parsed)
+            or not historical
+            and (
+                set(measured["executed_lines"] + measured["missing_lines"])
+                != set(parsed["missing_lines"])
+                or arcs(measured) != arcs(parsed)
+            )
+        ):
+            raise ValueError(
+                "Reconciliation evidence differs from authenticated parser universes"
+            )
+    added = sorted(set(actual["excluded_lines"]) - set(exclusions))
+    removed = sorted(set(exclusions) - set(actual["excluded_lines"]))
+    if (
+        entry["historical_source_sha256"]
+        != (expected["source_sha256"] if expected else None)
+        or entry["added_excluded_lines"] != added
+        or entry["removed_excluded_lines"] != removed
+    ):
+        raise AuthorityError(
+            "Active reconciliation does not match the complete exclusion delta"
+        )
+    historical_statements = {
+        mapping[n] for n in before["missing_lines"] if n in mapping
+    }
+    historical_branch_ends = {
+        mapping[n] for arc in arcs(before) for n in arc if n > 0 and n in mapping
+    }
+    if set(added) & (historical_statements | historical_branch_ends):
+        raise AuthorityError(
+            "Declaration reconciliation cannot hide historical executable source"
+        )
+
+    def mapped(n: int) -> int | None:
+        value = mapping.get(abs(n))
+        return value * (-1 if n < 0 else 1) if value is not None else None
+
+    exposed_lines = set(after["missing_lines"]) - {
+        mapping[n] for n in before["missing_lines"] if n in mapping
+    }
+    previous_arcs = {(mapped(a), mapped(b)) for a, b in arcs(before)}
+    exposed_arcs = arcs(after) - previous_arcs
+    return {
+        "newly_executable_lines": sorted(exposed_lines),
+        "missing_exposed_lines": sorted(exposed_lines & set(actual["missing_lines"])),
+        "newly_exposed_branches": [list(arc) for arc in sorted(exposed_arcs)],
+        "missing_exposed_branches": [
+            list(arc)
+            for arc in sorted(
+                exposed_arcs & {tuple(arc) for arc in actual["missing_branches"]}
+            )
+        ],
+    }
 
 
 def percentages(summary: dict[str, Any]) -> dict[str, float]:
@@ -36,22 +257,79 @@ def percentages(summary: dict[str, Any]) -> dict[str, float]:
     }
 
 
+def validate_summary(summary: dict[str, Any]) -> None:
+    """Check one measurement internally, never against another provenance's sum."""
+    for covered, total, missing in (
+        ("covered_lines", "num_statements", "missing_lines"),
+        ("covered_branches", "num_branches", "missing_branches"),
+    ):
+        for key in (covered, total, missing):
+            if key != missing or key in summary:
+                if type(summary[key]) is not int or summary[key] < 0:
+                    raise ValueError(f"Invalid coverage count: {key}")
+        if summary[covered] > summary[total] or (
+            missing in summary and summary[covered] + summary[missing] != summary[total]
+        ):
+            raise ValueError("Inconsistent covered/missing coverage counts")
+    for key in ("excluded_lines", "num_partial_branches"):
+        if key in summary and (type(summary[key]) is not int or summary[key] < 0):
+            raise ValueError(f"Invalid coverage count: {key}")
+    if (
+        summary.get("num_partial_branches", 0)
+        > summary["num_branches"] - summary["covered_branches"]
+    ):
+        raise ValueError("Partial branches exceed missing branches")
+    rates = percentages(summary)
+    for key, metric in (
+        ("percent_covered", "combined"),
+        ("percent_statements_covered", "line"),
+        ("percent_branches_covered", "branch"),
+    ):
+        rate = rates[metric]
+        if key in summary and (
+            type(summary[key]) not in {int, float}
+            or not 0 <= summary[key] <= 100
+            or not math.isclose(summary[key], rate, rel_tol=0, abs_tol=1e-9)
+        ):
+            raise ValueError(f"Inconsistent coverage percentage: {key}")
+        display = key + "_display"
+        if display not in summary:
+            continue
+        text = summary[display]
+        if (
+            not isinstance(text, str)
+            or re.fullmatch(r"[0-9]+(?:\.[0-9]+)?", text) is None
+        ):
+            raise ValueError(f"Invalid coverage display: {display}")
+        # Retain the stored precision. Coverage never rounds a partial ratio to
+        # displayed 0 or 100; numeric percentages remain unrounded.
+        precision = len(text.partition(".")[2])
+        near_zero = 10.0**-precision
+        shown = rate
+        if 0 < rate < near_zero:
+            shown = near_zero
+        elif 100 - near_zero < rate < 100:
+            shown = 100 - near_zero
+        if text != f"{shown:.{precision}f}":
+            raise ValueError(f"Inconsistent coverage display: {display}")
+
+
 def validate_measurement(
     measured: dict[str, Any], source: Path, *, expected_files: set[str] | None = None
 ) -> None:
     """Missing modules, contradictory counts, and non-branch evidence are fatal."""
     if measured["meta"]["branch_coverage"] is not True or not measured["files"]:
         raise ValueError("Complete branch-enabled coverage evidence is required")
+    validate_summary(measured["totals"])
     count_keys = ("num_statements", "covered_lines", "num_branches", "covered_branches")
     summed = dict.fromkeys(count_keys, 0)
     for filename, item in measured["files"].items():
-        path = source / filename
-        if not path.resolve().is_relative_to(source.resolve()) or not path.is_file():
-            raise ValueError(f"Missing or invalid measured source: {filename}")
+        content = disk_bytes(source, filename)
+        validate_lists(item)
+        bounds(item, content)
         summary = item["summary"]
+        validate_summary(summary)
         for key in count_keys:
-            if type(summary[key]) is not int or summary[key] < 0:
-                raise ValueError("Invalid coverage counts")
             summed[key] += summary[key]
         for covered, missing, hit_key, total_key in (
             ("executed_lines", "missing_lines", "covered_lines", "num_statements"),
@@ -82,7 +360,10 @@ def validate_measurement(
             item["executed_lines"] + item["missing_lines"]
         ):
             raise ValueError("Excluded and measured lines overlap")
-    if any(measured["totals"][key] != value for key, value in summed.items()):
+    if any(
+        type(measured["totals"][key]) is not int or measured["totals"][key] != value
+        for key, value in summed.items()
+    ):
         raise ValueError("Coverage totals disagree with file evidence")
     production = source / "src/judgmentllm"
     if production.is_dir() or expected_files is not None:
@@ -101,6 +382,8 @@ def compare(
     source: Path,
     *,
     reviewed_ref: str | None = None,
+    coverage_policy: dict[str, Any] | None = None,
+    protected_base: str | None = None,
 ) -> dict[str, Any]:
     """Use a trusted base's floor, never a PR's proposed replacement.
 
@@ -113,8 +396,81 @@ def compare(
     """
     result: dict[str, Any] = {"passed": False, "losses": [], "modified": []}
     try:
-        measured = json.loads(current.read_text(encoding="utf-8"))
+        entries: list[dict[str, Any]] = []
+        if coverage_policy is not None:
+            original, entries = load(source, protected_base, coverage_policy)
+            if reviewed_ref is None:
+                raise AuthorityError(
+                    "Coverage authority requires the independently bound head"
+                )
+            result["source_tree_sha"] = commit_tree(source, reviewed_ref)
+            result["coverage_policy_sha256"] = fingerprint(coverage_policy)
+            result["authority_base_sha"] = protected_base
+        elif baseline is not None:
+            original = document(baseline.read_bytes())
+        else:
+            raise ValueError("A trusted coverage baseline is required")
+        measured = document(current.read_bytes())
         validate_measurement(measured, source)
+        for expected in original["files"].values():
+            validate_lists(expected)
+            if set(expected["excluded_lines"]) & set(expected["executed_lines"]):
+                raise ValueError("Historical excluded and measured lines overlap")
+            if any(
+                type(n) is not int or n < 0 for n in expected["denominators"].values()
+            ):
+                raise ValueError("Invalid historical denominators")
+            if any(
+                len(expected[key]) > expected["denominators"][denominator]
+                for key, denominator in (
+                    ("executed_lines", "num_statements"),
+                    ("executed_branches", "num_branches"),
+                )
+            ):
+                raise ValueError("Historical hits exceed denominators")
+        # Schema-1 totals retain the original aggregate measurement; reconciled
+        # per-file entries can have a later source/evidence provenance.
+        validate_summary(original["totals"])
+        prepared: dict[str, Any] = {}
+        applied: list[dict[str, Any]] = []
+        for filename, actual in measured["files"].items():
+            expected = original["files"].get(filename)
+            content = disk_bytes(source, filename)
+            same = expected is not None and digest(content) == expected["source_sha256"]
+            if (
+                same
+                and expected is not None
+                and (
+                    actual["excluded_lines"] != expected["excluded_lines"]
+                    or any(
+                        actual["summary"][key] != value
+                        for key, value in expected["denominators"].items()
+                    )
+                )
+            ):
+                raise ValueError(
+                    f"Unchanged source denominators/exclusions changed: {filename}"
+                )
+            if not same or coverage_policy is not None:
+                if (
+                    reviewed_ref is None
+                    or git_bytes(source, reviewed_ref, filename) != content
+                ):
+                    raise ValueError(f"Unreviewed production source change: {filename}")
+            old = content if same else b""
+            if expected is not None and not same:
+                snapshot = expected.get(
+                    "source_commit",
+                    original.get("source_snapshot_commit", original["source_commit"]),
+                )
+                old = git_bytes(source, snapshot, filename)
+                if digest(old) != expected["source_sha256"]:
+                    raise ValueError(f"Historical source hash mismatch: {filename}")
+            if expected is not None:
+                bounds(expected, old)
+            mapping = correspondence(old, content)
+            exclusions = projected_exclusions(old, content, expected, actual, mapping)
+            prepared[filename] = (content, old, mapping, exclusions)
         totals = measured["totals"]
         rates = percentages(totals)
         result.update(
@@ -123,10 +479,8 @@ def compare(
         )
         if rates["combined"] < 90:
             result["losses"].append({"reason": "combined coverage below 90%"})
-        if baseline is None:
-            raise ValueError("A trusted coverage baseline is required")
-        original = json.loads(baseline.read_text(encoding="utf-8"))
-        project = tomllib.loads((source / "pyproject.toml").read_text(encoding="utf-8"))
+        configuration = disk_bytes(source, "pyproject.toml")
+        project = tomllib.loads(configuration.decode("utf-8"))
         if project["tool"]["coverage"] != original["measurement_settings"]:
             raise ValueError("Coverage measurement settings changed")
         # pytest CLI defaults can otherwise silently disable branches or lower the gate.
@@ -142,20 +496,50 @@ def compare(
                 )
         if not set(original["files"]) <= set(measured["files"]):
             raise ValueError("Baseline module evidence is missing")
+        exposures: dict[str, dict[str, Any]] = {}
+        for entry in entries:
+            filename = entry["path"]
+            if (
+                filename not in prepared
+                or digest(prepared[filename][0]) != entry["candidate_source_sha256"]
+            ):
+                continue
+            content, old, mapping, exclusions = prepared[filename]
+            parser = cast(dict[str, Any], coverage_policy)["parser"]
+            assert reviewed_ref is not None
+            lock = git_bytes(source, reviewed_ref, "uv.lock")
+            if (
+                disk_bytes(source, "uv.lock") != lock
+                or git_bytes(source, reviewed_ref, "pyproject.toml") != configuration
+                or [
+                    p["version"]
+                    for p in tomllib.loads(lock.decode("utf-8"))["package"]
+                    if p["name"] == "coverage"
+                ]
+                != [parser["coverage"]]
+            ):
+                raise ValueError(
+                    "Candidate coverage configuration/lock differs from the locked context"
+                )
+            exposures[filename] = reconcile(
+                entry,
+                original["files"].get(filename),
+                measured["files"][filename],
+                old,
+                content,
+                mapping,
+                exclusions,
+                source / "pyproject.toml",
+                parser,
+                measured["meta"].get("version"),
+            )
+            applied.append(entry)
+        if coverage_policy is not None:
+            result["applied_reconciliations"] = applied
         for filename, actual in measured["files"].items():
             expected = original["files"].get(filename)
-            content = (source / filename).read_bytes()
+            content, old, mapping, exclusions = prepared[filename]
             if expected is not None and digest(content) == expected["source_sha256"]:
-                if (
-                    any(
-                        actual["summary"][key] != value
-                        for key, value in expected["denominators"].items()
-                    )
-                    or actual["excluded_lines"] != expected["excluded_lines"]
-                ):
-                    raise ValueError(
-                        f"Coverage denominators/exclusions changed: {filename}"
-                    )
                 lines = sorted(
                     set(expected["executed_lines"]) - set(actual["executed_lines"])
                 )
@@ -178,30 +562,6 @@ def compare(
                         }
                     )
                 continue
-            if (
-                reviewed_ref is None
-                or git_bytes(source, reviewed_ref, filename) != content
-            ):
-                raise ValueError(f"Unreviewed production source change: {filename}")
-            old = b""
-            if expected is not None:
-                snapshot = expected.get(
-                    "source_commit",
-                    original.get("source_snapshot_commit", original["source_commit"]),
-                )
-                old = git_bytes(source, snapshot, filename)
-                if digest(old) != expected["source_sha256"]:
-                    raise ValueError(f"Historical source hash mismatch: {filename}")
-            mapping: dict[int, int] = {}
-            for a, b, length in difflib.SequenceMatcher(
-                None,
-                old.decode("utf-8").splitlines(),
-                content.decode("utf-8").splitlines(),
-                autojunk=False,
-            ).get_matching_blocks():
-                mapping.update(
-                    {a + offset + 1: b + offset + 1 for offset in range(length)}
-                )
             unchanged = set(mapping.values())
             changed = (
                 set(actual["executed_lines"] + actual["missing_lines"]) - unchanged
@@ -220,27 +580,18 @@ def compare(
                 else set()
             )
             lost_equal_lines = sorted(mapped_hits - set(actual["executed_lines"]))
-            exclusions = (
-                sorted(
-                    mapping[line]
-                    for line in expected["excluded_lines"]
-                    if line in mapping
-                )
-                if expected
-                else []
-            )
-            old_eof = len(old.decode("utf-8").splitlines()) + 1
-            new_eof = len(content.decode("utf-8").splitlines()) + 1
-            if (
-                expected is not None
-                and old_eof in expected["excluded_lines"]
-                and new_eof in actual["excluded_lines"]
-            ):
-                # coverage.py can exclude the virtual EOF after a trailing suite.
-                exclusions = sorted({*exclusions, new_eof})
-            if actual["excluded_lines"] != exclusions:
-                raise ValueError(
-                    f"Modified source exclusions require explicit reconciliation: {filename}"
+            if actual["excluded_lines"] != exclusions and filename not in exposures:
+                result["losses"].append(
+                    {
+                        "file": filename,
+                        "reason": "Modified source exclusions require explicit reconciliation",
+                        "added_excluded_lines": sorted(
+                            set(actual["excluded_lines"]) - set(exclusions)
+                        ),
+                        "removed_excluded_lines": sorted(
+                            set(exclusions) - set(actual["excluded_lines"])
+                        ),
+                    }
                 )
             current_rates = percentages(actual["summary"])
             previous_rates = (
@@ -269,18 +620,37 @@ def compare(
                 "branch_correspondence": "not established across source edits; ratios and changed origins checked",
                 "deleted_source_lines": len(old.decode("utf-8").splitlines())
                 - len(mapping),
+                **exposures.get(filename, {}),
             }
             result["modified"].append(detail)
-            if missing or missing_arcs or lost_equal_lines or regressions:
+            if (
+                missing
+                or missing_arcs
+                or lost_equal_lines
+                or regressions
+                or any(
+                    exposures.get(filename, {}).get(key)
+                    for key in ("missing_exposed_lines", "missing_exposed_branches")
+                )
+            ):
                 result["losses"].append(detail)
         result["passed"] = not result["losses"]
     except (
         OSError,
+        ImportError,
         ValueError,
         KeyError,
         TypeError,
+        IndexError,
+        AttributeError,
+        SyntaxError,
         ZeroDivisionError,
         subprocess.CalledProcessError,
     ) as error:
+        result["fatal_error"] = (
+            "invalid-authority"
+            if isinstance(error, AuthorityError)
+            else "invalid-evidence"
+        )
         result["losses"].append({"reason": f"Invalid coverage evidence: {error}"})
     return result

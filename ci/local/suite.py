@@ -271,6 +271,11 @@ def run(
     coverage_mode = (
         plan.get("coverage_mode", "historical") if plan is not None else "historical"
     )
+    coverage_arguments: dict[str, Any] = (
+        {"coverage_policy": plan["coverage_policy"], "protected_base": plan["base_sha"]}
+        if plan is not None and plan.get("coverage_policy") is not None
+        else {}
+    )
     if (
         coverage_mode == "targeted"
         and plan is not None
@@ -681,6 +686,7 @@ def run(
                     baseline,
                     source,
                     reviewed_ref=coverage_ref,
+                    **coverage_arguments,
                 )
             summary["functional_coverage"] = result
             (output / "functional-coverage-comparison.json").write_text(
@@ -954,6 +960,7 @@ def run(
                     baseline,
                     source,
                     reviewed_ref=coverage_ref,
+                    **coverage_arguments,
                 )
             summary["coverage"] = comparison
             if (
@@ -971,6 +978,7 @@ def run(
                     summary["source"]["commit"],
                     complete=output / "coverage.json",
                     resource_data=resource_group if resource_group.is_file() else None,
+                    **coverage_arguments,
                 )
                 (output / "resource-coverage-assessment.json").write_text(
                     json.dumps(assessment, indent=2) + "\n"

@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "coverage_floor_sha256": "2af90319c2e0c274f054153012dd3e1583f3215302f47bf2ad5bf57f3be2e95d",
+  "parser": {
+    "implementation": "cpython",
+    "python": "3.11",
+    "coverage": "7.17.0"
+  },
+  "entries": [
+    {
+      "path": "src/judgmentllm/lifecycle.py",
+      "candidate_source_sha256": "07e8ba3ff6c01a6fa47d4e76dc823ba636f77831c23abf3280cf39513a5f84b5",
+      "historical_source_sha256": "309ce231298e6ccfe06c4768ae4f5d284b47bdd20765b1d8a014a5ff3c15bcf2",
+      "added_excluded_lines": [
+        105
+      ],
+      "removed_excluded_lines": [],
+      "reason": "Exact frozen PR72 TYPE_CHECKING import only; no implemented runtime body or mapped historical coverage credit is removed."
+    },
+    {
+      "path": "src/judgmentllm/native_batch.py",
+      "candidate_source_sha256": "adee1f3876961e1555b03e69dac415ff4b4a6baa190b7bdf1d2d0d161d4805a9",
+      "historical_source_sha256": null,
+      "added_excluded_lines": [
+        31,
+        32,
+        33
+      ],
+      "removed_excluded_lines": [],
+      "reason": "Exact frozen PR72 TYPE_CHECKING guard/import and adjacent blank line 31; no implemented runtime body or mapped historical coverage credit is removed."
+    },
+    {
+      "path": "src/judgmentllm/preparation/__init__.py",
+      "candidate_source_sha256": "a84185003d9171244eb590640309f395ab788b08a7ecb433946102b40f5d74b2",
+      "historical_source_sha256": "812631443e70499a9cc0e99dc7e2276b0451dd66f59fd1cc9dfe8cbf9647709c",
+      "added_excluded_lines": [
+        93
+      ],
+      "removed_excluded_lines": [],
+      "reason": "Exact frozen PR72 TYPE_CHECKING import only; no implemented runtime body or mapped historical coverage credit is removed."
+    },
+    {
+      "path": "src/judgmentllm/preparation/batch.py",
+      "candidate_source_sha256": "7323de9b37b14df41eaf06cfa0af7f2287888f9b94abc091eb48125e47704d0a",
+      "historical_source_sha256": null,
+      "added_excluded_lines": [
+        36,
+        37,
+        38,
+        39,
+        40,
+        41
+      ],
+      "removed_excluded_lines": [],
+      "reason": "Exact frozen PR72 TYPE_CHECKING guard/import block and adjacent blank line 36; new module with no historical floor entry."
+    },
+    {
+      "path": "src/judgmentllm/providers/batch_protocol.py",
+      "candidate_source_sha256": "cca1aa3058cf79c28dd466220af1bdae24f95872a351b316413d48068b88a3d7",
+      "historical_source_sha256": null,
+      "added_excluded_lines": [
+        52,
+        53,
+        54,
+        55,
+        56,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        80,
+        81,
+        82,
+        83,
+        92,
+        93,
+        103,
+        104,
+        105,
+        106,
+        107,
+        108
+      ],
+      "removed_excluded_lines": [],
+      "reason": "Exact frozen PR72 structural NativeBatchAdapter Protocol stubs, adjoining whitespace and virtual EOF 108; no implemented runtime function body or historical floor entry."
+    }
+  ]
+}

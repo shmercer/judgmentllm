@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import subprocess
@@ -14,6 +15,7 @@ import pytest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import acceptance
 from risk import admit, make_plan
+from selection import digest
 
 
 def freeze(source: Path) -> str:
@@ -311,7 +313,7 @@ def test_suite_cannot_cross_local_check_boundaries(
 def test_pr_planning_does_not_write_bytecode_to_its_policy_copy(
     documentation: Any, tmp_path: Path
 ) -> None:
-    source, plan = documentation
+    source, _plan = documentation
     policy = Path(acceptance.__file__).parent
     for name in (
         "check.py",
@@ -332,20 +334,30 @@ def test_pr_planning_does_not_write_bytecode_to_its_policy_copy(
         "local/resource_specs.py",
         "local/telemetry.py",
         "local/policy.py",
+        "local/coverage_authority.py",
+        "local/coverage_equivalence.py",
+        "coverage-floor.json",
+        "coverage-exclusion-reconciliations.json",
     ):
         destination = source / "ci" / name
         destination.parent.mkdir(parents=True, exist_ok=True)
         destination.write_bytes((policy / name).read_bytes())
-    freeze(source)
+    (source / "uv.lock").write_bytes((policy.parent / "uv.lock").read_bytes())
+    copied_head = freeze(source)
     result = subprocess.run(
         [
             sys.executable,
+            "-c",
+            "import builtins,runpy,sys; from pathlib import Path; "
+            "sys.path.insert(0,str(Path(sys.argv[1]).resolve().parent)); original=builtins.__import__; "
+            "exec(\"def guarded(name,*a,**k):\\n if name.split('.')[0]=='coverage': raise AssertionError('planning imported Coverage')\\n return original(name,*a,**k)\"); "
+            "builtins.__import__=guarded; runpy.run_path(sys.argv.pop(1),run_name='__main__')",
             str(source / "ci/check.py"),
             "--profile",
             "pr",
             "--plan-only",
             "--changed-since",
-            plan["source_sha"],
+            copied_head,
             "--output",
             str(tmp_path / "plan"),
         ],
@@ -359,6 +371,195 @@ def test_pr_planning_does_not_write_bytecode_to_its_policy_copy(
     assert not subprocess.check_output(
         ["git", "status", "--porcelain"], cwd=source, text=True
     ).strip()
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" or sys.version_info[:2] != (3, 11),
+    reason="hosted primary metadata admission uses Linux/Python 3.11",
+)
+@pytest.mark.parametrize(
+    "event,purpose,minimum,broken_docs",
+    [
+        ("push", "main-linux", 0, True),
+        ("schedule", "pr", 4, True),
+        ("workflow_dispatch", "pr", 0, False),
+    ],
+)
+def test_legacy_hosted_cli_and_aggregation_do_not_authorize_coverage(
+    documentation: Any,
+    tmp_path: Path,
+    event: str,
+    purpose: str,
+    minimum: int,
+    broken_docs: bool,
+) -> None:
+    source, _ = documentation
+    policy = Path(acceptance.__file__).parent
+    for name in ("coverage-floor.json", "coverage-exclusion-reconciliations.json"):
+        path = source / "ci" / name
+        path.parent.mkdir(exist_ok=True)
+        path.write_bytes((policy / name).read_bytes())
+    # Populated source-bound entries must not change the legacy hosted scope.
+    assert (source / "ci/coverage-exclusion-reconciliations.json").read_bytes() == (
+        policy / "coverage-exclusion-reconciliations.json"
+    ).read_bytes()
+    (source / "uv.lock").write_bytes((policy.parent / "uv.lock").read_bytes())
+    base = freeze(source)
+    # Real push/schedule plans remain high risk. Stop them at the real docs gate
+    # instead of recursively running this infrastructure suite inside itself.
+    (source / "README.md").write_text(
+        "[missing](missing.md)\n" if broken_docs else "Third description\n"
+    )
+    head = freeze(source)
+    plan = make_plan(source, base, head, minimum=minimum, purpose=purpose)
+    assert plan["coverage_policy"] is not None
+    assert plan["risk"] == {"push": 3, "schedule": 4, "workflow_dispatch": 0}[event]
+    plan_path = tmp_path / "plan.json"
+    plan_path.write_text(json.dumps(plan))
+    launcher = [
+        sys.executable,
+        "-B",
+        "-c",
+        "import builtins,runpy,sys; from pathlib import Path; "
+        "sys.path.insert(0,str(Path(sys.argv[1]).resolve().parent)); original=builtins.__import__; "
+        "exec(\"def guarded(name,*a,**k):\\n if name.split('.')[0]=='coverage': raise AssertionError('hosted metadata imported Coverage')\\n return original(name,*a,**k)\"); "
+        "builtins.__import__=guarded; runpy.run_path(sys.argv.pop(1),run_name='__main__')",
+        str(Path(acceptance.__file__)),
+    ]
+    inputs = ["--source", str(source), "--plan", str(plan_path), "--run-id", "metadata"]
+    environment = {**os.environ, "GITHUB_ACTIONS": "true", "GITHUB_EVENT_NAME": event}
+    quality, output = tmp_path / "quality", tmp_path / "lane"
+    for destination, phase in (
+        (quality, ["--quality-only"]),
+        (
+            output,
+            [
+                "--quality-receipt",
+                str(quality / "quality.json"),
+                *(["--partition", "ordinary"] if plan["risk"] >= 3 else []),
+            ],
+        ),
+    ):
+        # The literal hosted lane CLI supplies neither --base nor --head.
+        completed = subprocess.run(
+            [
+                *launcher,
+                "lane",
+                *inputs,
+                "--execution-scope",
+                "hosted",
+                *phase,
+                "--output",
+                str(destination),
+            ],
+            env=environment,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert completed.returncode == int(broken_docs), (
+            completed.stdout + completed.stderr
+        )
+    quality_report = json.loads((quality / "quality.json").read_text())
+    assert [step["name"] for step in quality_report["steps"]] == ["docs"]
+    assert quality_report["steps"][0]["exit_code"] == int(broken_docs)
+    receipt = json.loads((output / "receipt.json").read_text())
+    assert receipt["execution_scope"] == "hosted"
+    assert not any(step["name"] == "coverage" for step in receipt["steps"])
+    aggregate = [
+        *launcher,
+        "aggregate",
+        *inputs,
+        "--base",
+        base,
+        "--head",
+        head,
+        "--risk",
+        str(minimum),
+        "--purpose",
+        purpose,
+        "--receipts",
+        str(output),
+        "--output",
+        str(tmp_path / "aggregate.json"),
+    ]
+    completed = subprocess.run(
+        aggregate,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == int(broken_docs), completed.stdout + completed.stderr
+    assert (
+        json.loads((tmp_path / "aggregate.json").read_text())["passed"]
+        is not broken_docs
+    )
+
+    # Rehash a candidate-selected authority and reported scope. A hosted runner
+    # can only make claims; independent aggregation must reject this artifact.
+    plan["execution_scope"] = "local"
+    plan["coverage_policy"]["base_sha"] = head
+    plan["coverage_policy"]["base_tree_sha"] = plan["source_tree_sha"]
+    plan["coverage_policy_sha256"] = digest(plan["coverage_policy"])
+    del plan["plan_sha256"]
+    plan["plan_sha256"] = hashlib.sha256(
+        json.dumps(plan, sort_keys=True).encode()
+    ).hexdigest()
+    plan_path.write_text(json.dumps(plan))
+    claimed = tmp_path / "claimed"
+    completed = subprocess.run(
+        [
+            *launcher,
+            "lane",
+            *inputs,
+            "--execution-scope",
+            "hosted",
+            "--quality-only",
+            "--output",
+            str(claimed),
+        ],
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode == int(broken_docs), completed.stdout + completed.stderr
+    assert (
+        json.loads((claimed / "quality.json").read_text())["execution_scope"]
+        == "hosted"
+    )
+    completed = subprocess.run(
+        aggregate,
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode != 0
+    assert (
+        "Plan artifact differs from protected-base classification" in completed.stderr
+    )
+    completed = subprocess.run(
+        [
+            *launcher,
+            "lane",
+            *inputs,
+            "--execution-scope",
+            "local",
+            "--quality-only",
+            "--output",
+            str(tmp_path / "unauthorized-local"),
+        ],
+        env=environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert completed.returncode != 0
+    assert (
+        "Independent supervisor base/head identities are required" in completed.stderr
+    )
 
 
 @pytest.mark.skipif(sys.platform != "linux", reason="primary runner uses Linux")

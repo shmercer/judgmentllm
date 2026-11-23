@@ -353,6 +353,90 @@ reconciliation because they have no Git history for changed-source comparison.
 
 PR #27's [retained failure analysis](ci-test-audit.md#pr-27-coverage-baseline-failure)
 records the narrow correction, improved coverage and skipped downstream gates.
+
+### Proposed exact-source exclusion reconciliation (not adopted)
+
+`ci/coverage-exclusion-reconciliations.json` proposes five exact-source entries
+for PR #72's frozen production bytes at
+`c766cb85a28c057a8d62eabd55c96acf569bc7a9`. This separate policy proposal is
+not adopted and grants PR #72 no exception. It changes no historical measurement
+and cannot qualify itself. Its own acceptance uses the old protected policy and
+every applicable local/hosted gate before independent review and adoption.
+
+The read-only, offline CPython 3.11.18/Coverage 7.17.0 comparison retained the
+protected floor and its individually hash-verified historical snapshots. The
+five complete exclusion deltas are:
+
+| Production module | Additional exclusions | Source interpretation |
+| --- | --- | --- |
+| `lifecycle.py` | 105 | Import inside `TYPE_CHECKING` |
+| `native_batch.py` | 31–33 | Blank line, `TYPE_CHECKING` guard and import |
+| `preparation/__init__.py` | 93 | Import inside `TYPE_CHECKING` |
+| `preparation/batch.py` | 36–41 | Blank line and `TYPE_CHECKING` import block |
+| `providers/batch_protocol.py` | 52–83, 92–93, 103–108 | Structural Protocol stubs, whitespace and virtual EOF |
+
+There are no removed mapped exclusions or overlaps with mapped historical
+covered lines/positive-end branches. Protocol declarations retain ordinary
+Python binding and annotation mechanics; no implemented runtime function body
+is classified as a declaration. The registry binds complete source hashes,
+including unchanged lines outside these blocks. New-to-floor modules have null
+historical hashes, not invented snapshots. The parser diagnostic is not
+execution coverage or acceptance: the original failed run and all runtime
+coverage gaps remain blocking. Production changes require renewed analysis and
+review of the affected entries before protected adoption.
+
+The version-1 document binds the exact historical floor SHA-256 and CPython
+3.11/Coverage 7.17.0 context. Each future independently reviewed entry binds one
+canonical production Python path, its complete candidate byte SHA-256, its
+historical source SHA-256 (null only for a new module), complete sorted added
+and removed exclusion arrays, and a reason. Duplicate/unknown fields and paths,
+noninteger or noncanonical lists, stale context and partial deltas fail closed.
+No pattern, candidate commit rule or candidate-side approval flag is accepted.
+
+Planning reads only standard-library metadata. The new coverage-policy digest
+binds registry/floor bytes and the actual protected commit/tree; the existing
+plan digest carries it through receipts. PR authorization uses the literal
+event base/head, checked independently of candidate plans. A full SHA is an
+identity, not proof of protection. Local supervisor inputs have the trust limit
+described in [local verification](local-ci.md#local-coverage-authority-and-review).
+Non-PR hosted lanes keep their existing CLI without base/head arguments and
+cannot execute coverage reconciliation. Their separate aggregator still requires
+supervisor-supplied base/head identities and reconstructs the complete plan;
+reported scope and candidate-selected plan identities grant no authority.
+The authority reader disables Git replacements explicitly, verifies actual
+commit/tree/regular blob types and literal paths, rejects disk symlinks, and
+distinguishes proved absence from failed tools or corrupt/missing history.
+Absent legacy authority grants no exception; advertised authority never falls
+back to candidate files or archive guesses.
+
+An active path/digest entry is validated even when source is unchanged or no
+exclusion mismatch remains. Locked parser analysis authenticates both source
+snapshots, complete statement/branch universes, exclusions and denominators.
+The exact delta is current exclusions minus projected historical exclusions,
+and its converse, using the existing equal-line and virtual-EOF rules. Newly
+executable statements and all newly exposed branch outcomes must execute,
+including outcomes whose origin text is unchanged. This does not assert general
+branch equivalence across edited source or put virtual EOF into arc mappings.
+Approvals cannot rewrite measurements, discard mapped hits, lower any floor or
+clear another loss. Added exclusions also cannot hide any mapped historical
+executable statement or positive branch endpoint, even when the original tests
+never executed it. Level 2 remains strict and cannot use reconciliation.
+
+All evidence lists/counts and source identities are checked before ordinary
+exclusion losses are accumulated. Unchanged-source exclusion discrepancies and
+malformed authority/evidence are distinct fatal failures; only well-formed
+changed-source exclusion mismatches are reported together while all other
+coverage checks continue. Historical aggregate counts and optional percentages
+must be internally consistent, but retain their independent old measurement:
+they are not the sum of later reconciled per-file entries. Independent admission
+rebuilds genuine coverage data and compares the actual result, rather than
+trusting rehashed reports.
+
+The mechanism and these exact entries belong to one separate CI-only prerequisite.
+Neither this prerequisite nor PR #72 may consume candidate policy to pass its
+old protected gates. Protected-base adoption must precede a fresh dependent
+plan. Source/context changes require renewed verification and separate review;
+no entry is enabled by the presence of this unadopted draft.
 The original failed run remains failed.
 
 ## Release qualification

@@ -5,31 +5,12 @@ from __future__ import annotations
 import ast
 import json
 import subprocess
-import tempfile
 import tomllib
 from pathlib import Path
 from typing import Any
 
-from coverage import Coverage
-from coverage_equivalence import validate_measurement
+from coverage_equivalence import base_analysis, validate_measurement
 from source_lines import correspondence
-
-
-def base_analysis(raw: bytes, config: Path) -> dict[str, Any]:
-    """Analyze committed Python with coverage's parser; never import that code."""
-    with tempfile.TemporaryDirectory(
-        prefix="judgmentllm-coverage-analysis-"
-    ) as temporary:
-        root = Path(temporary)
-        path = root / "previous.py"
-        path.write_bytes(raw)
-        coverage = Coverage(
-            config_file=str(config), data_file=str(root / ".coverage"), branch=True
-        )
-        coverage.get_data().add_arcs({str(path): []})
-        output = root / "analysis.json"
-        coverage.json_report(morfs=[str(path)], outfile=str(output))
-        return next(iter(json.loads(output.read_text())["files"].values()))
 
 
 def compare(
