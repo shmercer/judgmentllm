@@ -155,6 +155,9 @@ def create(root: Path) -> None:
     from batch_cli_fixture import create as create_batch
 
     create_batch(root)
+    from openai_batch_fixture import create as create_openai_batch
+
+    create_openai_batch(root)
     for name, original, version in (
         ("bulk-generative", "recovery-minimal", 2),
         ("bulk-decisions", "grouped-full", 4),

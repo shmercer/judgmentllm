@@ -1,10 +1,9 @@
 """Explicit scientific retry reuses the existing subset authorization and cap."""
 
 from judgmentllm.batch_models import (
-    BatchContextV1,
     BatchMemberReceiptV1,
     BatchMemberV1,
-    BatchShardV1,
+    shard_model,
 )
 from judgmentllm.execution.native_batch import BatchSession
 from judgmentllm.execution.retry import prepare_subset_retry, subset_dependency
@@ -31,7 +30,7 @@ def prepare_batch_retry(session: BatchSession, retry: RetrySelection) -> None:
         f"batch/retry-contexts/{bytes_digest(retry.operation_id.encode('utf-8'))}.json"
     )
     context = session.adapter.context()
-    previous_context = read_reference(repository, run_id, reference, BatchContextV1)
+    previous_context = read_reference(repository, run_id, reference, type(context))
     if previous_context is not None and previous_context != context:
         raise IntegrityError(
             "unfinished scientific retry requires its original fixture"
@@ -131,14 +130,16 @@ def prepare_batch_retry(session: BatchSession, retry: RetrySelection) -> None:
             bytes_digest(row), len(row), "application/x-ndjson"
         )
     )
-    shard = BatchShardV1(
-        run_id=run_id,
-        shard_id=shard_id,
-        ordinal=ordinal,
-        member_count=1,
-        membership_sha256=semantic_digest("batch-shard-members-v1", [key]),
-        input=source,
-        context=session.adapter.context(),
+    shard = shard_model(context).model_validate(
+        dict(
+            run_id=run_id,
+            shard_id=shard_id,
+            ordinal=ordinal,
+            member_count=1,
+            membership_sha256=semantic_digest("batch-shard-members-v1", [key]),
+            input=source,
+            context=session.adapter.context(),
+        )
     )
     member_artifact, shard_artifact = (
         put(repository, run_id, member),

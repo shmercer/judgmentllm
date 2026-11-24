@@ -24,7 +24,8 @@
         "tests/test_version_compatibility.py",
         "tests/test_native_v2_compatibility.py",
         "tests/test_output_contract_compatibility.py",
-        "tests/test_compatibility_qualification.py"
+        "tests/test_compatibility_qualification.py",
+        "tests/test_batch_compatibility.py"
       ],
       "artifacts": [
         "tests/fixtures"
@@ -45,7 +46,8 @@
         "tests/test_provider_evidence_boundary.py",
         "tests/test_anthropic_sdk_adapter.py",
         "tests/test_anthropic_response.py",
-        "tests/test_anthropic_invalid_utf8.py"
+        "tests/test_anthropic_invalid_utf8.py",
+        "tests/test_openai_batch_sdk.py"
       ],
       "guarantees": "Pinned actual SDK serialization/parsing, synthetic HTTP transports and byte commitments; no live calls",
       "risk_levels": [
@@ -291,6 +293,26 @@
         "ci/local/test_optimization.py"
       ],
       "guarantees": "Complete case universe, new cases mandatory on every lane, historical case removal/marker drift blocked, unknown dependencies escalate, missing/tampered profiles and raw receipts fail",
+      "risk_levels": [
+        3,
+        4
+      ]
+    },
+    "openai-generative-native-batch": {
+      "tests": [
+        "tests/test_openai_batch_sdk.py",
+        "tests/test_openai_batch_recovery.py",
+        "tests/test_openai_batch_privacy.py",
+        "tests/test_openai_batch_r.py",
+        "tests/test_openai_batch_resources.py",
+        "tests/test_batch_compatibility.py"
+      ],
+      "artifacts": [
+        "tests/fixtures/batch-history",
+        "examples/openai_batch_interoperability.R",
+        "examples/openai_batch_cli_interoperability.R"
+      ],
+      "guarantees": "Separate Responses/Chat routes; actual SDK 3.42.1 before credentials; exact per-row wire and once-per-member usage; no ambiguous resubmission; screened pinned job/file/size and actual EOF; bounded replay with durable fair ready selection across restarts and both capture modes; immutable historical schema4/manifest12/audit1; actual local R and exclusive resource checks",
       "risk_levels": [
         3,
         4

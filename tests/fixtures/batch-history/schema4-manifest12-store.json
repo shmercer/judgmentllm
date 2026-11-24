@@ -1,0 +1,10 @@
+{
+  "run_id": "001",
+  "manifest_sha256": "b9e28af139d341cf7fd05c7f5e5c9af5a6bdd2ddaaa75e48c6d74ff8386a7fe0",
+  "bundle_id": "4a64d342c5a9feb01fdf3d78c473a2cf6ceb2aba9332941a4fb5321ac5e5fc06",
+  "result_count": 2,
+  "producer_commit": "35adfdf1829d1c201a0bcb57dc5cf4292e2d6dd4",
+  "producer_tree": "2e49dfad4a1d2aba33176ad3e29dff074d595797",
+  "archive_sha256": "d84567f2602d1a6cfa2a35b05618961cf050b002760c88ed6e76d8643be31a8b",
+  "producer_method": "Unmodified git archive source; original mock prepare/submit/poll/collect/export; no patched schema, payload or IDs"
+}

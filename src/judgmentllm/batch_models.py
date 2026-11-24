@@ -10,6 +10,7 @@ from pydantic import Field, model_validator
 from judgmentllm.evidence._base import EvidenceIdentity, EvidenceModel
 from judgmentllm.evidence.usage import ProviderUsage
 from judgmentllm.models import ID
+from judgmentllm.persistence.hashing import bytes_digest, canonical_bytes
 from judgmentllm.persistence.models import (
     SHA256,
     ArtifactIdentity,
@@ -222,3 +223,150 @@ class BatchRunStatusV1(EvidenceModel):
     outcome: Literal["ok", "partial", "error"]
     batch: BatchDetailV1
     artifacts: dict[str, str | None]
+    collection: OpenAIBatchCollectionV1 | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
+
+class OpenAIBatchContextV1(EvidenceModel):
+    """Generative Batch authority, independent of live model qualification."""
+
+    protocol: Literal["openai-native-batch-v1"] = "openai-native-batch-v1"
+    service_id: Literal["openai-v1"] = "openai-v1"
+    endpoint: Literal["responses", "chat.completions"]
+    model: ID
+    sdk_version: Literal["3.42.1"] = "3.42.1"
+    limits: BatchLimitsV1 = Field(default_factory=BatchLimitsV1)
+    max_source_bytes: Literal[8_388_608] = 8_388_608
+
+
+class OpenAIBatchShardV1(BatchShardV1):
+    record_type: Literal["openai_batch_shard_v1"] = "openai_batch_shard_v1"
+    context: OpenAIBatchContextV1  # pyright: ignore[reportIncompatibleVariableOverride]
+
+
+class OpenAIBatchStatusV1(BatchStatusEvidenceV1):
+    record_type: Literal["openai_batch_status_v1"] = "openai_batch_status_v1"
+    input_file_id: ID
+    endpoint: Literal["/v1/responses", "/v1/chat/completions"]
+    provider_state: Literal[
+        "validating",
+        "failed",
+        "in_progress",
+        "finalizing",
+        "completed",
+        "expired",
+        "cancelling",
+        "cancelled",
+    ]
+    output_file_id: ID | None
+    error_file_id: ID | None
+
+
+class OpenAIBatchReadyV1(EvidenceModel):
+    record_type: Literal["openai_batch_ready_v1"] = "openai_batch_ready_v1"
+    run_id: ID
+    manifest_sha256: SHA256
+    shard_id: ID
+    submission_id: ID
+    source_id: SHA256
+    role: Literal["output", "error"]
+    status_sha256: SHA256
+
+
+class OpenAIBatchSourceBindingV1(EvidenceModel):
+    record_type: Literal["openai_batch_source_binding_v1"] = (
+        "openai_batch_source_binding_v1"
+    )
+    ready: OpenAIBatchReadyV1
+    create_receipt_sha256: SHA256
+    job: OpenAIBatchStatusV1
+    file_id: ID
+    purpose: Literal["batch_output"]
+    byte_size: int = Field(ge=0, strict=True)
+
+    @model_validator(mode="after")
+    def exact_association(self) -> Self:
+        if (
+            self.ready.submission_id != self.job.submission_id
+            or self.ready.status_sha256 != bytes_digest(canonical_bytes(self.job))
+            or self.file_id != getattr(self.job, self.ready.role + "_file_id")
+            or self.job.state == "running"
+        ):
+            raise ValueError("result file differs from its accepted job/source")
+        return self
+
+
+class OpenAIBatchSelectionV1(EvidenceModel):
+    record_type: Literal["openai_batch_selection_v1"] = "openai_batch_selection_v1"
+    run_id: ID
+    sequence: int = Field(default=1, gt=0)
+    after: int = Field(ge=0)
+    cut: int = Field(ge=0)
+
+
+class OpenAIBatchAdmissionV1(EvidenceModel):
+    """A debit survives death; only a verified frontier or EOF resets stalls."""
+
+    record_type: Literal["openai_batch_admission_v1"] = "openai_batch_admission_v1"
+    run_id: ID
+    source_id: SHA256
+    sequence: int = Field(gt=0)
+    frontier: int = Field(ge=0)
+    stalls: int = Field(ge=0, le=3)
+    code: Literal[
+        "admitted",
+        "collection_partial",
+        "collection_no_progress",
+        "collection_budget_unfit",
+        "collection_prelude_failed",
+        "source_limit",
+        "source_conflict",
+        "source_overrun",
+        "source_underrun",
+        "source_framing",
+        "unsafe_metadata",
+        "source_exhausted",
+    ]
+
+
+class OpenAIBatchCollectionV1(EvidenceModel):
+    failed_sources: int = Field(ge=0)
+    pending_sources: int = Field(ge=0)
+    selection_pending: bool = False
+    prelude_failed: bool = False
+    codes: tuple[str, ...] = ()
+
+
+BatchRunStatusV1.model_rebuild()
+
+
+def shard_model(
+    context: BatchContextV1 | OpenAIBatchContextV1,
+) -> type[BatchShardV1] | type[OpenAIBatchShardV1]:
+    return (
+        OpenAIBatchShardV1
+        if isinstance(context, OpenAIBatchContextV1)
+        else BatchShardV1
+    )
+
+
+class OpenAIBatchAbsentV1(EvidenceModel):
+    record_type: Literal["openai_batch_absent_v1"] = "openai_batch_absent_v1"
+    ready: OpenAIBatchReadyV1
+
+
+class OpenAIBatchProjectionV1(EvidenceModel):
+    record_type: Literal["openai_batch_projection_v1"] = "openai_batch_projection_v1"
+    run_id: ID
+    sequence: int = Field(default=1, gt=0)
+    after: int = Field(ge=0)
+    cut: int = Field(ge=0)
+
+
+class OpenAIBatchPreludeFailureV1(EvidenceModel):
+    record_type: Literal["openai_batch_prelude_failure_v1"] = (
+        "openai_batch_prelude_failure_v1"
+    )
+    run_id: ID
+    code: Literal["collection_prelude_failed"] = "collection_prelude_failed"

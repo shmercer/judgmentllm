@@ -6,9 +6,9 @@ import csv
 import tempfile
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal, cast
 
-from pydantic import Field
+from pydantic import Field, field_validator
 
 from judgmentllm.batch_models import (
     BatchCursorV1,
@@ -20,6 +20,16 @@ from judgmentllm.batch_models import (
     BatchShardV1,
     BatchStatusEvidenceV1,
     BatchStopV1,
+    OpenAIBatchAbsentV1,
+    OpenAIBatchAdmissionV1,
+    OpenAIBatchPreludeFailureV1,
+    OpenAIBatchProjectionV1,
+    OpenAIBatchReadyV1,
+    OpenAIBatchSelectionV1,
+    OpenAIBatchShardV1,
+    OpenAIBatchSourceBindingV1,
+    OpenAIBatchStatusV1,
+    shard_model,
 )
 from judgmentllm.evidence._base import EvidenceModel
 from judgmentllm.io import export_results_csv, write_results_jsonl
@@ -33,7 +43,10 @@ from judgmentllm.persistence.models import ArtifactIdentity, IntegrityError, Run
 from judgmentllm.persistence.native_batch import latest, register, rows
 from judgmentllm.persistence.repository import Repository
 from judgmentllm.preparation import _load_manifest  # pyright: ignore[reportPrivateUsage]
-from judgmentllm.preparation.manifest import ExecutableRunManifestV12
+from judgmentllm.preparation.manifest import (
+    ExecutableRunManifestV12,
+    ExecutableRunManifestV13,
+)
 from judgmentllm.r_exports import export_pairwise_r_csv, export_rubric_r_csv
 from judgmentllm.results import PairwiseResult, RubricResult
 
@@ -104,6 +117,72 @@ class BatchControlProvenanceV1(EvidenceModel):
     )
 
 
+class OpenAIBatchJobProvenanceV1(EvidenceModel):
+    preparation: OpenAIBatchShardV1
+    submission_id: str | None
+    remote_id: str | None
+
+
+class OpenAIBatchControlProvenanceV1(EvidenceModel):
+    fact_seq: int
+    kind: Literal[
+        "operation", "stop", "cancel_all", "status", "cursor", "conflict", "withheld"
+    ]
+    entity_id: str
+    receipt_sha256: str
+    record: (
+        BatchOperationReceiptV1
+        | BatchStopV1
+        | OpenAIBatchStatusV1
+        | BatchCursorV1
+        | BatchDiagnosticV1
+        | OpenAIBatchReadyV1
+        | OpenAIBatchSelectionV1
+        | OpenAIBatchProjectionV1
+        | OpenAIBatchPreludeFailureV1
+        | OpenAIBatchAdmissionV1
+        | OpenAIBatchSourceBindingV1
+        | OpenAIBatchAbsentV1
+    )
+
+
+class BatchAuditManifestV2(BatchAuditManifestV1):
+    schema_version: Literal[2] = 2  # pyright: ignore[reportIncompatibleVariableOverride]
+
+    @field_validator("schema_version", mode="before")
+    @classmethod
+    def strict_version(cls, value: object) -> object:
+        if type(value) is not int or value != 2:
+            raise ValueError("OpenAI audit version must be integer 2")
+        return value
+
+
+class BatchAuditReportV2(BatchAuditReportV1):
+    schema_version: Literal[2] = 2  # pyright: ignore[reportIncompatibleVariableOverride]
+    manifest: BatchAuditManifestV2  # pyright: ignore[reportIncompatibleVariableOverride]
+
+    @field_validator("schema_version", mode="before")
+    @classmethod
+    def strict_version(cls, value: object) -> object:
+        if type(value) is not int or value != 2:
+            raise ValueError("OpenAI audit report version must be integer 2")
+        return value
+
+
+_OPENAI_CONTROLS = {
+    model.model_fields["record_type"].default: model
+    for model in (
+        OpenAIBatchReadyV1,
+        OpenAIBatchSelectionV1,
+        OpenAIBatchProjectionV1,
+        OpenAIBatchPreludeFailureV1,
+        OpenAIBatchAdmissionV1,
+        OpenAIBatchSourceBindingV1,
+        OpenAIBatchAbsentV1,
+    )
+}
+
+
 def _chunks(path: Path) -> Iterator[bytes]:
     with path.open("rb") as stream:
         while chunk := stream.read(65_536):
@@ -112,11 +191,19 @@ def _chunks(path: Path) -> Iterator[bytes]:
 
 def export_batch_audit(
     run_id: str, root: Path, *, bundle_id: str | None = None
-) -> BatchAuditReportV1:
+) -> BatchAuditReportV1 | BatchAuditReportV2:
     with Repository(root) as repository:
         manifest = _load_manifest(repository, run_id, unsealed=False)
-        if not isinstance(manifest, ExecutableRunManifestV12):
+        if not isinstance(
+            manifest, (ExecutableRunManifestV12, ExecutableRunManifestV13)
+        ):
             raise ValueError("batch audit requires a native batch manifest")
+        openai = isinstance(manifest, ExecutableRunManifestV13)
+        bundle_model = BatchAuditManifestV2 if openai else BatchAuditManifestV1
+        job_model = OpenAIBatchJobProvenanceV1 if openai else BatchJobProvenanceV1
+        control_model = (
+            OpenAIBatchControlProvenanceV1 if openai else BatchControlProvenanceV1
+        )
         store = ArtifactStore(repository.run_directory(run_id), create=False)
         if bundle_id is not None:
             from judgmentllm.persistence.native_batch import read_reference
@@ -125,7 +212,7 @@ def export_batch_audit(
                 repository,
                 run_id,
                 f"batch/audits/{bundle_id}.json",
-                BatchAuditManifestV1,
+                bundle_model,
             )
             if (
                 bundle is None
@@ -217,16 +304,21 @@ def export_batch_audit(
 
                 def jobs() -> Iterator[EvidenceModel]:
                     for shard in rows(
-                        repository, "batch_preparations", run_id, BatchShardV1
+                        repository,
+                        "batch_preparations",
+                        run_id,
+                        shard_model(manifest.batch_context),
                     ):
                         row = connection.execute(
                             "SELECT submission_id,remote_id FROM submissions WHERE run_id=? AND batch_uid=? AND certainty='accepted'",
                             (run_id, shard.shard_id),
                         ).fetchone()
-                        yield BatchJobProvenanceV1(
-                            preparation=shard,
-                            submission_id=row[0] if row else None,
-                            remote_id=row[1] if row else None,
+                        yield job_model.model_validate(
+                            dict(
+                                preparation=shard,
+                                submission_id=row[0] if row else None,
+                                remote_id=row[1] if row else None,
+                            )
                         )
 
                 def members() -> Iterator[EvidenceModel]:
@@ -290,7 +382,7 @@ def export_batch_audit(
                             ),
                         )
 
-                companion("jobs", jobs(), BatchJobProvenanceV1)
+                companion("jobs", jobs(), job_model)
                 companion("members", members(), BatchMemberProvenanceV1)
                 companion("operations", operations(), BatchOperationProvenanceV1)
 
@@ -304,11 +396,24 @@ def export_batch_audit(
                         "conflict": BatchDiagnosticV1,
                         "withheld": BatchDiagnosticV1,
                     }
+                    if openai:
+                        models["status"] = OpenAIBatchStatusV1
                     for row in connection.execute(
                         "SELECT fact_seq,kind,entity_id,receipt_sha256,record_json FROM batch_facts WHERE run_id=? AND fact_seq<=? ORDER BY fact_seq",
                         (run_id, cut.fact_high_water_mark),
                     ):
-                        record = models[row[1]].model_validate_json(row[4])
+                        model = models[row[1]]
+                        if openai and row[1] == "cursor":
+                            from judgmentllm.output_contracts import (
+                                decode_assessment_output,
+                            )
+
+                            fields = decode_assessment_output(row[4])
+                            if not isinstance(fields, dict):
+                                raise IntegrityError("batch cursor record is invalid")
+                            tag = cast(dict[str, Any], fields).get("record_type")
+                            model = _OPENAI_CONTROLS.get(tag, BatchCursorV1)
+                        record = model.model_validate_json(row[4])
                         if (
                             canonical_bytes(record).decode() != row[4]
                             or bytes_digest(canonical_bytes(record)) != row[3]
@@ -317,15 +422,17 @@ def export_batch_audit(
                                 "batch control evidence encoding conflicts"
                             )
                         store.verify(repository.get_artifact(run_id, row[3]))
-                        yield BatchControlProvenanceV1(
-                            fact_seq=row[0],
-                            kind=row[1],
-                            entity_id=row[2],
-                            receipt_sha256=row[3],
-                            record=record,
+                        yield control_model.model_validate(
+                            dict(
+                                fact_seq=row[0],
+                                kind=row[1],
+                                entity_id=row[2],
+                                receipt_sha256=row[3],
+                                record=record,
+                            )
                         )
 
-                companion("controls", controls(), BatchControlProvenanceV1)
+                companion("controls", controls(), control_model)
                 for name, format, view in (
                     ("results.jsonl", "jsonl", "canonical"),
                     ("results.csv", "csv", "canonical"),
@@ -359,7 +466,7 @@ def export_batch_audit(
                             rows=count,
                         )
                     )
-                bundle = BatchAuditManifestV1(
+                bundle = bundle_model(
                     run_id=run_id, bundle_id=identifier, cut=cut, files=tuple(files)
                 )
         finally:
@@ -374,12 +481,19 @@ def export_batch_audit(
 
 def report(
     repository: Repository, store: ArtifactStore, bundle: BatchAuditManifestV1
-) -> BatchAuditReportV1:
+) -> BatchAuditReportV1 | BatchAuditReportV2:
     path = str(store.reference_path(f"batch/audits/{bundle.bundle_id}.json"))
-    return BatchAuditReportV1(
-        run_id=bundle.run_id,
-        run_status=repository.get_run(bundle.run_id).state,
-        manifest_path=path,
-        manifest=bundle,
-        artifacts={"store": str(repository.root), "export": path},
+    model = (
+        BatchAuditReportV2
+        if isinstance(bundle, BatchAuditManifestV2)
+        else BatchAuditReportV1
+    )
+    return model.model_validate(
+        dict(
+            run_id=bundle.run_id,
+            run_status=repository.get_run(bundle.run_id).state,
+            manifest_path=path,
+            manifest=bundle,
+            artifacts={"store": str(repository.root), "export": path},
+        )
     )

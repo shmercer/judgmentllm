@@ -311,8 +311,9 @@ positive integers. Absent fields are omitted. Production TPM requires a
 verified input, output and reasoning bound and is currently unsupported.
 Synthetic fixtures count UTF-8 bytes of the exact input and deterministic
 response as synthetic units. Native batch uses separate typed invocation bounds
-and an offline V2 mock consumer; real provider limits and spending budgets remain
-deferred. [Native-batch versions and evidence](native-batch.md)
+and separate V2 mock/V3 OpenAI generative consumers. OpenAI collection admits
+screened sources up to 8 MiB with pinned byte size and actual EOF. Live spending
+authorization and account-specific qualification remain separate later gates. [Native-batch versions and evidence](native-batch.md)
 
 ### Generation configuration and extensibility
 
@@ -1013,3 +1014,8 @@ metadata, and execution returns a transient `invocation` summary. Operator pause
 are inferred from incomplete terminal coverage and never rewrite historical
 journals or start/deadline records. `check-admission` validates documents without
 keys or a submission. See the [operator guide](../examples/study-native/live-qualification.md).
+
+
+## M5 PR3 additive OpenAI Batch records
+
+OpenAI generative Batch adds executable manifest 13, prepared request 10 (shared output commitment 4), typed OpenAI context/shard/source/ready/selection/admission facts and audit/report 2. SQLite schema 4, historical/mock manifest 12, normalized result/export schema 1 and CLI envelope 1 are unchanged. File bindings pin accepted job/input/role and Files id/purpose/strict byte size; only actual exact-size EOF exhausts a present source. [Record invariants](native-batch.md#pinned-source-bytes-and-real-eof).

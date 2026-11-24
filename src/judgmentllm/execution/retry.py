@@ -367,6 +367,15 @@ def prepare_subset_retry(
                 existing.payload_sha256,
             ):
                 raise IntegrityError("existing retry transport commitment differs")
+        if prepared_run.manifest.schema_version == 13:
+            wire = adapter.prepare(
+                prepared_run.spec, subset, prepared_run.render_attempt(subset)
+            )
+            if (wire.prompt_sha256, wire.payload_sha256) != (
+                existing.prompt_sha256,
+                existing.payload_sha256,
+            ):
+                raise IntegrityError("existing Batch retry wire differs")
         with repository.execution_transaction(run_id, owner_token):
             if repository.get_attempt(run_id, existing.attempt_id) != existing:
                 raise IntegrityError("existing retry changed during verification")
@@ -540,6 +549,10 @@ def prepare_subset_retry(
             native_artifacts = publish_prepared_transport(
                 repository, prepared_run.store, wire, prepared_run.spec.capture
             )
+    elif version == 13:
+        rendered = prepared_run.render_attempt(subset)
+        wire = adapter.prepare(prepared_run.spec, subset, rendered)
+        prompt_bytes = rendered.text.encode("utf-8")
     else:
         rendered = prepared_run.render_attempt(subset)
         if type(rendered) not in (RenderedPrompt, RenderedPromptV2):

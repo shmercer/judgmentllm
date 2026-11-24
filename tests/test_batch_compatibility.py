@@ -928,3 +928,115 @@ def test_genuine_schema3_stays_byte_compatible_and_cannot_accept_batch(
             repository.connection.execute("SELECT count(*) FROM runs").fetchone()[0]
             == 1
         )
+
+
+def test_genuine_pr2_schema4_manifest12_audit1_remain_immutable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from test_batch_exports_retry import file_path
+
+    from judgmentllm import (
+        BatchMockOptions,
+        export_batch_provenance,
+        get_batch_status,
+        openai_batch_transport,
+        resume_batch,
+    )
+    from judgmentllm.execution.batch_exports import BatchAuditReportV1
+    from judgmentllm.preparation.manifest import ExecutableRunManifestV12
+
+    fixture = Path(__file__).parent / "fixtures" / "batch-history"
+    metadata = json.loads((fixture / "schema4-manifest12-store.json").read_text())
+    raw = base64.b64decode(
+        (fixture / "schema4-manifest12-store.tar.gz.base64").read_bytes(), validate=True
+    )
+    assert bytes_digest(raw) == metadata["archive_sha256"]
+    assert metadata["producer_commit"] == "35adfdf1829d1c201a0bcb57dc5cf4292e2d6dd4"
+    assert metadata["producer_tree"] == "2e49dfad4a1d2aba33176ad3e29dff074d595797"
+    with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as archive:
+        archive.extractall(tmp_path, filter="data")
+    root, run_id = tmp_path / "store", metadata["run_id"]
+
+    def forbidden() -> None:
+        raise AssertionError("historical local/mock operations reached OpenAI SDK")
+
+    monkeypatch.setattr(openai_batch_transport, "require_sdk", forbidden)
+    with ReadOnlyRepository(root) as repo:
+        assert repo.connection.execute("PRAGMA user_version").fetchone()[0] == 4
+        sql = [
+            tuple(r)
+            for r in repo.connection.execute(
+                "SELECT type,name,sql FROM sqlite_master ORDER BY type,name"
+            )
+        ]
+        migrations = [
+            tuple(r) for r in repo.connection.execute("SELECT * FROM schema_migrations")
+        ]
+        original = (repo.run_directory(run_id) / "manifest.json").read_bytes()
+        manifest = parse_executable_manifest(original)
+        assert type(manifest) is ExecutableRunManifestV12
+        assert bytes_digest(original) == metadata["manifest_sha256"]
+        results = tuple(repo.iter_results(run_id))
+        assert len(results) == metadata["result_count"] == 2
+        assert {r.status for r in results} == {"complete", "cancelled"}
+        receipts = [
+            r[0]
+            for r in repo.connection.execute(
+                "SELECT record_json FROM batch_member_receipts ORDER BY member_key"
+            )
+        ]
+        usage = [json.loads(r)["usage"] for r in receipts]
+        assert sum(u["input_tokens"] or 0 for u in usage) == 7
+        assert sum(u["output_tokens"] or 0 for u in usage) == 3
+    assert get_run(run_id, store=root).batch is not None
+    assert not get_batch_status(run_id, store=root).batch.recovery_required
+    old = export_batch_provenance(run_id, store=root, bundle_id=metadata["bundle_id"])
+    assert (
+        type(old) is BatchAuditReportV1
+        and old.schema_version == old.manifest.schema_version == 1
+    )
+    audit = Path(old.manifest_path).read_bytes()
+    files = {f.name: file_path(old, f.name).read_bytes() for f in old.manifest.files}
+    if canonical_bytes(manifest) == original:
+        result = resume_batch(
+            run_id,
+            store=root,
+            use_frozen_snapshot=True,
+            mock=BatchMockOptions(fixture_path=root / "fixture.json"),
+        )
+        assert not result.batch.recovery_required
+    else:
+        # Keep PR2's foreign native-Path rejection; never rewrite historical IDs.
+        with pytest.raises(LifecycleError, match="integrity"):
+            resume_batch(
+                run_id,
+                store=root,
+                use_frozen_snapshot=True,
+                mock=BatchMockOptions(fixture_path=root / "fixture.json"),
+            )
+    reopened = export_batch_provenance(
+        run_id, store=root, bundle_id=metadata["bundle_id"]
+    )
+    assert Path(reopened.manifest_path).read_bytes() == audit
+    assert {
+        f.name: file_path(reopened, f.name).read_bytes()
+        for f in reopened.manifest.files
+    } == files
+    with ReadOnlyRepository(root) as repo:
+        assert (repo.run_directory(run_id) / "manifest.json").read_bytes() == original
+        assert tuple(repo.iter_results(run_id)) == results
+        assert [
+            r[0]
+            for r in repo.connection.execute(
+                "SELECT record_json FROM batch_member_receipts ORDER BY member_key"
+            )
+        ] == receipts
+        assert [
+            tuple(r)
+            for r in repo.connection.execute(
+                "SELECT type,name,sql FROM sqlite_master ORDER BY type,name"
+            )
+        ] == sql
+        assert [
+            tuple(r) for r in repo.connection.execute("SELECT * FROM schema_migrations")
+        ] == migrations

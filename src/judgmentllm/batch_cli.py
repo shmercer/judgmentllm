@@ -32,6 +32,7 @@ def register_commands(app: typer.Typer) -> None:
 
     @group.command("prepare")
     def prepare(
+        ctx: typer.Context,
         config: Annotated[Path, typer.Option("--config")],
         store: Annotated[Path | None, typer.Option()] = None,
         run: Annotated[str | None, typer.Option("--run")] = None,
@@ -49,7 +50,9 @@ def register_commands(app: typer.Typer) -> None:
                     ledger_path=mock_ledger,
                     fixture_path=mock_fixture,
                     limits=BatchLimitsV1(max_members=mock_max_members),
-                ),
+                )
+                if _mock_supplied(ctx)
+                else None,
             )
         )
 
@@ -98,7 +101,16 @@ def register_commands(app: typer.Typer) -> None:
 
             def local_status():
                 retry_selection()
-                return get_batch_status(run, store=store)
+                result = get_batch_status(run, store=store)
+                if _mock_supplied(ctx):
+                    from judgmentllm.lifecycle import get_run
+
+                    if get_run(run, store=store).provider == "openai":
+                        raise LifecycleError(
+                            "validation",
+                            "mock controls cannot configure an OpenAI Batch run",
+                        )
+                return result
 
             perform(local_status)
             return
@@ -121,7 +133,9 @@ def register_commands(app: typer.Typer) -> None:
                     reconciliation_available=not mock_no_reconciliation,
                     retrieval_available=not mock_no_retrieval,
                     limits=BatchLimitsV1(max_members=mock_max_members),
-                ),
+                )
+                if _mock_supplied(ctx)
+                else None,
                 options=BatchControlOptionsV1(
                     deadline_seconds=deadline_seconds,
                     max_polls=max_polls,
@@ -135,3 +149,12 @@ def register_commands(app: typer.Typer) -> None:
 
     for name in ("submit", "status", "collect", "resume", "cancel"):
         group.command(name)(control)
+
+
+def _mock_supplied(ctx: typer.Context) -> bool:
+    return any(
+        source is not None and source.name == "COMMANDLINE"
+        for name in ctx.params
+        if name.startswith("mock_")
+        for source in (ctx.get_parameter_source(name),)
+    )

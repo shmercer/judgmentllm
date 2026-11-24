@@ -21,6 +21,7 @@ from judgmentllm.batch_models import (
     BatchSourceIndexV1,
     BatchStatusEvidenceV1,
     BatchStopV1,
+    shard_model,
 )
 from judgmentllm.config import RunSpecification
 from judgmentllm.evidence._base import EvidenceIdentity
@@ -54,7 +55,10 @@ from judgmentllm.persistence.ownership import ExecutorOwnership
 from judgmentllm.persistence.repository import Repository
 from judgmentllm.preparation import _load_manifest, open_prepared_run  # pyright: ignore[reportPrivateUsage]
 from judgmentllm.preparation.batch import encode_row, members_for, reconstruct
-from judgmentllm.preparation.manifest import ExecutableRunManifestV12
+from judgmentllm.preparation.manifest import (
+    ExecutableRunManifestV12,
+    ExecutableRunManifestV13,
+)
 from judgmentllm.providers.batch_protocol import (
     BatchEvidenceWithheld,
     NativeBatchAdapter,
@@ -156,6 +160,17 @@ class InvocationBudget:
         self.remaining()
         self.steps += 1
 
+    @property
+    def byte_limit(self) -> int:
+        return self.options.max_io_steps * 65_536
+
+    def receive_bytes(self, size: int) -> None:
+        """Charge physical OpenAI reads before SDK buffering or row processing."""
+        self.bytes += size
+        if self.bytes > self.byte_limit:
+            self.closed = True
+            raise BudgetExhausted
+
     async def payload(self, raw: bytes) -> AsyncIterator[bytes]:
         for position in range(0, len(raw), 65_536):
 
@@ -184,12 +199,16 @@ class BatchSession(AbstractContextManager["BatchSession"]):
         try:
             require_storage(self.repository)
             manifest = _load_manifest(self.repository, run_id, unsealed=False)
-            if not isinstance(manifest, ExecutableRunManifestV12):
+            if not isinstance(
+                manifest, (ExecutableRunManifestV12, ExecutableRunManifestV13)
+            ):
                 raise IntegrityError("run is not a native batch preparation")
             owner = self.ownership.acquire()
             self.token = owner.token
             restore_stops(self.repository, run_id, self.token)
             self.manifest = manifest
+            self.shard_model = shard_model(manifest.batch_context)
+            self.status_model = BatchStatusEvidenceV1
             self.store = ArtifactStore(
                 self.repository.run_directory(run_id), create=False
             )
@@ -563,7 +582,7 @@ class BatchSession(AbstractContextManager["BatchSession"]):
             return
         assert self.prepared is not None
         for shard in rows(
-            self.repository, "batch_preparations", self.run_id, BatchShardV1
+            self.repository, "batch_preparations", self.run_id, self.shard_model
         ):
             accepted = self.repository.connection.execute(
                 "SELECT 1 FROM submissions WHERE run_id=? AND batch_uid=? AND certainty='accepted'",
@@ -588,7 +607,7 @@ class BatchSession(AbstractContextManager["BatchSession"]):
             created = await self.mutate(
                 shard,
                 "create",
-                canonical_bytes([self.manifest_sha256, shard, uploaded]),
+                self.adapter.create_payload(self.manifest_sha256, shard, uploaded),
                 uploaded.remote_id,
             )
             if created is None or created.outcome != "accepted":
@@ -598,7 +617,7 @@ class BatchSession(AbstractContextManager["BatchSession"]):
         if not stopped(self.repository, self.run_id, "cancel_all"):
             return
         for shard in rows(
-            self.repository, "batch_preparations", self.run_id, BatchShardV1
+            self.repository, "batch_preparations", self.run_id, self.shard_model
         ):
             submission = self.accepted_submission(shard.shard_id)
             if submission is None:
@@ -608,7 +627,7 @@ class BatchSession(AbstractContextManager["BatchSession"]):
                 self.run_id,
                 "status",
                 submission.submission_id,
-                BatchStatusEvidenceV1,
+                self.status_model,
             )
             if status is not None and status.state in (
                 "completed",
@@ -619,12 +638,8 @@ class BatchSession(AbstractContextManager["BatchSession"]):
             await self.mutate(
                 shard,
                 "cancel",
-                canonical_bytes(
-                    [
-                        self.manifest_sha256,
-                        submission.submission_id,
-                        submission.remote_id,
-                    ]
+                self.adapter.cancel_payload(
+                    self.manifest_sha256, submission.submission_id, submission.remote_id
                 ),
                 submission.remote_id,
             )
@@ -639,7 +654,7 @@ class BatchSession(AbstractContextManager["BatchSession"]):
     async def poll(self) -> None:
         for poll_number in range(self.budget.options.max_polls):
             for shard in rows(
-                self.repository, "batch_preparations", self.run_id, BatchShardV1
+                self.repository, "batch_preparations", self.run_id, self.shard_model
             ):
                 submission = self.accepted_submission(shard.shard_id)
                 if submission is None:
@@ -698,10 +713,13 @@ class BatchSession(AbstractContextManager["BatchSession"]):
         source_id: str,
         position: int,
         raw: bytes,
+        *,
+        replay: bool = False,
     ) -> str:
         assert self.prepared is not None
         dependency, wire = reconstruct(self.prepared, self.adapter, member)
-        screened = self.adapter.screen_result(raw, {member.member_key: wire})
+        screen = self.adapter.screen_replay if replay else self.adapter.screen_result
+        screened = screen(raw, {member.member_key: wire})
         if screened is None:
             self.write_fact(
                 "withheld",
@@ -737,6 +755,14 @@ class BatchSession(AbstractContextManager["BatchSession"]):
                 "requested_model": self.manifest.generation.model,
                 "observation_kind": response.kind,
                 "invocation_kind": "native_batch",
+                **(
+                    response.evidence.observation_context.model_dump(
+                        exclude={"schema_version"}
+                    )
+                    if response.evidence is not None
+                    and response.evidence.observation_context is not None
+                    else {}
+                ),
             }
         )
         prior = read_reference(
@@ -881,7 +907,7 @@ class BatchSession(AbstractContextManager["BatchSession"]):
     async def collect(self) -> None:
         assert self.prepared is not None
         for shard in rows(
-            self.repository, "batch_preparations", self.run_id, BatchShardV1
+            self.repository, "batch_preparations", self.run_id, self.shard_model
         ):
             submission = self.accepted_submission(shard.shard_id)
             if submission is None:

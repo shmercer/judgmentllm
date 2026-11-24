@@ -843,3 +843,8 @@ and error-only fixtures remain synthetic and offline. The total gate deadline
 stays 180 seconds, all seven gates remain required, and source-process OS
 correctness and focused R export consumers do not replace installed acceptance.
 [Native-batch contracts and qualification boundaries](native-batch.md)
+
+
+## M5 PR3 OpenAI Batch acceptance
+
+OpenAI audit/report 2 preserves normalized JSONL/CSV/R schema 1, original/presented IDs, nonuniform ordinal mappings, null unreported probabilities/costs and usage once per physical member. Extend the existing seventh installed R-driven CLI gate with small Responses/full/grouped-rubric and Chat/minimal/reversed-pair cases; retain all seven gates, PR2 probability fixtures and the unchanged 180-second installed deadline. Heavy restart/pressure campaigns remain Python tests. [Acceptance contract](native-batch.md#acceptance-and-later-gates).

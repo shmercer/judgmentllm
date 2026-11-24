@@ -141,6 +141,28 @@ def test_reviewed_closures_cover_direct_test_imports_and_real_source_paths() -> 
                 assert test.relative_to(HERE.parent).as_posix() in selected, path
 
 
+def test_openai_batch_sources_select_sdk_recovery_privacy_r_and_resources() -> None:
+    policy = read(HERE / "test-profiles.json")
+    required = {
+        f"tests/test_openai_batch_{name}.py"
+        for name in ("sdk", "recovery", "privacy", "r", "resources")
+    }
+    for source in (
+        "src/judgmentllm/providers/openai_batch.py",
+        "src/judgmentllm/providers/openai_batch_response.py",
+    ):
+        assert policy["provider_sources"][source] == "openai"
+        selected, reasons = impact([source], policy)
+        assert reasons and required <= set(selected)
+    assert "src/judgmentllm/openai_batch_transport.py" in policy["shared_sources"]
+    assert "src/judgmentllm/execution/openai_batch.py" in policy["shared_sources"]
+    for name in required:
+        item = policy["modules"][name]
+        assert item["reason"] and item["domain"] in policy["domains"]
+        if name.endswith(("sdk.py", "recovery.py", "privacy.py")):
+            assert set(item["platforms"]) == {"linux", "win32", "darwin"}
+
+
 @pytest.mark.parametrize(
     "module,required_modules", [*SCHEMAS[:3], ("gemini_future", set[str]())]
 )

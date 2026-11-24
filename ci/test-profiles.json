@@ -1932,6 +1932,52 @@
         "darwin"
       ],
       "reason": "Real SQLite records, artifact references, metadata bounds and receipt identity checks"
+    },
+    "tests/test_openai_batch_sdk.py": {
+      "cost": "io",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Actual pinned SDK, guarded bytes, strict route gates and local public lifecycle across native OS paths"
+    },
+    "tests/test_openai_batch_recovery.py": {
+      "cost": "heavy",
+      "domain": "process-ownership",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Real fresh processes, crash/debit recovery, bounded source replay and fair multi-shard selection; pressure cases stay serial and bounded"
+    },
+    "tests/test_openai_batch_privacy.py": {
+      "cost": "io",
+      "domain": "immutable-evidence",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Pre-hash screening, immutable receipts/audit cuts, SQLite/WAL and exact source byte/EOF boundaries"
+    },
+    "tests/test_openai_batch_r.py": {
+      "cost": "io",
+      "domain": "r-interface",
+      "platforms": [],
+      "reason": "Actual offline R/jsonlite consumption of Python outputs locally, including independent negative usage assertions"
+    },
+    "tests/test_openai_batch_resources.py": {
+      "cost": "resource",
+      "domain": "resource-stress",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Measured fresh SDK workload, native/Python memory and fixed deadlines under the exclusive resource barrier"
     }
   },
   "providers": {
@@ -2051,7 +2097,12 @@
       "tests/test_study_integrity.py",
       "tests/test_vertex_lifecycle.py",
       "tests/test_bulk_live_integrity.py",
-      "tests/test_bulk_live_sdk.py"
+      "tests/test_bulk_live_sdk.py",
+      "tests/test_openai_batch_sdk.py",
+      "tests/test_openai_batch_recovery.py",
+      "tests/test_openai_batch_privacy.py",
+      "tests/test_openai_batch_r.py",
+      "tests/test_openai_batch_resources.py"
     ],
     "vertex": [
       "tests/test_google_response_equivalence.py",
@@ -2293,7 +2344,11 @@
     "src/judgmentllm/preparation/batch.py",
     "src/judgmentllm/preparation/batch_retry.py",
     "src/judgmentllm/providers/batch_mock.py",
-    "src/judgmentllm/providers/batch_protocol.py"
+    "src/judgmentllm/providers/batch_protocol.py",
+    "src/judgmentllm/execution/openai_batch.py",
+    "src/judgmentllm/openai_batch_transport.py",
+    "src/judgmentllm/providers/openai_batch.py",
+    "src/judgmentllm/providers/openai_batch_response.py"
   ],
   "smoke": [
     "tests/test_persistence_hashing.py::test_scalar_subclasses_do_not_bypass_canonical_validation",
@@ -2393,6 +2448,8 @@
     "src/judgmentllm/providers/typesafe_decisions.py": "typesafe",
     "src/judgmentllm/providers/typesafe_decisions_response.py": "typesafe",
     "src/judgmentllm/providers/vertex.py": "vertex",
-    "src/judgmentllm/providers/vertex_response.py": "vertex"
+    "src/judgmentllm/providers/vertex_response.py": "vertex",
+    "src/judgmentllm/providers/openai_batch.py": "openai",
+    "src/judgmentllm/providers/openai_batch_response.py": "openai"
   }
 }

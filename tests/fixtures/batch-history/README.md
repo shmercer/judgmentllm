@@ -10,3 +10,16 @@ the existing nonempty schema-1/2 fixtures and their assertions.
 
 The fixture's original source locations need not exist. Opening the relocated
 full snapshot uses the existing explicit `use_frozen_snapshot=True` permission.
+
+## Genuine PR2 schema-4 native Batch
+
+`schema4-manifest12-store.tar.gz.base64` was produced by unmodified source from
+commit `35adfdf1829d1c201a0bcb57dc5cf4292e2d6dd4`, tree
+`2e49dfad4a1d2aba33176ad3e29dff074d595797`, extracted with read-only `git archive`.
+The original mock prepare/submit/poll/collect/export services created manifest 12,
+SQL schema 4 and audit 1 with two results: one complete (7 input/3 output tokens)
+and one cancelled (unknown usage). No schema, payload, checksum or ID was patched.
+The accompanying JSON pins the producer, archive, manifest and original audit ID.
+Tests preserve these bytes, usage, outcomes, SQL and migration checksums. Source
+paths need not exist; the existing explicit full frozen-snapshot permission and
+foreign native-Path rejection remain in force.

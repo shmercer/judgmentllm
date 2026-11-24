@@ -36,8 +36,8 @@ native Decisions.
 |---|---|---|
 | Mock / `synthetic` | `live`, V1/V2; `bulk_live`, V2 | Public generative mock; offline execution, recovery and exports; V3 native transport has private fixtures |
 | Mock / `synthetic` | `live`, `bulk_live`, V4 | Native score/choice questions, grouping and provenance; synthetic protocol only |
-| OpenAI / `responses` | `live`, `bulk_live`, V3 | Implemented generative adapter; SDK/lifecycle fixtures |
-| OpenAI / `chat.completions` | `live`, `bulk_live`, V3 | Implemented generative adapter; SDK/lifecycle fixtures |
+| OpenAI / `responses` | `live`, `bulk_live`, `batch_native`, V3 | Generative SDK/lifecycle fixtures; Batch has separate offline evidence |
+| OpenAI / `chat.completions` | `live`, `bulk_live`, `batch_native`, V3 | Generative SDK/lifecycle fixtures; Batch has separate offline evidence |
 | Anthropic / `messages` | `live`, `bulk_live`, V3 | Implemented generative adapter; SDK/lifecycle fixtures |
 | Gemini Developer / `models.generate_content` | `live`, `bulk_live`, V3 | Implemented generative adapter; SDK/lifecycle fixtures |
 | Vertex AI Gemini / `models.generate_content` | `live`, `bulk_live`, V3 | Implemented generative adapter; separate ADC/API-key routing and SDK/lifecycle fixtures |
@@ -49,8 +49,8 @@ native Decisions.
 
 Managed bulk-live schedules the same provider scoring calls locally. Optional
 request caps apply per run. Production token caps require a verified bound and
-currently fail offline validation. Native batch for eligible endpoints is a
-later Milestone 5 target. Generative JSON Schema (`structured_output:
+currently fail offline validation. OpenAI generative native Batch is implemented
+with synthetic offline evidence; other eligible batch endpoints remain M5 targets. Generative JSON Schema (`structured_output:
 native`) and native Decisions score/choice APIs are different interfaces. New
 generative preparations use [presentation revision 2](docs/renderer-revision-2.md):
 its native serving scope is unqualified, so nonstrict `auto` selects text, while
@@ -270,7 +270,7 @@ optional complete campaign, not a prerequisite for routine PRs.
 
 ## Optional dependencies and later milestones
 
-Extras remain `openai`, `anthropic`, `google`, `together`, `ollama`, `typesafe`, `parquet`, `api`, and `all`. Use the route table above for implementation and qualification. Together/Ollama live runners, M5 native batch, the M6 CLI-first `rubricLLM` wrapper and M7 optional local FastAPI remain later work under the [implementation plan](docs/implementation-plan.md). R calls operate on runs/files or sized task groups, not one Python process per judgment.
+Extras remain `openai`, `anthropic`, `google`, `together`, `ollama`, `typesafe`, `parquet`, `api`, and `all`. Use the route table above for implementation and qualification. OpenAI generative [M5 native Batch](docs/native-batch.md) has offline implementation with separate live-authorization gates. Together/Ollama live runners, other native Batch adapters, the M6 CLI-first `rubricLLM` wrapper and M7 optional local FastAPI remain later work under the [implementation plan](docs/implementation-plan.md). R calls operate on runs/files or sized task groups, not one Python process per judgment.
 
 The repository is [shmercer/judgmentllm](https://github.com/shmercer/judgmentllm), licensed under [MIT](https://github.com/shmercer/judgmentllm/blob/main/LICENSE), and not yet published to PyPI. The core does not implement Bradley–Terry fitting, adaptive pairing, or rubric calibration; these remain in `pairwiseLLM`.
 

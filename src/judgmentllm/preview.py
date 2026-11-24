@@ -105,6 +105,14 @@ def _preview_render(
     | vertex_types.RenderedVertexPromptV1
     | gemini_types.RenderedGeminiPromptV1
 ):
+    if (
+        isinstance(spec, RunSpecV3)
+        and spec.provider == "openai"
+        and spec.execution.mode == "batch_native"
+    ):
+        from judgmentllm.openai_batch_transport import render_request as render_batch
+
+        return render_batch(spec, template, request, lookup)
     if isinstance(spec, RunSpecV3) and spec.provider == "vertex":
         from judgmentllm.vertex_prompts import render_vertex_request
         from judgmentllm.vertex_transport import build_output_commitment_v7

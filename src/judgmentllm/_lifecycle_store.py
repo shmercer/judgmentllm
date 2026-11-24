@@ -198,11 +198,16 @@ def inspect_run(repository: Repository, run_id: str) -> RunStatus:
             else None
         )
         from judgmentllm.persistence.native_batch import detail
-        from judgmentllm.preparation.manifest import ExecutableRunManifestV12
+        from judgmentllm.preparation.manifest import (
+            ExecutableRunManifestV12,
+            ExecutableRunManifestV13,
+        )
 
         batch = (
             detail(repository, run_id, manifest.batch_shard_count)
-            if isinstance(manifest, ExecutableRunManifestV12)
+            if isinstance(
+                manifest, (ExecutableRunManifestV12, ExecutableRunManifestV13)
+            )
             else None
         )
         row = repository.connection.execute(

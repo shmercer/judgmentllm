@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Literal, TypedDict, Unpack
 from judgmentllm._lifecycle_store import discover_store, resolve_run
 from judgmentllm.batch_models import (
     BatchControlOptionsV1,
+    BatchDiagnosticV1,
     BatchMockOptions,
     BatchRunStatusV1,
 )
@@ -26,11 +27,18 @@ from judgmentllm.persistence.native_batch import detail, record_stop, require_st
 from judgmentllm.persistence.ownership import ExecutorOwnership
 from judgmentllm.persistence.repository import ReadOnlyRepository, Repository
 from judgmentllm.preparation import _load_manifest, prepare_run  # pyright: ignore[reportPrivateUsage]
-from judgmentllm.preparation.manifest import ExecutableRunManifestV12
+from judgmentllm.preparation.manifest import (
+    ExecutableRunManifestV12,
+    ExecutableRunManifestV13,
+)
 from judgmentllm.providers.batch_mock import MockBatchAdapter, require_mock_batch
+from judgmentllm.providers.batch_protocol import BatchEvidenceWithheld
 
 if TYPE_CHECKING:
-    from judgmentllm.execution.batch_exports import BatchAuditReportV1
+    from judgmentllm.execution.batch_exports import (
+        BatchAuditReportV1,
+        BatchAuditReportV2,
+    )
 
 
 class BatchContinuationV1(TypedDict, total=False):
@@ -53,17 +61,32 @@ def prepare_batch(
     """Freeze all members and deterministic shards without a remote mutation."""
     with _errors():
         spec = _checked_spec(spec_or_path)
-        require_mock_batch(spec)
+        if spec.provider == "openai" and spec.schema_version == 3:
+            from judgmentllm.openai_batch_transport import (
+                batch_context,
+                require_openai_batch,
+            )
+            from judgmentllm.providers.openai_batch import OpenAIBatchAdapter
+
+            require_openai_batch(spec)
+            if mock is not None:
+                raise ValueError("mock controls cannot configure an OpenAI Batch run")
+            adapter = OpenAIBatchAdapter(batch_context(spec))
+            adapter.validate(spec)
+        else:
+            require_mock_batch(spec)
+            adapter = None
         root = discover_store(store, spec)
         if (root / "registry.sqlite3").exists():
             with ReadOnlyRepository(root) as repository:
                 require_storage(repository)
         options = mock or BatchMockOptions()
-        adapter = MockBatchAdapter(
-            options.ledger_path or root / "mock-batch-service.sqlite3",
-            options,
-            create=True,
-        )
+        if adapter is None:
+            adapter = MockBatchAdapter(
+                options.ledger_path or root / "mock-batch-service.sqlite3",
+                options,
+                create=True,
+            )
         identifier = run_id or uuid.uuid4().hex
         with prepare_run(
             spec_or_path,
@@ -87,17 +110,28 @@ def get_batch_status(
         repository.connection.execute("BEGIN")
         try:
             manifest = _load_manifest(repository, identifier, unsealed=False)
-            if not isinstance(manifest, ExecutableRunManifestV12):
+            if not isinstance(
+                manifest, (ExecutableRunManifestV12, ExecutableRunManifestV13)
+            ):
                 raise ValueError("run has no native batch manifest")
             state = repository.get_run(identifier).state
             batch_detail = detail(repository, identifier, manifest.batch_shard_count)
+            collection = None
+            if isinstance(manifest, ExecutableRunManifestV13):
+                from judgmentllm.execution.openai_batch import collection_summary
+
+                collection = collection_summary(repository, identifier)
         finally:
             repository.connection.execute("ROLLBACK")
         directory = repository.run_directory(identifier)
         return BatchRunStatusV1(
+            collection=collection,
             run_id=identifier,
             run_status=state,
-            outcome="ok",
+            outcome="error"
+            if collection is not None
+            and (collection.failed_sources or collection.prelude_failed)
+            else "ok",
             batch=batch_detail,
             artifacts={
                 "store": str(root),
@@ -123,34 +157,62 @@ async def _control(
     with _errors():
         identifier, root = resolve_run(run_id, store)
         budget = InvocationBudget(options or BatchControlOptionsV1())
-    get_batch_status(identifier, store=root)
+    with _errors(identifier, root), ReadOnlyRepository(root) as repository:
+        manifest = _load_manifest(repository, identifier, unsealed=False)
+        if not isinstance(
+            manifest, (ExecutableRunManifestV12, ExecutableRunManifestV13)
+        ):
+            raise ValueError("run has no native batch manifest")
     if action == "cancel":
         with _errors(identifier, root), Repository(root) as repository:
             with ExecutorOwnership(repository, identifier) as ownership:
                 assert ownership.owner is not None
                 record_stop(repository, identifier, ownership.owner.token, remote=True)
+    openai = isinstance(manifest, ExecutableRunManifestV13)
+    from judgmentllm.execution.openai_batch import OpenAIBatchSession
+
+    if openai:
+        with _errors(identifier, root):
+            from judgmentllm.openai_batch_transport import require_sdk
+            from judgmentllm.providers.openai_batch import OpenAIBatchAdapter
+
+            if mock is not None:
+                raise ValueError("mock controls cannot configure an OpenAI Batch run")
+            require_sdk()
+            adapter = OpenAIBatchAdapter(manifest.batch_context, budget=budget)
+            adapter.reconcile_uploads = action != "poll"
+            session_type = OpenAIBatchSession
+    else:
+        adapter = MockBatchAdapter(
+            (mock.ledger_path if mock else None) or root / "mock-batch-service.sqlite3",
+            mock or BatchMockOptions(),
+        )
+        session_type = BatchSession
     exhausted = False
     with (
         _errors(identifier, root),
-        BatchSession(
-            identifier,
-            root,
-            MockBatchAdapter(
-                (mock.ledger_path if mock else None)
-                or root / "mock-batch-service.sqlite3",
-                mock or BatchMockOptions(),
-            ),
-            budget,
-            _fault,
-        ) as session,
+        session_type(identifier, root, adapter, budget, _fault) as session,
     ):
         try:
             if action in ("cancel", "stop"):
                 session.stop(remote=action == "cancel")
-            if action != "stop":
+            selected = False
+            if isinstance(session, OpenAIBatchSession) and action in (
+                "collect",
+                "resume",
+            ):
+                selected = await session.collect_ready(spec, use_frozen_snapshot)
+                if selected and retry is not None:
+                    exhausted = (
+                        True  # The caller's retry is deferred, never silently consumed.
+                    )
+            if action != "stop" and not selected:
+                if openai and action in ("submit", "resume", "collect"):
+                    session.open_sources(spec, use_frozen_snapshot)
                 await session.recover_operations()
                 if action in ("submit", "collect", "resume"):
-                    session.open_sources(spec, use_frozen_snapshot)
+                    if not openai:
+                        session.open_sources(spec, use_frozen_snapshot)
                     from judgmentllm.preparation.batch_retry import (
                         recover_retry_preparations,
                     )
@@ -171,26 +233,75 @@ async def _control(
                 if action in ("poll", "resume"):
                     await session.poll()
                 if action in ("collect", "resume"):
-                    await session.collect()
+                    if isinstance(session, OpenAIBatchSession):
+                        await session.collect_ready(spec, use_frozen_snapshot)
+                    else:
+                        await session.collect()
             if budget.external_cancelled():
                 raise asyncio.CancelledError
             session.finish()
+        except BatchEvidenceWithheld:
+            if not isinstance(session, OpenAIBatchSession):
+                raise
+            session.write_fact(
+                "withheld", identifier, BatchDiagnosticV1(code="unsafe_evidence")
+            )
+            exhausted = True
         except (BudgetExhausted, TimeoutError, OSError):
             if budget.external_cancelled():
                 session.stop(remote=False)
                 raise asyncio.CancelledError from None
+            if isinstance(session, OpenAIBatchSession) and action in (
+                "collect",
+                "resume",
+            ):
+                session.selection_pending = True
             exhausted = True
         except BaseException:
             if budget.external_cancelled():
                 session.stop(remote=False)
             raise
+        finally:
+            if isinstance(session, OpenAIBatchSession):
+                from typing import Any, cast
+
+                from judgmentllm.lifecycle import _close_adapter  # pyright: ignore[reportPrivateUsage]
+
+                await _close_adapter(cast(Any, session.adapter))
     status = get_batch_status(identifier, store=root)
     partial = exhausted or status.batch.unresolved_operations or status.batch.conflicts
     if action in ("collect", "resume"):
         partial = partial or status.batch.recovery_required
     if action == "submit":
         partial = partial or status.batch.accepted_jobs != status.batch.jobs
-    return status.model_copy(update={"outcome": "partial" if partial else "ok"})
+    if (
+        isinstance(session, OpenAIBatchSession)
+        and session.selection_pending
+        and status.collection is not None
+    ):
+        codes = set(status.collection.codes)
+        if session.collection_budget_unfit:
+            codes.add("collection_budget_unfit")
+        status = status.model_copy(
+            update={
+                "collection": status.collection.model_copy(
+                    update={
+                        "selection_pending": True,
+                        "codes": tuple(sorted(codes)),
+                    }
+                )
+            }
+        )
+        partial = True
+    outcome = (
+        "error"
+        if status.collection is not None
+        and (status.collection.failed_sources or status.collection.prelude_failed)
+        else "partial"
+        if partial
+        else "ok"
+    )
+    return status.model_copy(update={"outcome": outcome})
 
 
 async def asubmit_batch(
@@ -274,7 +385,7 @@ def stop_batch(
 
 def export_batch_provenance(
     run_id: str | Path, *, store: str | Path | None = None, bundle_id: str | None = None
-) -> BatchAuditReportV1:
+) -> BatchAuditReportV1 | BatchAuditReportV2:
     """Publish or reopen the normalized/provenance bundle from one audit cut."""
     from judgmentllm.execution.batch_exports import export_batch_audit
 

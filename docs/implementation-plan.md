@@ -432,6 +432,8 @@ and release go/no-go evidence are in
 
 Begin after PR F acceptance. Alpha remains a separate post-M5 decision.
 
+PR3 adds only the [OpenAI generative Batch route scopes](native-batch.md#openai-generative-batch-m5-pr3), with exact SDK/wire checks, screened file size/EOF and durable fair ready-source collection. This is offline implementation; independent review, exact-source Level 3 acceptance, a key-safe runner and explicit live authorization remain separate gates.
+
 PR2 implements the [provider-neutral native-batch core](native-batch.md) with
 schema 4/manifest 12 and an offline public mock consumer only. Its contract-first
 matrix, sticky-stop/late-cancel amendment and seventh R-driven installed CLI gate

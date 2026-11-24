@@ -690,3 +690,8 @@ Local stop and remote cancel-all are independent durable facts. Late job discove
 may admit only eligible cancellation for its exact accepted ID. Screen returned
 bytes/keys/cursors before durable hashes. One audit cut preserves old exports
 and all proven outcomes while reporting current conflicts separately.
+
+
+## M5 PR3: OpenAI generative Batch
+
+Adopt the OpenAI-specific transport, immutable file/byte/EOF binding and durable ready-first collection contract in [native-batch.md](native-batch.md#openai-generative-batch-m5-pr3). Keep Responses and Chat separate, schema 4 unchanged, manifest 13/audit 2 additive, cache OFF and native Batch authority empty. Unknown acceptance never permits resubmission. Independent review, exact-source offline/hosted qualification, key-safe runner attestation and explicit live authorization are separate gates.

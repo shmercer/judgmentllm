@@ -102,3 +102,5 @@ pair_replay <- cli(c("results", "provenance", selection))$data
 replayed_pairs <- check_batch_audit(pair_replay$manifest_path)
 stopifnot(identical(replayed_pairs$members, pair_snapshot$members),
   identical(replayed_pairs$results, pair_snapshot$results))
+
+source(file.path(dirname(helper), "..", "examples", "openai_batch_cli_interoperability.R"), local = TRUE)

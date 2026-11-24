@@ -1,6 +1,10 @@
-# M5 PR2: provider-neutral native batch core
+# M5 native Batch: shared core and OpenAI generative routes
 
-This slice of JudgmentLLM #61 provides durable batch orchestration with an
+M5 PR3 adds OpenAI Responses and Chat Completions as separate generative Batch scopes, using RunSpec V3 and manifest 13. The OpenAI contract below supersedes only the provider-specific collection/transport details. Decisions, other providers and explicit caching are outside PR3.
+
+## Retained PR2 contract
+
+PR2 provides durable batch orchestration with an
 offline `mock/synthetic` consumer. It requires RunSpec V2, `batch_native`, cache
 `off`, no tier and no bulk-live limits. Other routes, Decisions, explicit caching
 and incompatible modes fail before credentials, SDK clients or network access.
@@ -209,3 +213,187 @@ and package checks, and exact-source hosted Linux 3.11 plus extended affected
 Windows 3.12/macOS 3.11 ordinary and serial correctness. Preserve systemd ownership,
 locks, cleanup, memory/pressure gates and original fixture deadlines. No focused
 check or PR acceptance authorizes paid tests, registry promotion or publication.
+
+
+## OpenAI generative Batch (M5 PR3)
+
+Use the existing public batch services and CLI with V3 `openai/responses` or
+`openai/chat.completions`, `execution.mode=batch_native`, cache OFF, no requested
+tier and no bulk-live limits. Mock options are rejected even when explicitly set
+to their defaults. Local status, stop and immutable export require neither the
+SDK nor credentials. Preparation and wire reconstruction require **actual
+installed metadata and loaded OpenAI SDK version 3.42.1**, checked before any
+credential resolver or client. `uv.lock` remains unchanged.
+
+These are independently scoped generative routes. Native output serving authority
+for Batch starts empty: `native` and strict unknown `auto` fail before submission;
+non-strict `auto` selects locally validated text. Live qualification does not
+activate native Batch output. Unknown capabilities remain unknown. Neither
+Decisions nor an explicit-cache candidate can enter this transport.
+
+Manifest **13**, `openai-native-batch-v1` context/shard records and prepared request
+**10** are additive. They use the shared output commitment **4**, protected renderer
+and exact generative body builder, without a fabricated live submission identity.
+The SQLite schema stays **4**; no migration or changed schema checksum is needed.
+Mock manifest 12, old stores, normalized JSONL/CSV/R schema 1 and CLI envelope 1
+keep their original encodings. OpenAI audit manifests/reports use **2** and typed
+OpenAI job/source/selection/admission records; mock audit version 1 stays strict.
+
+### Exact requests and usage
+
+Each JSONL row binds the immutable member digest through `custom_id`, `POST`, the
+exact `/v1/responses` or `/v1/chat/completions` URL and exact shared body bytes.
+Grouping, numeric representation, requested controls and omission survive restart.
+Responses maps a requested cap to `max_output_tokens`; Chat maps it to
+`max_completion_tokens` and sends `n=1`. Both send `stream=false`, `store=false`,
+the existing default service representation and OFF cache representation without
+breakpoints. Responses sends `truncation=disabled`. An omitted output cap stays
+omitted; there is no default, clamp, provider fallback or body-field deletion.
+`store=false` is deliberately different from omission and does not remove Batch
+input/output Files. Any serving rejection of the exact body fails rather than
+silently changing it.
+
+Usage is mapped from each attributable member's documented route-specific usage.
+The immutable physical member receipt accounts for it once, including grouped
+traits and repeated/reordered rows. Cached/reasoning counters retain their parent
+relationships; totals, unknown usage and costs are never inferred. Polls, file
+reads and aggregate job counts do not add scientific usage. Reported model,
+response ID, SDK and `native_batch` provenance remain attached to that member.
+
+### Mutation uncertainty and privacy
+
+The official asynchronous Files/Batches SDK uses fixed HTTPS routing, explicit
+credentials only, no SDK retries, environment proxies or redirects. A final wire
+check covers exact multipart fields/file bytes, create metadata/body and the
+original cancel target. Upload intent precedes forwarding; screened acceptance
+receipts precede SQL projection. An acknowledged upload is reused.
+
+Lost upload acknowledgment requires a unique bounded Files-list match by opaque
+operation filename **and exact reconstructed authorized input bytes**. Lost create
+acknowledgment requires positive original operation metadata/input/route matching
+and exact job retrieval. Incomplete or multiple matches, absence, 404/503, timeouts
+and failed lookups remain unresolved. OpenAI supplies no old-sender fence in this
+implementation: it never receives an automatic successor or ambiguous resend.
+A finalizing accepted job remains accepted through a transient poll failure and
+resumes the same IDs. Sticky stop/cancel-all and late eligible cancellation retain
+the original PR2 semantics; collection is allowed after stop/cancellation.
+
+Only screened typed projections cross hashes, immutable artifacts, SQLite/WAL or
+exports. Arbitrary control bodies and their hashes are discarded. Full capture
+retains approved originals or a labeled safe derivative; minimal capture keeps
+approved hashes/typed evidence only. Authentication fields, unsafe identifiers,
+unknown member keys and unauthorized text never gain an original hash. No partial
+raw/encrypted spool is used to bypass screening. Upload and result Files request
+30-day expiry; output expiry is explicit at create. This is not a zero-retention
+claim, and `store=false` does not eliminate provider-side Files retention.
+
+### Pinned source bytes and real EOF
+
+A stable source slot binds manifest, shard, original accepted create/submission
+and output/error role; returned file IDs or sizes never redefine it. The immutable
+binding pins the screened terminal job, accepted input/upload, exact endpoint,
+create receipt, role/file ID and **actual Files metadata `id`, `purpose` and strict
+nonnegative `bytes`**, including zero. Metadata is read before every content GET
+and rechecked after real EOF before exhaustion. Changed association, file ID,
+purpose or byte size is a conflict; the earlier pin, results, cursors and exports
+remain evidence. Equal bytes from another job or source cannot repair a mismatch.
+
+The local source admission limit is **8 MiB per present file**, independently for
+output and error. This is a local safety limit, not the provider's maximum file
+size. A legal larger provider file fails collection with `source_limit`, before
+content retrieval, and never triggers another submission. Existing input limits
+remain 1,000 members/16 MiB per shard and 1 MiB per result record.
+
+Actual content bytes are counted from zero on every complete download, including
+replayed prefixes, UTF-8, CRLF, whitespace and lookahead. Before parsing or hashing
+any row from a chunk, the entire chunk must fit the pinned byte count. Overrun is
+rejected immediately. Exhaustion requires actual iterator EOF **at exactly the
+pinned size**, complete framing/admitted rows, a verified saved prefix and the
+unchanged final metadata. Matching length, an empty chunk, quota, terminal job or
+complete member outcomes does not establish EOF. A present zero-byte file still
+requires its content GET and real EOF; an absent slot is a different typed fact.
+
+### Bounded replay and fair ready-source selection
+
+One invocation admits at most one **present** file unit. Defaults stay 30 seconds,
+1,024 I/O steps, one poll round and 128 result rows, with chunks at most 64 KiB.
+For pinned size B, admission reserves `64 + 4*ceil(B/65536) + 2` steps (at most 578)
+for replay, unread tail and EOF/control verification. The received-byte ceiling is
+`max_io_steps * 65536`, shared by all control and content reads in that invocation.
+Every physical read is charged before SDK buffering, JSON parsing or row handling,
+including accumulated metadata, cached transport bodies and replayed prefixes.
+The existing per-control 1 MiB and exact pinned content-size ceilings also apply.
+Only a 2xx content response uses the pinned file size. Non-2xx responses are
+rejected before the SDK can read or parse their error bodies: unread streams are
+closed without draining, and already cached/eagerly read bytes are charged to
+the control ceiling and shared byte budget. A failed debit or close stops the
+invocation without claiming reconciliation. HTTP error text never advances a
+cursor, supplies usage, establishes EOF or replaces the accepted job/file evidence.
+After the initial metadata has been charged, content admission requires exactly
+`2*B + C` remaining bytes, with `C = 1048576` for the bounded final metadata read.
+Insufficient caller bounds produce a transient `collection_budget_unfit` and
+partial result before content GET, without a collection debit. A fresh invocation
+can retry with default bounds. Actual transport advances, including fragmentation,
+consume the budget. This reserve is a controlled-delivery
+proof, not a minimum-throughput promise from a provider or transport.
+
+A separate durable collection admission is registered only after selected-source
+reconstruction, metadata screening and both reservations, immediately before
+content retrieval. Expiry before this point leaves no collection debit and is
+retryable in a fresh invocation. Only a verified frontier advance or real EOF
+resets that source's no-progress
+allowance. Metadata, polls, another source's progress, changed options and fresh
+processes do not reset it. Three admitted attempts with no advance produce sticky
+`collection_no_progress`; process death consumes its registered attempt. There
+is no fourth read or silent permanent partial loop. Over/underrun, unsafe metadata,
+association conflicts and framing failures terminate that source immediately.
+Proven prior outcomes/usage remain intact; independent eligible sources can still
+be collected. Current collection failures are surfaced as processing errors
+(exit 1) and local status exposes their durable summary; ordinary pending work
+continues to use partial/exit 3.
+
+A screened terminal status and both ready slots project atomically. Collect/resume
+replays local stop facts and examines a durable finite ready cut **before unrelated
+remote reconciliation, submission, cancellation or polling**. Keyset pages hold at
+most 128 ready references. The selection and projection cursors include monotonically increasing sequences so append-only fact deduplication cannot suppress a repeated rotation. The selection cursor records the last considered slot,
+rotating before reconstruction or I/O, so an earlier stalled collector cannot
+starve a later known eligible source across persistent or fresh processes.
+Durably exhausted/failed slots are excluded through the existing fact index.
+Prelude budget expiry is explicit retryable `selection_pending`; it creates no
+sticky failure or collection debit. Earlier budget-only control facts remain
+audit evidence and do not exclude eligible sources. Pending selection cannot fall
+through to
+an unrelated stalled poll. Only the selected shard is wire-reconstructed; required
+global local integrity checks remain mandatory and bounded admission failures are
+visible. Local receipt projection is separately paged after known ready selection.
+Unknown/undiscovered provider files are not promised progress. Explicit poll stays
+poll-only; a collector-only resume does not consume a deferred explicit retry.
+Continuation SDK readiness failures use the public safe diagnostic boundary before
+adapter/client construction, credentials or HTTP; untrusted version/error text is
+not included in diagnostics.
+
+### Acceptance and later gates
+
+Synthetic offline regressions cover both routes and capture modes: exact live/body
+parity and omission, actual SDK guards before secrets, ambiguous acceptance,
+accepted-finalizing poll failure/same-ID resume, reordered/error-only/partial data,
+immutable IDs/exports and once-only usage. Fresh real processes use a persistent
+independent fake service. Pressure includes 192 roughly 32-KiB valid result rows,
+real prefix replay beyond the 128-row quota, an independent error source and a
+multi-shard early stalled poll with a later already-ready source. Size tests cover
+zero, exactly 8 MiB from bounded records, +1, false metadata, over/underrun and job/
+file/role changes. Both capture modes scan retained artifacts, WAL/staging and
+prohibited hashes. A slow or over-fragmented transport must surface bounded failure,
+not be mislabeled as a successful controlled fixture.
+
+Independent code review and exact-source Level 3 local/hosted qualification remain
+separate from focused implementation checks. Preserve all seven strict R gates,
+the installed seventh gate's 180-second deadline, historical coverage/floor,
+resource/memory/cleanup bounds and Windows/macOS process correctness. A separate
+key-safe runner gate must attest writable roots, immutable Git/temp, disabled
+external networking for offline work and private scratch. **Live authorization is
+another later gate**: exact reviewed source/plan, account, routes/models/cases,
+per-row output caps and cumulative jobs/tokens/spend/time/retention/cleanup must be
+approved before any credentials or provider calls. Earlier study consent does not
+transfer. No implementation, offline fixture, qualification command or SDK match
+authorizes paid use, publication or merge.

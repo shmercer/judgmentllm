@@ -51,7 +51,9 @@ def member_wire(session: BatchSession) -> tuple[str, PreparedRequestV2]:
             )[0],
         )
     )
-    return member.member_key, reconstruct(session.prepared, session.adapter, member)[1]
+    wire = reconstruct(session.prepared, session.adapter, member)[1]
+    assert isinstance(wire, PreparedRequestV2)
+    return member.member_key, wire
 
 
 def operation(adapter: MockBatchAdapter) -> BatchOperationIntentV1:
