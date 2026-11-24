@@ -229,8 +229,34 @@ the source, plan, workflow attempt, lane and partition. Acceptance requires both
 receipts and matching collection universes. `covered-by-grid-partition` means
 required on the other VM; it is never a passed case in this receipt. Local
 coverage/R/resources still use the complete local lane. Levels 0–2 avoid another
-VM setup for their small serial scope. The hosted job cap is 90 minutes; child,
-fixture, resource and coverage limits are unchanged.
+VM setup for their small serial scope. The hosted job cap is 90 minutes, except
+full ordinary `windows-3.11`/`windows-3.12` tasks receive 120 minutes. Planner and
+acceptance remain 15/5 minutes; child, fixture, resource and coverage limits are unchanged.
+
+Windows ordinary tasks first run the 14-case offline diagnostic defined in
+`ci/windows_smoke.py`. The workflow clears inherited environment variables before
+launching the policy helper; the helper also scrubs the environment before native
+process creation. Helpers/reporters come only from the separate policy checkout.
+The protected inventory, complete provenance and each raw pytest phase determine
+success independently of process exit and summary rendering. A skip or xfail
+cannot pass the diagnostic. The 300-second work/20-second cleanup/six-minute outer
+bounds change no fixture deadline. Cleanup uses the existing private Windows job,
+with no duplicate terminate/close waits or signals selected by candidate PIDs.
+
+The full planned invocation stays unchanged and repeats the small smoke set.
+Smoke failure/timeout leaves it unexecuted/incomplete and fails the existing job;
+smoke diagnostics never enter protected full-suite receipt aggregation. The
+initial incomplete summary survives early setup failure. Missing evidence or
+renderer produces fixed sanitized fallback text; summaries never echo raw errors,
+inputs, skip reasons or artifact-controlled paths. A hard runner termination may
+leave only the initial or smoke summary. Existing artifact failures still fail.
+
+After separate authorization, the existing candidate-branch manual dispatch can
+demonstrate the proposed diagnostic as `CI candidate policy` at its exact head.
+The protected PR workflow continues using its older literal base and unchanged
+gates; candidate-policy evidence does not replace `CI acceptance`. Missing policy
+helpers never fall back to candidate copies. Local-policy dependency hashes are
+not automatically refreshed; their existing conservative isolation fallback stays.
 
 To reproduce one hosted task without measuring coverage or running R/resources:
 
