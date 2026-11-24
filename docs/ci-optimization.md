@@ -74,7 +74,27 @@ per logical OS/Python lane. Each serial VM uses one pytest process. The plan sea
 both tasks; missing/duplicated partitions, mismatched full collections or raw
 source/run/partition evidence fail aggregation. Quality runs once and planned
 packaging runs once per logical lane. Levels 0–2 keep one VM per lane. The hosted
-job cap is 90 minutes; subprocess, fixture and resource deadlines are unchanged.
+job cap is 90 minutes, except `windows-3.11` and `windows-3.12` with profile
+`full` and partition `ordinary`, which receive 120 minutes. Planner/acceptance
+limits remain 15/5 minutes; subprocess, fixture and resource deadlines are unchanged.
+
+Windows ordinary tasks run one early offline diagnostic before package-cache
+preparation and planned checks. Its five fixed selectors expand to 14 protected
+cases covering historical archive identity, snapshot mutation rejection, owned
+Windows locks, protocol deadlines and SQLite handle cleanup. The policy launcher
+requires the exact case set, complete passing setup/call/teardown reports, no
+skips/xfails, matching complete provenance, zero process exit and confirmed native
+cleanup. Rendering cannot turn incomplete evidence into a pass.
+
+The smoke has one 300-second work budget, up to 20 seconds of cleanup and a
+six-minute outer step guard. Existing private Windows Job Object ownership is
+reused: a returned owner is closed once (at most 10 seconds); constructor failure
+already contains its own 10-second handle wait plus 10-second close, without a
+second caller cleanup. Failure leaves the full suite unexecuted/incomplete.
+Successful smoke still runs the complete original selection, repeating those
+14 cases rather than changing preflight reuse or full-suite receipt admission.
+Smoke files are diagnostics only, outside the full receipt directory. No risk,
+aggregation, required-status, local-policy hash or isolation rule changes.
 
 Trusted aggregation independently reconstructs the plan and selection, parses
 the full collection and raw ordinary/serial/resource receipts, and verifies

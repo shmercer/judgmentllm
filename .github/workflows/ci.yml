@@ -90,11 +90,16 @@ jobs:
     needs: plan
     name: ${{ matrix.id }} (${{ matrix.profile }}, ${{ matrix.partition }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 90
+    timeout-minutes: ${{ (matrix.id == 'windows-3.11' || matrix.id == 'windows-3.12') && matrix.profile == 'full' && matrix.partition == 'ordinary' && 120 || 90 }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
     steps:
+      - name: Seed Windows ordinary summary
+        if: (matrix.id == 'windows-3.11' || matrix.id == 'windows-3.12') && matrix.partition == 'ordinary'
+        shell: pwsh
+        run: |
+          [IO.File]::AppendAllText($env:GITHUB_STEP_SUMMARY, "Windows ordinary: full suite unexecuted/incomplete; completion not verified.`n")
       - name: Check out trusted policy
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -123,6 +128,43 @@ jobs:
       - name: Prepare locked environment
         if: needs.plan.outputs.risk != '0'
         run: uv sync --project candidate --locked --all-extras --group dev
+      - name: Early offline Windows smoke
+        id: windows_smoke
+        if: (matrix.id == 'windows-3.11' || matrix.id == 'windows-3.12') && matrix.partition == 'ordinary'
+        timeout-minutes: 6
+        shell: pwsh
+        env:
+          LANE_ID: ${{ matrix.id }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $summary = $env:GITHUB_STEP_SUMMARY
+          $code = 1
+          try {
+            $source = (Resolve-Path -LiteralPath candidate).Path
+            $python = Join-Path $source '.venv/Scripts/python.exe'
+            $helper = (Resolve-Path -LiteralPath 'policy/ci/windows_smoke.py').Path
+            $arguments = @('run', '--source', $source,
+              '--output', (Join-Path $env:RUNNER_TEMP 'windows-smoke'),
+              '--plan', (Join-Path $env:RUNNER_TEMP 'p/plan.json'),
+              '--head', $env:SOURCE_SHA, '--lane', $env:LANE_ID,
+              '--run-id', $env:RUN_ID, '--summary', $summary)
+            $clean = @{}
+            foreach ($key in @('PATH','SystemRoot','WINDIR','TEMP','TMP','HOME','LANG','LC_ALL')) {
+              $value = [Environment]::GetEnvironmentVariable($key)
+              if ($null -ne $value) { $clean[$key] = $value }
+            }
+            foreach ($entry in @(Get-ChildItem Env:)) { [Environment]::SetEnvironmentVariable($entry.Name, $null) }
+            foreach ($key in $clean.Keys) { [Environment]::SetEnvironmentVariable($key, $clean[$key]) }
+            $env:PYTHONDONTWRITEBYTECODE = '1'
+            $env:PYTHONUTF8 = '1'
+            $env:UV_OFFLINE = '1'
+            $env:UV_PYTHON_DOWNLOADS = 'never'
+            & $python -I $helper @arguments
+            $code = $LASTEXITCODE
+          } catch {
+            [IO.File]::AppendAllText($summary, "Windows ordinary diagnostics unavailable or invalid. Full suite: unexecuted/incomplete; completion not verified.`n")
+          }
+          exit $code
       - name: Prepare offline core installation cache
         if: needs.plan.outputs.packaging == 'true' && matrix.partition != 'serial' && (matrix.id == 'linux-3.11' || needs.plan.outputs.risk == '4')
         shell: bash
@@ -130,6 +172,7 @@ jobs:
           uv export --project candidate --locked --no-default-groups --no-emit-project --output-file "$RUNNER_TEMP/core-requirements.txt"
           uv pip install --python candidate/.venv --target "$RUNNER_TEMP/core-dependencies" --require-hashes --requirements "$RUNNER_TEMP/core-requirements.txt"
       - name: Execute planned checks
+        id: planned_checks
         shell: bash
         env:
           RISK: ${{ needs.plan.outputs.risk }}
@@ -143,6 +186,7 @@ jobs:
             --execution-scope hosted "${partition[@]}" \
             --quality-receipt "$RUNNER_TEMP/p/quality/quality.json" --run-id "$RUN_ID" --output "$RUNNER_TEMP/v"
       - name: Preserve diagnostics even on failure
+        id: diagnostics
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
@@ -155,7 +199,47 @@ jobs:
             ${{ runner.temp }}/v/suite/*.xml
             ${{ runner.temp }}/v/suite/resource-measurements/*.json
             ${{ runner.temp }}/v/openai-resources/*.json
+            ${{ runner.temp }}/windows-smoke/status.json
+            ${{ runner.temp }}/windows-smoke/cases.json
+            ${{ runner.temp }}/windows-smoke/smoke.log
           if-no-files-found: error
+      - name: Summarize Windows ordinary diagnostics
+        if: always() && (matrix.id == 'windows-3.11' || matrix.id == 'windows-3.12') && matrix.partition == 'ordinary'
+        shell: pwsh
+        env:
+          LANE_ID: ${{ matrix.id }}
+          CHECKS_OUTCOME: ${{ steps.planned_checks.outcome }}
+          UPLOAD_OUTCOME: ${{ steps.diagnostics.outcome }}
+        run: |
+          try {
+            $ErrorActionPreference = 'Stop'
+            $summary = $env:GITHUB_STEP_SUMMARY
+            $source = Join-Path $env:GITHUB_WORKSPACE 'candidate'
+            $python = Join-Path $source '.venv/Scripts/python.exe'
+            $helper = (Resolve-Path -LiteralPath 'policy/ci/windows_smoke.py').Path
+            $arguments = @('summary', '--source', $source,
+              '--output', (Join-Path $env:RUNNER_TEMP 'windows-smoke'),
+              '--head', $env:SOURCE_SHA, '--lane', $env:LANE_ID,
+              '--run-id', $env:RUN_ID, '--summary', $summary,
+              '--checks', $env:CHECKS_OUTCOME, '--upload', $env:UPLOAD_OUTCOME)
+            $clean = @{}
+            foreach ($key in @('PATH','SystemRoot','WINDIR','TEMP','TMP','HOME','LANG','LC_ALL')) {
+              $value = [Environment]::GetEnvironmentVariable($key)
+              if ($null -ne $value) { $clean[$key] = $value }
+            }
+            foreach ($entry in @(Get-ChildItem Env:)) { [Environment]::SetEnvironmentVariable($entry.Name, $null) }
+            foreach ($key in $clean.Keys) { [Environment]::SetEnvironmentVariable($key, $clean[$key]) }
+            $env:PYTHONDONTWRITEBYTECODE = '1'
+            $env:PYTHONUTF8 = '1'
+            & $python -I $helper @arguments
+            if ($LASTEXITCODE -ne 0) { throw 'Diagnostic renderer unavailable' }
+          } catch {
+            try {
+              [IO.File]::AppendAllText($summary, "Windows ordinary diagnostics unavailable or invalid. Full suite: unexecuted/incomplete; completion not verified.`n")
+            } catch {}
+          } finally {
+            exit 0
+          }
 
   acceptance:
     name: CI acceptance
