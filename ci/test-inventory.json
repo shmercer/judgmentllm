@@ -1559,6 +1559,9 @@
       "test_default_fresh_process_pressure_and_early_poll_fairness": {"[chat.completions-full]": ["serial"], "[chat.completions-minimal]": ["serial"], "[responses-full]": ["serial"], "[responses-minimal]": ["serial"]},
       "test_earlier_ready_stall_cannot_starve_later_ready_after_restart": {"[full]": [], "[minimal]": []},
       "test_exact_eight_mib_multiple_bounded_rows_and_overrun": {"[full]": [], "[minimal]": []},
+      "test_exact_replay_and_control_byte_reserve_precedes_durable_admission": {"[full-chat.completions]": [], "[full-responses]": [], "[minimal-chat.completions]": [], "[minimal-responses]": []},
+      "test_fresh_process_death_after_admission_keeps_three_actual_debits": {"[full-chat.completions]": [], "[full-responses]": [], "[minimal-chat.completions]": [], "[minimal-responses]": []},
+      "test_fresh_process_lost_cancel_ack_is_reconciled_without_repeat": {"[full-chat.completions]": [], "[full-responses]": [], "[minimal-chat.completions]": [], "[minimal-responses]": []},
       "test_fresh_process_prelude_failure_is_surfaced_and_sticky": {"[full]": [], "[minimal]": []},
       "test_inconclusive_create_listing_never_resubmits": {"[incomplete-full]": [], "[incomplete-minimal]": [], "[metadata-full]": [], "[metadata-minimal]": [], "[multiple-full]": [], "[multiple-minimal]": []},
       "test_job_association_is_required_even_with_matching_content": {"[endpoint]": [], "[id]": [], "[input_file_id]": []},
@@ -1567,23 +1570,31 @@
       "test_raw_files_metadata_is_strict_before_content_or_durability": {"[bytes--1]": [], "[bytes-0]": [], "[bytes-None]": [], "[bytes-True]": [], "[id-file-other]": [], "[purpose-assistants]": []},
       "test_ready_rotation_survives_repeated_wrap_and_stalled_source": {"[fresh-full]": [], "[fresh-minimal]": [], "[persistent-full]": [], "[persistent-minimal]": []},
       "test_real_default_deadline_at_eof_cannot_loop_forever_after_restart": {"[full]": ["serial"], "[minimal]": ["serial"]},
-      "test_three_fragmentation_stalls_survive_fresh_processes_without_fourth_read": {"[full]": ["serial"], "[minimal]": ["serial"]}
+      "test_three_fragmentation_stalls_survive_fresh_processes_without_fourth_read": {"[full]": ["serial"], "[minimal]": ["serial"]},
+      "test_unfit_or_expired_invocation_can_resume_without_collection_debit": {"[metadata_expiry-full-chat.completions]": [], "[metadata_expiry-full-responses]": [], "[metadata_expiry-minimal-chat.completions]": [], "[metadata_expiry-minimal-responses]": [], "[selection-full-chat.completions]": [], "[selection-full-responses]": [], "[selection-minimal-chat.completions]": [], "[selection-minimal-responses]": [], "[steps-full-chat.completions]": [], "[steps-full-responses]": [], "[steps-minimal-chat.completions]": [], "[steps-minimal-responses]": []},
+      "test_zero_byte_503_recovers_same_job_in_fresh_process": {"[full-chat.completions]": [], "[full-responses]": [], "[minimal-chat.completions]": [], "[minimal-responses]": []}
     },
     "tests/test_openai_batch_resources.py": {
       "test_batch_sdk_grouped_workload_is_bounded": {"[full-chat.completions]": ["resource"], "[full-responses]": ["resource"], "[minimal-chat.completions]": ["resource"], "[minimal-responses]": ["resource"]}
     },
     "tests/test_openai_batch_sdk.py": {
+      "test_accumulated_metadata_byte_ceiling_precedes_json_processing": {"[False-chat.completions]": [], "[False-responses]": [], "[True-chat.completions]": [], "[True-responses]": []},
       "test_actual_sdk_guard_precedes_credentials_store_and_wire": {"[loaded]": [], "[metadata]": []},
       "test_actual_sdk_upload_serialization_is_validated_before_forward": {"": []},
+      "test_continuation_sdk_diagnostic_is_safe_before_credentials_or_clients": {"[installed-cancel-chat.completions]": [], "[installed-cancel-responses]": [], "[installed-collect-chat.completions]": [], "[installed-collect-responses]": [], "[installed-poll-chat.completions]": [], "[installed-poll-responses]": [], "[installed-resume-chat.completions]": [], "[installed-resume-responses]": [], "[installed-submit-chat.completions]": [], "[installed-submit-responses]": [], "[loaded-cancel-chat.completions]": [], "[loaded-cancel-responses]": [], "[loaded-collect-chat.completions]": [], "[loaded-collect-responses]": [], "[loaded-poll-chat.completions]": [], "[loaded-poll-responses]": [], "[loaded-resume-chat.completions]": [], "[loaded-resume-responses]": [], "[loaded-submit-chat.completions]": [], "[loaded-submit-responses]": [], "[missing-cancel-chat.completions]": [], "[missing-cancel-responses]": [], "[missing-collect-chat.completions]": [], "[missing-collect-responses]": [], "[missing-poll-chat.completions]": [], "[missing-poll-responses]": [], "[missing-resume-chat.completions]": [], "[missing-resume-responses]": [], "[missing-submit-chat.completions]": [], "[missing-submit-responses]": []},
       "test_exact_live_body_parity_omission_store_caps_and_grouped_usage": {"[explanations_first-None-chat.completions]": [], "[explanations_first-None-responses]": [], "[explanations_first-generation1-chat.completions]": [], "[explanations_first-generation1-responses]": [], "[scores_first-None-chat.completions]": [], "[scores_first-None-responses]": [], "[scores_first-generation1-chat.completions]": [], "[scores_first-generation1-responses]": [], "[together-None-chat.completions]": [], "[together-None-responses]": [], "[together-generation1-chat.completions]": [], "[together-generation1-responses]": []},
       "test_explicit_default_mock_cli_option_is_rejected_for_openai": {"": []},
       "test_failed_member_never_becomes_a_score_and_usage_is_not_invented": {"[http_error-full-chat.completions]": [], "[http_error-full-responses]": [], "[http_error-minimal-chat.completions]": [], "[http_error-minimal-responses]": [], "[invalid_json-full-chat.completions]": [], "[invalid_json-full-responses]": [], "[invalid_json-minimal-chat.completions]": [], "[invalid_json-minimal-responses]": [], "[output_limit-full-chat.completions]": [], "[output_limit-full-responses]": [], "[output_limit-minimal-chat.completions]": [], "[output_limit-minimal-responses]": []},
       "test_generic_resume_provenance_and_local_cancel_dispatch_from_manifest13": {"[full]": [], "[minimal]": []},
+      "test_http_error_control_and_unsettled_cleanup_remain_opaque": {"[async-eager-control-chat.completions]": [], "[async-eager-control-responses]": [], "[async-eager-global-chat.completions]": [], "[async-eager-global-responses]": [], "[cached-control-chat.completions]": [], "[cached-control-responses]": [], "[cached-global-chat.completions]": [], "[cached-global-responses]": [], "[drained-unaccounted-chat.completions]": [], "[drained-unaccounted-responses]": [], "[streamed-close-chat.completions]": [], "[streamed-close-responses]": []},
       "test_incompatible_scope_fails_before_sdk_or_credentials": {"[cache_policy-explicit]": [], "[mode-live]": [], "[tier-flex]": []},
+      "test_physical_prefix_replay_byte_ceiling_precedes_any_yield": {"[False-chat.completions]": [], "[False-responses]": [], "[True-chat.completions]": [], "[True-responses]": []},
       "test_round_trip": {"[full-chat.completions]": [], "[full-responses]": [], "[minimal-chat.completions]": [], "[minimal-responses]": []},
+      "test_source_size_overrun_keeps_its_integrity_classification": {"[False-chat.completions]": [], "[False-responses]": [], "[True-chat.completions]": [], "[True-responses]": []},
       "test_status_stop_export_remain_sdk_and_credential_free": {"": []},
       "test_unqualified_batch_native_authority_cannot_inherit_live_registry": {"[auto-True]": [], "[native-False]": []},
-      "test_wrong_route_context_releases_real_executor_ownership": {"[endpoint-chat.completions]": [], "[model-different-model]": []}
+      "test_wrong_route_context_releases_real_executor_ownership": {"[endpoint-chat.completions]": [], "[model-different-model]": []},
+      "test_zero_byte_content_classifies_http_status_before_sdk_error_reads": {"[200-async-eager-chat.completions]": [], "[200-async-eager-responses]": [], "[200-cached-chat.completions]": [], "[200-cached-responses]": [], "[200-streamed-chat.completions]": [], "[200-streamed-responses]": [], "[200-sync-eager-chat.completions]": [], "[200-sync-eager-responses]": [], "[503-async-eager-chat.completions]": [], "[503-async-eager-responses]": [], "[503-cached-chat.completions]": [], "[503-cached-responses]": [], "[503-streamed-chat.completions]": [], "[503-streamed-responses]": [], "[503-sync-eager-chat.completions]": [], "[503-sync-eager-responses]": []}
     },
     "tests/test_openai_cancellation.py": {
       "test_cancel_before_http_forward_does_not_create_invocation_evidence": {"[chat.completions]": [], "[responses]": []},
