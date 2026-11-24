@@ -309,7 +309,7 @@ class OpenAIBatchAdapter:
                             raise
                     finally:
                         try:
-                            await _close_adapter(cast(Any, response))
+                            await _close_adapter(response)
                         except BaseException:
                             adapter.budget.closed = True
                             raise
