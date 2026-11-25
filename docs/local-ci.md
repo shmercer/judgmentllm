@@ -82,9 +82,11 @@ stronger boundary; installed sandbox software alone proves nothing. If that
 stronger guarantee is required, it is a blocker, not permission to claim
 isolation or change OS settings in this workstream.
 
-The proposed reconciliation registry is not adopted. No execution coverage,
-qualification, installation or adoption is implied by its presence. Before
-future execution, independently review the unstaged source and its byte manifest;
+PR #73 shipped the five existing reconciliation entries. The separate phase-1
+path/digest uniqueness change preserves those registry bytes and adds no pins;
+it authorizes no parser proof, activation, qualification, installation or
+publication. Before separately authorized acceptance of this change,
+independently review the unstaged source and its byte manifest;
 then obtain fresh source-bound Level 3 quality/infrastructure, full primary
 coverage, all seven strict R gates, required resources/package checks and hosted
 protected-base evidence under the old policy. Preserve all previous failures,

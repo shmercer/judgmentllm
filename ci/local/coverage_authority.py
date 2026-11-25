@@ -189,7 +189,7 @@ def registry(raw: bytes, floor: bytes, lock: bytes) -> dict[str, Any]:
     if pins != [value["parser"]["coverage"]]:
         raise ValueError("Reconciliation parser differs from the protected lock")
     historical = document(floor)["files"]
-    seen: set[str] = set()
+    seen: set[tuple[str, str]] = set()
     for raw_entry in cast(list[Any], value["entries"]):
         if not isinstance(raw_entry, dict):
             raise ValueError("Malformed exclusion reconciliation entry")
@@ -205,13 +205,8 @@ def registry(raw: bytes, floor: bytes, lock: bytes) -> dict[str, Any]:
             raise ValueError("Malformed exclusion reconciliation entry")
         name = entry["path"]
         canonical_path(name)
-        if (
-            not name.startswith("src/judgmentllm/")
-            or not name.endswith(".py")
-            or name in seen
-        ):
-            raise ValueError("Invalid or duplicate reconciliation path")
-        seen.add(name)
+        if not name.startswith("src/judgmentllm/") or not name.endswith(".py"):
+            raise ValueError("Invalid reconciliation path")
         for key in ("candidate_source_sha256", "historical_source_sha256"):
             token = entry[key]
             if key == "historical_source_sha256" and token is None:
@@ -221,6 +216,10 @@ def registry(raw: bytes, floor: bytes, lock: bytes) -> dict[str, Any]:
                 or re.fullmatch(r"[0-9a-f]{64}", token) is None
             ):
                 raise ValueError("Invalid reconciliation source digest")
+        identity = (name, entry["candidate_source_sha256"])
+        if identity in seen:
+            raise ValueError("Duplicate reconciliation path/source digest")
+        seen.add(identity)
         for key in ("added_excluded_lines", "removed_excluded_lines"):
             integer_list(entry[key])
         expected = historical.get(name)
