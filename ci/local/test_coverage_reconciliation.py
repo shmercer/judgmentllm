@@ -23,6 +23,7 @@ from coverage_authority import (
     fingerprint,
     git_bytes,
     load,
+    registry,
     sha256,
 )
 from coverage_equivalence import compare, validate_summary
@@ -199,6 +200,101 @@ def comparison(value: dict[str, Any], **changes: Any) -> dict[str, Any]:
     )
 
 
+@pytest.mark.parametrize(
+    "fault", ["none", "duplicate-reason", "duplicate-delta", "alias", "digest"]
+)
+def test_legacy_registry_and_exact_pair_validation(fault: str) -> None:
+    root = Path(__file__).resolve().parents[2]
+    floor, lock = (root / FLOOR).read_bytes(), (root / "uv.lock").read_bytes()
+    value = registry((root / REGISTRY).read_bytes(), floor, lock)
+    assert (
+        fingerprint(value["entries"][:5])
+        == "94a5b568f86afd6c1bbd268d807b1dfe22201d986b9438c00054f89cd70ecb98"
+    )
+    if fault == "none":
+        return
+    if fault.startswith("duplicate-"):
+        duplicate = copy.deepcopy(value["entries"][0])
+        if fault == "duplicate-reason":
+            duplicate["reason"] = "A different reason cannot authorize a duplicate"
+        else:
+            duplicate["added_excluded_lines"] = [106]
+        value["entries"].append(duplicate)
+        message = "Duplicate reconciliation path/source digest"
+    elif fault == "alias":
+        value["entries"][0]["path"] = "src/judgmentllm/./lifecycle.py"
+        message = "Noncanonical evidence path"
+    else:
+        value["entries"][0]["candidate_source_sha256"] = []
+        message = "Invalid reconciliation source digest"
+    with pytest.raises(ValueError, match=message):
+        registry(json.dumps(value).encode(), floor, lock)
+
+
+@PRIMARY
+@pytest.mark.parametrize("reverse", [False, True])
+def test_exact_variants_keep_independent_pins_and_coverage_losses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, reverse: bool
+) -> None:
+    value = case(tmp_path, monkeypatch)
+    source = value["source"]
+    calls = [("choose", True), ("choose", False)]
+    second = "# Second reviewed variant\n" + NEW.replace("if flag:", "if not flag:")
+    (source / MODULE).write_text(second)
+    measured = measure(source, value["current"], calls)
+    entries = [
+        value["entry"],
+        {
+            **value["entry"],
+            "candidate_source_sha256": sha256(second.encode()),
+            "added_excluded_lines": measured["files"][MODULE]["excluded_lines"],
+            "reason": "Independently reviewed second synthetic variant",
+        },
+    ]
+    assert entries[0]["added_excluded_lines"] != entries[1]["added_excluded_lines"]
+    raw = json.loads((source / REGISTRY).read_text())
+    raw["entries"] = list(reversed(entries)) if reverse else entries
+    write(source / REGISTRY, raw)
+    (source / MODULE).write_text(OLD)
+    value["base"] = commit(source)
+    value["policy"] = describe(source, value["base"])
+    for program, entry in zip((NEW, second), entries, strict=True):
+        (source / MODULE).write_text(program)
+        value["head"] = commit(source)
+        measure(source, value["current"], calls)
+        result = comparison(value)
+        assert result["passed"], result
+        assert result["applied_reconciliations"] == [entry]
+        measure(source, value["current"], [("choose", True)])
+        denied = comparison(value)
+        assert not denied["passed"] and "fatal_error" not in denied, denied
+        assert denied["applied_reconciliations"] == [entry]
+        detail = denied["modified"][0]
+        assert detail["lost_equal_lines"] and detail["regressions"]["branch"]
+        if program == second:
+            assert detail["missing_changed_branches"]
+    for program in (second.replace("not flag", "flag"), NEW + "# altered bytes\n"):
+        (source / MODULE).write_text(program)
+        measured = measure(source, value["current"], calls)
+        # A matching candidate-owned pin cannot extend the authenticated base.
+        candidate_entry = {
+            **value["entry"],
+            "candidate_source_sha256": sha256(program.encode()),
+            "added_excluded_lines": measured["files"][MODULE]["excluded_lines"],
+        }
+        write(
+            source / REGISTRY,
+            {**raw, "entries": [*raw["entries"], candidate_entry]},
+        )
+        value["head"] = commit(source)
+        denied = comparison(value)
+        assert not denied["passed"] and "fatal_error" not in denied, denied
+        assert denied["applied_reconciliations"] == []
+        assert any("exclusions" in loss.get("reason", "") for loss in denied["losses"])
+        forged = comparison(value, coverage_policy=describe(source, value["head"]))
+        assert forged["fatal_error"] == "invalid-authority"
+
+
 @PRIMARY
 def test_exact_approval_and_candidate_self_exemption(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
@@ -230,6 +326,7 @@ def test_exact_approval_and_candidate_self_exemption(
         "arc",
         "stale-byte",
         "candidate-lock",
+        "candidate-config",
         "unrelated-loss",
     ],
 )
@@ -282,6 +379,11 @@ def test_exact_entry_cannot_excuse_bad_or_uncovered_evidence(
             '[[package]]\nname = "coverage"\nversion = "0.0"\n'
         )
         value["head"] = commit(value["source"])
+    elif fault == "candidate-config":
+        (value["source"] / "pyproject.toml").write_text(
+            SETTINGS.replace("fail_under = 90", "fail_under = 1")
+        )
+        value["head"] = commit(value["source"])
     if fault in {"fake-runtime", "missing-runtime", "arc", "unrelated-loss"}:
         # These forged minimal summaries stay internally consistent so stale
         # optional presentation fields cannot mask the parser/coverage boundary.
@@ -302,6 +404,8 @@ def test_exact_entry_cannot_excuse_bad_or_uncovered_evidence(
         assert "fatal_error" in result
     if fault == "unrelated-loss":
         assert result["applied_reconciliations"] and result["losses"]
+    if fault == "candidate-config":
+        assert result["fatal_error"] == "invalid-evidence"
 
 
 @PRIMARY

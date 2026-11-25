@@ -376,6 +376,14 @@ records the narrow correction, improved coverage and skipped downstream gates.
 
 ### Proposed exact-source exclusion reconciliation (not adopted)
 
+The proposal-stage adoption wording below is historical: PR #73 subsequently
+shipped the five entries. The separate exact-source-variants phase 1 changes only
+duplicate identity to `(canonical path, complete candidate_source_sha256)`;
+different exact digests may coexist without ordering or shadowing. It preserves
+the registry's five entries byte-for-byte and adds no PR #76 pins. Parser proof,
+admission, activation, qualification and publication require their separate
+review and authorization; this phase grants none.
+
 `ci/coverage-exclusion-reconciliations.json` proposes five exact-source entries
 for PR #72's frozen production bytes at
 `c766cb85a28c057a8d62eabd55c96acf569bc7a9`. This separate policy proposal is
@@ -409,8 +417,9 @@ The version-1 document binds the exact historical floor SHA-256 and CPython
 3.11/Coverage 7.17.0 context. Each future independently reviewed entry binds one
 canonical production Python path, its complete candidate byte SHA-256, its
 historical source SHA-256 (null only for a new module), complete sorted added
-and removed exclusion arrays, and a reason. Duplicate/unknown fields and paths,
-noninteger or noncanonical lists, stale context and partial deltas fail closed.
+and removed exclusion arrays, and a reason. Duplicate/unknown fields, duplicate
+path/digest pairs, noncanonical paths/lists, noninteger lists, stale context and
+partial deltas fail closed.
 No pattern, candidate commit rule or candidate-side approval flag is accepted.
 
 Planning reads only standard-library metadata. The new coverage-policy digest
