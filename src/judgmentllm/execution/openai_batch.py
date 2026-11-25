@@ -485,27 +485,24 @@ class OpenAIBatchSession(BatchSession):
         for lower, upper in ((after, cut), (0, min(after, cut))):
             if lower >= upper:
                 continue
-            while lower < upper:
+            if not self.selection_step():
+                return None
+            page = self.repository.connection.execute(
+                eligible, (self.run_id, lower, upper, *errors)
+            ).fetchall()
+            if page:
                 if not self.selection_step():
                     return None
-                page = self.repository.connection.execute(
-                    eligible, (self.run_id, lower, upper, *errors)
-                ).fetchall()
-                if not page:
-                    break
-                for row in page:
-                    if not self.selection_step():
-                        return None
-                    ready = OpenAIBatchReadyV1.model_validate_json(row[1])
-                    if (
-                        bytes_digest(canonical_bytes(ready)) != row[2]
-                        or ready.manifest_sha256 != self.manifest_sha256
-                    ):
-                        raise IntegrityError("ready-source projection differs")
-                    self.store.verify(self.repository.get_artifact(self.run_id, row[2]))
-                    lower = row[0]
-                    considered(lower, selected=True)
-                    return ready
+                row = page[0]
+                ready = OpenAIBatchReadyV1.model_validate_json(row[1])
+                if (
+                    bytes_digest(canonical_bytes(ready)) != row[2]
+                    or ready.manifest_sha256 != self.manifest_sha256
+                ):
+                    raise IntegrityError("ready-source projection differs")
+                self.store.verify(self.repository.get_artifact(self.run_id, row[2]))
+                considered(row[0], selected=True)
+                return ready
             # Persist tail exhaustion before a bounded head lookup can yield.
             if upper == cut and after < cut:
                 considered(cut)
@@ -768,8 +765,6 @@ class OpenAIBatchSession(BatchSession):
                         self.fail_source(source, "collection_partial", stalls=0)
                         return
                     line, separator, tail = buffer.partition(b"\n")
-                    if not separator and not eof:
-                        break
                     if (
                         len(line) + len(separator)
                         > self.manifest.batch_context.limits.max_record_bytes

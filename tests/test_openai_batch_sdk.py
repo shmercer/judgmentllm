@@ -773,3 +773,1551 @@ async def test_http_error_control_and_unsettled_cleanup_remain_opaque(
         assert requests == ["/v1/files/file-output_1/content"]
     finally:
         await adapter.aclose()
+
+
+@pytest.mark.parametrize("endpoint", ["responses", "chat.completions"])
+@pytest.mark.parametrize("match", ["exact", "changed-body", "wrong-length", "ambiguous"])
+def test_lost_upload_ack_requires_unique_exact_authorized_input(
+    tmp_path: Any, monkeypatch: Any, endpoint: str, match: str
+) -> None:
+    service = Service(tmp_path / "service.sqlite")
+    install(monkeypatch, service)
+    spec = specification(tmp_path, endpoint=endpoint)
+    store = tmp_path / "store"
+    prepare_batch(spec, store=store, run_id="001")
+    service.configure(store, spec)
+    service.set("lose_upload_ack", True)
+    first = submit_batch("001", store=store, spec=spec)
+    assert first.batch.accepted_jobs == 0 and first.batch.unresolved_operations
+    service.set("lose_upload_ack", False)
+    body, size = service.file("file-input_1")
+    if match == "changed-body":
+        service.file("file-input_1", body=b"!" + body[1:])
+    elif match == "wrong-length":
+        service.file("file-input_1", declared=size + 1)
+    elif match == "ambiguous":
+        with service.connect() as db:
+            db.execute(
+                "INSERT INTO files SELECT 'file-duplicate',purpose,filename,body,declared FROM files WHERE id='file-input_1'"
+            )
+    with ReadOnlyRepository(store) as repo:
+        intent = tuple(
+            repo.connection.execute(
+                "SELECT instance_id,intent_sha256 FROM batch_operations WHERE kind='upload'"
+            ).fetchone()
+        )
+    before = len(service.events())
+    resumed = resume_batch("001", store=store, spec=spec)
+    assert ("GET", "/v1/files") in service.events()[before:]
+    content = [
+        path for _, path in service.events()[before:] if path.endswith("/content")
+    ]
+    with ReadOnlyRepository(store) as repo:
+        assert tuple(
+            repo.connection.execute(
+                "SELECT instance_id,intent_sha256 FROM batch_operations WHERE kind='upload'"
+            ).fetchone()
+        ) == intent
+        if match == "exact":
+            assert resumed.batch.accepted_jobs == 1
+            assert not resumed.batch.unresolved_operations
+            assert repo.connection.execute(
+                "SELECT remote_id FROM submissions WHERE certainty='accepted'"
+            ).fetchone()[0] == "batch_1"
+            assert content.count("/v1/files/file-input_1/content") == 1
+        else:
+            assert resumed.batch.accepted_jobs == 0
+            assert resumed.batch.unresolved_operations
+            assert not repo.connection.execute(
+                "SELECT 1 FROM batch_facts WHERE kind='operation'"
+            ).fetchone()
+            assert repo.summary("001").results == 0
+            assert content == (
+                ["/v1/files/file-input_1/content"] if match == "changed-body" else []
+            )
+    posts = [event for event in service.events() if event[0] == "POST"]
+    assert posts == [("POST", "/v1/files")] + (
+        [("POST", "/v1/batches")] if match == "exact" else []
+    )
+
+
+@pytest.mark.parametrize("endpoint", ["responses", "chat.completions"])
+def test_batch_preview_uses_native_output_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, endpoint: str
+) -> None:
+    from judgmentllm import preview_prompt
+    from judgmentllm.openai_batch_transport import (
+        PreparedOpenAIBatchRequest,
+        batch_context,
+    )
+    from judgmentllm.persistence.hashing import bytes_digest
+    from judgmentllm.preparation import open_prepared_run
+    from judgmentllm.preparation.batch import members_for, reconstruct
+    from judgmentllm.production_prompts import RenderedProductionPromptV1
+    from judgmentllm.providers import openai_batch
+
+    service = Service(tmp_path / "service.sqlite")
+    install(monkeypatch, service)
+    spec = specification(tmp_path, endpoint=endpoint, responses=1)
+
+    def forbidden(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("offline preview reached credentials or a client")
+
+    monkeypatch.setattr(openai_batch, "_resolve_credentials", forbidden)
+    monkeypatch.setattr(openai_batch.OpenAIBatchAdapter, "client", forbidden)
+    preview = preview_prompt(spec, item_id="000", trait_id="000")
+    assert isinstance(preview, RenderedProductionPromptV1)
+    store = tmp_path / "store"
+    prepare_batch(spec, store=store, run_id="001")
+    adapter = openai_batch.OpenAIBatchAdapter(batch_context(spec))
+    with open_prepared_run(
+        "001", store=store, spec=spec, capabilities=adapter.capabilities(spec)
+    ) as prepared:
+        shard = prepared.repository.connection.execute(
+            "SELECT shard_id FROM batch_preparations"
+        ).fetchone()[0]
+        member = next(members_for(prepared, shard))
+        _, wire = reconstruct(prepared, adapter, member)
+        assert isinstance(wire, PreparedOpenAIBatchRequest)
+        assert wire.endpoint == endpoint and wire.preparation_version == 10
+        assert preview.output_commitment == wire.output_commitment
+        assert bytes_digest(preview.text.encode("utf-8")) == wire.prompt_sha256
+        assert preview.output_commitment.selection.authority_kind == "unqualified"
+    assert not service.events()
+
+
+@pytest.mark.parametrize(
+    "case", ["openai-local", "openai-explicit-mock", "mock-explicit-mock"]
+)
+def test_local_batch_status_keeps_provider_boundary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    from test_cli_lifecycle import control
+    from test_native_batch import batch_spec
+
+    from judgmentllm import openai_batch_transport
+    from judgmentllm.execution import openai_batch as execution
+    from judgmentllm.persistence.ownership import executor_is_active
+    from judgmentllm.providers import openai_batch
+
+    service = Service(tmp_path / "service.sqlite")
+    install(monkeypatch, service)
+    spec = (
+        batch_spec(tmp_path / "inputs")
+        if case == "mock-explicit-mock"
+        else specification(tmp_path, responses=1)
+    )
+    store = tmp_path / "store"
+    prepare_batch(spec, store=store, run_id="001")
+    with ReadOnlyRepository(store) as repo:
+        original = repo.summary("001")
+        manifest = (repo.run_directory("001") / "manifest.json").read_bytes()
+
+    def forbidden(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("local status reached OpenAI SDK or credentials")
+
+    monkeypatch.setattr(openai_batch_transport, "require_sdk", forbidden)
+    monkeypatch.setattr(openai_batch, "require_sdk", forbidden)
+    monkeypatch.setattr(execution, "require_sdk", forbidden)
+    monkeypatch.setattr(openai_batch, "_resolve_credentials", forbidden)
+    arguments = ["batch", "status", "--run", "001", "--store", str(store)]
+    if case != "openai-local":
+        arguments += ["--mock-max-members", "1000"]
+    rejected = case == "openai-explicit-mock"
+    envelope, _ = control(arguments, 2 if rejected else 0)
+    if rejected:
+        assert envelope["error"]["category"] == "validation"
+        assert envelope["error"]["message"] == (
+            "mock controls cannot configure an OpenAI Batch run"
+        )
+    else:
+        assert envelope["run_id"] == "001" and envelope["command"] == "batch status"
+        assert envelope["error"] is None
+        assert envelope["data"]["batch"]["accepted_jobs"] == 0
+    with ReadOnlyRepository(store) as repo:
+        assert repo.summary("001") == original
+        assert (repo.run_directory("001") / "manifest.json").read_bytes() == manifest
+        assert not executor_is_active(repo, "001")
+    assert not service.events()
+
+
+@pytest.mark.parametrize(
+    "version,accepted",
+    [
+        pytest.param(10, True, id="valid-int"),
+        pytest.param(9, False, id="wrong-int"),
+        pytest.param(True, False, id="boolean"),
+        pytest.param(10.0, False, id="float"),
+        pytest.param("10", False, id="string"),
+    ],
+)
+def test_prepared_batch_version_requires_exact_integer(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    version: object,
+    accepted: bool,
+) -> None:
+    from pydantic import ValidationError
+
+    from judgmentllm.openai_batch_transport import (
+        PreparedOpenAIBatchRequest,
+        batch_context,
+    )
+    from judgmentllm.preparation import open_prepared_run
+    from judgmentllm.preparation.batch import members_for, reconstruct
+    from judgmentllm.providers.openai_batch import OpenAIBatchAdapter
+
+    service = Service(tmp_path / "service.sqlite")
+    install(monkeypatch, service)
+    spec = specification(tmp_path, responses=1)
+    store = tmp_path / "store"
+    prepare_batch(spec, store=store, run_id="001")
+    adapter = OpenAIBatchAdapter(batch_context(spec))
+    with open_prepared_run(
+        "001", store=store, spec=spec, capabilities=adapter.capabilities(spec)
+    ) as prepared:
+        shard = prepared.repository.connection.execute(
+            "SELECT shard_id FROM batch_preparations"
+        ).fetchone()[0]
+        _, wire = reconstruct(prepared, adapter, next(members_for(prepared, shard)))
+        assert isinstance(wire, PreparedOpenAIBatchRequest)
+        data = {**wire.model_dump(), "preparation_version": version}
+        if accepted:
+            validated = PreparedOpenAIBatchRequest.model_validate(data)
+            assert type(validated.preparation_version) is int
+            assert validated.preparation_version == 10 and validated == wire
+        else:
+            with pytest.raises(
+                ValidationError, match="preparation version must be integer 10"
+            ) as error:
+                PreparedOpenAIBatchRequest.model_validate(data)
+            assert [entry["loc"] for entry in error.value.errors()] == [
+                ("preparation_version",)
+            ]
+    assert not service.events()
+
+
+def test_batch_compile_rejects_mismatched_render_commitment(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from judgmentllm.openai_batch_transport import batch_context, compile_request
+    from judgmentllm.preparation import open_prepared_run
+    from judgmentllm.preparation.batch import members_for, reconstruct
+    from judgmentllm.production_prompts import RenderedProductionPromptV1
+    from judgmentllm.providers.openai_batch import OpenAIBatchAdapter
+
+    service = Service(tmp_path / "service.sqlite")
+    install(monkeypatch, service)
+    spec = specification(tmp_path, responses=1)
+    store = tmp_path / "store"
+    prepare_batch(spec, store=store, run_id="001")
+    adapter = OpenAIBatchAdapter(batch_context(spec))
+    with open_prepared_run(
+        "001", store=store, spec=spec, capabilities=adapter.capabilities(spec)
+    ) as prepared:
+        shard = prepared.repository.connection.execute(
+            "SELECT shard_id FROM batch_preparations"
+        ).fetchone()[0]
+        dependency, wire = reconstruct(
+            prepared, adapter, next(members_for(prepared, shard))
+        )
+        rendered = prepared.render_attempt(dependency)
+        assert isinstance(rendered, RenderedProductionPromptV1)
+        assert compile_request(spec, dependency, rendered) == wire
+        assert rendered.output_commitment.context_sha256 != "0" * 64
+        changed = RenderedProductionPromptV1.model_validate(
+            {
+                **rendered.model_dump(),
+                "output_commitment": {
+                    **rendered.output_commitment.model_dump(),
+                    "context_sha256": "0" * 64,
+                },
+            }
+        )
+        assert changed.text == rendered.text and changed != rendered
+        with pytest.raises(ValueError, match="Batch prompt/output commitment differs"):
+            compile_request(spec, dependency, changed)
+    assert not service.events()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "case",
+    [
+        "unowned",
+        "route",
+        "authorization",
+        "forbidden-header",
+        "multipart-bound",
+        "duplicate-part",
+        "body",
+        "repeat",
+    ],
+)
+async def test_sdk_control_guard_blocks_unapproved_forward(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    from email.message import Message
+
+    import httpx2
+
+    from judgmentllm import BatchControlOptionsV1, asubmit_batch
+    from judgmentllm.execution.native_batch import InvocationBudget
+    from judgmentllm.lifecycle_models import LifecycleError
+    from judgmentllm.openai_batch_transport import batch_context
+    from judgmentllm.providers.openai_batch import OpenAIBatchAdapter
+    from judgmentllm.providers.protocol import ProviderIntegrityError
+
+    service = Service(tmp_path / "service.sqlite")
+    install(monkeypatch, service)
+    spec = specification(tmp_path, responses=1)
+    file_id = "file-output_guard"
+    with service.connect() as db:
+        db.execute(
+            "INSERT INTO files VALUES (?,?,?,?,?)",
+            (file_id, "batch_output", "guard.jsonl", b"", 0),
+        )
+    upload = case in ("multipart-bound", "duplicate-part")
+    store = tmp_path / "store"
+    if upload:
+        prepare_batch(spec, store=store, run_id="001")
+        service.configure(store, spec)
+    messages = {
+        "unowned": "OpenAI Batch request has no operation authorization",
+        "route": "OpenAI Batch routing differs",
+        "authorization": "OpenAI Batch authorization differs",
+        "forbidden-header": "OpenAI Batch headers or path differ",
+        "multipart-bound": "OpenAI Batch multipart bound differs",
+        "duplicate-part": "duplicate OpenAI Batch multipart field",
+        "body": "OpenAI Batch body differs from authorized bytes",
+        "repeat": "OpenAI Batch forwarding was already consumed",
+    }
+    original_send = httpx2.AsyncClient.send
+
+    async def changed_send(self: Any, request: Any, **kwargs: Any) -> Any:
+        if case == "repeat":
+            first = await original_send(self, request, **kwargs)
+            try:
+                return await original_send(self, request, **kwargs)
+            finally:
+                await first.aclose()
+        if case == "unowned":
+            return await original_send(self, request, **kwargs)
+        body = await request.aread()
+        headers = httpx2.Headers(request.headers)
+        url = request.url
+        if case == "route":
+            url = url.copy_with(path=url.path + "/unapproved")
+        elif case == "authorization":
+            headers["authorization"] = "Bearer mismatched-synthetic"
+        elif case == "forbidden-header":
+            headers["cookie"] = "synthetic=1"
+        elif case == "multipart-bound":
+            body += b"x" * 16_385
+        elif case == "duplicate-part":
+            mime = Message()
+            mime["content-type"] = headers["content-type"]
+            boundary = mime.get_param("boundary")
+            assert isinstance(boundary, str) and boundary
+            delimiter = b"--" + boundary.encode("ascii")
+            closing = delimiter + b"--\r\n"
+            assert body.endswith(closing) and body.count(b'name="purpose"') == 1
+            part = (
+                delimiter
+                + b'\r\nContent-Disposition: form-data; name="purpose"\r\n'
+                + b"\r\nbatch\r\n"
+            )
+            body = body[: -len(closing)] + part + closing
+            assert body.count(b'name="purpose"') == 2
+        else:
+            assert case == "body"
+            body = b"{}"
+        if case in ("multipart-bound", "duplicate-part", "body"):
+            headers.pop("content-length", None)
+            headers.pop("transfer-encoding", None)
+        changed = httpx2.Request(
+            request.method,
+            url,
+            headers=headers,
+            content=body,
+            extensions=request.extensions,
+        )
+        return await original_send(self, changed, **kwargs)
+
+    adapter = OpenAIBatchAdapter(
+        batch_context(spec),
+        budget=InvocationBudget(BatchControlOptionsV1(max_io_steps=64)),
+    )
+    try:
+        with monkeypatch.context() as patch:
+            patch.setattr(httpx2.AsyncClient, "send", changed_send)
+            if upload:
+                with pytest.raises(LifecycleError) as error:
+                    await asubmit_batch("001", store=store, spec=spec)
+                assert error.value.category == "execution"
+                context = error.value.__context__
+                assert isinstance(context, ProviderIntegrityError)
+                assert context.args == (messages[case],)
+            else:
+                with pytest.raises(ProviderIntegrityError) as error:
+                    if case == "unowned":
+                        client = await adapter.client()
+                        await client.files.with_raw_response.retrieve(file_id)
+                    else:
+                        await adapter.file_metadata(file_id)
+                assert error.value.args == (messages[case],)
+        forwarded = 1 if case == "repeat" else 0
+        expected = [("GET", "/v1/files/" + file_id)]
+        assert service.events() == expected * forwarded
+        assert await adapter.file_metadata(file_id) == (file_id, "batch_output", 0)
+        assert service.events() == expected * (forwarded + 1)
+    finally:
+        await adapter.aclose()
+
+
+@pytest.mark.asyncio
+async def test_encoded_control_response_closes_without_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import gzip
+    from collections.abc import AsyncIterator
+
+    import httpx2
+
+    from judgmentllm import BatchControlOptionsV1, asubmit_batch
+    from judgmentllm.batch_models import BatchOperationReceiptV1
+    from judgmentllm.execution.native_batch import InvocationBudget
+    from judgmentllm.openai_batch_transport import batch_context
+    from judgmentllm.persistence.native_batch import read_reference
+    from judgmentllm.persistence.ownership import executor_is_active
+    from judgmentllm.providers.openai_batch import OpenAIBatchAdapter
+
+    service = Service(tmp_path / "service.sqlite")
+    install(monkeypatch, service)
+    spec = specification(tmp_path, responses=1)
+    store = tmp_path / "store"
+    prepare_batch(spec, store=store, run_id="001")
+    service.configure(store, spec)
+    state = {"reads": 0, "closes": 0}
+
+    class EncodedBody(httpx2.AsyncByteStream):
+        def __init__(self, raw: bytes) -> None:
+            self.raw = gzip.compress(raw)
+
+        async def __aiter__(self) -> AsyncIterator[bytes]:
+            state["reads"] += 1
+            yield self.raw
+
+        async def aclose(self) -> None:
+            state["closes"] += 1
+
+    original_request = service.request
+    encoded = True
+
+    def response(request: Any) -> Any:
+        nonlocal encoded
+        result = original_request(request)
+        if encoded:
+            assert (request.method, request.url.path) == ("POST", "/v1/files")
+            encoded = False
+            raw = result.read()
+            result.close()
+            return httpx2.Response(
+                200,
+                headers={
+                    "content-type": "application/json",
+                    "content-encoding": "gzip",
+                },
+                stream=EncodedBody(raw),
+            )
+        return result
+
+    monkeypatch.setattr(service, "request", response)
+    result = await asubmit_batch("001", store=store, spec=spec)
+    assert result.outcome == "partial"
+    assert result.batch.accepted_jobs == 0 and result.batch.unresolved_operations == 1
+    assert not encoded and state == {"reads": 0, "closes": 1}
+    assert service.events() == [("POST", "/v1/files")]
+    adapter = OpenAIBatchAdapter(
+        batch_context(spec),
+        budget=InvocationBudget(BatchControlOptionsV1(max_io_steps=64)),
+    )
+    try:
+        assert await adapter.file_metadata("file-input_1", purpose="batch") == (
+            "file-input_1",
+            "batch",
+            service.file("file-input_1")[1],
+        )
+    finally:
+        await adapter.aclose()
+    assert service.events() == [
+        ("POST", "/v1/files"),
+        ("GET", "/v1/files/file-input_1"),
+    ]
+    assert state == {"reads": 0, "closes": 1}
+    with ReadOnlyRepository(store) as repo:
+        row = repo.connection.execute(
+            "SELECT instance_id FROM batch_operations WHERE kind='upload'"
+        ).fetchone()
+        assert row is not None
+        assert read_reference(
+            repo,
+            "001",
+            "batch/operations/" + row[0] + ".json",
+            BatchOperationReceiptV1,
+        ) is None
+        assert not repo.connection.execute(
+            "SELECT 1 FROM batch_facts WHERE kind='operation'"
+        ).fetchone()
+        assert repo.summary("001").results == 0
+        assert repo.connection.execute(
+            "SELECT count(*) FROM batch_member_receipts"
+        ).fetchone()[0] == 0
+        assert not executor_is_active(repo, "001")
+
+
+def _sdk_operation_evidence(store: Path, kind: str) -> dict[str, Any]:
+    from judgmentllm.persistence.ownership import executor_is_active
+
+    with ReadOnlyRepository(store) as repo:
+        journal = tuple(
+            tuple(row)
+            for row in repo.connection.execute(
+                "SELECT kind,instance_id,intent_sha256,record_json "
+                "FROM batch_operations WHERE run_id='001' ORDER BY rowid"
+            )
+        )
+        intents = [row for row in journal if row[0] == kind]
+        assert len(intents) == 1
+        intent = intents[0]
+        receipts = [
+            row[0]
+            for row in repo.connection.execute(
+                "SELECT record_json FROM batch_facts WHERE run_id='001' "
+                "AND kind='operation' AND entity_id=? ORDER BY fact_seq",
+                (intent[1],),
+            )
+        ]
+        assert len(receipts) <= 1
+        submissions = tuple(
+            tuple(row)
+            for row in repo.connection.execute(
+                "SELECT submission_id,remote_id,certainty FROM submissions "
+                "WHERE run_id='001' ORDER BY submission_id"
+            )
+        )
+        directory = repo.run_directory("001")
+        reference = directory / "batch" / "operations" / (intent[1] + ".json")
+        assert not executor_is_active(repo, "001")
+        return {
+            "journal": journal,
+            "intent": intent,
+            "receipt": receipts[0] if receipts else None,
+            "reference": reference.read_bytes() if reference.exists() else None,
+            "submissions": submissions,
+            "accepted": tuple((s[0], s[1]) for s in submissions if s[2] == "accepted"),
+            "results": repo.connection.execute(
+                "SELECT count(*) FROM results WHERE run_id='001'"
+            ).fetchone()[0],
+            "members": repo.connection.execute(
+                "SELECT count(*) FROM batch_member_receipts WHERE run_id='001'"
+            ).fetchone()[0],
+            "manifest": (directory / "manifest.json").read_bytes(),
+        }
+
+
+@pytest.mark.parametrize("case", ["upload-filename", "create-input", "cancel-id"])
+def test_sdk_control_ack_requires_original_operation_binding(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    import httpx2
+
+    from judgmentllm import cancel_batch
+    from judgmentllm.persistence.hashing import bytes_digest
+
+    service = Service(tmp_path / "service.sqlite")
+    install(monkeypatch, service)
+    spec = specification(tmp_path, responses=1)
+    store = tmp_path / "store"
+    prepare_batch(spec, store=store, run_id="001")
+    service.configure(store, spec)
+    kind = {
+        "upload-filename": "upload",
+        "create-input": "create",
+        "cancel-id": "cancel",
+    }[case]
+    field = {
+        "upload-filename": "filename",
+        "create-input": "input_file_id",
+        "cancel-id": "id",
+    }[case]
+    initial_acceptance = None
+    if case == "cancel-id":
+        service.set("initial_status", "in_progress")
+        initial = submit_batch("001", store=store, spec=spec)
+        assert initial.batch.accepted_jobs == 1
+        initial_acceptance = _sdk_operation_evidence(store, "create")
+        remote = initial_acceptance["accepted"][0][1]
+        target = ("POST", "/v1/batches/" + remote + "/cancel")
+        with service.connect() as db:
+            assert json.loads(
+                db.execute("SELECT body FROM jobs WHERE id=?", (remote,)).fetchone()[0]
+            )["status"] == "in_progress"
+    else:
+        target = ("POST", "/v1/files" if case == "upload-filename" else "/v1/batches")
+    original_request = service.request
+    mutations = []
+    replacements = []
+
+    def changed(request: Any) -> Any:
+        response = original_request(request)
+        if (request.method, request.url.path) != target or mutations:
+            return response
+        headers = dict(response.headers)
+        headers.pop("content-length", None)
+        try:
+            body = json.loads(response.read())
+        finally:
+            response.close()
+        replacement_body = dict(body)
+        if case == "upload-filename":
+            replacement_body["filename"] = body["filename"] + ".unrelated"
+        elif case == "create-input":
+            replacement_body["input_file_id"] = "file-unrelated_input"
+        else:
+            assert case == "cancel-id"
+            replacement_body["id"] = body["id"] + "_unrelated"
+        replacement = httpx2.Response(
+            response.status_code, headers=headers, json=replacement_body
+        )
+        replacement.close()
+        mutations.append((body, replacement_body))
+        replacements.append(replacement)
+        return replacement
+
+    with monkeypatch.context() as patch:
+        patch.setattr(service, "request", changed)
+        first = (
+            cancel_batch("001", store=store, spec=spec)
+            if case == "cancel-id"
+            else submit_batch("001", store=store, spec=spec)
+        )
+    assert service.request == original_request
+    assert len(mutations) == 1 and all(r.is_closed for r in replacements)
+    original_ack, changed_ack = mutations[0]
+    assert original_ack.keys() == changed_ack.keys()
+    assert {k for k in original_ack if original_ack[k] != changed_ack[k]} == {field}
+    genuine_remote = original_ack["id"]
+    assert first.outcome == "partial" and first.batch.unresolved_operations == 1
+    assert first.batch.accepted_jobs == (1 if case == "cancel-id" else 0)
+    before = _sdk_operation_evidence(store, kind)
+    assert before["receipt"] is None and before["reference"] is None
+    assert before["results"] == before["members"] == 0
+    if case == "cancel-id":
+        assert initial_acceptance is not None
+        assert before["accepted"] == initial_acceptance["accepted"]
+        assert before["manifest"] == initial_acceptance["manifest"]
+    else:
+        assert not before["accepted"]
+    if case == "upload-filename":
+        raw, declared = service.file(genuine_remote)
+        assert len(raw) == declared == original_ack["bytes"] == changed_ack["bytes"]
+        assert original_ack["purpose"] == changed_ack["purpose"] == "batch"
+        assert bytes_digest(raw) == json.loads(before["intent"][3])["payload_sha256"]
+    with service.connect() as db:
+        if case != "upload-filename":
+            assert [row[0] for row in db.execute("SELECT id FROM jobs")] == [
+                genuine_remote
+            ]
+    posts = [event for event in service.events() if event[0] == "POST"]
+    assert posts == [("POST", "/v1/files")] + (
+        [("POST", "/v1/batches")] if case != "upload-filename" else []
+    ) + ([target] if case == "cancel-id" else [])
+    marker = len(service.events())
+    if case == "cancel-id":
+        recovered = poll_batch("001", store=store)
+        requests = service.events()[marker:]
+        assert requests and all(
+            method == "GET" and path == "/v1/batches/" + genuine_remote
+            for method, path in requests
+        )
+        repeated = cancel_batch("001", store=store, spec=spec)
+        assert repeated.batch.unresolved_operations == 0
+    else:
+        recovered = resume_batch("001", store=store, spec=spec)
+    assert recovered.batch.accepted_jobs == 1
+    assert recovered.batch.unresolved_operations == 0 and not recovered.batch.conflicts
+    after = _sdk_operation_evidence(store, kind)
+    assert after["intent"] == before["intent"]
+    assert after["manifest"] == before["manifest"]
+    assert after["receipt"] is not None
+    assert after["reference"] == after["receipt"].encode()
+    receipt = json.loads(after["receipt"])
+    assert (receipt["instance_id"], receipt["intent_sha256"], receipt["remote_id"]) == (
+        before["intent"][1],
+        before["intent"][2],
+        genuine_remote,
+    )
+    assert receipt["outcome"] == "accepted" and receipt["fence"] is None
+    if case == "upload-filename":
+        create_intents = [row for row in after["journal"] if row[0] == "create"]
+        assert len(create_intents) == 1
+        with service.connect() as db:
+            jobs = db.execute("SELECT id,body FROM jobs").fetchall()
+        assert len(jobs) == 1
+        job = json.loads(jobs[0][1])
+        assert job["input_file_id"] == genuine_remote
+        assert job["metadata"]["judgmentllm_operation"] == create_intents[0][1]
+        assert after["accepted"] == ((create_intents[0][1], jobs[0][0]),)
+        assert [event for event in service.events() if event[0] == "POST"] == posts + [
+            ("POST", "/v1/batches")
+        ]
+    else:
+        assert after["journal"] == before["journal"]
+        assert [s[0] for s in after["submissions"]] == [
+            s[0] for s in before["submissions"]
+        ]
+        assert after["accepted"] == ((before["submissions"][0][0], genuine_remote),)
+        assert [event for event in service.events() if event[0] == "POST"] == posts
+    if case == "cancel-id":
+        assert after["accepted"] == before["accepted"]
+        assert after["results"] == after["members"] == 0
+        assert service.events().count(target) == 1
+
+
+def test_uncertain_create_requires_complete_consistent_discovery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    for name, ack_body in (("malformed", b"{"), ("non-object", b"[]")):
+        directory = tmp_path / name
+        directory.mkdir()
+        with monkeypatch.context() as patch:
+            _assert_uncertain_create_discovery(directory, patch, ack_body)
+
+
+def _assert_uncertain_create_discovery(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, ack_body: bytes
+) -> None:
+    import httpx2
+
+    service = Service(tmp_path / "service.sqlite")
+    install(monkeypatch, service)
+    spec = specification(tmp_path, responses=1)
+    store = tmp_path / "store"
+    prepare_batch(spec, store=store, run_id="001")
+    service.configure(store, spec)
+    original_request = service.request
+    phase = "ack"
+    remote: str | None = None
+    mutations = []
+    replacements = []
+
+    def changed(request: Any) -> Any:
+        nonlocal remote
+        response = original_request(request)
+        key = (request.method, request.url.path)
+        mutate_ack = phase == "ack" and key == ("POST", "/v1/batches")
+        mutate_list = phase == "listing" and key == ("GET", "/v1/batches")
+        mutate_retrieve = (
+            phase == "disagree"
+            and remote is not None
+            and key == ("GET", "/v1/batches/" + remote)
+        )
+        if not (mutate_ack or mutate_list or mutate_retrieve):
+            return response
+        headers = dict(response.headers)
+        headers.pop("content-length", None)
+        try:
+            body = json.loads(response.read())
+        finally:
+            response.close()
+        if mutate_ack:
+            assert response.status_code == 200
+            assert isinstance(body["id"], str)
+            remote = body["id"]
+            replacement = httpx2.Response(200, headers=headers, content=ack_body)
+        elif mutate_list:
+            assert body["has_more"] is False
+            assert len(body["data"]) == 1 and body["data"][0]["id"] == remote
+            body["data"] = [None]
+            replacement = httpx2.Response(
+                response.status_code, headers=headers, json=body
+            )
+        else:
+            assert body["id"] == remote and body["status"] == "completed"
+            body["status"] = "finalizing"
+            replacement = httpx2.Response(
+                response.status_code, headers=headers, json=body
+            )
+        replacement.close()
+        mutations.append(phase)
+        replacements.append(replacement)
+        return replacement
+
+    with monkeypatch.context() as patch:
+        patch.setattr(service, "request", changed)
+        first = submit_batch("001", store=store, spec=spec)
+        assert first.outcome == "partial" and first.batch.unresolved_operations == 1
+        assert first.batch.accepted_jobs == 0
+        assert isinstance(remote, str)
+        before = _sdk_operation_evidence(store, "create")
+        assert before["receipt"] is None and before["reference"] is None
+        assert not before["accepted"]
+        assert before["results"] == before["members"] == 0
+        assert mutations == ["ack"]
+        with service.connect() as db:
+            assert [row[0] for row in db.execute("SELECT id FROM jobs")] == [remote]
+        failed_discoveries = ()
+        if ack_body == b"{":
+            failed_discoveries = (
+                ("listing", [("GET", "/v1/batches")]),
+                (
+                    "disagree",
+                    [("GET", "/v1/batches"), ("GET", "/v1/batches/" + remote)],
+                ),
+            )
+        for phase, expected_requests in failed_discoveries:
+            marker = len(service.events())
+            uncertain = resume_batch("001", store=store, spec=spec)
+            assert uncertain.outcome == "partial"
+            assert uncertain.batch.unresolved_operations == 1
+            assert uncertain.batch.accepted_jobs == 0
+            assert service.events()[marker:] == expected_requests
+            current = _sdk_operation_evidence(store, "create")
+            for key in ("journal", "intent", "manifest", "submissions"):
+                assert current[key] == before[key]
+            assert current["receipt"] is None and current["reference"] is None
+            assert not current["accepted"]
+            assert current["results"] == current["members"] == 0
+        assert mutations == ["ack", *(phase for phase, _ in failed_discoveries)]
+    assert service.request == original_request
+    assert all(r.is_closed for r in replacements)
+    assert isinstance(remote, str)
+    marker = len(service.events())
+    recovered = resume_batch("001", store=store, spec=spec)
+    assert recovered.batch.accepted_jobs == 1
+    assert recovered.batch.unresolved_operations == 0
+    assert ("GET", "/v1/batches") in service.events()[marker:]
+    assert ("GET", "/v1/batches/" + remote) in service.events()[marker:]
+    after = _sdk_operation_evidence(store, "create")
+    for key in ("journal", "intent", "manifest"):
+        assert after[key] == before[key]
+    assert after["receipt"] is not None
+    assert after["reference"] == after["receipt"].encode()
+    receipt = json.loads(after["receipt"])
+    assert (receipt["instance_id"], receipt["intent_sha256"], receipt["remote_id"]) == (
+        before["intent"][1],
+        before["intent"][2],
+        remote,
+    )
+    assert receipt["outcome"] == "accepted" and receipt["fence"] is None
+    assert after["accepted"] == ((before["intent"][1], remote),)
+    assert [s[0] for s in after["submissions"]] == [s[0] for s in before["submissions"]]
+    final = recovered
+    for _ in range(2):
+        if not final.batch.recovery_required:
+            break
+        final = collect_batch("001", store=store, spec=spec)
+    assert final.outcome == "ok" and not final.batch.recovery_required
+    completed = _sdk_operation_evidence(store, "create")
+    assert completed["results"] == completed["members"] == 1
+    assert completed["journal"] == before["journal"]
+    assert completed["intent"] == before["intent"]
+    assert completed["manifest"] == before["manifest"]
+    assert completed["accepted"] == ((before["intent"][1], remote),)
+    assert completed["receipt"] == after["receipt"]
+    assert completed["reference"] == after["reference"]
+    with service.connect() as db:
+        assert [row[0] for row in db.execute("SELECT id FROM jobs")] == [remote]
+    assert [event for event in service.events() if event[0] == "POST"] == [
+        ("POST", "/v1/files"),
+        ("POST", "/v1/batches"),
+    ]
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "manifest-version",
+        "manifest-integer",
+        "manifest-scope",
+        "source-binding",
+        "audit-version",
+        "audit-report-version",
+    ],
+)
+def test_batch_documents_revalidate_their_original_scope(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    from pydantic import ValidationError
+    from test_openai_batch_recovery import (
+        _accepted_chain_snapshot,
+        _assert_accepted_chain_unchanged,
+        setup,
+    )
+
+    from judgmentllm import BatchControlOptionsV1, export_batch_provenance
+    from judgmentllm.batch_models import OpenAIBatchSourceBindingV1
+    from judgmentllm.execution.batch_exports import (
+        BatchAuditManifestV2,
+        BatchAuditReportV2,
+    )
+    from judgmentllm.persistence.hashing import canonical_bytes
+    from judgmentllm.preparation.manifest import ExecutableRunManifestV13
+
+    service, spec, store = setup(tmp_path, monkeypatch, responses=1)
+    pending = collect_batch(
+        "001", store=store, spec=spec, options=BatchControlOptionsV1(max_io_steps=16)
+    )
+    assert pending.collection is not None
+    assert "collection_budget_unfit" in pending.collection.codes
+    report = export_batch_provenance("001", store=store)
+    with ReadOnlyRepository(store) as repo:
+        raw_manifest = (repo.run_directory("001") / "manifest.json").read_bytes()
+        raw_binding = repo.connection.execute(
+            "SELECT record_json FROM batch_facts "
+            "WHERE entity_id LIKE 'openai-binding:%' ORDER BY fact_seq LIMIT 1"
+        ).fetchone()[0]
+        assert repo.summary("001").results == 0
+    manifest = ExecutableRunManifestV13.model_validate_json(raw_manifest)
+    binding = OpenAIBatchSourceBindingV1.model_validate_json(raw_binding)
+    assert canonical_bytes(manifest) == raw_manifest
+    assert canonical_bytes(binding).decode() == raw_binding
+    restored = BatchAuditManifestV2.model_validate(report.manifest.model_dump())
+    assert restored == report.manifest
+    assert BatchAuditReportV2.model_validate(report.model_dump()) == report
+    before = _accepted_chain_snapshot(store)
+    events = service.events()
+    if case.startswith("manifest-"):
+        model = ExecutableRunManifestV13
+        fields = manifest.model_dump(mode="json")
+        if case == "manifest-version":
+            fields["schema_version"] = 12
+            message = "schema_version must be integer 13"
+        elif case == "manifest-integer":
+            fields["run_spec_version"] = "3"
+            message = "batch versions must be integers"
+        else:
+            assert model.model_validate_json(json.dumps(fields)) == manifest
+            fields["batch_context"]["model"] += "-different"
+            message = "OpenAI Batch seal has incompatible scope"
+    elif case == "source-binding":
+        model = OpenAIBatchSourceBindingV1
+        fields = binding.model_dump(mode="json")
+        assert model.model_validate_json(json.dumps(fields)) == binding
+        other = "error" if binding.ready.role == "output" else "output"
+        fields["file_id"] = getattr(binding.job, other + "_file_id")
+        assert fields["file_id"] != binding.file_id
+        message = None
+    else:
+        model = BatchAuditManifestV2 if case == "audit-version" else BatchAuditReportV2
+        original = report.manifest if case == "audit-version" else report
+        fields = original.model_dump(mode="json")
+        assert model.model_validate_json(json.dumps(fields)) == original
+        fields["schema_version"] = "2"
+        message = None
+    with pytest.raises(ValidationError, match=message) as error:
+        if case in ("manifest-version", "manifest-integer"):
+            model.model_validate(fields)
+        else:
+            model.model_validate_json(json.dumps(fields))
+    if case in ("source-binding", "audit-version", "audit-report-version"):
+        assert error.value.errors(
+            include_url=False, include_input=False, include_context=False
+        ) == [
+            {"type": "evidence_invalid", "loc": (), "msg": "Invalid evidence record."}
+        ]
+    assert service.events() == events
+    _assert_accepted_chain_unchanged(store, before)
+
+
+def test_batch_input_planning_never_constructs_a_provider_client(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from judgmentllm import estimate_run, validate_inputs
+    from judgmentllm.providers import openai_batch
+
+    service = Service(tmp_path / "service.sqlite")
+    install(monkeypatch, service)
+    spec = specification(tmp_path, responses=2)
+
+    def forbidden(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError(
+            "offline planning attempted a provider client or credential"
+        )
+
+    monkeypatch.setattr(openai_batch, "_resolve_credentials", forbidden)
+    monkeypatch.setattr(openai_batch.OpenAIBatchAdapter, "client", forbidden)
+    inputs = validate_inputs(spec)
+    assert inputs.valid and inputs.response_count == 2
+    plan = estimate_run(spec)
+    assert plan.logical_tasks == 2 and plan.requests > 0
+    assert spec.execution.mode == "batch_native"
+    assert not service.events()
+    assert not (tmp_path / "store").exists()
+
+
+def test_v3_live_preparation_requires_explicit_transport_without_sending(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from judgmentllm.config import validate_run_spec
+    from judgmentllm.preparation import PreparationError, prepare_run
+    from judgmentllm.providers import openai_batch
+
+    service = Service(tmp_path / "service.sqlite")
+    install(monkeypatch, service)
+    fields = specification(tmp_path, responses=1).model_dump(mode="json")
+    fields["execution"]["mode"] = "live"
+    spec = validate_run_spec(fields)
+    assert spec.schema_version == 3 and spec.execution.mode == "live"
+
+    def forbidden(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("missing-context preparation attempted provider work")
+
+    monkeypatch.setattr(openai_batch, "_resolve_credentials", forbidden)
+    with pytest.raises(
+        PreparationError, match="native-capable preparation requires transport context"
+    ):
+        with prepare_run(spec, store=tmp_path / "store", run_id="001"):
+            pytest.fail("live preparation acquired implicit transport authority")
+    with ReadOnlyRepository(tmp_path / "store") as repo:
+        assert (
+            repo.connection.execute(
+                "SELECT count(*) FROM submissions"
+            ).fetchone()[0] == 0
+        )
+    assert not service.events()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "case",
+    [
+        "route",
+        "scope",
+        "unbounded",
+        "receipt",
+        "payload",
+        "legacy-source",
+        "legacy-index",
+        "legacy-results",
+    ],
+)
+async def test_batch_adapter_refusals_preserve_owned_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    from test_openai_batch_recovery import (
+        _accepted_chain_snapshot,
+        _assert_accepted_chain_unchanged,
+    )
+
+    from judgmentllm import BatchControlOptionsV1, asubmit_batch
+    from judgmentllm.batch_models import BatchOperationIntentV1
+    from judgmentllm.config import validate_run_spec
+    from judgmentllm.execution.native_batch import InvocationBudget
+    from judgmentllm.openai_batch_transport import batch_context
+    from judgmentllm.providers.openai_batch import OpenAIBatchAdapter
+    from judgmentllm.providers.protocol import ProviderIntegrityError
+
+    service = Service(tmp_path / "service.sqlite")
+    install(monkeypatch, service)
+    spec = specification(tmp_path, responses=1)
+    store = tmp_path / "store"
+    prepare_batch(spec, store=store, run_id="001")
+    service.configure(store, spec)
+    submitted = await asubmit_batch("001", store=store, spec=spec)
+    assert submitted.batch.accepted_jobs == 1
+    with ReadOnlyRepository(store) as repo:
+        intents = {
+            row[0]: BatchOperationIntentV1.model_validate_json(row[1])
+            for row in repo.connection.execute(
+                "SELECT kind,record_json FROM batch_operations"
+            )
+        }
+        upload = intents["upload"]
+        receipt = repo.connection.execute(
+            "SELECT record_json FROM batch_facts "
+            "WHERE kind='operation' AND entity_id=?",
+            (upload.instance_id,),
+        ).fetchone()[0]
+    before = _accepted_chain_snapshot(store)
+    events = service.events()
+    budget = InvocationBudget(BatchControlOptionsV1())
+    adapter = OpenAIBatchAdapter(
+        batch_context(spec), budget=None if case == "unbounded" else budget
+    )
+    try:
+        if case == "route":
+            with pytest.raises(ValueError, match="unsupported OpenAI Batch route"):
+                adapter.capabilities_for("mock", spec.endpoint, spec.model)
+        elif case == "scope":
+            fields = spec.model_dump(mode="json")
+            fields["endpoint"] = "chat.completions"
+            other = validate_run_spec(fields)
+            with pytest.raises(ValueError, match="OpenAI Batch scope differs"):
+                adapter.validate(other)
+        elif case == "unbounded":
+            with pytest.raises(
+                ProviderIntegrityError, match="requires a bounded invocation"
+            ):
+                await adapter.client()
+        elif case == "receipt":
+            with pytest.raises(
+                ProviderIntegrityError, match="receipt differs from original intent"
+            ):
+                adapter.decode_receipt(receipt, intents["create"])
+        elif case == "payload":
+            raw = service.file("file-input_1")[0]
+            with pytest.raises(
+                ProviderIntegrityError, match="operation payload differs"
+            ):
+                await adapter.invoke(
+                    upload,
+                    budget.payload(raw + b"\n"),
+                    lambda: pytest.fail("forwarded invalid input"),
+                )
+        elif case == "legacy-source":
+            with pytest.raises(
+                ProviderIntegrityError, match="uses pinned Files sources"
+            ):
+                await adapter.result_source()
+        elif case == "legacy-index":
+            with pytest.raises(
+                ProviderIntegrityError, match="has no provider prefix index"
+            ):
+                await adapter.result_index()
+        else:
+            assert case == "legacy-results"
+            with pytest.raises(
+                ProviderIntegrityError, match="requires screened full-file replay"
+            ):
+                adapter.results()
+    finally:
+        await adapter.aclose()
+    assert service.events() == events
+    _assert_accepted_chain_unchanged(store, before)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("kind", "message"),
+    [
+        pytest.param("create", "OpenAI Batch create binding differs", id="create-binding"),
+        pytest.param("cancel", "OpenAI Batch cancel body differs", id="cancel-body"),
+    ],
+)
+async def test_sdk_mutation_payload_rejection_preserves_journal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, kind: str, message: str
+) -> None:
+    from judgmentllm import BatchControlOptionsV1, asubmit_batch
+    from judgmentllm.batch_models import BatchOperationIntentV1, OpenAIBatchShardV1
+    from judgmentllm.execution.native_batch import InvocationBudget
+    from judgmentllm.execution.openai_batch import OpenAIBatchSession
+    from judgmentllm.openai_batch_transport import batch_context
+    from judgmentllm.persistence.artifacts import ArtifactStore
+    from judgmentllm.persistence.hashing import bytes_digest, canonical_bytes
+    from judgmentllm.persistence.native_batch import rows
+    from judgmentllm.providers.openai_batch import OpenAIBatchAdapter
+    from judgmentllm.providers.protocol import ProviderIntegrityError
+
+    service = Service(tmp_path / "service.sqlite")
+    install(monkeypatch, service)
+    spec = specification(tmp_path, responses=1)
+    store = tmp_path / "store"
+    prepare_batch(spec, store=store, run_id="001")
+    service.configure(store, spec)
+    if kind == "cancel":
+        service.set("initial_status", "in_progress")
+        submitted = await asubmit_batch("001", store=store, spec=spec)
+        assert submitted.batch.accepted_jobs == 1
+    budget = InvocationBudget(BatchControlOptionsV1())
+    adapter = OpenAIBatchAdapter(batch_context(spec), budget=budget)
+    journal = []
+
+    def checkpoint(stage: str, identity: str) -> None:
+        if stage == "after_batch_intent":
+            row = session.repository.connection.execute(
+                "SELECT kind,instance_id,intent_sha256,record_json FROM batch_operations "
+                "WHERE run_id=? AND instance_id=?",
+                ("001", identity),
+            ).fetchone()
+            assert row is not None
+            if row[0] == kind:
+                journal.append(tuple(row))
+        if stage == "before_batch_forward" and journal:
+            pytest.fail("rejected mutation reached the forward guard")
+
+    try:
+        with OpenAIBatchSession("001", store, adapter, budget, checkpoint) as session:
+            (shard,) = rows(
+                session.repository, "batch_preparations", "001", OpenAIBatchShardV1
+            )
+            if kind == "create":
+                uploaded = await session.mutate(
+                    shard, "upload", session.store.read(shard.input)
+                )
+                assert uploaded is not None and uploaded.outcome == "accepted"
+                remote_id = uploaded.remote_id
+                body = json.loads(
+                    adapter.create_payload(session.manifest_sha256, shard, uploaded)
+                )
+                assert body["input_file_id"] == remote_id
+                body["input_file_id"] = "file-other_input"
+                payload = canonical_bytes(body)
+            else:
+                accepted = session.accepted_submission(shard.shard_id)
+                assert accepted is not None
+                remote_id = accepted.remote_id
+                session.stop(remote=True)
+                payload = b"{}"
+            assert remote_id is not None
+            events = service.events()
+            with pytest.raises(ProviderIntegrityError, match=f"^{message}$"):
+                await session.mutate(shard, kind, payload, remote_id)
+    finally:
+        await adapter.aclose()
+
+    evidence = _sdk_operation_evidence(store, kind)
+    assert journal == [evidence["intent"]]
+    _, instance, digest, raw = journal[0]
+    intent = BatchOperationIntentV1.model_validate_json(raw)
+    assert (intent.kind, intent.instance_id, intent.remote_id, intent.sequence) == (
+        kind,
+        instance,
+        remote_id,
+        1,
+    )
+    assert digest == bytes_digest(canonical_bytes(intent))
+    assert intent.payload_sha256 == bytes_digest(payload)
+    with ReadOnlyRepository(store) as repo:
+        artifacts = ArtifactStore(repo.run_directory("001"), create=False)
+        assert artifacts.read(repo.get_artifact("001", digest)) == canonical_bytes(intent)
+        assert artifacts.read(repo.get_artifact("001", intent.payload_sha256)) == payload
+    assert evidence["reference"] is None and evidence["receipt"] is None
+    assert evidence["results"] == evidence["members"] == 0
+    assert service.events() == events
+
+
+@pytest.mark.asyncio
+async def test_control_overrun_closes_budget_without_a_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import httpx2
+
+    from judgmentllm import BatchControlOptionsV1, asubmit_batch
+    from judgmentllm.execution.native_batch import InvocationBudget
+    from judgmentllm.openai_batch_transport import batch_context
+    from judgmentllm.providers.batch_protocol import BatchEvidenceWithheld
+    from judgmentllm.providers.openai_batch import CONTROL_MAX_BYTES, OpenAIBatchAdapter
+
+    service = Service(tmp_path / "service.sqlite")
+    install(monkeypatch, service)
+    spec = specification(tmp_path, responses=1)
+    store = tmp_path / "store"
+    prepare_batch(spec, store=store, run_id="001")
+    service.configure(store, spec)
+    await asubmit_batch("001", store=store, spec=spec)
+    before = _sdk_operation_evidence(store, "create")
+    original_request = service.request
+    replacements = []
+
+    def oversized(request: Any) -> Any:
+        response = original_request(request)
+        assert request.method == "GET" and request.url.path == "/v1/files/file-output_1"
+        try:
+            body = response.read()
+        finally:
+            response.close()
+        raw = b" " * (CONTROL_MAX_BYTES + 1 - len(body)) + body
+        replacement = httpx2.Response(200, content=raw)
+        replacement.close()
+        replacements.append(replacement)
+        return replacement
+
+    with monkeypatch.context() as patch:
+        patch.setattr(service, "request", oversized)
+        budget = InvocationBudget(BatchControlOptionsV1(max_io_steps=16))
+        adapter = OpenAIBatchAdapter(batch_context(spec), budget=budget)
+        try:
+            with pytest.raises(
+                BatchEvidenceWithheld, match="oversized control representation"
+            ):
+                await adapter.file_metadata("file-output_1")
+            assert budget.closed and budget.bytes == CONTROL_MAX_BYTES + 1
+        finally:
+            await adapter.aclose()
+    assert replacements and all(response.is_closed for response in replacements)
+    assert _sdk_operation_evidence(store, "create") == before
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "case", ["unavailable", "short", "cached-with-distractor", "non-list"]
+)
+async def test_upload_discovery_requires_complete_original_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    import httpx2
+
+    from judgmentllm import BatchControlOptionsV1, asubmit_batch
+    from judgmentllm.batch_models import BatchOperationIntentV1, BatchOperationReceiptV1
+    from judgmentllm.execution.native_batch import InvocationBudget
+    from judgmentllm.execution.openai_batch import OpenAIBatchSession
+    from judgmentllm.openai_batch_transport import batch_context
+    from judgmentllm.persistence.hashing import bytes_digest
+    from judgmentllm.persistence.ownership import executor_is_active
+    from judgmentllm.providers.openai_batch import OpenAIBatchAdapter
+
+    service = Service(tmp_path / "service.sqlite")
+    install(monkeypatch, service)
+    distractor = None
+    if case == "cached-with-distractor":
+        class UploadCommitted(BaseException):
+            pass
+
+        other = tmp_path / "other"
+        other.mkdir()
+        other_spec = specification(other, responses=1)
+        other_store = other / "store"
+        other_run = "distractor"
+        prepare_batch(other_spec, store=other_store, run_id=other_run)
+        commits = []
+
+        def stop_after_upload(stage: str, identity: str) -> None:
+            if stage == "after_batch_operation_commit":
+                commits.append(identity)
+                raise UploadCommitted
+
+        # A committed real upload suffices; no distractor result/job is needed.
+        with pytest.raises(UploadCommitted):
+            await asubmit_batch(
+                other_run, store=other_store, spec=other_spec,
+                _fault=stop_after_upload,
+            )
+        with ReadOnlyRepository(other_store) as repo:
+            other_intent = BatchOperationIntentV1.model_validate_json(
+                repo.connection.execute(
+                    "SELECT record_json FROM batch_operations "
+                    "WHERE run_id=? AND kind='upload'", (other_run,)
+                ).fetchone()[0]
+            )
+            receipt = BatchOperationReceiptV1.model_validate_json(
+                repo.connection.execute(
+                    "SELECT record_json FROM batch_facts "
+                    "WHERE run_id=? AND kind='operation' AND entity_id=?",
+                    (other_run, other_intent.instance_id),
+                ).fetchone()[0]
+            )
+            assert commits == [other_intent.instance_id]
+            assert receipt.outcome == "accepted" and receipt.remote_id is not None
+            assert not executor_is_active(repo, other_run)
+        with service.connect() as db:
+            filename, purpose, body, size = db.execute(
+                "SELECT filename,purpose,body,declared FROM files WHERE id=?",
+                (receipt.remote_id,),
+            ).fetchone()
+        assert filename == OpenAIBatchAdapter.filename(other_intent)
+        assert purpose == "batch" and len(body) == size
+        assert bytes_digest(body) == other_intent.payload_sha256
+        distractor = (filename, receipt.remote_id)
+    spec = specification(tmp_path, responses=1)
+    store = tmp_path / "store"
+    prepare_batch(spec, store=store, run_id="001")
+    service.configure(store, spec)
+    service.set("lose_upload_ack", True)
+    submitted = await asubmit_batch("001", store=store, spec=spec)
+    assert submitted.batch.unresolved_operations
+    service.set("lose_upload_ack", False)
+    before = _sdk_operation_evidence(store, "upload")
+    intent = BatchOperationIntentV1.model_validate_json(before["intent"][3])
+    intended_filename = OpenAIBatchAdapter.filename(intent)
+    with service.connect() as db:
+        matches = db.execute(
+            "SELECT id,body,declared FROM files WHERE purpose='batch' AND filename=?",
+            (intended_filename,),
+        ).fetchall()
+    assert len(matches) == 1
+    remote, original, declared = matches[0]
+    if case == "cached-with-distractor":
+        assert distractor is not None
+        assert intended_filename != distractor[0] and remote != distractor[1]
+    assert len(original) == declared
+    original_request = service.request
+    replacements = []
+
+    def invalid_list(request: Any) -> Any:
+        response = original_request(request)
+        if request.url.path != "/v1/files":
+            return response
+        try:
+            body = json.loads(response.read())
+        finally:
+            response.close()
+        body["data"] = None
+        replacement = httpx2.Response(200, json=body)
+        replacement.close()
+        replacements.append(replacement)
+        return replacement
+
+    events = service.events()
+    budget = InvocationBudget(BatchControlOptionsV1())
+    with monkeypatch.context() as patch:
+        if case == "non-list":
+            patch.setattr(service, "request", invalid_list)
+        adapter = OpenAIBatchAdapter(batch_context(spec), budget=budget)
+        try:
+            if case in ("unavailable", "non-list"):
+                # A newly constructed adapter has neither cached input nor a resolver.
+                assert adapter.upload_resolver is None
+                assert await adapter.reconcile_operation(intent) is None
+            else:
+                with OpenAIBatchSession("001", store, adapter, budget) as session:
+                    session.open_sources(spec, False)
+                    authorized = session.upload_bytes(intent)
+                    assert authorized == original
+                    if case == "short":
+                        service.file(remote, body=original[:-1], declared=declared)
+                        assert await adapter.reconcile_operation(intent) is None
+                        with service.connect() as db:
+                            received = db.execute(
+                                "SELECT sum(byte_count) FROM reads WHERE file=?",
+                                (remote,),
+                            ).fetchone()[0]
+                            assert received == declared - 1
+                    else:
+                        assert distractor is not None
+                        with service.connect() as db:
+                            assert db.execute(
+                                "SELECT id FROM files WHERE purpose='batch' "
+                                "AND filename=?", (intended_filename,)
+                            ).fetchall() == [(remote,)]
+                            assert db.execute(
+                                "SELECT id FROM files WHERE purpose='batch' "
+                                "AND filename=?", (distractor[0],)
+                            ).fetchall() == [(distractor[1],)]
+                        adapter.authorize_upload(authorized)
+                        raw = await adapter.reconcile_operation(intent)
+                        assert raw is not None
+                        assert adapter.decode_receipt(raw, intent).remote_id == remote
+        finally:
+            await adapter.aclose()
+    assert all(method == "GET" for method, _ in service.events()[len(events):])
+    if case in ("unavailable", "non-list"):
+        assert service.events()[len(events):] == [("GET", "/v1/files")]
+    assert _sdk_operation_evidence(store, "upload") == before
+    assert all(response.is_closed for response in replacements)
+    if case == "short":
+        service.file(remote, body=original, declared=declared)
+
+
+def test_valid_cancel_ack_never_reposts_the_owned_job(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from judgmentllm import cancel_batch
+
+    service = Service(tmp_path / "service.sqlite")
+    install(monkeypatch, service)
+    spec = specification(tmp_path, responses=1)
+    store = tmp_path / "store"
+    prepare_batch(spec, store=store, run_id="001")
+    service.configure(store, spec)
+    service.set("initial_status", "in_progress")
+    assert submit_batch("001", store=store, spec=spec).batch.accepted_jobs == 1
+    before = _sdk_operation_evidence(store, "create")
+    cancel_batch("001", store=store)
+    cancelled = _sdk_operation_evidence(store, "cancel")
+    assert cancelled["receipt"] is not None and cancelled["reference"] is not None
+    assert json.loads(cancelled["receipt"])["remote_id"] == before["accepted"][0][1]
+    assert cancelled["accepted"] == before["accepted"]
+    assert cancelled["results"] == cancelled["members"] == 0
+    cancel_batch("001", store=store)
+    assert _sdk_operation_evidence(store, "cancel")["intent"] == cancelled["intent"]
+    assert [event for event in service.events() if event[0] == "POST"] == [
+        ("POST", "/v1/files"),
+        ("POST", "/v1/batches"),
+        ("POST", "/v1/batches/" + before["accepted"][0][1] + "/cancel"),
+    ]
+
+
+def test_mock_options_cannot_continue_an_owned_openai_preparation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from test_openai_batch_recovery import (
+        _accepted_chain_snapshot,
+        _assert_accepted_chain_unchanged,
+    )
+
+    from judgmentllm import BatchMockOptions, openai_batch_transport
+    from judgmentllm.execution import openai_batch as execution
+    from judgmentllm.lifecycle_models import LifecycleError
+    from judgmentllm.providers import openai_batch as provider
+
+    service = Service(tmp_path / "service.sqlite")
+    install(monkeypatch, service)
+    spec = specification(tmp_path, responses=1)
+    store = tmp_path / "store"
+    prepare_batch(spec, store=store, run_id="001")
+    before = _accepted_chain_snapshot(store)
+
+    def forbidden(*args: Any, **kwargs: Any) -> Any:
+        raise AssertionError("mock-option refusal reached SDK or credentials")
+
+    # Import every direct lookup owner before the scoped sentinel is installed.
+    with monkeypatch.context() as patch:
+        for module in (openai_batch_transport, execution, provider):
+            patch.setattr(module, "require_sdk", forbidden)
+        patch.setattr(provider, "_resolve_credentials", forbidden)
+        with pytest.raises(LifecycleError) as error:
+            resume_batch("001", store=store, spec=spec, mock=BatchMockOptions())
+    assert error.value.category == "validation"
+    assert isinstance(error.value.__context__, ValueError)
+    assert error.value.__context__.args == (
+        "mock controls cannot configure an OpenAI Batch run",
+    )
+    assert not service.events()
+    _assert_accepted_chain_unchanged(store, before)
+
+
+def test_audit_rejects_nonobject_cursor_without_replacing_prior_bundle(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from test_batch_exports_retry import file_path
+    from test_batch_preparation_rejections import corrupt_row
+    from test_openai_batch_recovery import (
+        _accepted_chain_snapshot,
+        _assert_accepted_chain_unchanged,
+        setup,
+    )
+
+    from judgmentllm import export_batch_provenance
+    from judgmentllm.lifecycle_models import LifecycleError
+    from judgmentllm.persistence.models import IntegrityError
+
+    service, _spec, store = setup(tmp_path, monkeypatch, responses=1)
+    report = export_batch_provenance("001", store=store)
+    guards = _accepted_chain_snapshot(store)["guards"]
+    prior = {
+        file_path(report, file.name): file_path(report, file.name).read_bytes()
+        for file in report.manifest.files
+    }
+    prior[Path(report.manifest_path)] = Path(report.manifest_path).read_bytes()
+    with ReadOnlyRepository(store) as repo:
+        fact = repo.connection.execute(
+            "SELECT fact_seq FROM batch_facts WHERE entity_id LIKE 'openai-ready:%' "
+            "ORDER BY fact_seq LIMIT 1"
+        ).fetchone()[0]
+    corrupt_row(
+        store, "batch_facts",
+        "UPDATE batch_facts SET record_json='[]' WHERE fact_seq=?", (fact,),
+    )
+    before = _accepted_chain_snapshot(store)
+    assert before["guards"] == guards
+    events = service.events()
+    with pytest.raises(LifecycleError) as error:
+        export_batch_provenance("001", store=store)
+    assert error.value.category == "execution"
+    assert isinstance(error.value.__context__, IntegrityError)
+    assert error.value.__context__.args == ("batch cursor record is invalid",)
+    assert {path: path.read_bytes() for path in prior} == prior
+    assert service.events() == events
+    _assert_accepted_chain_unchanged(store, before)

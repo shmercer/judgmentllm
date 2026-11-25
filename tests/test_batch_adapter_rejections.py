@@ -410,3 +410,38 @@ async def test_batch_compiler_rejects_an_incompatible_parent_compiler(
     monkeypatch.setattr(MockAdapter, "prepare", incompatible)
     with pytest.raises(IntegrityError, match="V2 compiler"):
         batch_session.adapter.prepare(prepared.spec, dependency, rendered)
+
+
+@pytest.mark.asyncio
+async def test_owned_mock_index_replays_the_same_screened_observation(
+    batch_session: BatchSession,
+) -> None:
+    await batch_session.submit()
+    adapter = cast(MockBatchAdapter, batch_session.adapter)
+    key, wire = member_wire(batch_session)
+    submission = next(batch_session.repository.iter_submissions("001"))
+    assert submission.remote_id is not None
+    members = [(key, 0, wire)]
+    commitment, index = await adapter.result_index(
+        submission.submission_id, submission.remote_id, "output", members
+    )
+    cursor = BatchCursorV1(
+        run_id="001",
+        submission_id=submission.submission_id,
+        source_id=commitment.source_id,
+        position=0,
+        prefix_sha256=json.loads(index)["prefix_sha256"][0],
+        index_sha256=commitment.index_sha256,
+    )
+    raw = b"".join([chunk async for chunk in adapter.results(
+        submission.submission_id, submission.remote_id, "output", members, cursor
+    )])
+    original = adapter.screen_result(raw, {key: wire})
+    assert original is not None and original[0] == key
+    assert original[1].kind == "response"
+    assert adapter.screen_replay(raw, {key: wire}) == original
+    assert adapter.screen_replay(raw, {}) is None
+    assert batch_session.repository.summary("001").results == 0
+    assert batch_session.repository.connection.execute(
+        "SELECT count(*) FROM batch_member_receipts"
+    ).fetchone()[0] == 0

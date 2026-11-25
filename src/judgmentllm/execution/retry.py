@@ -648,7 +648,7 @@ def prepare_subset_retry(
             repository._register_artifact(run_id, artifact)  # pyright: ignore[reportPrivateUsage]
         repository.create_attempt(attempt, selected)
         checkpoint("during_retry_preparation", request_uid)
-        if version != 12:
+        if version not in (12, 13):
             submission_id = stable_id("submission", run_id, attempt_id)
             repository.create_submission(
                 SubmissionRecord(

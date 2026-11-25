@@ -942,8 +942,10 @@ def test_genuine_pr2_schema4_manifest12_audit1_remain_immutable(
         openai_batch_transport,
         resume_batch,
     )
+    from judgmentllm.execution import openai_batch as openai_batch_execution
     from judgmentllm.execution.batch_exports import BatchAuditReportV1
     from judgmentllm.preparation.manifest import ExecutableRunManifestV12
+    from judgmentllm.providers import openai_batch as openai_batch_provider
 
     fixture = Path(__file__).parent / "fixtures" / "batch-history"
     metadata = json.loads((fixture / "schema4-manifest12-store.json").read_text())
@@ -961,6 +963,8 @@ def test_genuine_pr2_schema4_manifest12_audit1_remain_immutable(
         raise AssertionError("historical local/mock operations reached OpenAI SDK")
 
     monkeypatch.setattr(openai_batch_transport, "require_sdk", forbidden)
+    monkeypatch.setattr(openai_batch_provider, "require_sdk", forbidden)
+    monkeypatch.setattr(openai_batch_execution, "require_sdk", forbidden)
     with ReadOnlyRepository(root) as repo:
         assert repo.connection.execute("PRAGMA user_version").fetchone()[0] == 4
         sql = [
@@ -988,7 +992,36 @@ def test_genuine_pr2_schema4_manifest12_audit1_remain_immutable(
         usage = [json.loads(r)["usage"] for r in receipts]
         assert sum(u["input_tokens"] or 0 for u in usage) == 7
         assert sum(u["output_tokens"] or 0 for u in usage) == 3
-    assert get_run(run_id, store=root).batch is not None
+    try:
+        assert get_run(run_id, store=root).batch is not None
+    except LifecycleError as error:
+        from judgmentllm.persistence.models import ArtifactIntegrityError
+        from judgmentllm.preparation import PreparationError
+
+        stage = "unknown"
+        context = error.__context__
+        if (
+            error.__suppress_context__
+            and error.__cause__ is None
+            and context is not None
+            and type(context) in (PreparationError, ArtifactIntegrityError)
+            and len(context.args) == 1
+            and type(context.args[0]) is str
+        ):
+            if type(context) is PreparationError:
+                stage = {
+                    "published manifest identity or encoding is inconsistent": (
+                        "manifest-encoding"
+                    ),
+                    "published manifest is invalid or incomplete": "manifest-load",
+                }.get(context.args[0], "unknown")
+            elif type(context) is ArtifactIntegrityError:
+                stage = {
+                    "artifact location does not match its digest": "artifact-location",
+                    "artifact location is outside its store": "artifact-location",
+                }.get(context.args[0], "unknown")
+        error.add_note("schema4-manifest12 get_run stage: " + stage)
+        raise
     assert not get_batch_status(run_id, store=root).batch.recovery_required
     old = export_batch_provenance(run_id, store=root, bundle_id=metadata["bundle_id"])
     assert (
