@@ -309,7 +309,8 @@ def test_old_bundle_and_success_survive_conflicting_error_source(
 @pytest.mark.parametrize("endpoint", ["responses", "chat.completions"])
 @pytest.mark.parametrize("capture", ["full", "minimal"])
 @pytest.mark.parametrize(
-    "case", ["cancelled", "provider-error", "invalid-usage", "unsafe-id", "screened-wire"]
+    "case",
+    ["cancelled", "provider-error", "invalid-usage", "unsafe-id", "screened-wire"],
 )
 def test_member_wire_errors_and_untrusted_claims_cannot_forge_results_or_usage(
     tmp_path: Path, monkeypatch: Any, endpoint: str, capture: str, case: str
@@ -375,16 +376,22 @@ def test_member_wire_errors_and_untrusted_claims_cannot_forge_results_or_usage(
             ).fetchone()
         else:
             assert len(results) == len(receipts) == 1
-            assert results[0].status == {
-                "cancelled": "cancelled",
-                "provider-error": "errored",
-                "invalid-usage": "complete",
-            }[case]
-            assert receipts[0]["kind"] == {
-                "cancelled": "confirmed_cancellation",
-                "provider-error": "provider_error",
-                "invalid-usage": "response",
-            }[case]
+            assert (
+                results[0].status
+                == {
+                    "cancelled": "cancelled",
+                    "provider-error": "errored",
+                    "invalid-usage": "complete",
+                }[case]
+            )
+            assert (
+                receipts[0]["kind"]
+                == {
+                    "cancelled": "confirmed_cancellation",
+                    "provider-error": "provider_error",
+                    "invalid-usage": "response",
+                }[case]
+            )
             assert all(
                 receipts[0]["usage"][field] is None
                 for field in ("input_tokens", "output_tokens", "total_tokens")
@@ -545,9 +552,12 @@ def test_wire_shape_rejection_cannot_publish_member(
     with ReadOnlyRepository(store) as repo:
         assert repo.summary("001").results == 0
         assert not tuple(repo.iter_results("001"))
-        assert repo.connection.execute(
-            "SELECT count(*) FROM batch_member_receipts"
-        ).fetchone()[0] == 0
+        assert (
+            repo.connection.execute(
+                "SELECT count(*) FROM batch_member_receipts"
+            ).fetchone()[0]
+            == 0
+        )
         bindings = [
             OpenAIBatchSourceBindingV1.model_validate_json(record[0])
             for record in repo.connection.execute(
@@ -621,17 +631,21 @@ def test_response_interpretation_preserves_only_screened_member_evidence(
             exhausted = [
                 json.loads(record[0])["position"]
                 for record in repo.connection.execute(
-                "SELECT record_json FROM batch_facts WHERE kind='cursor' "
-                "AND json_extract(record_json,'$.exhausted')=1"
-            )]
+                    "SELECT record_json FROM batch_facts WHERE kind='cursor' "
+                    "AND json_extract(record_json,'$.exhausted')=1"
+                )
+            ]
         if sorted(exhausted) == [0, 1]:
             break
     assert sorted(exhausted) == [0, 1]
     with ReadOnlyRepository(store) as repo:
         results = tuple(repo.iter_results("001"))
-        members = [record[0] for record in repo.connection.execute(
-            "SELECT record_json FROM batch_member_receipts"
-        )]
+        members = [
+            record[0]
+            for record in repo.connection.execute(
+                "SELECT record_json FROM batch_member_receipts"
+            )
+        ]
         if case == "absent-identifiers":
             assert len(results) == len(members) == 1
             assert results[0].status == "complete"
@@ -647,10 +661,13 @@ def test_response_interpretation_preserves_only_screened_member_evidence(
                 assert "request_id" not in saved["response"]
         else:
             assert not results and not members
-            assert repo.connection.execute(
-                "SELECT 1 FROM batch_facts WHERE kind='withheld' "
-                "AND json_extract(record_json,'$.code')='unsafe_evidence'"
-            ).fetchone() is not None
+            assert (
+                repo.connection.execute(
+                    "SELECT 1 FROM batch_facts WHERE kind='withheld' "
+                    "AND json_extract(record_json,'$.code')='unsafe_evidence'"
+                ).fetchone()
+                is not None
+            )
         assert not executor_is_active(repo, "001")
     assert b"PROHIBITED_RESPONSE_MODEL" not in store_bytes(store)
     assert [event for event in service.events() if event[0] == "POST"] == posts
@@ -661,8 +678,8 @@ def test_screened_response_requires_member_and_envelope_identity(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
 ) -> None:
     from test_openai_batch_recovery import (
-        _accepted_chain_snapshot,
-        _assert_accepted_chain_unchanged,
+        accepted_chain_snapshot,
+        assert_accepted_chain_unchanged,
     )
 
     from judgmentllm.openai_batch_transport import batch_context
@@ -673,7 +690,7 @@ def test_screened_response_requires_member_and_envelope_identity(
     service, spec, store = setup(tmp_path, monkeypatch, responses=1)
     raw = service.file("file-output_1")[0].splitlines()[0]
     adapter = OpenAIBatchAdapter(batch_context(spec))
-    before = _accepted_chain_snapshot(store)
+    before = accepted_chain_snapshot(store)
     events = service.events()
     with open_prepared_run(
         "001", store=store, spec=spec, capabilities=adapter.capabilities(spec)
@@ -698,4 +715,4 @@ def test_screened_response_requires_member_and_envelope_identity(
             ):
                 adapter.parse(inconsistent)
     assert service.events() == events
-    _assert_accepted_chain_unchanged(store, before)
+    assert_accepted_chain_unchanged(store, before)

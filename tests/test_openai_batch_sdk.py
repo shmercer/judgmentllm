@@ -776,7 +776,9 @@ async def test_http_error_control_and_unsettled_cleanup_remain_opaque(
 
 
 @pytest.mark.parametrize("endpoint", ["responses", "chat.completions"])
-@pytest.mark.parametrize("match", ["exact", "changed-body", "wrong-length", "ambiguous"])
+@pytest.mark.parametrize(
+    "match", ["exact", "changed-body", "wrong-length", "ambiguous"]
+)
 def test_lost_upload_ack_requires_unique_exact_authorized_input(
     tmp_path: Any, monkeypatch: Any, endpoint: str, match: str
 ) -> None:
@@ -813,17 +815,23 @@ def test_lost_upload_ack_requires_unique_exact_authorized_input(
         path for _, path in service.events()[before:] if path.endswith("/content")
     ]
     with ReadOnlyRepository(store) as repo:
-        assert tuple(
-            repo.connection.execute(
-                "SELECT instance_id,intent_sha256 FROM batch_operations WHERE kind='upload'"
-            ).fetchone()
-        ) == intent
+        assert (
+            tuple(
+                repo.connection.execute(
+                    "SELECT instance_id,intent_sha256 FROM batch_operations WHERE kind='upload'"
+                ).fetchone()
+            )
+            == intent
+        )
         if match == "exact":
             assert resumed.batch.accepted_jobs == 1
             assert not resumed.batch.unresolved_operations
-            assert repo.connection.execute(
-                "SELECT remote_id FROM submissions WHERE certainty='accepted'"
-            ).fetchone()[0] == "batch_1"
+            assert (
+                repo.connection.execute(
+                    "SELECT remote_id FROM submissions WHERE certainty='accepted'"
+                ).fetchone()[0]
+                == "batch_1"
+            )
             assert content.count("/v1/files/file-input_1/content") == 1
         else:
             assert resumed.batch.accepted_jobs == 0
@@ -1260,19 +1268,25 @@ async def test_encoded_control_response_closes_without_receipt(
             "SELECT instance_id FROM batch_operations WHERE kind='upload'"
         ).fetchone()
         assert row is not None
-        assert read_reference(
-            repo,
-            "001",
-            "batch/operations/" + row[0] + ".json",
-            BatchOperationReceiptV1,
-        ) is None
+        assert (
+            read_reference(
+                repo,
+                "001",
+                "batch/operations/" + row[0] + ".json",
+                BatchOperationReceiptV1,
+            )
+            is None
+        )
         assert not repo.connection.execute(
             "SELECT 1 FROM batch_facts WHERE kind='operation'"
         ).fetchone()
         assert repo.summary("001").results == 0
-        assert repo.connection.execute(
-            "SELECT count(*) FROM batch_member_receipts"
-        ).fetchone()[0] == 0
+        assert (
+            repo.connection.execute(
+                "SELECT count(*) FROM batch_member_receipts"
+            ).fetchone()[0]
+            == 0
+        )
         assert not executor_is_active(repo, "001")
 
 
@@ -1360,33 +1374,42 @@ def test_sdk_control_ack_requires_original_operation_binding(
         remote = initial_acceptance["accepted"][0][1]
         target = ("POST", "/v1/batches/" + remote + "/cancel")
         with service.connect() as db:
-            assert json.loads(
-                db.execute("SELECT body FROM jobs WHERE id=?", (remote,)).fetchone()[0]
-            )["status"] == "in_progress"
+            assert (
+                json.loads(
+                    db.execute(
+                        "SELECT body FROM jobs WHERE id=?", (remote,)
+                    ).fetchone()[0]
+                )["status"]
+                == "in_progress"
+            )
     else:
         target = ("POST", "/v1/files" if case == "upload-filename" else "/v1/batches")
     original_request = service.request
-    mutations = []
-    replacements = []
+    mutations: list[tuple[dict[str, object], dict[str, object]]] = []
+    replacements: list[httpx2.Response] = []
 
-    def changed(request: Any) -> Any:
-        response = original_request(request)
+    def changed(request: httpx2.Request) -> httpx2.Response:
+        response: httpx2.Response = original_request(request)
         if (request.method, request.url.path) != target or mutations:
             return response
         headers = dict(response.headers)
         headers.pop("content-length", None)
         try:
-            body = json.loads(response.read())
+            body: dict[str, object] = json.loads(response.read())
         finally:
             response.close()
         replacement_body = dict(body)
         if case == "upload-filename":
-            replacement_body["filename"] = body["filename"] + ".unrelated"
+            filename = body["filename"]
+            assert isinstance(filename, str)
+            replacement_body["filename"] = filename + ".unrelated"
         elif case == "create-input":
             replacement_body["input_file_id"] = "file-unrelated_input"
         else:
             assert case == "cancel-id"
-            replacement_body["id"] = body["id"] + "_unrelated"
+            remote_id = body["id"]
+            assert isinstance(remote_id, str)
+            replacement_body["id"] = remote_id + "_unrelated"
         replacement = httpx2.Response(
             response.status_code, headers=headers, json=replacement_body
         )
@@ -1408,6 +1431,7 @@ def test_sdk_control_ack_requires_original_operation_binding(
     assert original_ack.keys() == changed_ack.keys()
     assert {k for k in original_ack if original_ack[k] != changed_ack[k]} == {field}
     genuine_remote = original_ack["id"]
+    assert isinstance(genuine_remote, str)
     assert first.outcome == "partial" and first.batch.unresolved_operations == 1
     assert first.batch.accepted_jobs == (1 if case == "cancel-id" else 0)
     before = _sdk_operation_evidence(store, kind)
@@ -1436,7 +1460,7 @@ def test_sdk_control_ack_requires_original_operation_binding(
     marker = len(service.events())
     if case == "cancel-id":
         recovered = poll_batch("001", store=store)
-        requests = service.events()[marker:]
+        requests: list[tuple[str, str]] = service.events()[marker:]
         assert requests and all(
             method == "GET" and path == "/v1/batches/" + genuine_remote
             for method, path in requests
@@ -1507,14 +1531,14 @@ def _assert_uncertain_create_discovery(
     prepare_batch(spec, store=store, run_id="001")
     service.configure(store, spec)
     original_request = service.request
-    phase = "ack"
+    phase: str
     remote: str | None = None
-    mutations = []
-    replacements = []
+    mutations: list[str] = []
+    replacements: list[httpx2.Response] = []
 
-    def changed(request: Any) -> Any:
+    def changed(request: httpx2.Request) -> httpx2.Response:
         nonlocal remote
-        response = original_request(request)
+        response: httpx2.Response = original_request(request)
         key = (request.method, request.url.path)
         mutate_ack = phase == "ack" and key == ("POST", "/v1/batches")
         mutate_list = phase == "listing" and key == ("GET", "/v1/batches")
@@ -1554,6 +1578,7 @@ def _assert_uncertain_create_discovery(
         replacements.append(replacement)
         return replacement
 
+    phase = "ack"
     with monkeypatch.context() as patch:
         patch.setattr(service, "request", changed)
         first = submit_batch("001", store=store, spec=spec)
@@ -1576,7 +1601,8 @@ def _assert_uncertain_create_discovery(
                     [("GET", "/v1/batches"), ("GET", "/v1/batches/" + remote)],
                 ),
             )
-        for phase, expected_requests in failed_discoveries:
+        for _phase, expected_requests in failed_discoveries:
+            phase = _phase
             marker = len(service.events())
             uncertain = resume_batch("001", store=store, spec=spec)
             assert uncertain.outcome == "partial"
@@ -1651,8 +1677,8 @@ def test_batch_documents_revalidate_their_original_scope(
 ) -> None:
     from pydantic import ValidationError
     from test_openai_batch_recovery import (
-        _accepted_chain_snapshot,
-        _assert_accepted_chain_unchanged,
+        accepted_chain_snapshot,
+        assert_accepted_chain_unchanged,
         setup,
     )
 
@@ -1686,7 +1712,7 @@ def test_batch_documents_revalidate_their_original_scope(
     restored = BatchAuditManifestV2.model_validate(report.manifest.model_dump())
     assert restored == report.manifest
     assert BatchAuditReportV2.model_validate(report.model_dump()) == report
-    before = _accepted_chain_snapshot(store)
+    before = accepted_chain_snapshot(store)
     events = service.events()
     if case.startswith("manifest-"):
         model = ExecutableRunManifestV13
@@ -1728,7 +1754,7 @@ def test_batch_documents_revalidate_their_original_scope(
             {"type": "evidence_invalid", "loc": (), "msg": "Invalid evidence record."}
         ]
     assert service.events() == events
-    _assert_accepted_chain_unchanged(store, before)
+    assert_accepted_chain_unchanged(store, before)
 
 
 def test_batch_input_planning_never_constructs_a_provider_client(
@@ -1782,9 +1808,8 @@ def test_v3_live_preparation_requires_explicit_transport_without_sending(
             pytest.fail("live preparation acquired implicit transport authority")
     with ReadOnlyRepository(tmp_path / "store") as repo:
         assert (
-            repo.connection.execute(
-                "SELECT count(*) FROM submissions"
-            ).fetchone()[0] == 0
+            repo.connection.execute("SELECT count(*) FROM submissions").fetchone()[0]
+            == 0
         )
     assert not service.events()
 
@@ -1807,8 +1832,8 @@ async def test_batch_adapter_refusals_preserve_owned_evidence(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
 ) -> None:
     from test_openai_batch_recovery import (
-        _accepted_chain_snapshot,
-        _assert_accepted_chain_unchanged,
+        accepted_chain_snapshot,
+        assert_accepted_chain_unchanged,
     )
 
     from judgmentllm import BatchControlOptionsV1, asubmit_batch
@@ -1840,7 +1865,7 @@ async def test_batch_adapter_refusals_preserve_owned_evidence(
             "WHERE kind='operation' AND entity_id=?",
             (upload.instance_id,),
         ).fetchone()[0]
-    before = _accepted_chain_snapshot(store)
+    before = accepted_chain_snapshot(store)
     events = service.events()
     budget = InvocationBudget(BatchControlOptionsV1())
     adapter = OpenAIBatchAdapter(
@@ -1895,14 +1920,16 @@ async def test_batch_adapter_refusals_preserve_owned_evidence(
     finally:
         await adapter.aclose()
     assert service.events() == events
-    _assert_accepted_chain_unchanged(store, before)
+    assert_accepted_chain_unchanged(store, before)
 
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("kind", "message"),
     [
-        pytest.param("create", "OpenAI Batch create binding differs", id="create-binding"),
+        pytest.param(
+            "create", "OpenAI Batch create binding differs", id="create-binding"
+        ),
         pytest.param("cancel", "OpenAI Batch cancel body differs", id="cancel-body"),
     ],
 )
@@ -1932,7 +1959,7 @@ async def test_sdk_mutation_payload_rejection_preserves_journal(
         assert submitted.batch.accepted_jobs == 1
     budget = InvocationBudget(BatchControlOptionsV1())
     adapter = OpenAIBatchAdapter(batch_context(spec), budget=budget)
-    journal = []
+    journal: list[tuple[str, str, str, str]] = []
 
     def checkpoint(stage: str, identity: str) -> None:
         if stage == "after_batch_intent":
@@ -1942,8 +1969,11 @@ async def test_sdk_mutation_payload_rejection_preserves_journal(
                 ("001", identity),
             ).fetchone()
             assert row is not None
-            if row[0] == kind:
-                journal.append(tuple(row))
+            row_kind, instance, digest, raw = row
+            if row_kind == kind:
+                assert isinstance(row_kind, str) and isinstance(instance, str)
+                assert isinstance(digest, str) and isinstance(raw, str)
+                journal.append((row_kind, instance, digest, raw))
         if stage == "before_batch_forward" and journal:
             pytest.fail("rejected mutation reached the forward guard")
 
@@ -1991,8 +2021,12 @@ async def test_sdk_mutation_payload_rejection_preserves_journal(
     assert intent.payload_sha256 == bytes_digest(payload)
     with ReadOnlyRepository(store) as repo:
         artifacts = ArtifactStore(repo.run_directory("001"), create=False)
-        assert artifacts.read(repo.get_artifact("001", digest)) == canonical_bytes(intent)
-        assert artifacts.read(repo.get_artifact("001", intent.payload_sha256)) == payload
+        assert artifacts.read(repo.get_artifact("001", digest)) == canonical_bytes(
+            intent
+        )
+        assert (
+            artifacts.read(repo.get_artifact("001", intent.payload_sha256)) == payload
+        )
     assert evidence["reference"] is None and evidence["receipt"] is None
     assert evidence["results"] == evidence["members"] == 0
     assert service.events() == events
@@ -2019,10 +2053,10 @@ async def test_control_overrun_closes_budget_without_a_receipt(
     await asubmit_batch("001", store=store, spec=spec)
     before = _sdk_operation_evidence(store, "create")
     original_request = service.request
-    replacements = []
+    replacements: list[httpx2.Response] = []
 
-    def oversized(request: Any) -> Any:
-        response = original_request(request)
+    def oversized(request: httpx2.Request) -> httpx2.Response:
+        response: httpx2.Response = original_request(request)
         assert request.method == "GET" and request.url.path == "/v1/files/file-output_1"
         try:
             body = response.read()
@@ -2072,6 +2106,7 @@ async def test_upload_discovery_requires_complete_original_bytes(
     install(monkeypatch, service)
     distractor = None
     if case == "cached-with-distractor":
+
         class UploadCommitted(BaseException):
             pass
 
@@ -2081,7 +2116,7 @@ async def test_upload_discovery_requires_complete_original_bytes(
         other_store = other / "store"
         other_run = "distractor"
         prepare_batch(other_spec, store=other_store, run_id=other_run)
-        commits = []
+        commits: list[str] = []
 
         def stop_after_upload(stage: str, identity: str) -> None:
             if stage == "after_batch_operation_commit":
@@ -2091,14 +2126,17 @@ async def test_upload_discovery_requires_complete_original_bytes(
         # A committed real upload suffices; no distractor result/job is needed.
         with pytest.raises(UploadCommitted):
             await asubmit_batch(
-                other_run, store=other_store, spec=other_spec,
+                other_run,
+                store=other_store,
+                spec=other_spec,
                 _fault=stop_after_upload,
             )
         with ReadOnlyRepository(other_store) as repo:
             other_intent = BatchOperationIntentV1.model_validate_json(
                 repo.connection.execute(
                     "SELECT record_json FROM batch_operations "
-                    "WHERE run_id=? AND kind='upload'", (other_run,)
+                    "WHERE run_id=? AND kind='upload'",
+                    (other_run,),
                 ).fetchone()[0]
             )
             receipt = BatchOperationReceiptV1.model_validate_json(
@@ -2143,10 +2181,10 @@ async def test_upload_discovery_requires_complete_original_bytes(
         assert intended_filename != distractor[0] and remote != distractor[1]
     assert len(original) == declared
     original_request = service.request
-    replacements = []
+    replacements: list[httpx2.Response] = []
 
-    def invalid_list(request: Any) -> Any:
-        response = original_request(request)
+    def invalid_list(request: httpx2.Request) -> httpx2.Response:
+        response: httpx2.Response = original_request(request)
         if request.url.path != "/v1/files":
             return response
         try:
@@ -2171,10 +2209,11 @@ async def test_upload_discovery_requires_complete_original_bytes(
                 assert adapter.upload_resolver is None
                 assert await adapter.reconcile_operation(intent) is None
             else:
-                with OpenAIBatchSession("001", store, adapter, budget) as session:
+                session = OpenAIBatchSession("001", store, adapter, budget)
+                with session:
                     session.open_sources(spec, False)
                     authorized = session.upload_bytes(intent)
-                    assert authorized == original
+                    assert authorized is not None and authorized == original
                     if case == "short":
                         service.file(remote, body=original[:-1], declared=declared)
                         assert await adapter.reconcile_operation(intent) is None
@@ -2189,11 +2228,13 @@ async def test_upload_discovery_requires_complete_original_bytes(
                         with service.connect() as db:
                             assert db.execute(
                                 "SELECT id FROM files WHERE purpose='batch' "
-                                "AND filename=?", (intended_filename,)
+                                "AND filename=?",
+                                (intended_filename,),
                             ).fetchall() == [(remote,)]
                             assert db.execute(
                                 "SELECT id FROM files WHERE purpose='batch' "
-                                "AND filename=?", (distractor[0],)
+                                "AND filename=?",
+                                (distractor[0],),
                             ).fetchall() == [(distractor[1],)]
                         adapter.authorize_upload(authorized)
                         raw = await adapter.reconcile_operation(intent)
@@ -2201,9 +2242,9 @@ async def test_upload_discovery_requires_complete_original_bytes(
                         assert adapter.decode_receipt(raw, intent).remote_id == remote
         finally:
             await adapter.aclose()
-    assert all(method == "GET" for method, _ in service.events()[len(events):])
+    assert all(method == "GET" for method, _ in service.events()[len(events) :])
     if case in ("unavailable", "non-list"):
-        assert service.events()[len(events):] == [("GET", "/v1/files")]
+        assert service.events()[len(events) :] == [("GET", "/v1/files")]
     assert _sdk_operation_evidence(store, "upload") == before
     assert all(response.is_closed for response in replacements)
     if case == "short":
@@ -2243,8 +2284,8 @@ def test_mock_options_cannot_continue_an_owned_openai_preparation(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     from test_openai_batch_recovery import (
-        _accepted_chain_snapshot,
-        _assert_accepted_chain_unchanged,
+        accepted_chain_snapshot,
+        assert_accepted_chain_unchanged,
     )
 
     from judgmentllm import BatchMockOptions, openai_batch_transport
@@ -2257,7 +2298,7 @@ def test_mock_options_cannot_continue_an_owned_openai_preparation(
     spec = specification(tmp_path, responses=1)
     store = tmp_path / "store"
     prepare_batch(spec, store=store, run_id="001")
-    before = _accepted_chain_snapshot(store)
+    before = accepted_chain_snapshot(store)
 
     def forbidden(*args: Any, **kwargs: Any) -> Any:
         raise AssertionError("mock-option refusal reached SDK or credentials")
@@ -2275,7 +2316,7 @@ def test_mock_options_cannot_continue_an_owned_openai_preparation(
         "mock controls cannot configure an OpenAI Batch run",
     )
     assert not service.events()
-    _assert_accepted_chain_unchanged(store, before)
+    assert_accepted_chain_unchanged(store, before)
 
 
 def test_audit_rejects_nonobject_cursor_without_replacing_prior_bundle(
@@ -2284,8 +2325,8 @@ def test_audit_rejects_nonobject_cursor_without_replacing_prior_bundle(
     from test_batch_exports_retry import file_path
     from test_batch_preparation_rejections import corrupt_row
     from test_openai_batch_recovery import (
-        _accepted_chain_snapshot,
-        _assert_accepted_chain_unchanged,
+        accepted_chain_snapshot,
+        assert_accepted_chain_unchanged,
         setup,
     )
 
@@ -2295,7 +2336,7 @@ def test_audit_rejects_nonobject_cursor_without_replacing_prior_bundle(
 
     service, _spec, store = setup(tmp_path, monkeypatch, responses=1)
     report = export_batch_provenance("001", store=store)
-    guards = _accepted_chain_snapshot(store)["guards"]
+    guards = accepted_chain_snapshot(store)["guards"]
     prior = {
         file_path(report, file.name): file_path(report, file.name).read_bytes()
         for file in report.manifest.files
@@ -2307,10 +2348,12 @@ def test_audit_rejects_nonobject_cursor_without_replacing_prior_bundle(
             "ORDER BY fact_seq LIMIT 1"
         ).fetchone()[0]
     corrupt_row(
-        store, "batch_facts",
-        "UPDATE batch_facts SET record_json='[]' WHERE fact_seq=?", (fact,),
+        store,
+        "batch_facts",
+        "UPDATE batch_facts SET record_json='[]' WHERE fact_seq=?",
+        (fact,),
     )
-    before = _accepted_chain_snapshot(store)
+    before = accepted_chain_snapshot(store)
     assert before["guards"] == guards
     events = service.events()
     with pytest.raises(LifecycleError) as error:
@@ -2320,4 +2363,4 @@ def test_audit_rejects_nonobject_cursor_without_replacing_prior_bundle(
     assert error.value.__context__.args == ("batch cursor record is invalid",)
     assert {path: path.read_bytes() for path in prior} == prior
     assert service.events() == events
-    _assert_accepted_chain_unchanged(store, before)
+    assert_accepted_chain_unchanged(store, before)

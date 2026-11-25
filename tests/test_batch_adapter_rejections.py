@@ -433,15 +433,27 @@ async def test_owned_mock_index_replays_the_same_screened_observation(
         prefix_sha256=json.loads(index)["prefix_sha256"][0],
         index_sha256=commitment.index_sha256,
     )
-    raw = b"".join([chunk async for chunk in adapter.results(
-        submission.submission_id, submission.remote_id, "output", members, cursor
-    )])
+    raw = b"".join(
+        [
+            chunk
+            async for chunk in adapter.results(
+                submission.submission_id,
+                submission.remote_id,
+                "output",
+                members,
+                cursor,
+            )
+        ]
+    )
     original = adapter.screen_result(raw, {key: wire})
     assert original is not None and original[0] == key
     assert original[1].kind == "response"
     assert adapter.screen_replay(raw, {key: wire}) == original
     assert adapter.screen_replay(raw, {}) is None
     assert batch_session.repository.summary("001").results == 0
-    assert batch_session.repository.connection.execute(
-        "SELECT count(*) FROM batch_member_receipts"
-    ).fetchone()[0] == 0
+    assert (
+        batch_session.repository.connection.execute(
+            "SELECT count(*) FROM batch_member_receipts"
+        ).fetchone()[0]
+        == 0
+    )

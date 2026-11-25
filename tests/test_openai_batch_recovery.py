@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import AsyncIterator
 from typing import Any
 
 import pytest
@@ -377,7 +378,9 @@ def test_real_default_deadline_at_eof_cannot_loop_forever_after_restart(
             False,
             id="windows-unc",
         ),
-        pytest.param("win32", r"\\?\C:\Windows", "forbidden", False, id="windows-device"),
+        pytest.param(
+            "win32", r"\\?\C:\Windows", "forbidden", False, id="windows-device"
+        ),
         pytest.param(
             "win32", r"\\.\C:\Windows", "forbidden", False, id="windows-dos-device"
         ),
@@ -402,7 +405,11 @@ def test_real_default_deadline_at_eof_cannot_loop_forever_after_restart(
             "win32", r"C:\Windows", "unknown-drive", False, id="windows-unknown-drive"
         ),
         pytest.param(
-            "win32", r"C:\Windows", "drive-error", False, id="windows-drive-lookup-error"
+            "win32",
+            r"C:\Windows",
+            "drive-error",
+            False,
+            id="windows-drive-lookup-error",
         ),
     ],
 )
@@ -590,9 +597,12 @@ def test_terminal_status_receipt_recovers_failed_sql_projection(
             )
         ] == identities
         assert repo.summary("001").successful_results == 2
-        assert repo.connection.execute(
-            "SELECT count(*) FROM batch_member_receipts"
-        ).fetchone()[0] == 2
+        assert (
+            repo.connection.execute(
+                "SELECT count(*) FROM batch_member_receipts"
+            ).fetchone()[0]
+            == 2
+        )
         assert not executor_is_active(repo, "001")
 
 
@@ -1318,9 +1328,12 @@ def test_collection_framing_precedes_member_durability(
         assert admission.frontier == 0
         assert latest(repo, "001", "cursor", source, BatchCursorV1) is None
         assert not tuple(repo.iter_results("001"))
-        assert repo.connection.execute(
-            "SELECT count(*) FROM batch_member_receipts"
-        ).fetchone()[0] == 0
+        assert (
+            repo.connection.execute(
+                "SELECT count(*) FROM batch_member_receipts"
+            ).fetchone()[0]
+            == 0
+        )
         assert [
             tuple(row)
             for row in repo.connection.execute(
@@ -1409,9 +1422,9 @@ def test_replay_prefix_conflict_preserves_committed_results(
     assert service.file("file-output_1")[1] == declared
     posts = [event for event in service.events() if event[0] == "POST"]
     with service.connect() as db:
-        read_marker = db.execute(
-            "SELECT coalesce(max(rowid),0) FROM reads"
-        ).fetchone()[0]
+        read_marker = db.execute("SELECT coalesce(max(rowid),0) FROM reads").fetchone()[
+            0
+        ]
     final = None
     for _ in range(4):
         final = collect_batch("001", store=store, spec=spec)
@@ -1434,13 +1447,16 @@ def test_replay_prefix_conflict_preserves_committed_results(
         )
         assert admission is not None and admission.code == "source_conflict"
         assert admission.frontier == committed
-        assert latest(
-            repo,
-            "001",
-            "cursor",
-            "openai-binding:" + source,
-            OpenAIBatchSourceBindingV1,
-        ) == binding
+        assert (
+            latest(
+                repo,
+                "001",
+                "cursor",
+                "openai-binding:" + source,
+                OpenAIBatchSourceBindingV1,
+            )
+            == binding
+        )
         assert [
             tuple(row)
             for row in repo.connection.execute(
@@ -1451,15 +1467,18 @@ def test_replay_prefix_conflict_preserves_committed_results(
         assert not executor_is_active(repo, "001")
     if case == "shortened-prefix":
         with service.connect() as db:
-            assert db.execute(
-                "SELECT coalesce(sum(byte_count),0) FROM reads "
-                "WHERE rowid>? AND file=?",
-                (read_marker, "file-output_1"),
-            ).fetchone()[0] == declared
+            assert (
+                db.execute(
+                    "SELECT coalesce(sum(byte_count),0) FROM reads "
+                    "WHERE rowid>? AND file=?",
+                    (read_marker, "file-output_1"),
+                ).fetchone()[0]
+                == declared
+            )
     assert [event for event in service.events() if event[0] == "POST"] == posts
 
 
-def _accepted_chain_snapshot(store: Any) -> dict[str, Any]:
+def accepted_chain_snapshot(store: Any) -> dict[str, Any]:
     with ReadOnlyRepository(store) as repo:
         projections = {
             table: tuple(
@@ -1527,10 +1546,10 @@ def _accepted_chain_snapshot(store: Any) -> dict[str, Any]:
     }
 
 
-def _assert_accepted_chain_unchanged(store: Any, before: dict[str, Any]) -> None:
+def assert_accepted_chain_unchanged(store: Any, before: dict[str, Any]) -> None:
     from judgmentllm.persistence.ownership import executor_is_active
 
-    after = _accepted_chain_snapshot(store)
+    after = accepted_chain_snapshot(store)
     assert after["projections"] == before["projections"]
     assert after["guards"] == before["guards"]
     assert after["references"] == before["references"]
@@ -1563,7 +1582,7 @@ def test_accepted_chain_requires_original_persisted_evidence(
     from judgmentllm.persistence.models import IntegrityError
 
     service, spec, store = setup(tmp_path, monkeypatch, responses=1)
-    original = _accepted_chain_snapshot(store)
+    original = accepted_chain_snapshot(store)
     with ReadOnlyRepository(store) as repo:
         operations = {
             row[0]: tuple(row[1:])
@@ -1586,10 +1605,13 @@ def test_accepted_chain_requires_original_persisted_evidence(
             (instance,),
         )
         with ReadOnlyRepository(store) as repo:
-            assert repo.connection.execute(
-                "SELECT 1 FROM batch_operations WHERE run_id='001' AND kind=?",
-                (kind,),
-            ).fetchone() is None
+            assert (
+                repo.connection.execute(
+                    "SELECT 1 FROM batch_operations WHERE run_id='001' AND kind=?",
+                    (kind,),
+                ).fetchone()
+                is None
+            )
     elif case.endswith("intent-digest"):
         values = json.loads(raw)
         values["owner_token"] = "synthetic-corrupt-owner"
@@ -1603,10 +1625,13 @@ def test_accepted_chain_requires_original_persisted_evidence(
             (encoded.decode(), instance),
         )
         with ReadOnlyRepository(store) as repo:
-            assert repo.connection.execute(
-                "SELECT intent_sha256 FROM batch_operations WHERE instance_id=?",
-                (instance,),
-            ).fetchone()[0] == digest
+            assert (
+                repo.connection.execute(
+                    "SELECT intent_sha256 FROM batch_operations WHERE instance_id=?",
+                    (instance,),
+                ).fetchone()[0]
+                == digest
+            )
     else:
         assert case == kind + "-receipt-missing"
         reference = directory / "batch" / "operations" / (instance + ".json")
@@ -1622,12 +1647,15 @@ def test_accepted_chain_requires_original_persisted_evidence(
         reference.rename(backup)
         assert backup.read_bytes() == retained and not reference.exists()
         with ReadOnlyRepository(store) as repo:
-            assert repo.connection.execute(
-                "SELECT 1 FROM batch_facts WHERE run_id='001' "
-                "AND kind='operation' AND entity_id=?",
-                (instance,),
-            ).fetchone() is None
-    before = _accepted_chain_snapshot(store)
+            assert (
+                repo.connection.execute(
+                    "SELECT 1 FROM batch_facts WHERE run_id='001' "
+                    "AND kind='operation' AND entity_id=?",
+                    (instance,),
+                ).fetchone()
+                is None
+            )
+    before = accepted_chain_snapshot(store)
     assert before["guards"] == original["guards"]
     assert before["objects"] == original["objects"]
     assert before["registered"] == original["registered"]
@@ -1648,12 +1676,10 @@ def test_accepted_chain_requires_original_persisted_evidence(
     assert isinstance(error.value.__context__, IntegrityError)
     assert error.value.__context__.args == (messages[case],)
     assert service.events() == events
-    _assert_accepted_chain_unchanged(store, before)
+    assert_accepted_chain_unchanged(store, before)
 
 
-def _setup_terminal_sibling(
-    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
-) -> Any:
+def _setup_terminal_sibling(tmp_path: Any, monkeypatch: pytest.MonkeyPatch) -> Any:
     from judgmentllm import openai_batch_transport
     from judgmentllm.batch_models import BatchLimitsV1
     from judgmentllm.providers import openai_batch as provider
@@ -1701,24 +1727,37 @@ def _setup_terminal_sibling(
 def test_ready_projection_cut_resumes_without_remote_prelude(
     tmp_path: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from judgmentllm.evidence._base import EvidenceModel
     from judgmentllm.execution import openai_batch as execution
     from judgmentllm.lifecycle_models import LifecycleError
     from judgmentllm.persistence.models import IntegrityError
     from judgmentllm.persistence.ownership import executor_is_active
+    from judgmentllm.persistence.repository import Repository
 
     service, spec, store, accepted, directory = _setup_terminal_sibling(
         tmp_path, monkeypatch
     )
     original_fact = execution.durable_fact
-    faults = []
+    faults: list[str] = []
 
-    def second_projection(*args: Any, **kwargs: Any) -> Any:
-        if args[3] == "status" and args[4] == accepted[1][0]:
-            faults.append(args[4])
+    def second_projection(
+        repository: Repository,
+        run_id: str,
+        token: str,
+        kind: str,
+        entity: str,
+        model: EvidenceModel,
+        *,
+        reference: str | None = None,
+    ) -> str:
+        if kind == "status" and entity == accepted[1][0]:
+            faults.append(entity)
             raise OSError("synthetic second status projection unavailable")
-        return original_fact(*args, **kwargs)
+        return original_fact(
+            repository, run_id, token, kind, entity, model, reference=reference
+        )
 
-    guards = _accepted_chain_snapshot(store)["guards"]
+    guards = accepted_chain_snapshot(store)["guards"]
     with monkeypatch.context() as patch:
         patch.setattr(execution, "durable_fact", second_projection)
         with pytest.raises(LifecycleError) as error:
@@ -1733,7 +1772,7 @@ def test_ready_projection_cut_resumes_without_remote_prelude(
     assert not (
         directory / "batch" / "openai-status" / (accepted[0][0] + ".json")
     ).exists()
-    baseline = _accepted_chain_snapshot(store)
+    baseline = accepted_chain_snapshot(store)
     assert baseline["guards"] == guards
     assert not baseline["projections"]["ready_facts"]
     assert not baseline["projections"]["results"]
@@ -1831,11 +1870,14 @@ def test_ready_projection_cut_resumes_without_remote_prelude(
                 "WHERE run_id='001' AND certainty='accepted' ORDER BY rowid"
             )
         ] == accepted
-        assert repo.connection.execute(
-            "SELECT count(*) FROM batch_member_receipts"
-        ).fetchone()[0] == 2
+        assert (
+            repo.connection.execute(
+                "SELECT count(*) FROM batch_member_receipts"
+            ).fetchone()[0]
+            == 2
+        )
         assert not executor_is_active(repo, "001")
-    final = _accepted_chain_snapshot(store)
+    final = accepted_chain_snapshot(store)
     assert final["guards"] == guards
     for table in ("batch_operations", "operation_facts"):
         assert final["projections"][table] == baseline["projections"][table]
@@ -1859,11 +1901,13 @@ def test_ready_projection_cut_resumes_without_remote_prelude(
         assert error.value.__context__.args == (
             "screened status reference conflicts with accepted job",
         )
-        assert first_reference.read_bytes() == terminal_reference.read_bytes() == terminal
+        assert (
+            first_reference.read_bytes() == terminal_reference.read_bytes() == terminal
+        )
     finally:
         saved.replace(first_reference)
     assert service.events() == events
-    _assert_accepted_chain_unchanged(store, final)
+    assert_accepted_chain_unchanged(store, final)
 
 
 def test_selected_ready_source_rejects_sibling_terminal_status(
@@ -1885,7 +1929,7 @@ def test_selected_ready_source_rejects_sibling_terminal_status(
     assert collected.batch.missing_members == 1
     assert collected.collection is not None
     assert collected.collection.pending_sources == 0
-    original = _accepted_chain_snapshot(store)
+    original = accepted_chain_snapshot(store)
     assert len(original["projections"]["results"]) == 1
     assert len(original["projections"]["batch_member_receipts"]) == 1
 
@@ -1911,7 +1955,7 @@ def test_selected_ready_source_rejects_sibling_terminal_status(
         fact(repo, "001", ownership.owner.token, "cursor", entity, candidate)
         assert latest(repo, "001", "cursor", entity, OpenAIBatchReadyV1) == candidate
 
-    before = _accepted_chain_snapshot(store)
+    before = accepted_chain_snapshot(store)
     ready_facts = before["projections"]["ready_facts"]
     assert ready_facts[:-1] == original["projections"]["ready_facts"]
     assert before["projections"] == {
@@ -1925,7 +1969,7 @@ def test_selected_ready_source_rejects_sibling_terminal_status(
     assert isinstance(error.value.__context__, IntegrityError)
     assert error.value.__context__.args == ("ready source job association differs",)
     assert service.events() == events
-    _assert_accepted_chain_unchanged(store, before)
+    assert_accepted_chain_unchanged(store, before)
 
 
 def test_ready_projection_digest_rejection_preserves_acceptance(
@@ -1939,7 +1983,7 @@ def test_ready_projection_digest_rejection_preserves_acceptance(
     from judgmentllm.persistence.models import IntegrityError
 
     service, spec, store = setup(tmp_path, monkeypatch, responses=1)
-    original = _accepted_chain_snapshot(store)
+    original = accepted_chain_snapshot(store)
     with ReadOnlyRepository(store) as repo:
         row = repo.connection.execute(
             "SELECT fact_seq,record_json,receipt_sha256 FROM batch_facts "
@@ -1959,10 +2003,13 @@ def test_ready_projection_digest_rejection_preserves_acceptance(
         (canonical_bytes(changed).decode(), sequence),
     )
     with ReadOnlyRepository(store) as repo:
-        assert repo.connection.execute(
-            "SELECT receipt_sha256 FROM batch_facts WHERE fact_seq=?", (sequence,)
-        ).fetchone()[0] == digest
-    before = _accepted_chain_snapshot(store)
+        assert (
+            repo.connection.execute(
+                "SELECT receipt_sha256 FROM batch_facts WHERE fact_seq=?", (sequence,)
+            ).fetchone()[0]
+            == digest
+        )
+    before = accepted_chain_snapshot(store)
     assert before["guards"] == original["guards"]
     assert before["objects"] == original["objects"]
     assert before["references"] == original["references"]
@@ -1975,7 +2022,7 @@ def test_ready_projection_digest_rejection_preserves_acceptance(
     assert isinstance(error.value.__context__, IntegrityError)
     assert error.value.__context__.args == ("ready-source projection differs",)
     assert service.events() == events
-    _assert_accepted_chain_unchanged(store, before)
+    assert_accepted_chain_unchanged(store, before)
 
 
 def test_ready_terminal_projection_cannot_rebind_existing_source(
@@ -2018,7 +2065,7 @@ def test_ready_terminal_projection_cannot_rebind_existing_source(
         job["status"] = "completed"
         db.execute("UPDATE jobs SET body=? WHERE id=?", (json.dumps(job), remote))
     poll_batch("001", store=store)
-    original = _accepted_chain_snapshot(store)
+    original = accepted_chain_snapshot(store)
     assert len(original["projections"]["ready_facts"]) == 2
     reference = directory / "batch" / "openai-status" / (submission + ".json")
     terminal = reference.read_bytes()
@@ -2037,7 +2084,7 @@ def test_ready_terminal_projection_cannot_rebind_existing_source(
         "UPDATE batch_facts SET entity_id=? WHERE fact_seq=?",
         (submission + ":terminal-unavailable", terminal_row[0]),
     )
-    before = _accepted_chain_snapshot(store)
+    before = accepted_chain_snapshot(store)
     assert before["guards"] == original["guards"]
     assert before["objects"] == original["objects"]
     assert before["references"] == original["references"]
@@ -2045,13 +2092,16 @@ def test_ready_terminal_projection_cannot_rebind_existing_source(
         before["projections"]["ready_facts"] == original["projections"]["ready_facts"]
     )
     with ReadOnlyRepository(store) as repo:
-        assert tuple(
-            repo.connection.execute(
-                "SELECT fact_seq,record_json,receipt_sha256 FROM batch_facts "
-                "WHERE kind='status' AND entity_id=? ORDER BY fact_seq DESC LIMIT 1",
-                (submission,),
-            ).fetchone()
-        ) == running
+        assert (
+            tuple(
+                repo.connection.execute(
+                    "SELECT fact_seq,record_json,receipt_sha256 FROM batch_facts "
+                    "WHERE kind='status' AND entity_id=? ORDER BY fact_seq DESC LIMIT 1",
+                    (submission,),
+                ).fetchone()
+            )
+            == running
+        )
     assert reference.read_bytes() == terminal
     events = service.events()
     with pytest.raises(LifecycleError) as error:
@@ -2064,7 +2114,7 @@ def test_ready_terminal_projection_cannot_rebind_existing_source(
         "ready source terminal association changed",
     )
     assert service.events() == events
-    _assert_accepted_chain_unchanged(store, before)
+    assert_accepted_chain_unchanged(store, before)
 
 
 @pytest.mark.asyncio
@@ -2100,6 +2150,7 @@ async def test_upload_resolver_requires_its_owned_preparation(
             ).fetchone()[0]
         )
     other_ready = None
+    commits: list[str] = []
     if case in ("other-owned-shard", "other-owned-ready"):
         other = tmp_path / "other"
         other.mkdir()
@@ -2108,10 +2159,9 @@ async def test_upload_resolver_requires_its_owned_preparation(
         other_run = "other" if case == "other-owned-shard" else "001"
         prepare_batch(other_spec, store=other_store, run_id=other_run)
         if case == "other-owned-shard":
+
             class UploadCommitted(BaseException):
                 pass
-
-            commits = []
 
             def stop_after_upload(stage: str, identity: str) -> None:
                 if stage == "after_batch_operation_commit":
@@ -2121,7 +2171,9 @@ async def test_upload_resolver_requires_its_owned_preparation(
             # Only an input upload is needed; configure() assumes run 001.
             with pytest.raises(UploadCommitted):
                 await asubmit_batch(
-                    other_run, store=other_store, spec=other_spec,
+                    other_run,
+                    store=other_store,
+                    spec=other_spec,
                     _fault=stop_after_upload,
                 )
         else:
@@ -2132,7 +2184,8 @@ async def test_upload_resolver_requires_its_owned_preparation(
             intent = BatchOperationIntentV1.model_validate_json(
                 repo.connection.execute(
                     "SELECT record_json FROM batch_operations "
-                    "WHERE run_id=? AND kind='upload'", (other_run,)
+                    "WHERE run_id=? AND kind='upload'",
+                    (other_run,),
                 ).fetchone()[0]
             )
             assert not executor_is_active(repo, other_run)
@@ -2149,28 +2202,34 @@ async def test_upload_resolver_requires_its_owned_preparation(
     adapter = OpenAIBatchAdapter(batch_context(spec), budget=budget)
     events = service.events()
     try:
-        with OpenAIBatchSession("001", store, adapter, budget) as session:
+        session = OpenAIBatchSession("001", store, adapter, budget)
+        with session:
             if case != "unopened":
                 session.open_sources(spec, False)
-            guards = _accepted_chain_snapshot(store)["guards"]
+            guards = accepted_chain_snapshot(store)["guards"]
             if case == "shard-digest":
                 raw, digest = session.repository.connection.execute(
                     "SELECT record_json,receipt_sha256 FROM batch_preparations "
-                    "WHERE shard_id=?", (intent.shard_id,)
+                    "WHERE shard_id=?",
+                    (intent.shard_id,),
                 ).fetchone()
                 fields = json.loads(raw)
                 fields["ordinal"] += 1
                 changed = session.shard_model.model_validate(fields)
                 corrupt_row(
-                    store, "batch_preparations",
+                    store,
+                    "batch_preparations",
                     "UPDATE batch_preparations SET record_json=? WHERE shard_id=?",
                     (canonical_bytes(changed).decode(), intent.shard_id),
                 )
-                assert session.repository.connection.execute(
-                    "SELECT receipt_sha256 FROM batch_preparations WHERE shard_id=?",
-                    (intent.shard_id,),
-                ).fetchone()[0] == digest
-            before = _accepted_chain_snapshot(store)
+                assert (
+                    session.repository.connection.execute(
+                        "SELECT receipt_sha256 FROM batch_preparations WHERE shard_id=?",
+                        (intent.shard_id,),
+                    ).fetchone()[0]
+                    == digest
+                )
+            before = accepted_chain_snapshot(store)
             assert before["guards"] == guards
             if case == "unopened":
                 assert session.upload_bytes(intent) is None
@@ -2183,11 +2242,14 @@ async def test_upload_resolver_requires_its_owned_preparation(
                     session.selected_job(other_ready)
             else:
                 if case == "other-owned-shard":
-                    assert session.repository.connection.execute(
-                        "SELECT 1 FROM batch_preparations "
-                        "WHERE run_id=? AND shard_id=?",
-                        (session.run_id, intent.shard_id),
-                    ).fetchone() is None
+                    assert (
+                        session.repository.connection.execute(
+                            "SELECT 1 FROM batch_preparations "
+                            "WHERE run_id=? AND shard_id=?",
+                            (session.run_id, intent.shard_id),
+                        ).fetchone()
+                        is None
+                    )
                 message = (
                     "upload recovery lacks its original shard"
                     if case == "other-owned-shard"
@@ -2198,12 +2260,14 @@ async def test_upload_resolver_requires_its_owned_preparation(
     finally:
         await adapter.aclose()
     assert service.events() == events
-    _assert_accepted_chain_unchanged(store, before)
+    assert_accepted_chain_unchanged(store, before)
 
 
 def test_two_poll_rounds_keep_the_original_remote_identity(
     tmp_path: Any, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    import httpx2
+
     service = Service(tmp_path / "service.sqlite")
     install(monkeypatch, service)
     spec = specification(tmp_path, responses=1)
@@ -2212,19 +2276,21 @@ def test_two_poll_rounds_keep_the_original_remote_identity(
     service.configure(store, spec)
     service.set("initial_status", "in_progress")
     submit_batch("001", store=store, spec=spec)
-    before = _accepted_chain_snapshot(store)
+    before = accepted_chain_snapshot(store)
     original_request = service.request
-    polls = []
+    polls: list[str] = []
 
-    def advance(request: Any) -> Any:
+    def advance(request: httpx2.Request) -> httpx2.Response:
         response = original_request(request)
         if request.method == "GET" and request.url.path == "/v1/batches/batch_1":
             polls.append(request.url.path)
             if len(polls) == 1:
                 with service.connect() as db:
-                    body = json.loads(db.execute(
-                        "SELECT body FROM jobs WHERE id='batch_1'"
-                    ).fetchone()[0])
+                    body = json.loads(
+                        db.execute(
+                            "SELECT body FROM jobs WHERE id='batch_1'"
+                        ).fetchone()[0]
+                    )
                     body["status"] = "completed"
                     db.execute(
                         "UPDATE jobs SET body=? WHERE id='batch_1'", (json.dumps(body),)
@@ -2234,11 +2300,12 @@ def test_two_poll_rounds_keep_the_original_remote_identity(
     with monkeypatch.context() as patch:
         patch.setattr(service, "request", advance)
         result = poll_batch(
-            "001", store=store,
+            "001",
+            store=store,
             options=BatchControlOptionsV1(max_polls=2, poll_interval_seconds=0),
         )
     assert result.outcome == "ok" and polls == ["/v1/batches/batch_1"] * 2
-    after = _accepted_chain_snapshot(store)
+    after = accepted_chain_snapshot(store)
     assert after["projections"]["submissions"] == before["projections"]["submissions"]
     assert (
         after["projections"]["batch_operations"]
@@ -2247,7 +2314,8 @@ def test_two_poll_rounds_keep_the_original_remote_identity(
     assert not after["projections"]["results"]
     assert len(after["projections"]["status_facts"]) == 2
     assert [e for e in service.events() if e[0] == "POST"] == [
-        ("POST", "/v1/files"), ("POST", "/v1/batches"),
+        ("POST", "/v1/files"),
+        ("POST", "/v1/batches"),
     ]
 
 
@@ -2266,12 +2334,12 @@ def test_bounded_collection_failure_defers_work_without_duplicate_effects(
     submit_batch("001", store=store, spec=spec)
     if boundary == "metadata":
         poll_batch("001", store=store)
-    before = _accepted_chain_snapshot(store)
+    before = accepted_chain_snapshot(store)
     events = service.events()
     original_request = service.request
-    failures = []
+    failures: list[str] = []
 
-    def unavailable(request: Any) -> Any:
+    def unavailable(request: httpx2.Request) -> httpx2.Response:
         response = original_request(request)
         if request.url.path == "/v1/files/file-output_1":
             response.close()
@@ -2283,24 +2351,31 @@ def test_bounded_collection_failure_defers_work_without_duplicate_effects(
         if boundary == "metadata":
             patch.setattr(service, "request", unavailable)
         pending = collect_batch(
-            "001", store=store, spec=spec,
+            "001",
+            store=store,
+            spec=spec,
             options=BatchControlOptionsV1(max_io_steps=1)
-            if boundary == "projection" else BatchControlOptionsV1(),
+            if boundary == "projection"
+            else BatchControlOptionsV1(),
         )
+    assert pending.collection is not None
     assert pending.outcome == "partial" and pending.collection.selection_pending
     assert not pending.collection.failed_sources
     expected = [] if boundary == "projection" else [("GET", "/v1/files/file-output_1")]
-    assert service.events()[len(events):] == expected
+    assert service.events()[len(events) :] == expected
     assert len(failures) == int(boundary == "metadata")
-    _assert_accepted_chain_unchanged(store, before)
+    assert_accepted_chain_unchanged(store, before)
     poll_batch("001", store=store)
+    final = None
     for _ in range(4):
         final = collect_batch("001", store=store, spec=spec)
         if not final.batch.recovery_required:
             break
+    assert final is not None
     assert final.outcome == "ok" and final.batch.missing_members == 0
     assert [e for e in service.events() if e[0] == "POST"] == [
-        ("POST", "/v1/files"), ("POST", "/v1/batches"),
+        ("POST", "/v1/files"),
+        ("POST", "/v1/batches"),
     ]
 
 
@@ -2316,26 +2391,33 @@ def test_one_step_ready_selection_defers_the_callers_retry(
         ).fetchone()[0]
     retry = RetrySelection(task_ids=(task,), operation_id="deferred-ready-retry")
     original = retry.model_dump_json()
-    before = _accepted_chain_snapshot(store)
+    before = accepted_chain_snapshot(store)
     events = service.events()
     pending = resume_batch(
-        "001", store=store, spec=spec, retry=retry,
+        "001",
+        store=store,
+        spec=spec,
+        retry=retry,
         options=BatchControlOptionsV1(max_io_steps=1),
     )
+    assert pending.collection is not None
     assert pending.outcome == "partial" and pending.collection.selection_pending
     assert retry.model_dump_json() == original
     with ReadOnlyRepository(store) as repo:
         assert (
+            repo.connection.execute("SELECT count(*) FROM retry_operations").fetchone()[
+                0
+            ]
+            == 0
+        )
+        assert (
             repo.connection.execute(
-                "SELECT count(*) FROM retry_operations"
+                "SELECT count(*) FROM batch_facts WHERE entity_id LIKE 'openai-admission:%'"
             ).fetchone()[0]
             == 0
         )
-        assert repo.connection.execute(
-            "SELECT count(*) FROM batch_facts WHERE entity_id LIKE 'openai-admission:%'"
-        ).fetchone()[0] == 0
     assert service.events() == events
-    _assert_accepted_chain_unchanged(store, before)
+    assert_accepted_chain_unchanged(store, before)
 
 
 def test_scientific_subset_retry_recovers_its_original_attempt(
@@ -2370,7 +2452,7 @@ def test_scientific_subset_retry_recovers_its_original_attempt(
     retry = RetrySelection(
         task_ids=(prior[0].task_id,), operation_id="owned-subset-retry"
     )
-    checkpoints = []
+    checkpoints: list[str] = []
 
     def interrupted(stage: str, identity: str) -> None:
         if stage == "after_batch_retry_attempt":
@@ -2382,7 +2464,8 @@ def test_scientific_subset_retry_recovers_its_original_attempt(
     assert checkpoints == [retry.operation_id]
     with ReadOnlyRepository(store) as repo:
         prepared = [
-            attempt for attempt in repo.iter_attempts("001")
+            attempt
+            for attempt in repo.iter_attempts("001")
             if attempt.authorization_id == retry.operation_id
         ]
         assert len(prepared) == 1
@@ -2392,10 +2475,13 @@ def test_scientific_subset_retry_recovers_its_original_attempt(
             "SELECT 1 FROM batch_prepared_members WHERE attempt_id=?",
             (child.attempt_id,),
         ).fetchone()
-        assert repo.connection.execute(
-            "SELECT count(*) FROM submissions WHERE run_id=? AND attempt_id=?",
-            ("001", child.attempt_id),
-        ).fetchone()[0] == 0
+        assert (
+            repo.connection.execute(
+                "SELECT count(*) FROM submissions WHERE run_id=? AND attempt_id=?",
+                ("001", child.attempt_id),
+            ).fetchone()[0]
+            == 0
+        )
         assert not executor_is_active(repo, "001")
     posts = [event for event in service.events() if event[0] == "POST"]
     assert posts == [("POST", "/v1/files"), ("POST", "/v1/batches")]
@@ -2419,17 +2505,21 @@ def test_scientific_subset_retry_recovers_its_original_attempt(
         prior_keys = {(r.task_id, r.attempt_id) for r in prior}
         assert {
             (r.task_id, r.attempt_id): r.model_dump_json()
-            for r in results if (r.task_id, r.attempt_id) in prior_keys
+            for r in results
+            if (r.task_id, r.attempt_id) in prior_keys
         } == {(r.task_id, r.attempt_id): r.model_dump_json() for r in prior}
         success = [r for r in results if r.status == "complete"]
         assert len(success) == 1 and success[0].task_id == retry.task_ids[0]
         assert success[0].attempt_id == child.attempt_id
         assert len(tuple(repo.iter_attempts("001"))) == 2
         assert (repo.run_directory("001") / "manifest.json").read_bytes() == manifest
-        assert repo.connection.execute(
-            "SELECT count(*) FROM submissions WHERE run_id=? AND attempt_id=?",
-            ("001", child.attempt_id),
-        ).fetchone()[0] == 0
+        assert (
+            repo.connection.execute(
+                "SELECT count(*) FROM submissions WHERE run_id=? AND attempt_id=?",
+                ("001", child.attempt_id),
+            ).fetchone()[0]
+            == 0
+        )
         child_members = repo.connection.execute(
             "SELECT shard_id,member_key FROM batch_prepared_members "
             "WHERE run_id=? AND attempt_id=?",
@@ -2485,13 +2575,16 @@ def test_scientific_subset_retry_rejects_changed_attempt_payload(
         db.execute("UPDATE outputs SET text='not assessment JSON'")
     submit_batch("001", store=store, spec=spec)
     poll_batch("001", store=store)
+    collected = None
     for _ in range(4):
         collected = collect_batch("001", store=store, spec=spec)
         if not collected.batch.recovery_required:
             break
-    assert not collected.batch.recovery_required
+    assert collected is not None and not collected.batch.recovery_required
     with ReadOnlyRepository(store) as repo:
-        manifest = json.loads((repo.run_directory("001") / "manifest.json").read_bytes())
+        manifest = json.loads(
+            (repo.run_directory("001") / "manifest.json").read_bytes()
+        )
         assert manifest["schema_version"] == 13
         prior = tuple(repo.iter_results("001"))
         assert len(prior) == 2 and all(result.status == "invalid" for result in prior)
@@ -2499,7 +2592,7 @@ def test_scientific_subset_retry_rejects_changed_attempt_payload(
     retry = RetrySelection(
         task_ids=(prior[0].task_id,), operation_id="owned-subset-retry"
     )
-    checkpoints = []
+    checkpoints: list[tuple[str, str]] = []
 
     def interrupted(stage: str, identity: str) -> None:
         checkpoints.append((stage, identity))
@@ -2511,15 +2604,14 @@ def test_scientific_subset_retry_rejects_changed_attempt_payload(
     assert checkpoints[-1] == ("after_batch_retry_attempt", retry.operation_id)
     with Repository(store) as repo:
         (retained,) = (
-            attempt for attempt in repo.iter_attempts("001")
+            attempt
+            for attempt in repo.iter_attempts("001")
             if attempt.authorization_id == retry.operation_id
         )
         assert repo.attempt_task_ids("001", retained.attempt_id) == retry.task_ids
         assert parent.payload_sha256 != retained.payload_sha256
         connection = repo.connection
-        trigger_sql = (
-            "SELECT sql FROM sqlite_master WHERE type='trigger' AND name='attempts_identity'"
-        )
+        trigger_sql = "SELECT sql FROM sqlite_master WHERE type='trigger' AND name='attempts_identity'"
         (trigger,) = connection.execute(trigger_sql).fetchone()
         update = "UPDATE attempts SET payload_sha256=? WHERE run_id=? AND attempt_id=?"
         changed = (parent.payload_sha256, "001", retained.attempt_id)
@@ -2536,7 +2628,7 @@ def test_scientific_subset_retry_rejects_changed_attempt_payload(
                 sqlite3.IntegrityError, match="immutable persistence record"
             ):
                 connection.execute(update, (retained.payload_sha256, *changed[1:]))
-    before = _accepted_chain_snapshot(store)
+    before = accepted_chain_snapshot(store)
     assert len(before["projections"]["batch_preparations"]) == 1
     assert len(before["projections"]["batch_prepared_members"]) == 1
     posts = [event for event in service.events() if event[0] == "POST"]
@@ -2547,7 +2639,7 @@ def test_scientific_subset_retry_rejects_changed_attempt_payload(
     assert error.value.category == "execution"
     assert isinstance(error.value.__context__, IntegrityError)
     assert error.value.__context__.args == ("existing Batch retry wire differs",)
-    _assert_accepted_chain_unchanged(store, before)
+    assert_accepted_chain_unchanged(store, before)
     assert [event for event in service.events() if event[0] == "POST"] == posts
 
 
@@ -2573,7 +2665,7 @@ async def test_three_durable_admission_cuts_refuse_a_fourth_read(
     service.configure(store, spec)
     await asubmit_batch("001", store=store, spec=spec)
     await apoll_batch("001", store=store)
-    cuts = []
+    cuts: list[str] = []
 
     def cut(stage: str, source: str) -> None:
         if stage == "after_openai_batch_admission":
@@ -2583,17 +2675,22 @@ async def test_three_durable_admission_cuts_refuse_a_fourth_read(
     for _ in range(6):
         with pytest.raises(AdmissionCut):
             await acollect_batch("001", store=store, spec=spec, _fault=cut)
-    before = _accepted_chain_snapshot(store)
+    before = accepted_chain_snapshot(store)
     with ReadOnlyRepository(store) as repo:
-        admitted = [json.loads(row[0]) for row in repo.connection.execute(
-            "SELECT record_json FROM batch_facts "
-            "WHERE entity_id LIKE 'openai-admission:%' "
-            "AND json_extract(record_json,'$.code')='admitted'"
-        )]
-        ready = OpenAIBatchReadyV1.model_validate_json(repo.connection.execute(
-            "SELECT record_json FROM batch_facts WHERE entity_id LIKE 'openai-ready:%' "
-            "ORDER BY fact_seq LIMIT 1"
-        ).fetchone()[0])
+        admitted = [
+            json.loads(row[0])
+            for row in repo.connection.execute(
+                "SELECT record_json FROM batch_facts "
+                "WHERE entity_id LIKE 'openai-admission:%' "
+                "AND json_extract(record_json,'$.code')='admitted'"
+            )
+        ]
+        ready = OpenAIBatchReadyV1.model_validate_json(
+            repo.connection.execute(
+                "SELECT record_json FROM batch_facts WHERE entity_id LIKE 'openai-ready:%' "
+                "ORDER BY fact_seq LIMIT 1"
+            ).fetchone()[0]
+        )
     assert len(admitted) == len(cuts) == 6 and len(set(cuts)) == 2
     for source in set(cuts):
         stalls = sorted(row["stalls"] for row in admitted if row["source_id"] == source)
@@ -2601,28 +2698,36 @@ async def test_three_durable_admission_cuts_refuse_a_fourth_read(
     budget = InvocationBudget(BatchControlOptionsV1())
     adapter = OpenAIBatchAdapter(batch_context(spec), budget=budget)
     try:
-        with OpenAIBatchSession("001", store, adapter, budget) as session:
+        session = OpenAIBatchSession("001", store, adapter, budget)
+        with session:
             session.open_sources(spec, False)
             assert session.admit(ready) is None
             submission, receipt, status = session.selected_job(ready)
-            await session.collect_file(
-                ready, submission, receipt, status,
-                getattr(status, ready.role + "_file_id"),
+            file_id = (
+                status.output_file_id
+                if ready.role == "output"
+                else status.error_file_id
             )
+            assert file_id is not None
+            await session.collect_file(ready, submission, receipt, status, file_id)
     finally:
         await adapter.aclose()
     result = await acollect_batch("001", store=store, spec=spec)
     assert result.outcome == "error"
+    assert result.collection is not None
     assert result.collection.failed_sources == 2
     assert result.collection.codes == ("collection_no_progress",)
     assert not any(path.endswith("/content") for _, path in service.events())
     with ReadOnlyRepository(store) as repo:
-        assert repo.connection.execute(
-            "SELECT count(*) FROM batch_facts "
-            "WHERE entity_id LIKE 'openai-admission:%' "
-            "AND json_extract(record_json,'$.code')='admitted'"
-        ).fetchone()[0] == 6
-    _assert_accepted_chain_unchanged(store, before)
+        assert (
+            repo.connection.execute(
+                "SELECT count(*) FROM batch_facts "
+                "WHERE entity_id LIKE 'openai-admission:%' "
+                "AND json_extract(record_json,'$.code')='admitted'"
+            ).fetchone()[0]
+            == 6
+        )
+    assert_accepted_chain_unchanged(store, before)
 
 
 @pytest.mark.parametrize("boundary", ["next-chunk", "replay-reserve"])
@@ -2641,9 +2746,12 @@ def test_physical_row_quota_preserves_the_committed_prefix(
     )
     assert first.batch.missing_members == 1 and first.outcome == "partial"
     with ReadOnlyRepository(store) as repo:
-        receipts = tuple(tuple(row) for row in repo.connection.execute(
-            "SELECT member_key,receipt_sha256,record_json FROM batch_member_receipts"
-        ))
+        receipts = tuple(
+            tuple(row)
+            for row in repo.connection.execute(
+                "SELECT member_key,receipt_sha256,record_json FROM batch_member_receipts"
+            )
+        )
         assert len(receipts) == 1
         assert receipts[0][0] == json.loads(first_row)["custom_id"]
         bindings = repo.connection.execute(
@@ -2680,7 +2788,9 @@ def test_physical_row_quota_preserves_the_committed_prefix(
             ).fetchone()[0]
         service.set("fragment_bytes", 1)
         partial = collect_batch(
-            "001", store=store, spec=spec,
+            "001",
+            store=store,
+            spec=spec,
             options=BatchControlOptionsV1(max_io_steps=128),
         )
         assert partial.outcome == "partial" and partial.batch.missing_members == 1
@@ -2692,14 +2802,26 @@ def test_physical_row_quota_preserves_the_committed_prefix(
             ).fetchone()[0]
         assert 0 < replayed < len(first_row)
         with ReadOnlyRepository(store) as repo:
-            assert tuple(tuple(row) for row in repo.connection.execute(
-                "SELECT member_key,receipt_sha256,record_json "
-                "FROM batch_member_receipts"
-            )) == receipts
-            assert tuple(repo.connection.execute(
-                "SELECT entity_id,record_json FROM batch_facts WHERE kind='cursor' "
-                "AND entity_id=? ORDER BY fact_seq DESC LIMIT 1", (cursor[0],)
-            ).fetchone()) == cursor
+            assert (
+                tuple(
+                    tuple(row)
+                    for row in repo.connection.execute(
+                        "SELECT member_key,receipt_sha256,record_json "
+                        "FROM batch_member_receipts"
+                    )
+                )
+                == receipts
+            )
+            assert (
+                tuple(
+                    repo.connection.execute(
+                        "SELECT entity_id,record_json FROM batch_facts WHERE kind='cursor' "
+                        "AND entity_id=? ORDER BY fact_seq DESC LIMIT 1",
+                        (cursor[0],),
+                    ).fetchone()
+                )
+                == cursor
+            )
     service.set("fragment_bytes", 65_536)
     final = first
     for _ in range(4):
@@ -2709,21 +2831,29 @@ def test_physical_row_quota_preserves_the_committed_prefix(
     assert final.outcome == "ok" and final.batch.missing_members == 0
     with ReadOnlyRepository(store) as repo:
         assert repo.summary("001").successful_results == 2
-        assert tuple(repo.connection.execute(
-            "SELECT member_key,receipt_sha256,record_json "
-            "FROM batch_member_receipts WHERE member_key=?",
-            (receipts[0][0],),
-        ).fetchone()) == receipts[0]
-        selector = json.loads(repo.connection.execute(
-            "SELECT record_json FROM batch_facts WHERE entity_id='openai-selector' "
-            "ORDER BY fact_seq DESC LIMIT 1"
-        ).fetchone()[0])
+        assert (
+            tuple(
+                repo.connection.execute(
+                    "SELECT member_key,receipt_sha256,record_json "
+                    "FROM batch_member_receipts WHERE member_key=?",
+                    (receipts[0][0],),
+                ).fetchone()
+            )
+            == receipts[0]
+        )
+        selector = json.loads(
+            repo.connection.execute(
+                "SELECT record_json FROM batch_facts WHERE entity_id='openai-selector' "
+                "ORDER BY fact_seq DESC LIMIT 1"
+            ).fetchone()[0]
+        )
         assert selector["after"] < selector["cut"]
     events = service.events()
     assert collect_batch("001", store=store, spec=spec).batch.missing_members == 0
     assert service.events() == events
     assert [e for e in service.events() if e[0] == "POST"] == [
-        ("POST", "/v1/files"), ("POST", "/v1/batches"),
+        ("POST", "/v1/files"),
+        ("POST", "/v1/batches"),
     ]
 
 
@@ -2736,15 +2866,15 @@ def test_final_metadata_rejection_follows_real_source_eof(
 
     service, spec, store = setup(tmp_path, monkeypatch, responses=1)
     original_request = service.request
-    eof = []
-    metadata = []
-    replacements = []
+    eof: list[bool] = []
+    metadata: list[bool] = []
+    replacements: list[httpx2.Response] = []
 
     class ObservedStream(httpx2.AsyncByteStream):
-        def __init__(self, stream: Any) -> None:
+        def __init__(self, stream: httpx2.AsyncByteStream) -> None:
             self.stream = stream
 
-        async def __aiter__(self) -> Any:
+        async def __aiter__(self) -> AsyncIterator[bytes]:
             async for chunk in self.stream:
                 yield chunk
             eof.append(True)
@@ -2752,9 +2882,10 @@ def test_final_metadata_rejection_follows_real_source_eof(
         async def aclose(self) -> None:
             await self.stream.aclose()
 
-    def final_fault(request: Any) -> Any:
-        response = original_request(request)
+    def final_fault(request: httpx2.Request) -> httpx2.Response:
+        response: httpx2.Response = original_request(request)
         if request.url.path == "/v1/files/file-output_1/content":
+            assert isinstance(response.stream, httpx2.AsyncByteStream)
             response.stream = ObservedStream(response.stream)
         elif request.url.path == "/v1/files/file-output_1":
             metadata.append(bool(eof))
@@ -2773,12 +2904,16 @@ def test_final_metadata_rejection_follows_real_source_eof(
         patch.setattr(service, "request", final_fault)
         result = collect_batch("001", store=store, spec=spec)
     assert eof == [True] and metadata == [False, True]
+    assert result.collection is not None
     assert result.outcome == "error" and "source_conflict" in result.collection.codes
     with ReadOnlyRepository(store) as repo:
         assert repo.summary("001").successful_results == 1
-        assert repo.connection.execute(
-            "SELECT count(*) FROM batch_member_receipts"
-        ).fetchone()[0] == 1
+        assert (
+            repo.connection.execute(
+                "SELECT count(*) FROM batch_member_receipts"
+            ).fetchone()[0]
+            == 1
+        )
         bindings = repo.connection.execute(
             "SELECT record_json FROM batch_facts WHERE kind='cursor' "
             "AND entity_id LIKE 'openai-binding:%' "
@@ -2800,7 +2935,8 @@ def test_final_metadata_rejection_follows_real_source_eof(
         assert cursor.exhausted is False
     assert replacements and all(response.is_closed for response in replacements)
     assert [e for e in service.events() if e[0] == "POST"] == [
-        ("POST", "/v1/files"), ("POST", "/v1/batches"),
+        ("POST", "/v1/files"),
+        ("POST", "/v1/batches"),
     ]
 
 
@@ -2831,10 +2967,10 @@ def test_collection_recovers_committed_row_after_io_failure(
     steps: list[str] = []
 
     class ObservedStream(httpx2.AsyncByteStream):
-        def __init__(self, stream: Any) -> None:
+        def __init__(self, stream: httpx2.AsyncByteStream) -> None:
             self.stream = stream
 
-        async def __aiter__(self) -> Any:
+        async def __aiter__(self) -> AsyncIterator[bytes]:
             async for chunk in self.stream:
                 assert chunk == rows[0]
                 yield chunk
@@ -2847,10 +2983,11 @@ def test_collection_recovers_committed_row_after_io_failure(
         async def aclose(self) -> None:
             await self.stream.aclose()
 
-    def interrupted(request: Any) -> Any:
-        response = original_request(request)
+    def interrupted(request: httpx2.Request) -> httpx2.Response:
+        response: httpx2.Response = original_request(request)
         if request.url.path == content_path:
             steps.append("content")
+            assert isinstance(response.stream, httpx2.AsyncByteStream)
             response.stream = ObservedStream(response.stream)
         elif request.url.path == metadata_path:
             if fault == "post-eof-metadata" and steps[-1:] == ["eof"]:
@@ -2927,7 +3064,9 @@ def test_collection_recovers_committed_row_after_io_failure(
     assert results[:1] == committed_results and receipts[:1] == committed_receipts
     assert len(results) == len(receipts) == member_count
     assert all(result.status == "complete" for result in results)
-    assert [receipt.source_position for receipt in receipts] == list(range(member_count))
+    assert [receipt.source_position for receipt in receipts] == list(
+        range(member_count)
+    )
     assert [receipt.member_key for receipt in receipts] == [
         json.loads(row)["custom_id"] for row in rows
     ]
@@ -2939,7 +3078,8 @@ def test_collection_recovers_committed_row_after_io_failure(
     events = service.events()
     assert events.count(("GET", content_path)) == 2
     assert [event for event in events if event[0] == "POST"] == [
-        ("POST", "/v1/files"), ("POST", "/v1/batches"),
+        ("POST", "/v1/files"),
+        ("POST", "/v1/batches"),
     ]
     assert collect_batch("001", store=store, spec=spec).outcome == "ok"
     assert service.events() == events and progress() == recovered
@@ -2958,14 +3098,15 @@ def test_real_read_boundaries_preserve_accepted_work_on_io_failure(
 
     if boundary == "accepted-reference":
         service, spec, store = setup(tmp_path, monkeypatch, responses=1)
-        guards = _accepted_chain_snapshot(store)["guards"]
+        guards = accepted_chain_snapshot(store)["guards"]
         with ReadOnlyRepository(store) as repo:
             instance = repo.connection.execute(
                 "SELECT instance_id FROM batch_operations WHERE kind='create'"
             ).fetchone()[0]
             target = repo.run_directory("001") / f"batch/operations/{instance}.json"
         corrupt_row(
-            store, "batch_facts",
+            store,
+            "batch_facts",
             "UPDATE batch_facts SET entity_id=? WHERE kind='operation' AND entity_id=?",
             (instance + ":unavailable", instance),
         )
@@ -2985,15 +3126,15 @@ def test_real_read_boundaries_preserve_accepted_work_on_io_failure(
         service.configure(store, spec)
         submit_batch("001", store=store, spec=spec)
         poll_batch("001", store=store)
-        guards = _accepted_chain_snapshot(store)["guards"]
+        guards = accepted_chain_snapshot(store)["guards"]
         # The first read verifies the original; the second reopens its document.
         failure_read = 2
         message = "prepared source or manifest validation failed"
-    before = _accepted_chain_snapshot(store)
+    before = accepted_chain_snapshot(store)
     assert before["guards"] == guards
     events = service.events()
     original_open = Path.open
-    reads = []
+    reads: list[str] = []
 
     def unavailable(path: Path, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
         if path == target and mode == "rb":
@@ -3016,4 +3157,4 @@ def test_real_read_boundaries_preserve_accepted_work_on_io_failure(
         assert type(error.value.__context__) is PreparationError
     assert error.value.__context__.args == (message,)
     assert service.events() == events
-    _assert_accepted_chain_unchanged(store, before)
+    assert_accepted_chain_unchanged(store, before)

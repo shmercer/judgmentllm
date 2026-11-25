@@ -102,18 +102,22 @@ def child(
             )
         ):
             try:
-                drive_type = getattr(ctypes, "windll").kernel32.GetDriveTypeW
+                drive_type = ctypes.windll.kernel32.GetDriveTypeW
                 if drive_type(windows_root.anchor) in (2, 3, 5, 6):
                     for candidate in (
                         *reversed(windows_root.parents),
                         windows_root,
                     ):
                         info = lstat(str(candidate))
-                        if not stat.S_ISDIR(info.st_mode) or getattr(
-                            info,
-                            "st_file_attributes",
-                            stat.FILE_ATTRIBUTE_REPARSE_POINT,
-                        ) & stat.FILE_ATTRIBUTE_REPARSE_POINT:
+                        if (
+                            not stat.S_ISDIR(info.st_mode)
+                            or getattr(
+                                info,
+                                "st_file_attributes",
+                                stat.FILE_ATTRIBUTE_REPARSE_POINT,
+                            )
+                            & stat.FILE_ATTRIBUTE_REPARSE_POINT
+                        ):
                             break
                     else:
                         environment["SystemRoot"] = system_root
