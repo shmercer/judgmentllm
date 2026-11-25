@@ -2098,6 +2098,7 @@
       "tests/test_vertex_lifecycle.py",
       "tests/test_bulk_live_integrity.py",
       "tests/test_bulk_live_sdk.py",
+      "tests/test_batch_compatibility.py",
       "tests/test_openai_batch_sdk.py",
       "tests/test_openai_batch_recovery.py",
       "tests/test_openai_batch_privacy.py",
