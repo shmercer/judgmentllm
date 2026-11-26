@@ -136,6 +136,16 @@ def test_current_synthetic_key_is_screened_before_control_or_result_durability(
     assert b"synthetic-batch-key" not in retained
     with ReadOnlyRepository(store) as repo:
         assert repo.summary("001").successful_results == int(where == "result_model")
+        if where == "upload_id":
+            assert [
+                (row[0], json.loads(row[1])["code"])
+                for row in repo.connection.execute(
+                    "SELECT entity_id,record_json FROM batch_facts WHERE kind='withheld'"
+                )
+            ] == [("001", "unsafe_evidence")]
+            assert [event for event in service.events() if event[0] == "POST"] == [
+                ("POST", "/v1/files")
+            ]
 
 
 @pytest.mark.parametrize("capture", ["full", "minimal"])

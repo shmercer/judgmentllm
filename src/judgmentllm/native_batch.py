@@ -26,7 +26,11 @@ from judgmentllm.lifecycle_models import RetrySelection
 from judgmentllm.persistence.native_batch import detail, record_stop, require_storage
 from judgmentllm.persistence.ownership import ExecutorOwnership
 from judgmentllm.persistence.repository import ReadOnlyRepository, Repository
-from judgmentllm.preparation import _load_manifest, prepare_run  # pyright: ignore[reportPrivateUsage]
+from judgmentllm.preparation import (
+    _load_manifest,  # pyright: ignore[reportPrivateUsage]
+    _preflight_v12_write,  # pyright: ignore[reportPrivateUsage]
+    prepare_run,
+)
 from judgmentllm.preparation.manifest import (
     ExecutableRunManifestV12,
     ExecutableRunManifestV13,
@@ -105,11 +109,24 @@ def get_batch_status(
 ) -> BatchRunStatusV1:
     """Inspect a short local snapshot; no adapter or assessment source is opened."""
     with _errors():
-        identifier, root = resolve_run(run_id, store)
+        identifier, root = resolve_run(run_id, store, allow_v12_posix_read=True)
+    return _batch_status(identifier, root, allow_v12_posix_read=True)
+
+
+def _batch_status(
+    identifier: str, root: Path, *, allow_v12_posix_read: bool = False
+) -> BatchRunStatusV1:
     with _errors(identifier, root), ReadOnlyRepository(root) as repository:
         repository.connection.execute("BEGIN")
         try:
-            manifest = _load_manifest(repository, identifier, unsealed=False)
+            if not allow_v12_posix_read:
+                _preflight_v12_write(repository, identifier)
+            manifest = _load_manifest(
+                repository,
+                identifier,
+                unsealed=False,
+                allow_v12_posix_read=allow_v12_posix_read,
+            )
             if not isinstance(
                 manifest, (ExecutableRunManifestV12, ExecutableRunManifestV13)
             ):
@@ -158,6 +175,7 @@ async def _control(
         identifier, root = resolve_run(run_id, store)
         budget = InvocationBudget(options or BatchControlOptionsV1())
     with _errors(identifier, root), ReadOnlyRepository(root) as repository:
+        _preflight_v12_write(repository, identifier)
         manifest = _load_manifest(repository, identifier, unsealed=False)
         if not isinstance(
             manifest, (ExecutableRunManifestV12, ExecutableRunManifestV13)
@@ -241,8 +259,6 @@ async def _control(
                 raise asyncio.CancelledError
             session.finish()
         except BatchEvidenceWithheld:
-            if not isinstance(session, OpenAIBatchSession):
-                raise
             session.write_fact(
                 "withheld", identifier, BatchDiagnosticV1(code="unsafe_evidence")
             )
@@ -374,13 +390,13 @@ def stop_batch(
 ) -> BatchRunStatusV1:
     with _errors():
         identifier, root = resolve_run(run_id, store)
-    get_batch_status(identifier, store=root)
+    _batch_status(identifier, root)
     with _errors(identifier, root), Repository(root) as repository:
         require_storage(repository)
         with ExecutorOwnership(repository, identifier) as ownership:
             assert ownership.owner is not None
             record_stop(repository, identifier, ownership.owner.token, remote=False)
-    return get_batch_status(identifier, store=root)
+    return _batch_status(identifier, root)
 
 
 def export_batch_provenance(
@@ -390,6 +406,11 @@ def export_batch_provenance(
     from judgmentllm.execution.batch_exports import export_batch_audit
 
     with _errors():
-        identifier, root = resolve_run(run_id, store)
+        identifier, root = resolve_run(
+            run_id,
+            store,
+            allow_v12_posix_read=bundle_id is not None,
+            preserve_files=bundle_id is not None,
+        )
     with _errors(identifier, root):
         return export_batch_audit(identifier, root, bundle_id=bundle_id)

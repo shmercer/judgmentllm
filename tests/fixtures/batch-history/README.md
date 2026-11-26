@@ -23,3 +23,9 @@ The accompanying JSON pins the producer, archive, manifest and original audit ID
 Tests preserve these bytes, usage, outcomes, SQL and migration checksums. Source
 paths need not exist; the existing explicit full frozen-snapshot permission and
 foreign native-Path rejection remain in force.
+
+`schema4-manifest12-pairwise-store.tar.gz.base64` was sealed on Linux by the
+same unmodified PR2 source using its original synthetic pairwise input recipe
+and `prepare_batch`. It records both absolute POSIX path leaves. Its companion
+metadata pins the archive and original manifest. The tests alter only extracted
+copies when checking the pair path and database seal.

@@ -1249,8 +1249,12 @@ async def aresume_run(
         # execution/retry services perform complete source and context checks.
         with ReadOnlyRepository(root) as repository:
             run = repository.get_run(identifier)
-            from judgmentllm.preparation import _load_manifest  # pyright: ignore[reportPrivateUsage]
+            from judgmentllm.preparation import (
+                _load_manifest,  # pyright: ignore[reportPrivateUsage]
+                _preflight_v12_write,  # pyright: ignore[reportPrivateUsage]
+            )
 
+            _preflight_v12_write(repository, identifier)
             sealed = (
                 _load_manifest(repository, identifier, unsealed=False)
                 if run.manifest_sha256 is not None
@@ -1456,9 +1460,9 @@ def cancel_run(run_id: str | Path, *, store: str | Path | None = None) -> RunSta
 def get_run(run_id: str | Path, *, store: str | Path | None = None) -> RunStatus:
     """Inspect persisted state without submitting, retrieving, or reading sources."""
     with _errors():
-        identifier, root = resolve_run(run_id, store)
+        identifier, root = resolve_run(run_id, store, allow_v12_posix_read=True)
     with _errors(identifier, root), ReadOnlyRepository(root) as repository:
-        return inspect_run(repository, identifier)
+        return inspect_run(repository, identifier, allow_v12_posix_read=True)
 
 
 def list_runs(

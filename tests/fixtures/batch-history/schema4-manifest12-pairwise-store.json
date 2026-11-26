@@ -1,0 +1,8 @@
+{
+  "run_id": "001",
+  "manifest_sha256": "5dc67a1947e4156ff69ae1a3ddcf9ce336d71bf05611c14e9c863aebc1b9931a",
+  "producer_commit": "35adfdf1829d1c201a0bcb57dc5cf4292e2d6dd4",
+  "producer_tree": "2e49dfad4a1d2aba33176ad3e29dff074d595797",
+  "archive_sha256": "918c667082ae03b2b8a43f8492f7dc99b45f6bda11c90f1b47b176da239e54ea",
+  "producer_method": "Unmodified git archive source; original mock pairwise prepare; no patched schema, payload or IDs"
+}

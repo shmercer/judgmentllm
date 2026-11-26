@@ -259,6 +259,7 @@
       "test_foreign_snapshot_preserves_proof_without_touching_original_aliases": {"[manifest-nonpath]": [], "[manifest-path]": [], "[spec-nonpath]": [], "[spec-path]": []},
       "test_foreign_supplied_specification_keeps_exact_equality_boundary": {"": []},
       "test_genuine_pr2_schema4_manifest12_audit1_remain_immutable": {"": []},
+      "test_genuine_pr2_v12_pairwise_preserves_both_posix_paths": {"": []},
       "test_genuine_schema3_stays_byte_compatible_and_cannot_accept_batch": {"": []},
       "test_historical_foreign_dialect_is_classified_without_filesystem_access": {"": []},
       "test_historical_manifest_projection_is_manifest_only_and_readonly": {"": []},
@@ -266,7 +267,14 @@
       "test_historical_wire_rechecks_current_model_not_just_original_bytes": {"[extra]": [], "[manifest-nonpath]": [], "[manifest-path]": [], "[spec-nonpath]": [], "[spec-path]": []},
       "test_historical_wire_rejects_noncanonical_or_uncontrolled_values": {"[container]": [], "[duplicate]": [], "[empty-path]": [], "[nonobject]": [], "[nul-path]": [], "[path-type]": [], "[path]": [], "[unknown]": [], "[version]": [], "[whitespace]": []},
       "test_historical_wire_rejects_subtypes_and_rechecks_restored_protocol": {"": []},
-      "test_posix_wire_checks_pure_windows_presentation_without_native_execution": {"": []}
+      "test_named_audit_reopen_preserves_sqlite_files": {"[active-wal]": [], "[checkpointed]": []},
+      "test_native_minimal_v12_named_audit_requires_retained_companions": {"": []},
+      "test_native_v12_interrupted_publication_keeps_owned_sealing": {"": []},
+      "test_ordinary_unsealed_result_export_needs_no_published_manifest": {"": []},
+      "test_posix_wire_checks_pure_windows_presentation_without_native_execution": {"": []},
+      "test_v12_inspection_rejects_invalid_archive": {"[changed-nonpath]": [], "[malformed]": [], "[minimal]": [], "[missing-object]": [], "[missing-seal]": [], "[noncanonical]": [], "[unsupported-dialect]": [], "[unsupported-host]": [], "[unsupported-route]": [], "[wrong-seal]": []},
+      "test_v12_named_audit_requires_original_seal_and_retained_companions": {"[damaged-companion]": [], "[duplicate-companion]": [], "[hash-only-companion]": [], "[missing-bundle]": [], "[omitted-companion]": [], "[unregistered]": [], "[wrong-bundle-id]": [], "[wrong-cut-seal]": []},
+      "test_v12_refuses_mutation_before_writer_or_ownership": {"[invalid-marked]": [], "[mock-marker-only]": [], "[published-unsealed]": [], "[sealed]": [], "[version-only]": []}
     },
     "tests/test_batch_contracts.py": {
       "test_batch_control_has_finite_shared_bounds": {"": []},
@@ -1587,8 +1595,10 @@
       "test_ready_projection_digest_rejection_preserves_acceptance": {"": []},
       "test_ready_rotation_survives_repeated_wrap_and_stalled_source": {"[fresh-full]": [], "[fresh-minimal]": [], "[persistent-full]": [], "[persistent-minimal]": []},
       "test_ready_terminal_projection_cannot_rebind_existing_source": {"": []},
+      "test_ready_upload_receipt_is_rescreened_before_collection": {"": []},
       "test_real_default_deadline_at_eof_cannot_loop_forever_after_restart": {"[full]": ["serial"], "[minimal]": ["serial"]},
       "test_real_read_boundaries_preserve_accepted_work_on_io_failure": {"[accepted-reference]": [], "[minimal-source]": []},
+      "test_reconstruction_store_open_failure_preserves_accepted_work": {"": []},
       "test_replay_prefix_conflict_preserves_committed_results": {"[changed-prefix]": [], "[shortened-prefix]": []},
       "test_scientific_subset_retry_recovers_its_original_attempt": {"": []},
       "test_scientific_subset_retry_rejects_changed_attempt_payload": {"": []},
@@ -1598,7 +1608,7 @@
       "test_three_fragmentation_stalls_survive_fresh_processes_without_fourth_read": {"[full]": ["serial"], "[minimal]": ["serial"]},
       "test_two_poll_rounds_keep_the_original_remote_identity": {"": []},
       "test_unfit_or_expired_invocation_can_resume_without_collection_debit": {"[metadata_expiry-full-chat.completions]": [], "[metadata_expiry-full-responses]": [], "[metadata_expiry-minimal-chat.completions]": [], "[metadata_expiry-minimal-responses]": [], "[selection-full-chat.completions]": [], "[selection-full-responses]": [], "[selection-minimal-chat.completions]": [], "[selection-minimal-responses]": [], "[steps-full-chat.completions]": [], "[steps-full-responses]": [], "[steps-minimal-chat.completions]": [], "[steps-minimal-responses]": []},
-      "test_upload_resolver_requires_its_owned_preparation": {"[other-owned-ready]": [], "[other-owned-shard]": [], "[shard-digest]": [], "[unopened]": []},
+      "test_upload_resolver_requires_its_owned_preparation": {"[other-owned-ready]": [], "[other-owned-shard]": [], "[payload-seal]": [], "[shard-digest]": [], "[unopened]": []},
       "test_zero_byte_503_recovers_same_job_in_fresh_process": {"[full-chat.completions]": [], "[full-responses]": [], "[minimal-chat.completions]": [], "[minimal-responses]": []}
     },
     "tests/test_openai_batch_resources.py": {
@@ -1636,7 +1646,7 @@
       "test_status_stop_export_remain_sdk_and_credential_free": {"": []},
       "test_uncertain_create_requires_complete_consistent_discovery": {"": []},
       "test_unqualified_batch_native_authority_cannot_inherit_live_registry": {"[auto-True]": [], "[native-False]": []},
-      "test_upload_discovery_requires_complete_original_bytes": {"[cached-with-distractor]": [], "[non-list]": [], "[short]": [], "[unavailable]": []},
+      "test_upload_discovery_requires_complete_original_bytes": {"[cached-with-distractor]": [], "[non-list]": [], "[oversize]": [], "[short]": [], "[unavailable]": []},
       "test_v3_live_preparation_requires_explicit_transport_without_sending": {"": []},
       "test_valid_cancel_ack_never_reposts_the_owned_job": {"": []},
       "test_wrong_route_context_releases_real_executor_ownership": {"[endpoint-chat.completions]": [], "[model-different-model]": []},

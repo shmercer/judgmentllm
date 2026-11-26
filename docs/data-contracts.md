@@ -24,6 +24,25 @@ Minimal capture, implicit reopen, unsupported foreign dialects, incomplete seals
 and damaged snapshots fail closed. Prior snapshot authorization is not permission
 for a later operation. This reader establishes no new transport capability.
 
+## Historical V12 native Batch inspection
+
+On Windows, `get_run`, `get_batch_status` and `export_batch_provenance` with
+an existing bundle ID can inspect sealed schema-4, full-capture V12 mock Batch
+archives produced on POSIX. Both a run ID and an absolute run directory are
+supported. The reader checks the original canonical bytes, including the input
+and pair path spellings, against the registered object and database seal.
+
+Named V1 audit reopen verifies the original seal, registered bundle, recomputed
+bundle ID and all 11 retained companions for both full and minimal V12 runs.
+Named Batch audit resolution and reopen use preserved SQLite snapshots. The
+original database, WAL and SHM files retain their bytes and existence.
+
+Foreign V12 source provenance blocks preparation reopen, execution, retry,
+local stop, remote cancel and new result or audit publication before writable
+setup. This also applies before a seal exists if the manifest is published or
+the mock Batch marker is present. Native interrupted preparation keeps its
+existing owned recovery checks.
+
 ## PR E Gemini Decisions
 
 The [Gemini Decisions contract](gemini-decisions.md) adds manifest 11,

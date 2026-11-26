@@ -456,6 +456,31 @@ existing 180-second deadline. Cache stays OFF with no registry promotion.
 Paired live/batch payload fixtures verify identical requested generation values
 and omission semantics, including after recovery and collection.
 
+### PR #76 historical V12 inspection follow-up
+
+Review `01a2155c-e0a5-7f83-b274-0fd2d07537ab` scopes this future change to
+sealed schema-4, full-capture V12 mock Batch stores with producer-normal POSIX
+path spelling on Windows.
+
+- Opt in at run and Batch inspection and named-audit reopen, including both run
+  IDs and run-directory paths. Project only `input.path` and `pairs.path` after
+  checking the typed native spellings. Require whole-document canonical byte
+  equality and the existing object, seal, marker, identity and package checks.
+  Use a separate pairwise fixture to verify a valid `pairs.path` and reject a
+  changed leaf, alongside the genuine PR2 archive.
+- Check strict manifest encoding by ID and by directory before `stop_batch`
+  acquires ownership and before `export_run_results` publishes results. Use the
+  strict path for remote cancellation, frozen-snapshot resume and new audit
+  publication.
+- Reopen a named audit through `ReadOnlyRepository`. Match the cut's source
+  manifest hash to the database seal, recompute the bundle ID from the cut, and
+  verify the registered bundle object and every companion. Take the immutability
+  baseline before the first public read.
+- Freeze the final bytes of the affected pinned files, including the reviewed
+  `native_batch.py` rethrow removal. Submit all replacement SHA-256s, historical
+  identities and complete parser exclusion deltas in one independently reviewed
+  protected update before qualification.
+
 ## Milestone 6 - Catalog, R bridge, docs and prerelease qualification
 
 This milestone **extends** beginner documentation, live qualifications and the

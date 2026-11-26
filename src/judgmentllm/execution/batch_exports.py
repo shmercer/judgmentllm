@@ -40,9 +40,12 @@ from judgmentllm.persistence.hashing import (
     semantic_digest,
 )
 from judgmentllm.persistence.models import ArtifactIdentity, IntegrityError, RunState
-from judgmentllm.persistence.native_batch import latest, register, rows
-from judgmentllm.persistence.repository import Repository
-from judgmentllm.preparation import _load_manifest  # pyright: ignore[reportPrivateUsage]
+from judgmentllm.persistence.native_batch import latest, read_reference, register, rows
+from judgmentllm.persistence.repository import ReadOnlyRepository, Repository
+from judgmentllm.preparation import (
+    _load_manifest,  # pyright: ignore[reportPrivateUsage]
+    _preflight_v12_write,  # pyright: ignore[reportPrivateUsage]
+)
 from judgmentllm.preparation.manifest import (
     ExecutableRunManifestV12,
     ExecutableRunManifestV13,
@@ -189,27 +192,43 @@ def _chunks(path: Path) -> Iterator[bytes]:
             yield chunk
 
 
+_V1_COMPANIONS = {
+    "jobs.jsonl",
+    "jobs.csv",
+    "members.jsonl",
+    "members.csv",
+    "operations.jsonl",
+    "operations.csv",
+    "controls.jsonl",
+    "controls.csv",
+    "results.jsonl",
+    "results.csv",
+    "results_r.csv",
+}
+
+
 def export_batch_audit(
     run_id: str, root: Path, *, bundle_id: str | None = None
 ) -> BatchAuditReportV1 | BatchAuditReportV2:
-    with Repository(root) as repository:
-        manifest = _load_manifest(repository, run_id, unsealed=False)
+    with ReadOnlyRepository(root, preserve_files=bundle_id is not None) as inspection:
+        if bundle_id is None:
+            _preflight_v12_write(inspection, run_id)
+        manifest = _load_manifest(
+            inspection,
+            run_id,
+            unsealed=False,
+            allow_v12_posix_read=bundle_id is not None,
+        )
         if not isinstance(
             manifest, (ExecutableRunManifestV12, ExecutableRunManifestV13)
         ):
             raise ValueError("batch audit requires a native batch manifest")
         openai = isinstance(manifest, ExecutableRunManifestV13)
         bundle_model = BatchAuditManifestV2 if openai else BatchAuditManifestV1
-        job_model = OpenAIBatchJobProvenanceV1 if openai else BatchJobProvenanceV1
-        control_model = (
-            OpenAIBatchControlProvenanceV1 if openai else BatchControlProvenanceV1
-        )
-        store = ArtifactStore(repository.run_directory(run_id), create=False)
+        store = ArtifactStore(inspection.run_directory(run_id), create=False)
         if bundle_id is not None:
-            from judgmentllm.persistence.native_batch import read_reference
-
             bundle = read_reference(
-                repository,
+                inspection,
                 run_id,
                 f"batch/audits/{bundle_id}.json",
                 bundle_model,
@@ -220,9 +239,41 @@ def export_batch_audit(
                 or bundle.run_id != run_id
             ):
                 raise IntegrityError("batch audit bundle identity differs")
+            v12 = type(manifest) is ExecutableRunManifestV12
+            if v12:
+                seal = inspection.get_manifest(run_id).artifact.sha256
+                if bundle.cut.source_manifest_sha256 != seal:
+                    raise IntegrityError("batch audit cut differs from the run seal")
+                if (
+                    semantic_digest("native-batch-audit-v1", [run_id, bundle.cut])
+                    != bundle_id
+                ):
+                    raise IntegrityError("batch audit cut differs from the bundle ID")
+                raw = canonical_bytes(bundle)
+                if (
+                    store.read(inspection.get_artifact(run_id, bytes_digest(raw)))
+                    != raw
+                ):
+                    raise IntegrityError(
+                        "batch audit differs from its registered object"
+                    )
+                if (
+                    len(bundle.files) != len(_V1_COMPANIONS)
+                    or {file.name for file in bundle.files} != _V1_COMPANIONS
+                ):
+                    raise IntegrityError("batch audit companion set differs")
             for file in bundle.files:
-                store.verify(file.artifact)
-            return report(repository, store, bundle)
+                retained = store.verify(file.artifact)
+                if v12 and retained is None:
+                    raise IntegrityError(
+                        "batch audit companion bytes were not retained"
+                    )
+            return report(inspection, store, bundle)
+    job_model = OpenAIBatchJobProvenanceV1 if openai else BatchJobProvenanceV1
+    control_model = (
+        OpenAIBatchControlProvenanceV1 if openai else BatchControlProvenanceV1
+    )
+    with Repository(root) as repository:
         connection = repository.connection
         connection.execute("BEGIN")
         try:

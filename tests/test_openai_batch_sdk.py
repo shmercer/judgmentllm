@@ -2086,14 +2086,14 @@ async def test_control_overrun_closes_budget_without_a_receipt(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "case", ["unavailable", "short", "cached-with-distractor", "non-list"]
+    "case", ["unavailable", "short", "cached-with-distractor", "non-list", "oversize"]
 )
 async def test_upload_discovery_requires_complete_original_bytes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
 ) -> None:
     import httpx2
 
-    from judgmentllm import BatchControlOptionsV1, asubmit_batch
+    from judgmentllm import BatchControlOptionsV1, aresume_batch, asubmit_batch
     from judgmentllm.batch_models import BatchOperationIntentV1, BatchOperationReceiptV1
     from judgmentllm.execution.native_batch import InvocationBudget
     from judgmentllm.execution.openai_batch import OpenAIBatchSession
@@ -2180,6 +2180,25 @@ async def test_upload_discovery_requires_complete_original_bytes(
         assert distractor is not None
         assert intended_filename != distractor[0] and remote != distractor[1]
     assert len(original) == declared
+    if case == "oversize":
+        service.file(remote, body=original + b" ", declared=declared)
+        assert before["receipt"] is None and before["reference"] is None
+        pending = await aresume_batch("001", store=store, spec=spec)
+        assert pending.outcome == "partial" and pending.batch.unresolved_operations
+        assert service.events() == [
+            ("POST", "/v1/files"),
+            ("GET", "/v1/files"),
+            ("GET", "/v1/files/" + remote),
+            ("GET", "/v1/files/" + remote + "/content"),
+        ]
+        with service.connect() as db:
+            (received,) = db.execute(
+                "SELECT sum(byte_count) FROM reads WHERE file=?", (remote,)
+            ).fetchone()
+        assert received == declared + 1
+        assert _sdk_operation_evidence(store, "upload") == before
+        return
+
     original_request = service.request
     replacements: list[httpx2.Response] = []
 

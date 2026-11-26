@@ -360,8 +360,6 @@ class OpenAIBatchAdapter:
             response = await function(await self.client())
             self.budget.remaining()
             raw = response.http_response.content
-            if len(raw) > CONTROL_MAX_BYTES:
-                raise BatchEvidenceWithheld("oversized control projection")
             try:
                 return _mapping(decode_assessment_output(raw))
             except (ValueError, TypeError):
@@ -370,14 +368,7 @@ class OpenAIBatchAdapter:
             raise BatchEvidenceWithheld("oversized control representation") from None
         except (ProviderIntegrityError, BatchEvidenceWithheld):
             raise
-        except Exception as error:
-            cause = error.__cause__
-            if isinstance(cause, BatchSourceOverrun):
-                raise BatchEvidenceWithheld(
-                    "oversized control representation"
-                ) from None
-            if isinstance(cause, (ProviderIntegrityError, BatchEvidenceWithheld)):
-                raise cause from None
+        except Exception:
             raise OSError("OpenAI Batch control evidence is unavailable") from None
         finally:
             _SDK_LOGGING.reset(logging)
@@ -588,13 +579,7 @@ class OpenAIBatchAdapter:
             response = await context.__aenter__()
         except (ProviderIntegrityError, BatchEvidenceWithheld, BatchSourceOverrun):
             raise
-        except Exception as error:
-            cause = error.__cause__
-            if isinstance(
-                cause,
-                (ProviderIntegrityError, BatchEvidenceWithheld, BatchSourceOverrun),
-            ):
-                raise cause from None
+        except Exception:
             raise OSError("OpenAI Batch file content is unavailable") from None
         finally:
             # A generator's next advance may run in another owned budget task.
@@ -673,15 +658,14 @@ class OpenAIBatchAdapter:
                 len(expected),
             ):
                 return None
-            received = bytearray()
+            received = 0
             async for chunk in self.content(file_id, len(expected)):
-                if len(received) + len(chunk) > len(expected):
-                    return None
+                end = received + len(chunk)
                 # Compare authorized input bytes before any returned-data digest.
-                if chunk != expected[len(received) : len(received) + len(chunk)]:
+                if chunk != expected[received:end]:
                     return None
-                received.extend(chunk)
-            if len(received) != len(expected):
+                received = end
+            if received != len(expected):
                 return None
         else:
             status = self._screen_job(found, intent.instance_id, intent=intent)

@@ -1,4 +1,4 @@
-"""Checked POSIX wire identity for sealed, full historical V2 preparations."""
+"""Checked POSIX wire identity for sealed full historical preparations."""
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ from judgmentllm.persistence.hashing import (
 from judgmentllm.preparation.freezing import PreparationError
 from judgmentllm.preparation.manifest import (
     ExecutableRunManifestV2,
+    ExecutableRunManifestV12,
     assessment_digest,
 )
 
@@ -70,17 +71,17 @@ class _WireRecord:
     def checked(
         cls, model: ExecutableRunManifestV2 | RunSpecV2, raw: bytes
     ) -> _WireRecord:
-        if type(model) not in (ExecutableRunManifestV2, RunSpecV2):
+        if type(model) not in (
+            ExecutableRunManifestV2,
+            ExecutableRunManifestV12,
+            RunSpecV2,
+        ):
             raise PreparationError("historical wire protocol is unsupported")
         decoded = parse_json(raw.decode("utf-8"))
         if not isinstance(decoded, dict):
             raise PreparationError("historical wire must be an object")
         data = cast(dict[str, Any], decoded)
-        paths = (
-            _MANIFEST_PATHS
-            if type(model) is ExecutableRunManifestV2
-            else _SPECIFICATION_PATHS
-        )
+        paths = _SPECIFICATION_PATHS if type(model) is RunSpecV2 else _MANIFEST_PATHS
         bindings: list[tuple[tuple[str, ...], str, str]] = []
         for path in paths:
             parent = _parent(data, path)
@@ -112,6 +113,21 @@ def manifest_wire(manifest: ExecutableRunManifestV2, raw: bytes) -> _WireRecord:
     for source in manifest.sources:
         _posix(source.original_location, absolute=True)
     return _WireRecord.checked(manifest, raw)
+
+
+def batch_manifest_wire(manifest: ExecutableRunManifestV12, raw: bytes) -> bytes:
+    if (
+        manifest.generation.provider,
+        manifest.generation.endpoint,
+        manifest.execution.mode,
+    ) != ("mock", "synthetic", "batch_native"):
+        raise PreparationError("historical Batch wire requires the V12 mock route")
+    if not all(
+        foreign_original(_posix(source.original_location, absolute=True))
+        for source in manifest.sources
+    ):
+        raise PreparationError("historical Batch wire requires foreign POSIX originals")
+    return _WireRecord.checked(manifest, raw).raw
 
 
 @dataclass(frozen=True)

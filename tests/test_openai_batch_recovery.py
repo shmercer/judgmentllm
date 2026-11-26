@@ -1478,7 +1478,9 @@ def test_replay_prefix_conflict_preserves_committed_results(
     assert [event for event in service.events() if event[0] == "POST"] == posts
 
 
-def accepted_chain_snapshot(store: Any) -> dict[str, Any]:
+def accepted_chain_snapshot(
+    store: Any, *, include_executor_lock: bool = True
+) -> dict[str, Any]:
     with ReadOnlyRepository(store) as repo:
         projections = {
             table: tuple(
@@ -1530,10 +1532,11 @@ def accepted_chain_snapshot(store: Any) -> dict[str, Any]:
             )
         }
         directory = repo.run_directory("001")
+        executor_lock = directory / "executor.lock"
         files = {
             path.relative_to(directory).as_posix(): path.read_bytes()
             for path in directory.rglob("*")
-            if path.is_file()
+            if (include_executor_lock or path != executor_lock) and path.is_file()
         }
     return {
         "projections": projections,
@@ -2119,7 +2122,14 @@ def test_ready_terminal_projection_cannot_rebind_existing_source(
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
-    "case", ["unopened", "other-owned-shard", "other-owned-ready", "shard-digest"]
+    "case",
+    [
+        "unopened",
+        "other-owned-shard",
+        "other-owned-ready",
+        "shard-digest",
+        "payload-seal",
+    ],
 )
 async def test_upload_resolver_requires_its_owned_preparation(
     tmp_path: Any, monkeypatch: pytest.MonkeyPatch, case: str
@@ -2201,12 +2211,12 @@ async def test_upload_resolver_requires_its_owned_preparation(
     budget = InvocationBudget(BatchControlOptionsV1())
     adapter = OpenAIBatchAdapter(batch_context(spec), budget=budget)
     events = service.events()
+    original = accepted_chain_snapshot(store)
     try:
         session = OpenAIBatchSession("001", store, adapter, budget)
         with session:
             if case != "unopened":
                 session.open_sources(spec, False)
-            guards = accepted_chain_snapshot(store)["guards"]
             if case == "shard-digest":
                 raw, digest = session.repository.connection.execute(
                     "SELECT record_json,receipt_sha256 FROM batch_preparations "
@@ -2229,8 +2239,36 @@ async def test_upload_resolver_requires_its_owned_preparation(
                     ).fetchone()[0]
                     == digest
                 )
-            before = accepted_chain_snapshot(store)
-            assert before["guards"] == guards
+            elif case == "payload-seal":
+                raw = session.repository.connection.execute(
+                    "SELECT record_json FROM batch_preparations WHERE shard_id=?",
+                    (intent.shard_id,),
+                ).fetchone()[0]
+                shard = session.shard_model.model_validate_json(raw)
+                authorized = session.upload_bytes(intent)
+                assert authorized == session.store.read(shard.input)
+                assert authorized is not None
+                alternate = json.loads(authorized)
+                assert alternate["custom_id"] != "0" * 64
+                alternate["custom_id"] = "0" * 64
+                replacement = session.store.put(
+                    canonical_bytes(alternate) + b"\n", shard.input.media_type
+                )
+                fields = json.loads(raw)
+                fields["input"] = replacement.model_dump(mode="json")
+                record = canonical_bytes(session.shard_model.model_validate(fields))
+                receipt = session.store.put(record, "application/json")
+                session.repository.register_artifact("001", replacement)
+                session.repository.register_artifact("001", receipt)
+                corrupt_row(
+                    store,
+                    "batch_preparations",
+                    "UPDATE batch_preparations SET record_json=?,receipt_sha256=? "
+                    "WHERE shard_id=?",
+                    (record.decode(), receipt.sha256, intent.shard_id),
+                )
+            before = accepted_chain_snapshot(store, include_executor_lock=False)
+            assert before["guards"] == original["guards"]
             if case == "unopened":
                 assert session.upload_bytes(intent) is None
             elif case == "other-owned-ready":
@@ -2250,15 +2288,81 @@ async def test_upload_resolver_requires_its_owned_preparation(
                         ).fetchone()
                         is None
                     )
-                message = (
-                    "upload recovery lacks its original shard"
-                    if case == "other-owned-shard"
-                    else "upload recovery shard differs from seal"
-                )
+                message = {
+                    "other-owned-shard": "upload recovery lacks its original shard",
+                    "shard-digest": "upload recovery shard differs from seal",
+                    "payload-seal": "upload recovery payload differs from seal",
+                }[case]
                 with pytest.raises(IntegrityError, match=message):
                     session.upload_bytes(intent)
+            owner = session.repository.get_owner("001")
+            assert owner is not None and owner.token == session.token
+            assert executor_is_active(session.repository, "001") is True
     finally:
         await adapter.aclose()
+    assert service.events() == events
+    with ReadOnlyRepository(store) as repo:
+        assert repo.get_owner("001") is None
+        assert executor_is_active(repo, "001") is False
+    # Compare the permanent lock bytes from outside the owned session.
+    before["references"]["executor.lock"] = original["references"]["executor.lock"]
+    assert_accepted_chain_unchanged(store, before)
+
+
+def test_ready_upload_receipt_is_rescreened_before_collection(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import asyncio
+    from types import SimpleNamespace
+
+    from judgmentllm.batch_models import BatchCursorV1, OpenAIBatchSourceBindingV1
+    from judgmentllm.execution.native_batch import InvocationBudget
+    from judgmentllm.execution.openai_batch import OpenAIBatchSession, source_state
+    from judgmentllm.openai_batch_transport import batch_context
+    from judgmentllm.persistence.native_batch import latest
+    from judgmentllm.providers import openai_batch
+
+    service, spec, store = setup(tmp_path, monkeypatch, responses=2)
+    options = BatchControlOptionsV1(max_result_rows=1)
+    collect_batch("001", store=store, spec=spec, options=options)
+    collect_batch("001", store=store, spec=spec, options=options)
+    with ReadOnlyRepository(store) as repo:
+        (raw,) = repo.connection.execute(
+            "SELECT record_json FROM batch_facts WHERE kind='cursor' "
+            "AND entity_id LIKE 'openai-binding:%' "
+            "AND json_extract(record_json,'$.ready.role')='output'"
+        ).fetchone()
+        binding = OpenAIBatchSourceBindingV1.model_validate_json(raw)
+        source = binding.ready.source_id
+        cursor = latest(repo, "001", "cursor", source, BatchCursorV1)
+        assert cursor is not None and cursor.position == 1 and not cursor.exhausted
+        assert repo.summary("001").successful_results == 1
+    before = accepted_chain_snapshot(store)
+    events = service.events()
+
+    monkeypatch.setattr(
+        openai_batch,
+        "_resolve_credentials",
+        lambda _provider: SimpleNamespace(_api_key=lambda: binding.job.input_file_id),
+    )
+
+    async def collect() -> None:
+        budget = InvocationBudget(BatchControlOptionsV1())
+        adapter = openai_batch.OpenAIBatchAdapter(batch_context(spec), budget=budget)
+        try:
+            session = OpenAIBatchSession("001", store, adapter, budget)
+            with session:
+                await adapter.client()
+                assert await session.collect_ready(spec, False)
+        finally:
+            await adapter.aclose()
+
+    asyncio.run(collect())
+    with ReadOnlyRepository(store) as repo:
+        admission = source_state(repo, "001", source)
+        assert admission is not None and admission.code == "unsafe_metadata"
+        assert admission.frontier == cursor.position
+        assert latest(repo, "001", "cursor", source, BatchCursorV1) == cursor
     assert service.events() == events
     assert_accepted_chain_unchanged(store, before)
 
@@ -3110,7 +3214,6 @@ def test_real_read_boundaries_preserve_accepted_work_on_io_failure(
             "UPDATE batch_facts SET entity_id=? WHERE kind='operation' AND entity_id=?",
             (instance + ":unavailable", instance),
         )
-        failure_read = 1
         message = "OpenAI Batch accepted source evidence is unavailable"
     else:
         from judgmentllm.config import load_run_spec
@@ -3127,8 +3230,6 @@ def test_real_read_boundaries_preserve_accepted_work_on_io_failure(
         submit_batch("001", store=store, spec=spec)
         poll_batch("001", store=store)
         guards = accepted_chain_snapshot(store)["guards"]
-        # The first read verifies the original; the second reopens its document.
-        failure_read = 2
         message = "prepared source or manifest validation failed"
     before = accepted_chain_snapshot(store)
     assert before["guards"] == guards
@@ -3139,15 +3240,25 @@ def test_real_read_boundaries_preserve_accepted_work_on_io_failure(
     def unavailable(path: Path, mode: str = "r", *args: Any, **kwargs: Any) -> Any:
         if path == target and mode == "rb":
             reads.append(mode)
-            if len(reads) == failure_read:
-                raise OSError("synthetic owned read unavailable")
+            raise OSError("synthetic owned read unavailable")
         return original_open(path, mode, *args, **kwargs)
 
     with monkeypatch.context() as patch:
-        patch.setattr(Path, "open", unavailable)
+        if boundary == "minimal-source":
+            from judgmentllm import preparation
+            from judgmentllm.preparation import _memory_source  # pyright: ignore[reportPrivateUsage]
+
+            def reopen_document(path: Path) -> Any:
+                with patch.context() as read:
+                    read.setattr(Path, "open", unavailable)
+                    return _memory_source(path)
+
+            patch.setattr(preparation, "_memory_source", reopen_document)
+        else:
+            patch.setattr(Path, "open", unavailable)
         with pytest.raises(LifecycleError) as error:
             collect_batch("001", store=store, spec=spec)
-    assert len(reads) == failure_read
+    assert reads == ["rb"]
     assert error.value.category == "execution"
     assert error.value.message == "durable run integrity or storage operation failed"
     assert isinstance(error.value.__context__, PersistenceError)
@@ -3156,5 +3267,47 @@ def test_real_read_boundaries_preserve_accepted_work_on_io_failure(
 
         assert type(error.value.__context__) is PreparationError
     assert error.value.__context__.args == (message,)
+    assert service.events() == events
+    assert_accepted_chain_unchanged(store, before)
+
+
+def test_reconstruction_store_open_failure_preserves_accepted_work(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from pathlib import Path
+
+    from judgmentllm import preparation
+    from judgmentllm.lifecycle_models import LifecycleError
+    from judgmentllm.persistence.models import PersistenceError
+    from judgmentllm.persistence.repository import Repository
+
+    service, spec, store = setup(tmp_path, monkeypatch, responses=1)
+    before = accepted_chain_snapshot(store)
+    events = service.events()
+    root = store.resolve()
+    mkdir = Path.mkdir
+    attempts: list[Path] = []
+
+    def unavailable(path: Path, *args: Any, **kwargs: Any) -> None:
+        if path == root:
+            attempts.append(path)
+            raise OSError("synthetic preparation store unavailable")
+        mkdir(path, *args, **kwargs)
+
+    def open_repository(path: Path) -> Repository:
+        with monkeypatch.context() as access:
+            access.setattr(Path, "mkdir", unavailable)
+            return Repository(path)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(preparation, "Repository", open_repository)
+        with pytest.raises(LifecycleError) as error:
+            collect_batch("001", store=store, spec=spec)
+    assert attempts == [root]
+    assert error.value.category == "execution"
+    assert error.value.message == "durable run integrity or storage operation failed"
+    context = error.value.__context__
+    assert type(context) is PersistenceError
+    assert context.args == ("OpenAI Batch source reconstruction is unavailable",)
     assert service.events() == events
     assert_accepted_chain_unchanged(store, before)

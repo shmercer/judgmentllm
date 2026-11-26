@@ -136,6 +136,7 @@ def test_screening_precedes_all_durable_content_and_hashes(
     assert submitted.outcome == "ok" and submitted.batch.accepted_jobs == 1
     assert submitted.batch.unresolved_operations == 0
     submission, fixture = accepted_job(root, attempts)
+    before_collect = service_counts(root)
     status = audit.checked(
         lambda: collect_batch(
             "001", store=root, spec=spec, mock=mock, _fault=audit.inspect
@@ -180,6 +181,7 @@ def test_screening_precedes_all_durable_content_and_hashes(
                 assert set(audit.reads) == {("output", 0), ("output", 1)}
             else:
                 assert audit.reads == []
+                assert service_counts(root) == before_collect
                 assert {r[0] for r in withheld} == {
                     semantic_digest(
                         "batch-result-source-v1", [submission, kind, fixture]

@@ -51,7 +51,7 @@ def require_store(store: Path) -> None:
         raise LifecycleError("not_found", "run store was not found", store=str(store))
 
 
-def _directory_id(directory: Path, root: Path) -> str:
+def _directory_id(directory: Path, root: Path, *, preserve_files: bool) -> str:
     path = directory / "manifest.json"
     if path.is_symlink():
         raise LifecycleError("validation", "run directory manifest is invalid")
@@ -66,7 +66,7 @@ def _directory_id(directory: Path, root: Path) -> str:
         return identifier
     # Unsealed preparations have no manifest. Compare established directory
     # hashes through bounded registry pages, without retaining an ID inventory.
-    with ReadOnlyRepository(root) as repository:
+    with ReadOnlyRepository(root, preserve_files=preserve_files) as repository:
         after = ""
         while True:
             rows = repository.connection.execute(
@@ -85,13 +85,16 @@ def resolve_run(
     run_id: str | Path,
     store: str | Path | None,
     spec: RunSpecification | None = None,
+    *,
+    allow_v12_posix_read: bool = False,
+    preserve_files: bool = False,
 ) -> tuple[str, Path]:
     # Existing IDs are arbitrary stable strings, including path-like strings.
     # With an explicit store, an exact registry identity takes precedence.
     if store is not None:
         selected = Path(store).resolve()
         require_store(selected)
-        with ReadOnlyRepository(selected) as repository:
+        with ReadOnlyRepository(selected, preserve_files=preserve_files) as repository:
             row = repository.connection.execute(
                 "SELECT 1 FROM runs WHERE run_id=?", (str(run_id),)
             ).fetchone()
@@ -106,19 +109,24 @@ def resolve_run(
         if store is not None and Path(store).resolve() != root:
             raise LifecycleError("validation", "run directory and store disagree")
         require_store(root)
-        identifier = _directory_id(directory, root)
-        with ReadOnlyRepository(root) as repository:
+        identifier = _directory_id(directory, root, preserve_files=preserve_files)
+        with ReadOnlyRepository(root, preserve_files=preserve_files) as repository:
             if repository.run_directory(identifier) != directory:
                 raise LifecycleError("validation", "run directory identity disagrees")
             if repository.get_run(identifier).manifest_sha256 is not None:
-                _load_manifest(repository, identifier, unsealed=False)
+                _load_manifest(
+                    repository,
+                    identifier,
+                    unsealed=False,
+                    allow_v12_posix_read=allow_v12_posix_read,
+                )
         return identifier, root
     root = discover_store(store, spec)
     require_store(root)
     # Resolve only existing, verified identities. Callers that will later export
     # or execute must not reach a write-capable constructor on an unknown run or
     # an uninitialized registry merely to discover that identity.
-    with ReadOnlyRepository(root) as repository:
+    with ReadOnlyRepository(root, preserve_files=preserve_files) as repository:
         try:
             repository.get_run(str(run_id))
         except NotFoundError:
@@ -177,14 +185,21 @@ def decode_cursor(cursor: str, store: Path) -> tuple[str, str]:
         ) from None
 
 
-def inspect_run(repository: Repository, run_id: str) -> RunStatus:
+def inspect_run(
+    repository: Repository, run_id: str, *, allow_v12_posix_read: bool = False
+) -> RunStatus:
     """Read a short WAL snapshot; source files and result payloads stay unopened."""
     active = executor_is_active(repository, run_id)
     repository.connection.execute("BEGIN")
     try:
         run = repository.get_run(run_id)
         manifest = (
-            _load_manifest(repository, run_id, unsealed=False)
+            _load_manifest(
+                repository,
+                run_id,
+                unsealed=False,
+                allow_v12_posix_read=allow_v12_posix_read,
+            )
             if run.manifest_sha256 is not None
             else None
         )

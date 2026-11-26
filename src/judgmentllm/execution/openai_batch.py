@@ -645,8 +645,6 @@ class OpenAIBatchSession(BatchSession):
                         ) from None
                 self.budget.remaining()
                 await self.collect_file(ready, submission, receipt, status, file_id)
-            except BatchSourceOverrun:
-                self.fail_source(source, "source_overrun")
             except BatchEvidenceWithheld:
                 self.fail_source(source, "unsafe_metadata")
             except (BudgetExhausted, TimeoutError, OSError):
@@ -772,12 +770,18 @@ class OpenAIBatchSession(BatchSession):
                     ):
                         self.fail_source(source, "source_framing")
                         return
-                    screened = self.adapter.screen_result(bytes(line), compiled)
-                    digest = (
-                        semantic_digest("batch-withheld-v1", [source, position])
-                        if screened is None
-                        else bytes_digest(screened[3])
-                    )
+                    raw = bytes(line)
+                    screened = self.adapter.screen_result(raw, compiled)
+                    if screened is None:
+                        digest = semantic_digest(
+                            "batch-withheld-v1", [source, position]
+                        )
+                    elif position < target:
+                        digest = bytes_digest(screened[3])
+                    else:
+                        digest = self.save_member(
+                            by_key[screened[0]], submission, source, position, raw
+                        )
                     next_prefix = semantic_digest(
                         "batch-result-prefix-step-v1", [prefix, position, digest]
                     )
@@ -796,15 +800,6 @@ class OpenAIBatchSession(BatchSession):
                                 source + ":" + str(position),
                                 BatchDiagnosticV1(code="unsafe_evidence"),
                             )
-                        else:
-                            member = by_key[screened[0]]
-                            if (
-                                self.save_member(
-                                    member, submission, source, position, bytes(line)
-                                )
-                                != digest
-                            ):
-                                raise IntegrityError("screened member digest changed")
                         new_cursor = BatchCursorV1(
                             run_id=self.run_id,
                             submission_id=submission.submission_id,
@@ -860,10 +855,6 @@ class OpenAIBatchSession(BatchSession):
                         return
                     eof = True
                     continue
-                # Check the whole actual chunk before parsing/hashing/admitting any of it.
-                if received + len(chunk) > size:
-                    self.fail_source(source, "source_overrun")
-                    return
                 received += len(chunk)
                 if (
                     position >= target

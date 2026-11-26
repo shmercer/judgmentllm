@@ -30,9 +30,14 @@ from judgmentllm.persistence.models import (
     SubmissionRecord,
 )
 from judgmentllm.persistence.ownership import ExecutorOwnership
-from judgmentllm.persistence.repository import Repository
+from judgmentllm.persistence.repository import ReadOnlyRepository, Repository
 from judgmentllm.planning import stable_id
-from judgmentllm.preparation import PreparedRun, RequestDependency, open_prepared_run
+from judgmentllm.preparation import (
+    PreparedRun,
+    RequestDependency,
+    _preflight_v12_write,  # pyright: ignore[reportPrivateUsage]
+    open_prepared_run,
+)
 from judgmentllm.prompts import RenderedPrompt, RenderedPromptV2
 from judgmentllm.providers import ProviderAdapter
 from judgmentllm.providers.batch_protocol import NativeBatchAdapter
@@ -691,6 +696,8 @@ def authorize_subset_retry(
     selected = tuple(task_ids)
     if not selected or len(set(selected)) != len(selected):
         raise RetryAuthorizationError("retry selection requires unique task IDs")
+    with ReadOnlyRepository(store) as inspection:
+        _preflight_v12_write(inspection, run_id)
     with Repository(store) as bootstrap, ExecutorOwnership(bootstrap, run_id) as owner:
         assert owner.owner is not None
         owner_token = owner.owner.token
