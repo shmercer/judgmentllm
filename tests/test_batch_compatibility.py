@@ -1438,10 +1438,9 @@ def test_named_audit_reopen_preserves_sqlite_files(
         def observe(database_uri: str, *args: Any, **kwargs: Any) -> sqlite3.Connection:
             assert registry_files() == before
             if active_wal:
-                assert (
-                    database_uri.partition("?")[0] != original_uri
-                    and database_uri.endswith("?mode=ro")
-                )
+                assert database_uri.partition("?")[
+                    0
+                ] != original_uri and database_uri.endswith("?mode=ro")
             else:
                 assert database_uri == original_uri + "?mode=ro&immutable=1"
             opened.append(database_uri)
