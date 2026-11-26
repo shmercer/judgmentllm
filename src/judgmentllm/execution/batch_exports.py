@@ -50,6 +50,12 @@ from judgmentllm.preparation.manifest import (
     ExecutableRunManifestV12,
     ExecutableRunManifestV13,
 )
+from judgmentllm.providers.openai_batch_diagnostics import (
+    PREFIX,
+    RESULT_SCREEN_PREFIX,
+    OpenAIBatchDiagnosticV1,
+    OpenAIBatchResultScreenV1,
+)
 from judgmentllm.r_exports import export_pairwise_r_csv, export_rubric_r_csv
 from judgmentllm.results import PairwiseResult, RubricResult
 
@@ -146,6 +152,8 @@ class OpenAIBatchControlProvenanceV1(EvidenceModel):
         | OpenAIBatchAdmissionV1
         | OpenAIBatchSourceBindingV1
         | OpenAIBatchAbsentV1
+        | OpenAIBatchDiagnosticV1
+        | OpenAIBatchResultScreenV1
     )
 
 
@@ -182,6 +190,8 @@ _OPENAI_CONTROLS = {
         OpenAIBatchAdmissionV1,
         OpenAIBatchSourceBindingV1,
         OpenAIBatchAbsentV1,
+        OpenAIBatchDiagnosticV1,
+        OpenAIBatchResultScreenV1,
     )
 }
 
@@ -457,8 +467,33 @@ def export_batch_audit(
                             if not isinstance(fields, dict):
                                 raise IntegrityError("batch cursor record is invalid")
                             tag = cast(dict[str, Any], fields).get("record_type")
+                            if any(
+                                row[2].startswith(prefix)
+                                != (tag == typed.model_fields["record_type"].default)
+                                for prefix, typed in (
+                                    (PREFIX, OpenAIBatchDiagnosticV1),
+                                    (RESULT_SCREEN_PREFIX, OpenAIBatchResultScreenV1),
+                                )
+                            ):
+                                raise IntegrityError(
+                                    "OpenAI Batch diagnostic namespace differs"
+                                )
                             model = _OPENAI_CONTROLS.get(tag, BatchCursorV1)
+                        elif openai and row[2].startswith(
+                            (PREFIX, RESULT_SCREEN_PREFIX)
+                        ):
+                            raise IntegrityError("OpenAI Batch diagnostic kind differs")
                         record = model.model_validate_json(row[4])
+                        if (
+                            isinstance(
+                                record,
+                                (OpenAIBatchDiagnosticV1, OpenAIBatchResultScreenV1),
+                            )
+                            and record.entity != row[2]
+                        ):
+                            raise IntegrityError(
+                                "OpenAI Batch diagnostic identity differs"
+                            )
                         if (
                             canonical_bytes(record).decode() != row[4]
                             or bytes_digest(canonical_bytes(record)) != row[3]

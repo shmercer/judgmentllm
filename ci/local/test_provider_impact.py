@@ -149,6 +149,7 @@ def test_openai_batch_sources_select_sdk_recovery_privacy_r_and_resources() -> N
     }
     for source in (
         "src/judgmentllm/providers/openai_batch.py",
+        "src/judgmentllm/providers/openai_batch_diagnostics.py",
         "src/judgmentllm/providers/openai_batch_response.py",
     ):
         assert policy["provider_sources"][source] == "openai"

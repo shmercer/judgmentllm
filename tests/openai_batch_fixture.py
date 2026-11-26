@@ -62,6 +62,21 @@ Service = _fixture.Service
 install = _fixture.install
 
 
+def diagnostic_records(store: Path, operation: str) -> list[dict[str, Any]]:
+    from judgmentllm.persistence.repository import ReadOnlyRepository
+
+    with ReadOnlyRepository(store) as repo:
+        return [
+            json.loads(row[0])
+            for row in repo.connection.execute(
+                "SELECT record_json FROM batch_facts WHERE kind='cursor' "
+                "AND entity_id LIKE 'openai-diagnostic:%' "
+                "AND json_extract(record_json,'$.operation')=? ORDER BY fact_seq",
+                (operation,),
+            )
+        ]
+
+
 def child(
     root: Any,
     action: Any,

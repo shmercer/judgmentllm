@@ -7,7 +7,13 @@ from collections.abc import AsyncIterator
 from typing import Any
 
 import pytest
-from openai_batch_fixture import Service, child, install, specification
+from openai_batch_fixture import (
+    Service,
+    child,
+    diagnostic_records,
+    install,
+    specification,
+)
 
 from judgmentllm import (
     BatchControlOptionsV1,
@@ -100,6 +106,24 @@ def test_acceptance_uncertainty_never_resubmits(
     child(tmp_path, "resume")
     assert len([e for e in service.events() if e == ("POST", "/v1/files")]) == 1
     assert len([e for e in service.events() if e == ("POST", "/v1/batches")]) == 1
+    operation = "upload" if fault == "lose_upload_ack" else "create"
+    (lost,) = diagnostic_records(tmp_path / "store", f"{operation}_post")
+    (listing,) = diagnostic_records(tmp_path / "store", f"{operation}_list")
+    (positive,) = diagnostic_records(
+        tmp_path / "store", "upload_content" if operation == "upload" else "create_get"
+    )
+    assert lost["reason"] == "delegate" and lost["http_status"] is None
+    assert lost["binding_id"] == listing["binding_id"] == positive["binding_id"]
+    assert len({lost["call_id"], listing["call_id"], positive["call_id"]}) == 3
+    with ReadOnlyRepository(tmp_path / "store") as repo:
+        assert tuple(
+            repo.connection.execute(
+                "SELECT certainty,remote_id FROM submissions"
+            ).fetchone()
+        ) == (
+            "accepted",
+            "batch_1",
+        )
 
 
 @pytest.mark.parametrize(
@@ -825,6 +849,86 @@ def test_crashed_member_receipt_recovers_without_duplicate_submission(
     assert len([e for e in service.events() if e[0] == "POST"]) == 2
 
 
+@pytest.mark.parametrize("case", ["interrupted", "historical-prefix"])
+def test_row_diagnostics_survive_restart_without_backfilling_prefix(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    from judgmentllm.config import load_run_spec
+    from judgmentllm.execution.openai_batch import OpenAIBatchSession
+
+    spec_path = tmp_path / "spec.json"
+    spec_path.write_text(specification(tmp_path, capture="minimal").model_dump_json())
+    spec = load_run_spec(spec_path)
+    service = Service(tmp_path / "service.sqlite")
+    store = tmp_path / "store"
+    child(tmp_path, "prepare")
+    service.configure(store, spec)
+    child(tmp_path, "submit")
+    child(tmp_path, "poll")
+    first, second = service.file("file-output_1")[0].splitlines()
+    row = json.loads(first)
+    row["response"] = {"status_code": 429, "request_id": "req_first", "body": {}}
+    first = json.dumps(row).encode()
+    data = first + b"\n" + second + b"\n"
+    service.file("file-output_1", body=data, declared=len(data))
+    saved = None
+    if case == "interrupted":
+        child(tmp_path, "collect", fault="after_openai_batch_row_diagnostic")
+        (saved,) = diagnostic_records(store, "result_row")
+        assert saved["member_request_id"] == "req_first"
+        with ReadOnlyRepository(store) as repo:
+            assert repo.summary("001").results == 0
+    else:
+
+        def omit_diagnostic(*_: Any) -> None:
+            pass
+
+        install(monkeypatch, service)
+        with monkeypatch.context() as patch:
+            patch.setattr(OpenAIBatchSession, "publish_row_diagnostic", omit_diagnostic)
+            collect_batch(
+                "001",
+                store=store,
+                spec=spec,
+                options=BatchControlOptionsV1(max_result_rows=1),
+            )
+        assert diagnostic_records(store, "result_row") == []
+        with ReadOnlyRepository(store) as repo:
+            assert repo.summary("001").results == 1
+    changed = data.replace(b"req_first", b"req_other")
+    service.file("file-output_1", body=changed, declared=len(changed))
+    for _ in range(4):
+        if not child(tmp_path, "resume")["batch"]["recovery_required"]:
+            break
+    recorded = diagnostic_records(store, "result_row")
+    assert [item["row_position"] for item in recorded] == (
+        [0, 1] if case == "interrupted" else [1]
+    )
+    if saved is not None:
+        assert recorded[0] == saved
+    assert all(item["member_request_id"] != "req_other" for item in recorded)
+    with ReadOnlyRepository(store) as repo:
+        assert repo.summary("001").results == 2
+        assert (
+            repo.connection.execute(
+                "SELECT count(*) FROM batch_member_receipts"
+            ).fetchone()[0]
+            == 2
+        )
+        assert tuple(
+            repo.connection.execute(
+                "SELECT certainty,remote_id FROM submissions"
+            ).fetchone()
+        ) == (
+            "accepted",
+            "batch_1",
+        )
+    assert [event for event in service.events() if event[0] == "POST"] == [
+        ("POST", "/v1/files"),
+        ("POST", "/v1/batches"),
+    ]
+
+
 @pytest.mark.parametrize(
     "field,value",
     [
@@ -918,6 +1022,15 @@ def test_inconclusive_create_listing_never_resubmits(
         result = resume_batch("001", store=store, spec=spec)
         assert result.outcome == "partial" and result.batch.unresolved_operations == 1
     assert len([event for event in service.events() if event[0] == "POST"]) == 2
+    is_lookup = [
+        row
+        for row in diagnostic_records(store, "create_list")
+        if row["outcome"] == "indeterminate"
+    ]
+    assert [row["reason"] for row in is_lookup] == [
+        "no_match" if uncertain == "metadata" else "inconclusive_lookup",
+    ] * 2
+    assert len({row["binding_id"] for row in is_lookup}) == 1
 
 
 @pytest.mark.parametrize("endpoint", ["responses", "chat.completions"])

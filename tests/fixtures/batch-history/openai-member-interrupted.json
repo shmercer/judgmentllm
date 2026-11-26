@@ -1,0 +1,14 @@
+{
+  "producer_commit": "d6071de62c139122c2c4ebd9874e15b16807d72e",
+  "producer_tree": "31d25fc33138f36f9d5a70a556eec7cd606d17c0",
+  "producer_pipeline": "Protected-base Chat Completions synthetic full capture, interrupted at after_batch_member_receipt",
+  "input_path": "responses.jsonl",
+  "archive_sha256": "e00be81c1632f8dda9fa54ca72c16916c381707230e67869edc810026c5b71a7",
+  "manifest_sha256": "7cd49eb40e1a094433abb91ecbb21c884807f04d38b58fe0c8ca00a4999e26a9",
+  "specification_sha256": "4e432313ed3db20c65e407c2f058982fcab87258a98651738f45fea49ed176ee",
+  "member_receipt_sha256": "aabaed91a7276c933c585f971467df0bbedb9eed41303bc522bd008529187c0a",
+  "wire_sha256": "19127ed4eb6fabbbd64d49e3326d6146c0fbc9b9af4964f3b4c4cde6b3bbc9a6",
+  "retained_sha256": "80fcea01ca145f995970d0aeaeefcdd30b5173e0a73251f2224fb198562fd57f",
+  "run_id": "001",
+  "synthetic_only": true
+}

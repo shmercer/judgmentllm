@@ -1,5 +1,5 @@
 # Independent R consumer: generative OpenAI Batch preserves normalized schema 1.
-check_openai_batch_audit <- function(manifest_path, endpoint, capture) {
+check_openai_batch_audit <- function(manifest_path, endpoint, capture, require_diagnostics = FALSE) {
   if (!requireNamespace("jsonlite", quietly = TRUE)) stop("Required jsonlite is unavailable")
   bundle <- jsonlite::fromJSON(manifest_path, simplifyVector = FALSE)
   stopifnot(bundle$schema_version == 2L, bundle$normalized_result_schema == 1L,
@@ -14,6 +14,30 @@ check_openai_batch_audit <- function(manifest_path, endpoint, capture) {
   members <- records(artifact("members.jsonl"))
   jobs <- records(artifact("jobs.jsonl"))
   controls <- records(artifact("controls.jsonl"))
+  diagnostic_indices <- which(vapply(controls, function(row)
+    identical(row$record$record_type, "openai_batch_diagnostic_v1"), logical(1)))
+  if (require_diagnostics) stopifnot(length(diagnostic_indices) > 0L)
+  if (length(diagnostic_indices) > 0L) {
+    legal_status <- function(x) is.null(x) || (is.integer(x) && length(x) == 1L && x >= 100L && x <= 599L)
+    control_cells <- read.csv(artifact("controls.csv"), colClasses = "character", check.names = FALSE)
+    stopifnot(nrow(control_cells) == length(controls))
+    for (i in diagnostic_indices) {
+      row <- controls[[i]]
+      record <- row$record
+      stopifnot(identical(row$kind, "cursor"), startsWith(row$entity_id, "openai-diagnostic:"),
+        identical(record, jsonlite::fromJSON(control_cells$record[[i]], simplifyVector = FALSE)),
+        all(c("http_status", "http_request_id", "member_status", "member_request_id", "provider_code") %in% names(record)),
+        legal_status(record$http_status), legal_status(record$member_status))
+      if (identical(record$reason, "headers")) {
+        stopifnot(identical(record$outcome, "observed"), is.null(record$provider_code))
+      }
+      if (identical(record$operation, "result_row")) {
+        stopifnot(is.null(record$http_status), is.null(record$http_request_id))
+      } else {
+        stopifnot(is.null(record$member_status), is.null(record$member_request_id))
+      }
+    }
+  }
   lossless <- read.csv(artifact("results.csv"), colClasses = "character", na.strings = "\\N", check.names = FALSE)
   audit <- read.csv(artifact("results_r.csv"), colClasses = "character", na.strings = "NA", check.names = FALSE)
   stopifnot(length(results) > 0L, nrow(lossless) == length(results), nrow(audit) == length(results), length(jobs) == 1L,
@@ -74,9 +98,21 @@ check_openai_batch_audit <- function(manifest_path, endpoint, capture) {
   stopifnot(identical(lapply(cells$preparation, jsonlite::fromJSON, simplifyVector = FALSE), lapply(members, function(x) x$preparation)))
   invisible(list(results = results, members = members, controls = controls))
 }
+
+check_openai_batch_fixture_diagnostics <- function(controls) {
+  diagnostics <- lapply(Filter(function(row)
+    identical(row$record$record_type, "openai_batch_diagnostic_v1"), controls), function(row) row$record)
+  headers <- Filter(function(record) identical(record$reason, "headers"), diagnostics)
+  rows <- Filter(function(record) identical(record$operation, "result_row"), diagnostics)
+  stopifnot(length(headers) > 0L, length(rows) > 0L,
+    all(vapply(headers, function(record) identical(record$http_status, 200L), logical(1))),
+    all(vapply(rows, function(record) identical(record$member_status, 200L), logical(1))))
+}
+
 if (sys.nframe() == 0L) {
   args <- commandArgs(trailingOnly = TRUE)
-  stopifnot(length(args) == 3L)
-  check_openai_batch_audit(args[[1L]], args[[2L]], args[[3L]])
+  stopifnot(length(args) == 3L || (length(args) == 4L && args[[4L]] == "--diagnostics"))
+  audit <- check_openai_batch_audit(args[[1L]], args[[2L]], args[[3L]], length(args) == 4L)
+  if (length(args) == 4L) check_openai_batch_fixture_diagnostics(audit$controls)
   cat("OpenAI Batch R assertions passed\n")
 }
