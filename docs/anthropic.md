@@ -92,6 +92,13 @@ parent relationship. Anthropic supplies no total under this evidence contract;
 Grouped trait rows link to one physical usage observation, avoiding double counts.
 Unknown cache accounting prevents a fabricated precise cost report.
 
+## Native Message Batches
+
+V3 `anthropic/messages` can prepare native Batch requests offline with cache
+`off` and locally validated text output. Public remote controls remain
+disabled. Batch has its own serving, collection and privacy evidence boundary.
+See [the Anthropic Batch route](native-batch.md#anthropic-messages-batch-m5-pr4).
+
 ## Credentials, capture and recovery
 
 Future execution resolves only `ANTHROPIC_API_KEY` through the shared environment

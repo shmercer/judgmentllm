@@ -107,6 +107,16 @@ def _preview_render(
 ):
     if (
         isinstance(spec, RunSpecV3)
+        and spec.provider == "anthropic"
+        and spec.execution.mode == "batch_native"
+    ):
+        from judgmentllm.anthropic_batch_transport import (
+            render_request as render_anthropic_batch,
+        )
+
+        return render_anthropic_batch(spec, template, request, lookup)
+    if (
+        isinstance(spec, RunSpecV3)
         and spec.provider == "openai"
         and spec.execution.mode == "batch_native"
     ):

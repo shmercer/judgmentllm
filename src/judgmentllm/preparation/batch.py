@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import base64
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any, TypeGuard
 
+from judgmentllm.anthropic_prompts import RenderedAnthropicPromptV1
 from judgmentllm.batch_models import (
-    BatchMemberReceiptV1,
+    AnthropicBatchContextV1,
+    BatchContext,
     BatchMemberV1,
     BatchShardV1,
+    member_receipt_model,
     shard_model,
 )
 from judgmentllm.config import RunSpecification
@@ -31,10 +34,7 @@ from judgmentllm.persistence.models import (
 )
 from judgmentllm.persistence.native_batch import put, read_reference, register, rows
 from judgmentllm.planning import plan_record, stable_id
-from judgmentllm.preparation.manifest import (
-    ExecutableRunManifestV12,
-    ExecutableRunManifestV13,
-)
+from judgmentllm.preparation.manifest import NativeBatchManifest
 from judgmentllm.preparation.native import _input_ids  # pyright: ignore[reportPrivateUsage]
 from judgmentllm.preparation.session import _render_request, _request_dependency  # pyright: ignore[reportPrivateUsage]
 from judgmentllm.production_prompts import RenderedProductionPromptV1
@@ -45,15 +45,19 @@ from judgmentllm.providers.protocol import PreparedRequestV2
 if TYPE_CHECKING:
     from judgmentllm.preparation.capture import SourceBuilder
     from judgmentllm.preparation.session import PreparedRun, RequestDependency
-    from judgmentllm.providers.batch_protocol import NativeBatchAdapter
+    from judgmentllm.providers.batch_protocol import BatchAdapter
 
 
 def encode_row(member_key: str, wire: BatchPreparedRequest) -> bytes:
+    from judgmentllm.anthropic_batch_transport import PreparedAnthropicBatchRequest
+    from judgmentllm.anthropic_batch_transport import encode_row as anthropic_row
     from judgmentllm.openai_batch_transport import PreparedOpenAIBatchRequest
     from judgmentllm.openai_batch_transport import encode_row as openai_row
 
     if isinstance(wire, PreparedOpenAIBatchRequest):
         return openai_row(member_key, wire)
+    if isinstance(wire, PreparedAnthropicBatchRequest):
+        return anthropic_row(member_key, wire)
     return (
         canonical_bytes(
             {
@@ -63,6 +67,17 @@ def encode_row(member_key: str, wire: BatchPreparedRequest) -> bytes:
         )
         + b"\n"
     )
+
+
+def shard_framing(context: BatchContext) -> tuple[bytes, bytes, bytes, str]:
+    if isinstance(context, AnthropicBatchContextV1):
+        return b'{"requests":[', b",", b"]}", "application/json"
+    return b"", b"", b"", "application/x-ndjson"
+
+
+def frame_shard(context: BatchContext, members: Iterable[bytes]) -> tuple[bytes, str]:
+    prefix, separator, suffix, media = shard_framing(context)
+    return prefix + separator.join(members) + suffix, media
 
 
 def content(builder: SourceBuilder, raw: bytes, media: str) -> ArtifactIdentity:
@@ -79,14 +94,15 @@ def preseal_batches(
     builder: SourceBuilder,
     spec: RunSpecification,
     template: str | None,
-    manifest: ExecutableRunManifestV12 | ExecutableRunManifestV13,
-    adapter: NativeBatchAdapter,
+    manifest: NativeBatchManifest,
+    adapter: BatchAdapter,
     checkpoint: Callable[[str, str | None], None],
 ) -> tuple[int, int, str]:
     repository, run_id = builder.repository, builder.run_id
     index = sha256(b"judgmentllm.batch-index.v1\n")
     ordinal = task_ordinal = shard_ordinal = 0
-    shard_data = bytearray()
+    prefix, separator, suffix, media = shard_framing(manifest.batch_context)
+    shard_data = bytearray(prefix)
     shard_members: list[BatchMemberV1] = []
     limits = manifest.batch_context.limits
 
@@ -98,7 +114,7 @@ def preseal_batches(
         membership = semantic_digest(
             "batch-shard-members-v1", [m.member_key for m in shard_members]
         )
-        source = content(builder, bytes(shard_data), "application/x-ndjson")
+        source = content(builder, bytes(shard_data) + suffix, media)
         shard = shard_model(manifest.batch_context).model_validate(
             dict(
                 run_id=run_id,
@@ -148,7 +164,7 @@ def preseal_batches(
                 )
         index.update(canonical_bytes(shard) + b"\n")
         shard_ordinal += 1
-        shard_data, shard_members = bytearray(), []
+        shard_data, shard_members = bytearray(prefix), []
 
     with repository.execution_transaction(run_id, builder.owner_token):
         repository.connection.execute(
@@ -183,11 +199,12 @@ def preseal_batches(
                 "batch-member-key-v1", [run_id, planned.request_uid, attempt_id]
             )
             row = encode_row(key, wire)
-            if len(row) > limits.max_input_bytes:
+            if len(prefix) + len(row) + len(suffix) > limits.max_input_bytes:
                 raise IntegrityError("one batch member exceeds the sealed input limit")
             if shard_members and (
                 len(shard_members) >= limits.max_members
-                or len(shard_data) + len(row) > limits.max_input_bytes
+                or len(shard_data) + len(separator) + len(row) + len(suffix)
+                > limits.max_input_bytes
             ):
                 flush()
             prompt = content(builder, rendered.text.encode("utf-8"), "text/plain")
@@ -242,6 +259,8 @@ def preseal_batches(
                 repository.transition(
                     "request", run_id, planned.request_uid, "prepared"
                 )
+            if shard_members:
+                shard_data.extend(separator)
             shard_members.append(member)
             shard_data.extend(row)
             ordinal += 1
@@ -265,7 +284,7 @@ def members_for(prepared: PreparedRun, shard_id: str) -> Iterator[BatchMemberV1]
 
 
 def reconstruct(
-    prepared: PreparedRun, adapter: NativeBatchAdapter, member: BatchMemberV1
+    prepared: PreparedRun, adapter: BatchAdapter, member: BatchMemberV1
 ) -> tuple[RequestDependency, BatchPreparedRequest]:
     dependency = prepared.dependency_for_request(member.request_uid)
     from judgmentllm.execution.retry import subset_dependency
@@ -289,7 +308,7 @@ def reconstruct(
 
 def verify_batches(prepared: PreparedRun) -> None:
     manifest = prepared.manifest
-    if not isinstance(manifest, (ExecutableRunManifestV12, ExecutableRunManifestV13)):
+    if not isinstance(manifest, NativeBatchManifest):
         return
     index = sha256(b"judgmentllm.batch-index.v1\n")
     count = shards = children = 0
@@ -380,7 +399,7 @@ def verify_batches(prepared: PreparedRun) -> None:
 def verify_child_shard(
     prepared: PreparedRun,
     shard: BatchShardV1,
-    manifest: ExecutableRunManifestV12 | ExecutableRunManifestV13,
+    manifest: NativeBatchManifest,
 ) -> None:
     from judgmentllm.execution.retry import subset_dependency
 
@@ -417,7 +436,9 @@ def verify_child_shard(
     artifact = prepared.repository.get_artifact(
         manifest.run_id, member.parent_receipt_sha256
     )
-    parent = BatchMemberReceiptV1.model_validate_json(prepared.store.read(artifact))
+    parent = member_receipt_model(manifest.batch_context).model_validate_json(
+        prepared.store.read(artifact)
+    )
     if (
         parent.identity.run_id,
         parent.identity.request_uid,
@@ -457,9 +478,13 @@ def verify_child_shard(
 
 
 def batch_wire(value: object) -> TypeGuard[BatchPreparedRequest]:
+    from judgmentllm.anthropic_batch_transport import PreparedAnthropicBatchRequest
     from judgmentllm.openai_batch_transport import PreparedOpenAIBatchRequest
 
-    return isinstance(value, (PreparedRequestV2, PreparedOpenAIBatchRequest))
+    return isinstance(
+        value,
+        (PreparedRequestV2, PreparedOpenAIBatchRequest, PreparedAnthropicBatchRequest),
+    )
 
 
 def render_batch_request(
@@ -468,7 +493,13 @@ def render_batch_request(
     request: Any,
     lookup: Any,
     selection: SchemaSelectionV2 | None = None,
-) -> RenderedAssessmentPrompt | RenderedProductionPromptV1:
+) -> RenderedAssessmentPrompt | RenderedProductionPromptV1 | RenderedAnthropicPromptV1:
+    if spec.provider == "anthropic" and spec.execution.mode == "batch_native":
+        from judgmentllm.anthropic_batch_transport import (
+            render_request as render_anthropic_batch,
+        )
+
+        return render_anthropic_batch(spec, template, request, lookup)
     if spec.provider == "openai" and spec.execution.mode == "batch_native":
         from judgmentllm.openai_batch_transport import render_request
 

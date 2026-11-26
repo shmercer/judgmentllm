@@ -75,8 +75,10 @@ from judgmentllm.preparation.manifest import (
     ExecutableRunManifestV5,
     ExecutableRunManifestV12,
     ExecutableRunManifestV13,
+    ExecutableRunManifestV14,
     ExemplarCommitment,
     FrozenSnapshotAuthorization,
+    NativeBatchManifest,
     SourceDiscrepancy,
     TemplateCommitment,
     TemplateCommitmentV2,
@@ -93,7 +95,7 @@ from judgmentllm.preparation.session import RequestDependency as RequestDependen
 if TYPE_CHECKING:
     from judgmentllm.anthropic_transport import AnthropicProductionContext
     from judgmentllm.production_transport import ProductionContext
-    from judgmentllm.providers.batch_protocol import NativeBatchAdapter
+    from judgmentllm.providers.batch_protocol import BatchAdapter
     from judgmentllm.transport import TransportContext
 
 
@@ -238,6 +240,18 @@ def _manifest(
     if spec.schema_version == 2:
         manifest_data["output_selection"] = resolve_schema_selection(spec, capabilities)
     if spec.schema_version == 3 and spec.execution.mode == "batch_native":
+        if spec.provider == "anthropic":
+            from judgmentllm.anthropic_batch_transport import (
+                batch_context as anthropic_batch_context,
+            )
+
+            manifest_data.update(
+                batch_context=anthropic_batch_context(spec),
+                batch_shard_count=0,
+                batch_member_count=0,
+                batch_index_sha256="0" * 64,
+            )
+            return ExecutableRunManifestV14.model_validate(manifest_data)
         from judgmentllm.openai_batch_transport import batch_context
         from judgmentllm.preparation.manifest import ExecutableRunManifestV13
 
@@ -289,7 +303,7 @@ def prepare_run(
     | vertex_types.VertexProductionContext
     | gemini_types.GeminiProductionContext
     | None = None,
-    _batch_adapter: NativeBatchAdapter | None = None,
+    _batch_adapter: BatchAdapter | None = None,
 ) -> PreparedRun:
     """Freeze, validate, index and seal a new run under exclusive OS ownership.
 
@@ -381,6 +395,12 @@ def prepare_run(
                 from judgmentllm.openai_batch_transport import require_openai_batch
 
                 require_openai_batch(spec)
+            elif spec.provider == "anthropic":
+                from judgmentllm.anthropic_batch_transport import (
+                    require_anthropic_batch,
+                )
+
+                require_anthropic_batch(spec)
             else:
                 require_mock_batch(spec)
             require_storage(repository)
@@ -494,26 +514,24 @@ def prepare_run(
             )
             if _batch_adapter is not None:
                 from judgmentllm.preparation.batch import preseal_batches
-                from judgmentllm.preparation.manifest import (
-                    ExecutableRunManifestV12,
-                    ExecutableRunManifestV13,
-                )
 
-                manifest_type = (
-                    ExecutableRunManifestV13
-                    if isinstance(spec, RunSpecV3)
-                    else ExecutableRunManifestV12
-                )
-                manifest = manifest_type.model_validate(
-                    {
-                        **manifest.model_dump(),
-                        "schema_version": 13 if isinstance(spec, RunSpecV3) else 12,
-                        "batch_context": _batch_adapter.context(),
-                        "batch_shard_count": 0,
-                        "batch_member_count": 0,
-                        "batch_index_sha256": "0" * 64,
-                    }
-                )
+                if not isinstance(
+                    manifest, (ExecutableRunManifestV13, ExecutableRunManifestV14)
+                ):
+                    manifest = ExecutableRunManifestV12.model_validate(
+                        {
+                            **manifest.model_dump(),
+                            "schema_version": 12,
+                            "batch_context": _batch_adapter.context(),
+                            "batch_shard_count": 0,
+                            "batch_member_count": 0,
+                            "batch_index_sha256": "0" * 64,
+                        }
+                    )
+                elif manifest.batch_context != _batch_adapter.context():
+                    raise PreparationError(
+                        "batch adapter differs from the sealed context"
+                    )
                 shard_count, member_count, digest = preseal_batches(
                     builder, spec, template, manifest, _batch_adapter, _checkpoint
                 )
@@ -673,12 +691,10 @@ def _load_manifest(
         marker = repository.connection.execute(
             "SELECT context_json FROM batch_runs WHERE run_id=?", (run_id,)
         ).fetchone()
-        if (marker is not None) != (manifest.schema_version in (12, 13)):
+        if (marker is not None) != isinstance(manifest, NativeBatchManifest):
             raise PreparationError("batch marker differs from frozen manifest")
         if marker is not None:
-            assert isinstance(
-                manifest, (ExecutableRunManifestV12, ExecutableRunManifestV13)
-            )
+            assert isinstance(manifest, NativeBatchManifest)
             if marker[0] != canonical_bytes(manifest.batch_context).decode():
                 raise PreparationError("batch context differs from frozen manifest")
     if (repository.decisions_version(run_id) == 4) != (

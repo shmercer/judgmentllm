@@ -10,7 +10,17 @@ from typing import Any, Literal, cast
 
 from pydantic import Field, field_validator
 
+from judgmentllm.anthropic_batch_transport import batch_source_id
 from judgmentllm.batch_models import (
+    AnthropicBatchAdmissionV1,
+    AnthropicBatchCancelObservedV1,
+    AnthropicBatchCreateReceiptV1,
+    AnthropicBatchHTTPDiagnosticV1,
+    AnthropicBatchMemberReceiptV1,
+    AnthropicBatchReadyV1,
+    AnthropicBatchSelectionV1,
+    AnthropicBatchShardV1,
+    AnthropicBatchStatusV1,
     BatchCursorV1,
     BatchDiagnosticV1,
     BatchMemberReceiptV1,
@@ -29,6 +39,8 @@ from judgmentllm.batch_models import (
     OpenAIBatchShardV1,
     OpenAIBatchSourceBindingV1,
     OpenAIBatchStatusV1,
+    member_receipt_model,
+    operation_receipt_model,
     shard_model,
 )
 from judgmentllm.evidence._base import EvidenceModel
@@ -49,6 +61,8 @@ from judgmentllm.preparation import (
 from judgmentllm.preparation.manifest import (
     ExecutableRunManifestV12,
     ExecutableRunManifestV13,
+    ExecutableRunManifestV14,
+    NativeBatchManifest,
 )
 from judgmentllm.r_exports import export_pairwise_r_csv, export_rubric_r_csv
 from judgmentllm.results import PairwiseResult, RubricResult
@@ -172,6 +186,67 @@ class BatchAuditReportV2(BatchAuditReportV1):
         return value
 
 
+class AnthropicBatchJobProvenanceV1(BatchJobProvenanceV1):
+    preparation: AnthropicBatchShardV1  # pyright: ignore[reportIncompatibleVariableOverride]
+
+
+class AnthropicBatchMemberProvenanceV1(BatchMemberProvenanceV1):
+    evidence: AnthropicBatchMemberReceiptV1 | None  # pyright: ignore[reportIncompatibleVariableOverride]
+
+
+class AnthropicBatchOperationProvenanceV1(BatchOperationProvenanceV1):
+    receipt: AnthropicBatchCreateReceiptV1 | BatchOperationReceiptV1 | None  # pyright: ignore[reportIncompatibleVariableOverride]
+
+
+class AnthropicBatchControlProvenanceV1(BatchControlProvenanceV1):
+    record: (  # pyright: ignore[reportIncompatibleVariableOverride]
+        AnthropicBatchCreateReceiptV1
+        | BatchOperationReceiptV1
+        | BatchStopV1
+        | BatchCursorV1
+        | BatchDiagnosticV1
+        | AnthropicBatchStatusV1
+        | AnthropicBatchReadyV1
+        | AnthropicBatchSelectionV1
+        | AnthropicBatchAdmissionV1
+        | AnthropicBatchCancelObservedV1
+        | AnthropicBatchHTTPDiagnosticV1
+    )
+
+
+class BatchAuditManifestV3(BatchAuditManifestV1):
+    schema_version: Literal[3] = 3  # pyright: ignore[reportIncompatibleVariableOverride]
+
+    @field_validator("schema_version", mode="before")
+    @classmethod
+    def strict_version(cls, value: object) -> object:
+        if type(value) is not int or value != 3:
+            raise ValueError("Anthropic Batch audit version must be integer 3")
+        return value
+
+
+class BatchAuditReportV3(BatchAuditReportV1):
+    schema_version: Literal[3] = 3  # pyright: ignore[reportIncompatibleVariableOverride]
+    manifest: BatchAuditManifestV3  # pyright: ignore[reportIncompatibleVariableOverride]
+
+    @field_validator("schema_version", mode="before")
+    @classmethod
+    def strict_version(cls, value: object) -> object:
+        if type(value) is not int or value != 3:
+            raise ValueError("Anthropic Batch audit report version must be integer 3")
+        return value
+
+
+_ANTHROPIC_CURSORS = {
+    model.model_fields["record_type"].default: model
+    for model in (
+        AnthropicBatchReadyV1,
+        AnthropicBatchSelectionV1,
+        AnthropicBatchAdmissionV1,
+        AnthropicBatchCancelObservedV1,
+    )
+}
+
 _OPENAI_CONTROLS = {
     model.model_fields["record_type"].default: model
     for model in (
@@ -209,7 +284,7 @@ _V1_COMPANIONS = {
 
 def export_batch_audit(
     run_id: str, root: Path, *, bundle_id: str | None = None
-) -> BatchAuditReportV1 | BatchAuditReportV2:
+) -> BatchAuditReportV1 | BatchAuditReportV2 | BatchAuditReportV3:
     with ReadOnlyRepository(root, preserve_files=bundle_id is not None) as inspection:
         if bundle_id is None:
             _preflight_v12_write(inspection, run_id)
@@ -219,12 +294,17 @@ def export_batch_audit(
             unsealed=False,
             allow_v12_posix_read=bundle_id is not None,
         )
-        if not isinstance(
-            manifest, (ExecutableRunManifestV12, ExecutableRunManifestV13)
-        ):
+        if not isinstance(manifest, NativeBatchManifest):
             raise ValueError("batch audit requires a native batch manifest")
         openai = isinstance(manifest, ExecutableRunManifestV13)
-        bundle_model = BatchAuditManifestV2 if openai else BatchAuditManifestV1
+        anthropic = isinstance(manifest, ExecutableRunManifestV14)
+        bundle_model = (
+            BatchAuditManifestV3
+            if anthropic
+            else BatchAuditManifestV2
+            if openai
+            else BatchAuditManifestV1
+        )
         store = ArtifactStore(inspection.run_directory(run_id), create=False)
         if bundle_id is not None:
             bundle = read_reference(
@@ -239,8 +319,8 @@ def export_batch_audit(
                 or bundle.run_id != run_id
             ):
                 raise IntegrityError("batch audit bundle identity differs")
-            v12 = type(manifest) is ExecutableRunManifestV12
-            if v12:
+            verify_named = type(manifest) is ExecutableRunManifestV12 or anthropic
+            if verify_named:
                 seal = inspection.get_manifest(run_id).artifact.sha256
                 if bundle.cut.source_manifest_sha256 != seal:
                     raise IntegrityError("batch audit cut differs from the run seal")
@@ -258,14 +338,35 @@ def export_batch_audit(
                     raise IntegrityError("batch audit companion set differs")
             for file in bundle.files:
                 retained = store.verify(file.artifact)
-                if v12 and retained is None:
+                if verify_named and retained is None:
                     raise IntegrityError(
                         "batch audit companion bytes were not retained"
                     )
+            if anthropic:
+                _verify_named_http_diagnostics(
+                    inspection, store, manifest.capture, bundle
+                )
             return report(inspection, store, bundle)
-    job_model = OpenAIBatchJobProvenanceV1 if openai else BatchJobProvenanceV1
+    job_model = (
+        AnthropicBatchJobProvenanceV1
+        if anthropic
+        else OpenAIBatchJobProvenanceV1
+        if openai
+        else BatchJobProvenanceV1
+    )
+    member_model = (
+        AnthropicBatchMemberProvenanceV1 if anthropic else BatchMemberProvenanceV1
+    )
+    receipt_model = member_receipt_model(manifest.batch_context)
+    operation_model = (
+        AnthropicBatchOperationProvenanceV1 if anthropic else BatchOperationProvenanceV1
+    )
     control_model = (
-        OpenAIBatchControlProvenanceV1 if openai else BatchControlProvenanceV1
+        AnthropicBatchControlProvenanceV1
+        if anthropic
+        else OpenAIBatchControlProvenanceV1
+        if openai
+        else BatchControlProvenanceV1
     )
     with Repository(root) as repository:
         connection = repository.connection
@@ -375,9 +476,7 @@ def export_batch_audit(
                             (run_id, member.attempt_id),
                         ).fetchone()
                         evidence = (
-                            BatchMemberReceiptV1.model_validate_json(row[0])
-                            if row
-                            else None
+                            receipt_model.model_validate_json(row[0]) if row else None
                         )
                         if evidence is not None:
                             if bytes_digest(canonical_bytes(evidence)) != row[1] or (
@@ -401,8 +500,12 @@ def export_batch_audit(
                                 (run_id, member.attempt_id, cut.result_high_water_mark),
                             )
                         )
-                        yield BatchMemberProvenanceV1(
-                            preparation=member, evidence=evidence, result_ids=result_ids
+                        yield member_model.model_validate(
+                            dict(
+                                preparation=member,
+                                evidence=evidence,
+                                result_ids=result_ids,
+                            )
                         )
 
                 def operations() -> Iterator[EvidenceModel]:
@@ -416,20 +519,31 @@ def export_batch_audit(
                                 "batch audit intent differs from its commitment"
                             )
                         store.verify(repository.get_artifact(run_id, row[1]))
-                        yield BatchOperationProvenanceV1(
-                            intent=intent,
-                            receipt=latest(
-                                repository,
-                                run_id,
-                                "operation",
-                                intent.instance_id,
-                                BatchOperationReceiptV1,
+                        receipt = latest(
+                            repository,
+                            run_id,
+                            "operation",
+                            intent.instance_id,
+                            operation_receipt_model(
+                                manifest.batch_context, intent.kind
                             ),
                         )
+                        if (
+                            anthropic
+                            and receipt is not None
+                            and (
+                                receipt.instance_id != intent.instance_id
+                                or receipt.intent_sha256 != row[1]
+                            )
+                        ):
+                            raise IntegrityError(
+                                "Anthropic Batch audit receipt differs from its intent"
+                            )
+                        yield operation_model(intent=intent, receipt=receipt)
 
                 companion("jobs", jobs(), job_model)
-                companion("members", members(), BatchMemberProvenanceV1)
-                companion("operations", operations(), BatchOperationProvenanceV1)
+                companion("members", members(), member_model)
+                companion("operations", operations(), operation_model)
 
                 def controls() -> Iterator[EvidenceModel]:
                     models = {
@@ -443,12 +557,14 @@ def export_batch_audit(
                     }
                     if openai:
                         models["status"] = OpenAIBatchStatusV1
+                    elif anthropic:
+                        models["status"] = AnthropicBatchStatusV1
                     for row in connection.execute(
                         "SELECT fact_seq,kind,entity_id,receipt_sha256,record_json FROM batch_facts WHERE run_id=? AND fact_seq<=? ORDER BY fact_seq",
                         (run_id, cut.fact_high_water_mark),
                     ):
                         model = models[row[1]]
-                        if openai and row[1] == "cursor":
+                        if (openai or anthropic) and row[1] == "cursor":
                             from judgmentllm.output_contracts import (
                                 decode_assessment_output,
                             )
@@ -457,7 +573,27 @@ def export_batch_audit(
                             if not isinstance(fields, dict):
                                 raise IntegrityError("batch cursor record is invalid")
                             tag = cast(dict[str, Any], fields).get("record_type")
-                            model = _OPENAI_CONTROLS.get(tag, BatchCursorV1)
+                            model = (
+                                _OPENAI_CONTROLS if openai else _ANTHROPIC_CURSORS
+                            ).get(tag, BatchCursorV1)
+                        elif (
+                            anthropic
+                            and row[1] == "status"
+                            and row[2].startswith("anthropic-http:")
+                        ):
+                            model = AnthropicBatchHTTPDiagnosticV1
+                        elif anthropic and row[1] == "operation":
+                            intent_kind = connection.execute(
+                                "SELECT kind FROM batch_operations WHERE run_id=? AND instance_id=?",
+                                (run_id, row[2]),
+                            ).fetchone()
+                            if intent_kind is None:
+                                raise IntegrityError(
+                                    "Anthropic Batch operation fact lacks its intent"
+                                )
+                            model = operation_receipt_model(
+                                manifest.batch_context, intent_kind[0]
+                            )
                         record = model.model_validate_json(row[4])
                         if (
                             canonical_bytes(record).decode() != row[4]
@@ -467,6 +603,17 @@ def export_batch_audit(
                                 "batch control evidence encoding conflicts"
                             )
                         store.verify(repository.get_artifact(run_id, row[3]))
+                        if isinstance(record, AnthropicBatchHTTPDiagnosticV1):
+                            _verify_http_diagnostic(
+                                repository,
+                                store,
+                                run_id,
+                                manifest.capture,
+                                cut.source_manifest_sha256,
+                                row[0],
+                                row[2],
+                                record,
+                            )
                         yield control_model.model_validate(
                             dict(
                                 fact_seq=row[0],
@@ -524,12 +671,128 @@ def export_batch_audit(
         return report(repository, store, bundle)
 
 
+def _verify_named_http_diagnostics(
+    repository: Repository,
+    store: ArtifactStore,
+    capture: str,
+    bundle: BatchAuditManifestV1,
+) -> None:
+    if not isinstance(bundle, BatchAuditManifestV3):
+        raise IntegrityError("Anthropic Batch audit manifest differs")
+    for sequence, entity, digest, raw in repository.connection.execute(
+        "SELECT fact_seq,entity_id,receipt_sha256,record_json FROM batch_facts "
+        "WHERE run_id=? AND kind='status' AND entity_id LIKE 'anthropic-http:%' AND fact_seq<=?",
+        (bundle.run_id, bundle.cut.fact_high_water_mark),
+    ):
+        diagnostic = AnthropicBatchHTTPDiagnosticV1.model_validate_json(raw)
+        if (
+            canonical_bytes(diagnostic) != raw.encode()
+            or store.read(repository.get_artifact(bundle.run_id, digest))
+            != raw.encode()
+        ):
+            raise IntegrityError("Anthropic Batch HTTP diagnostic encoding differs")
+        _verify_http_diagnostic(
+            repository,
+            store,
+            bundle.run_id,
+            capture,
+            bundle.cut.source_manifest_sha256,
+            sequence,
+            entity,
+            diagnostic,
+        )
+
+
+def _verify_http_diagnostic(
+    repository: Repository,
+    store: ArtifactStore,
+    run_id: str,
+    capture: str,
+    manifest_sha256: str,
+    fact_seq: int,
+    entity: str,
+    record: AnthropicBatchHTTPDiagnosticV1,
+) -> None:
+    if entity != "anthropic-http:" + record.call_id:
+        raise IntegrityError("Anthropic Batch HTTP diagnostic call differs")
+    shard = None
+    if record.submission_id is not None:
+        submission = repository.connection.execute(
+            "SELECT batch_uid,remote_id,certainty FROM submissions WHERE run_id=? AND submission_id=?",
+            (run_id, record.submission_id),
+        ).fetchone()
+        if (
+            submission is None
+            or submission[0] is None
+            or (submission[1], submission[2]) != (record.job_id, "accepted")
+        ):
+            raise IntegrityError("Anthropic Batch HTTP diagnostic job differs")
+        shard = str(submission[0])
+        if record.source_id is not None and record.source_id != batch_source_id(
+            manifest_sha256, shard, record.submission_id
+        ):
+            raise IntegrityError("Anthropic Batch HTTP diagnostic source differs")
+    if record.intent_id is not None:
+        row = repository.connection.execute(
+            "SELECT intent_sha256 FROM batch_operations WHERE run_id=? AND instance_id=?",
+            (run_id, record.intent_id),
+        ).fetchone()
+        if row is None:
+            raise IntegrityError("Anthropic Batch HTTP diagnostic lacks its intent")
+        intent = BatchOperationIntentV1.model_validate_json(
+            store.read(repository.get_artifact(run_id, row[0]))
+        )
+        if (
+            intent.run_id != run_id
+            or intent.instance_id != record.intent_id
+            or intent.manifest_sha256 != manifest_sha256
+            or intent.service_id != "anthropic-v1"
+            or intent.sequence != 1
+            or intent.kind != ("create" if record.stage == "create" else "cancel")
+            or intent.remote_id != record.job_id
+            or (shard is not None and intent.shard_id != shard)
+        ):
+            raise IntegrityError("Anthropic Batch HTTP diagnostic intent differs")
+    if record.body is not None:
+        if (record.body.relative_path is not None) != (
+            capture == "full"
+        ) or repository.get_artifact(run_id, record.body.sha256) != record.body:
+            raise IntegrityError("Anthropic Batch HTTP diagnostic retention differs")
+        store.verify(record.body)
+    if record.headers_sha256 is not None:
+        row = repository.connection.execute(
+            "SELECT 1 FROM batch_facts WHERE run_id=? AND kind='status' AND entity_id=? AND receipt_sha256=? AND fact_seq<?",
+            (run_id, entity, record.headers_sha256, fact_seq),
+        ).fetchone()
+        if row is None:
+            raise IntegrityError("Anthropic Batch HTTP diagnostic lacks its headers")
+        header = AnthropicBatchHTTPDiagnosticV1.model_validate_json(
+            store.read(repository.get_artifact(run_id, record.headers_sha256))
+        )
+        common = (
+            "call_id",
+            "stage",
+            "intent_id",
+            "submission_id",
+            "job_id",
+            "source_id",
+            "http_status",
+            "request_id",
+        )
+        if header.phase != "headers" or any(
+            getattr(header, name) != getattr(record, name) for name in common
+        ):
+            raise IntegrityError("Anthropic Batch HTTP diagnostic headers differ")
+
+
 def report(
     repository: Repository, store: ArtifactStore, bundle: BatchAuditManifestV1
-) -> BatchAuditReportV1 | BatchAuditReportV2:
+) -> BatchAuditReportV1 | BatchAuditReportV2 | BatchAuditReportV3:
     path = str(store.reference_path(f"batch/audits/{bundle.bundle_id}.json"))
     model = (
-        BatchAuditReportV2
+        BatchAuditReportV3
+        if isinstance(bundle, BatchAuditManifestV3)
+        else BatchAuditReportV2
         if isinstance(bundle, BatchAuditManifestV2)
         else BatchAuditReportV1
     )

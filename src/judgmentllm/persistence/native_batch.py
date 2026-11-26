@@ -258,6 +258,17 @@ def detail(repository: Repository, run_id: str, shard_count: int) -> BatchDetail
         )
         collection = collection_summary(repository, run_id)
         unread_sources |= bool(collection.failed_sources or collection.prelude_failed)
+    if context is not None and '"anthropic-native-batch-v1"' in context[0]:
+        from judgmentllm.execution.anthropic_batch import collection_summary
+
+        ready_count = connection.execute(
+            "SELECT count(*) FROM batch_facts WHERE run_id=? AND kind='cursor' AND entity_id LIKE 'anthropic-ready:%'",
+            (run_id,),
+        ).fetchone()[0]
+        collection = collection_summary(repository, run_id)
+        unread_sources = ready_count < accepted or bool(
+            collection.pending_sources or collection.failed_sources
+        )
     return BatchDetailV1(
         local_stop=stopped(repository, run_id),
         cancel_all=stopped(repository, run_id, "cancel_all"),

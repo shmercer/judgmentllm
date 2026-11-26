@@ -24,6 +24,7 @@ from judgmentllm._lifecycle_store import (
     encode_cursor,
     inspect_run,
     require_store,
+    resolve_control_run,
     resolve_run,
 )
 from judgmentllm.config import (
@@ -534,15 +535,17 @@ def _require_presentation(spec: RunSpecification) -> None:
                 "production Decisions adapters are assigned to PRs C-E",
             )
         return
-    if (
-        isinstance(spec, RunSpecV3)
-        and spec.provider == "openai"
-        and spec.execution.mode == "batch_native"
-    ):
-        from judgmentllm.openai_batch_transport import require_openai_batch
+    if isinstance(spec, RunSpecV3) and spec.execution.mode == "batch_native":
+        if spec.provider == "anthropic":
+            from judgmentllm.anthropic_batch_transport import require_anthropic_batch
 
-        require_openai_batch(spec)
-        return
+            require_anthropic_batch(spec)
+            return
+        if spec.provider == "openai":
+            from judgmentllm.openai_batch_transport import require_openai_batch
+
+            require_openai_batch(spec)
+            return
     if isinstance(spec, RunSpecV3) and spec.provider in {
         "openai",
         "anthropic",
@@ -676,6 +679,16 @@ def _profile(
         except GeminiConfigurationError as error:
             raise LifecycleError("unsupported_capability", str(error)) from None
     if spec.provider == "anthropic" and isinstance(spec, RunSpecV3):
+        if spec.execution.mode == "batch_native":
+            from judgmentllm.anthropic_batch_transport import (
+                capabilities_for,
+                require_anthropic_batch,
+                require_sdk,
+            )
+
+            require_anthropic_batch(spec)
+            require_sdk()
+            return capabilities_for(spec.provider, spec.endpoint, spec.model)
         _production_context(spec)
         from judgmentllm.providers.anthropic import (
             AnthropicAdapter,
@@ -1243,11 +1256,13 @@ async def aresume_run(
 ) -> RunSummary:
     """Recover original work and optionally authorize one exact retry subset."""
     with _errors():
-        identifier, root = resolve_run(run_id, store, spec)
+        identifier, root, preserve = resolve_control_run(run_id, store, spec)
     with _errors(identifier, root):
         # Inspect immutable identity without requiring original source files. The
         # execution/retry services perform complete source and context checks.
-        with ReadOnlyRepository(root) as repository:
+        with ReadOnlyRepository(
+            root, preserve_files=preserve, allow_wal_appends=preserve
+        ) as repository:
             run = repository.get_run(identifier)
             from judgmentllm.preparation import (
                 _load_manifest,  # pyright: ignore[reportPrivateUsage]
@@ -1266,7 +1281,7 @@ async def aresume_run(
                 else isinstance(sealed, ExecutableRunManifestV8)
             )
         decisions_manifest = None
-        if sealed is not None and sealed.schema_version in (12, 13):
+        if sealed is not None and sealed.schema_version in (12, 13, 14):
             from judgmentllm.batch_models import BatchMockOptions
             from judgmentllm.native_batch import aresume_batch
 
@@ -1424,7 +1439,7 @@ def export_run_provenance(
     with _errors(identifier, root):
         with ReadOnlyRepository(root) as repository:
             manifest = _load_manifest(repository, identifier, unsealed=False)
-        if manifest.schema_version in (12, 13):
+        if manifest.schema_version in (12, 13, 14):
             from judgmentllm.native_batch import export_batch_provenance
 
             return export_batch_provenance(identifier, store=root)
@@ -1444,7 +1459,7 @@ def cancel_run(run_id: str | Path, *, store: str | Path | None = None) -> RunSta
         with ReadOnlyRepository(root) as repository:
             batch = (
                 _load_manifest(repository, identifier, unsealed=False).schema_version
-                in (12, 13)
+                in (12, 13, 14)
                 if repository.get_run(identifier).manifest_sha256 is not None
                 else False
             )
@@ -1459,9 +1474,26 @@ def cancel_run(run_id: str | Path, *, store: str | Path | None = None) -> RunSta
 
 def get_run(run_id: str | Path, *, store: str | Path | None = None) -> RunStatus:
     """Inspect persisted state without submitting, retrieving, or reading sources."""
+    return _get_run_status(run_id, store=store, control_preflight=False)
+
+
+def _get_run_status(
+    run_id: str | Path, *, store: str | Path | None, control_preflight: bool
+) -> RunStatus:
     with _errors():
-        identifier, root = resolve_run(run_id, store, allow_v12_posix_read=True)
-    with _errors(identifier, root), ReadOnlyRepository(root) as repository:
+        if control_preflight:
+            identifier, root, preserve = resolve_control_run(
+                run_id, store, allow_v12_posix_read=True
+            )
+        else:
+            identifier, root = resolve_run(run_id, store, allow_v12_posix_read=True)
+            preserve = False
+    with (
+        _errors(identifier, root),
+        ReadOnlyRepository(
+            root, preserve_files=preserve, allow_wal_appends=preserve
+        ) as repository,
+    ):
         return inspect_run(repository, identifier, allow_v12_posix_read=True)
 
 
@@ -1550,6 +1582,15 @@ def export_run_results(
 
 
 def _offline_batch_adapter(spec: RunSpecification):
+    if (
+        isinstance(spec, RunSpecV3)
+        and spec.provider == "anthropic"
+        and spec.execution.mode == "batch_native"
+    ):
+        from judgmentllm.anthropic_batch_transport import batch_context
+        from judgmentllm.providers.anthropic_batch import AnthropicBatchAdapter
+
+        return AnthropicBatchAdapter(batch_context(spec))
     if (
         isinstance(spec, RunSpecV3)
         and spec.provider == "openai"

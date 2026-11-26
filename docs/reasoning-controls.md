@@ -92,6 +92,13 @@ retain default qualification behavior. Historical native profiles authorize no
 new explicit effort or sampling combination. This implementation installs no scopes.
 Offline source-bound candidate preparation grants no execution authority.
 
+Anthropic PR4 Batch accepts omitted reasoning. A later Batch candidate must
+seal the exact explicit effort and mode with `ReasoningPolicyV1`, verify
+`output_config.effort` and `thinking.type` in the locked Batch POST and obtain
+independent serving evidence for that model, SDK/API, account, tier and
+output scope. Existing Haiku 5.5 and Sonnet 5.5 control facts do not establish
+Batch serving. The proposed Sonnet 4.6 Batch smoke exercises omission.
+
 Documented reasoning syntax may fill unknown generation facts, but cannot widen
 reviewed numeric constraints. Capability augmentation intersects output/sampling
 bounds, preserves explicit unsupported settings and incompatible combinations,
