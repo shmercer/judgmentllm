@@ -204,12 +204,23 @@ def report(
         )
 
 
+def proof_interpreter(
+    receipts: dict[str, dict[str, Any]], passing_nodes: set[str] | None
+) -> dict[str, Any] | None:
+    if passing_nodes is None:
+        return None
+    # Sealing checked that every group has the same originating provenance.
+    return next(iter(receipts.values()))["provenance"]["interpreter"]
+
+
 def validate_suite_coverage(
     root: Path,
     source: Path,
     plan: dict[str, Any],
     identity: dict[str, Any],
-    names: set[str],
+    receipts: dict[str, dict[str, Any]],
+    *,
+    passing_nodes: set[str] | None = None,
 ) -> dict[str, Any]:
     """Independently rebuild from passing, explicitly authorized group artifacts."""
     from coverage_equivalence import compare
@@ -224,7 +235,9 @@ def validate_suite_coverage(
     }:
         raise ValueError("Missing, corrupt or stale coverage reports")
     groups = manifest["groups"]
-    if manifest.get("provenance") != identity or {g["group"] for g in groups} != names:
+    if manifest.get("provenance") != identity or {g["group"] for g in groups} != set(
+        receipts
+    ):
         raise ValueError("Coverage execution groups differ from required partitions")
     for group in groups:
         expected = root / "coverage-groups" / group["group"] / ".coverage"
@@ -236,9 +249,6 @@ def validate_suite_coverage(
     final = root / ".coverage"
     if manifest.get("combined_sha256") != checksum(final):
         raise ValueError("Final coverage dataset changed")
-    receipts = {
-        name: json.loads((root / (name + ".json")).read_text()) for name in names
-    }
     with tempfile.TemporaryDirectory(
         prefix="judgmentllm-verify-coverage-"
     ) as temporary:
@@ -295,6 +305,8 @@ def validate_suite_coverage(
                 baseline,
                 source,
                 reviewed_ref=plan["source_sha"],
+                passing_nodes=passing_nodes,
+                proof_interpreter=proof_interpreter(receipts, passing_nodes),
                 **(
                     {
                         "coverage_policy": plan["coverage_policy"],

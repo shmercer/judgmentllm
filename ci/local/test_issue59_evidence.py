@@ -1099,13 +1099,21 @@ def test_independent_admission_rebuilds_exact_authorized_data(
     reference = json.loads((root / "coverage.json").read_text())
 
     def historical_comparison(
-        current: Path, baseline: Path, source: Path, *, reviewed_ref: str
+        current: Path,
+        baseline: Path,
+        source: Path,
+        *,
+        reviewed_ref: str,
+        passing_nodes: set[str] | None,
+        proof_interpreter: dict[str, Any] | None,
     ) -> dict[str, Any]:
         # The historical comparator has separate regression tests; this boundary checks the actual rebuilt data.
         measured = json.loads(current.read_text())
         assert (
             measured["files"] == reference["files"]
             and reviewed_ref == receipt["provenance"]["source"]["commit"]
+            and passing_nodes is None
+            and proof_interpreter is None
         )
         return {"passed": True}
 
@@ -1134,15 +1142,14 @@ def test_independent_admission_rebuilds_exact_authorized_data(
         changed = copy.deepcopy(receipt)
         changed["exit_code"] = 1
         (root / "ordinary.json").write_text(json.dumps(changed))
+    receipts = {"ordinary": json.loads((root / "ordinary.json").read_text())}
     if fault == "none":
         assert validate_suite_coverage(
-            root, source, plan, receipt["provenance"], {"ordinary"}
+            root, source, plan, receipt["provenance"], receipts
         ) == {"passed": True}
     else:
         with pytest.raises((ValueError, OSError)):
-            validate_suite_coverage(
-                root, source, plan, receipt["provenance"], {"ordinary"}
-            )
+            validate_suite_coverage(root, source, plan, receipt["provenance"], receipts)
 
 
 @pytest.mark.parametrize("field", ["attempt", "run", "source", "guest"])

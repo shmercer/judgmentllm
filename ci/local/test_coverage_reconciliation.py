@@ -955,7 +955,8 @@ def test_real_independent_reconstruction_rejects_rehashed_forgery(
             "-c",
             "import sys,json; from pathlib import Path; sys.path.insert(0,sys.argv[1]); "
             "from coverage_data import validate_suite_coverage; "
-            "validate_suite_coverage(Path(sys.argv[2]),Path(sys.argv[3]),json.loads(Path(sys.argv[4]).read_text()),json.loads(Path(sys.argv[5]).read_text()),{'ordinary'})",
+            "root=Path(sys.argv[2]); receipt=json.loads((root/'ordinary.json').read_text()); "
+            "validate_suite_coverage(root,Path(sys.argv[3]),json.loads(Path(sys.argv[4]).read_text()),json.loads(Path(sys.argv[5]).read_text()),{'ordinary': receipt})",
             str(policy_root),
             str(root),
             str(source),
