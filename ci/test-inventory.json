@@ -273,7 +273,7 @@
       "test_ordinary_unsealed_result_export_needs_no_published_manifest": {"": []},
       "test_posix_wire_checks_pure_windows_presentation_without_native_execution": {"": []},
       "test_v12_inspection_rejects_invalid_archive": {"[changed-nonpath]": [], "[malformed]": [], "[minimal]": [], "[missing-object]": [], "[missing-seal]": [], "[noncanonical]": [], "[unsupported-dialect]": [], "[unsupported-host]": [], "[unsupported-route]": [], "[wrong-seal]": []},
-      "test_v12_named_audit_requires_original_seal_and_retained_companions": {"[damaged-companion]": [], "[duplicate-companion]": [], "[hash-only-companion]": [], "[missing-bundle]": [], "[omitted-companion]": [], "[unregistered]": [], "[wrong-bundle-id]": [], "[wrong-cut-seal]": []},
+      "test_v12_named_audit_requires_original_seal_and_retained_companions": {"[damaged-companion]": [], "[duplicate-companion]": [], "[hash-only-companion]": [], "[missing-bundle]": [], "[missing-registered-object-at-read]": [], "[omitted-companion]": [], "[unregistered]": [], "[wrong-bundle-id]": [], "[wrong-cut-seal]": []},
       "test_v12_refuses_mutation_before_writer_or_ownership": {"[invalid-marked]": [], "[mock-marker-only]": [], "[published-unsealed]": [], "[sealed]": [], "[version-only]": []}
     },
     "tests/test_batch_contracts.py": {

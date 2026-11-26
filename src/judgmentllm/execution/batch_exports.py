@@ -250,13 +250,7 @@ def export_batch_audit(
                 ):
                     raise IntegrityError("batch audit cut differs from the bundle ID")
                 raw = canonical_bytes(bundle)
-                if (
-                    store.read(inspection.get_artifact(run_id, bytes_digest(raw)))
-                    != raw
-                ):
-                    raise IntegrityError(
-                        "batch audit differs from its registered object"
-                    )
+                store.read(inspection.get_artifact(run_id, bytes_digest(raw)))
                 if (
                     len(bundle.files) != len(_V1_COMPANIONS)
                     or {file.name for file in bundle.files} != _V1_COMPANIONS

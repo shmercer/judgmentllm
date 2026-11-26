@@ -43,7 +43,12 @@ from judgmentllm.persistence.hashing import (
     canonical_bytes,
     semantic_digest,
 )
-from judgmentllm.persistence.models import IntegrityError, NotFoundError, RunRecord
+from judgmentllm.persistence.models import (
+    ArtifactIntegrityError,
+    IntegrityError,
+    NotFoundError,
+    RunRecord,
+)
 from judgmentllm.persistence.ownership import ExecutorOwnership
 from judgmentllm.persistence.repository import ReadOnlyRepository, Repository
 from judgmentllm.preparation import open_prepared_run
@@ -1291,6 +1296,11 @@ def test_v12_inspection_rejects_invalid_archive(
         pytest.param("damage", "failed content verification", id="damaged-companion"),
         pytest.param("hash-only", "bytes were not retained", id="hash-only-companion"),
         pytest.param("missing", "bundle identity differs", id="missing-bundle"),
+        pytest.param(
+            "missing-at-read",
+            "retained artifact is missing or unreadable",
+            id="missing-registered-object-at-read",
+        ),
     ],
 )
 def test_v12_named_audit_requires_original_seal_and_retained_companions(
@@ -1301,7 +1311,12 @@ def test_v12_named_audit_requires_original_seal_and_retained_companions(
     reason: str,
 ) -> None:
     root, run_id, metadata = _pr2_store(tmp_path)
-    with Repository(root) as repository:
+    bundle_object: Path | None = None
+    with (
+        ReadOnlyRepository(root, preserve_files=True)
+        if damage == "missing-at-read"
+        else Repository(root)
+    ) as repository:
         store = ArtifactStore(repository.run_directory(run_id), create=False)
         bundle_id = metadata["bundle_id"]
         reference = f"batch/audits/{bundle_id}.json"
@@ -1309,7 +1324,13 @@ def test_v12_named_audit_requires_original_seal_and_retained_companions(
         bundle = BatchAuditManifestV1.model_validate_json(path.read_bytes())
         fields = bundle.model_dump(mode="json")
         last = fields["files"][-1]
-        if damage == "missing":
+        if damage == "missing-at-read":
+            identity = repository.get_artifact(
+                run_id, bytes_digest(canonical_bytes(bundle))
+            )
+            assert identity.relative_path is not None
+            bundle_object = store.root / identity.relative_path
+        elif damage == "missing":
             path.unlink()
         elif damage == "damage":
             companion = store.root / last["artifact"]["relative_path"]
@@ -1339,16 +1360,42 @@ def test_v12_named_audit_requires_original_seal_and_retained_companions(
             if damage != "unregistered":
                 repository.register_artifact(run_id, identity)
             store.publish_reference(identity, f"batch/audits/{bundle_id}.json")
-    before = _durable_v12_bytes(root)
-    writes = _block_v12_writes(monkeypatch)
-    with pytest.raises(LifecycleError) as rejected:
-        export_batch_provenance(store.root, bundle_id=bundle_id)
+
+    def snapshot() -> dict[str, bytes]:
+        return _durable_v12_bytes(root) | {
+            path.name: path.read_bytes()
+            for path in (root / "registry.sqlite3-wal", root / "registry.sqlite3-shm")
+            if path.is_file()
+        }
+
+    materializing_reads = 0
+    read_bytes = Path.read_bytes
+
+    def read_bundle_object(path: Path) -> bytes:
+        nonlocal materializing_reads
+        if path == bundle_object:
+            materializing_reads += 1
+            if materializing_reads == 1:
+                raise FileNotFoundError
+        return read_bytes(path)
+
+    before = snapshot()
+    with monkeypatch.context() as inspection:
+        writes = _block_v12_writes(inspection)
+        if bundle_object is not None:
+            inspection.setattr(Path, "read_bytes", read_bundle_object)
+        with pytest.raises(LifecycleError) as rejected:
+            export_batch_provenance(store.root, bundle_id=bundle_id)
     failure = _v12_rejection(rejected.value)
     if damage == "unregistered":
         assert isinstance(failure, NotFoundError) and reason in str(rejected.value)
     else:
         assert reason in str(failure)
-    assert writes == [] and _durable_v12_bytes(root) == before
+    if bundle_object is not None:
+        assert materializing_reads == 1
+        assert isinstance(failure, ArtifactIntegrityError)
+        assert isinstance(failure.__context__, FileNotFoundError)
+    assert writes == [] and snapshot() == before
 
 
 def test_native_minimal_v12_named_audit_requires_retained_companions(
