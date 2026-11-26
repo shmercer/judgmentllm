@@ -96,7 +96,9 @@ def test_incompatible_scope_fails_before_sdk_or_credentials(
     tmp_path: Any, monkeypatch: Any, setting: Any, value: Any
 ) -> Any:
     from judgmentllm import openai_batch_transport
+    from judgmentllm.execution import openai_batch as openai_batch_execution
     from judgmentllm.lifecycle_models import LifecycleError
+    from judgmentllm.providers import openai_batch as openai_batch_provider
 
     spec = specification(tmp_path)
     setattr(spec.execution, setting, value)
@@ -104,9 +106,13 @@ def test_incompatible_scope_fails_before_sdk_or_credentials(
     def forbidden(*args: Any, **kwargs: Any) -> Any:
         raise AssertionError("SDK guard reached for an incompatible scope")
 
-    monkeypatch.setattr(openai_batch_transport, "require_sdk", forbidden)
-    with pytest.raises(LifecycleError):
-        prepare_batch(spec, store=tmp_path / "never")
+    # Load both consumers above so their import-time bindings can be restored.
+    with monkeypatch.context() as patch:
+        patch.setattr(openai_batch_transport, "require_sdk", forbidden)
+        patch.setattr(openai_batch_execution, "require_sdk", forbidden)
+        patch.setattr(openai_batch_provider, "require_sdk", forbidden)
+        with pytest.raises(LifecycleError):
+            prepare_batch(spec, store=tmp_path / "never")
     assert not (tmp_path / "never").exists()
 
 
