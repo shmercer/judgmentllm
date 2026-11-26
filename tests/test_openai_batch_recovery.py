@@ -2340,11 +2340,10 @@ def test_ready_upload_receipt_is_rescreened_before_collection(
     before = accepted_chain_snapshot(store)
     events = service.events()
 
-    monkeypatch.setattr(
-        openai_batch,
-        "_resolve_credentials",
-        lambda _provider: SimpleNamespace(_api_key=lambda: binding.job.input_file_id),
-    )
+    def fixture_credentials(_provider: str) -> SimpleNamespace:
+        return SimpleNamespace(_api_key=lambda: binding.job.input_file_id)
+
+    monkeypatch.setattr(openai_batch, "_resolve_credentials", fixture_credentials)
 
     async def collect() -> None:
         budget = InvocationBudget(BatchControlOptionsV1())
