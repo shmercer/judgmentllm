@@ -350,7 +350,8 @@ baseline; changing thresholds/exclusions cannot silently qualify.
 Modified modules need a clean, committed source identity and a hash-verified
 historical snapshot. Simple exact equal-line blocks preserve previously covered
 unchanged lines. Every changed executable line and each branch originating on a
-changed line must be covered. File line/branch/combined percentages may lose at
+changed line must be covered unless an exact [reviewed exception](#reviewed-changed-code-exceptions)
+applies. File line/branch/combined percentages may lose at
 most **one percentage point**; new modules require 90% lines/combined and 80%
 branches, plus all changed executable lines/branch origins. Larger regressions
 fail and require investigation/review, not automatic baseline regeneration.
@@ -467,6 +468,71 @@ old protected gates. Protected-base adoption must precede a fresh dependent
 plan. Source/context changes require renewed verification and separate review;
 no entry is enabled by the presence of this unadopted draft.
 The original failed run remains failed.
+
+### Reviewed changed-code exceptions
+
+An exception can address a specific uncovered changed statement or arc when
+independent review shows that the outcome is unreachable or redundant under
+the supported contract. Review reachable high-risk paths against named offline
+tests that assert observable outcomes. For acceptance and recovery, check
+durable identities and state across retry. Check forwarding counts for duplicate
+submission, retained data for integrity and privacy, and behavior at and beyond
+applicable limits. The coverage percentage does not establish those behaviors.
+
+The separate [exception registry](../ci/changed-coverage-exceptions.json) is
+empty at rollout. A future entry records `scope_sha256`, one canonical production
+`path`, exact sorted `lines` and signed `arcs`, a `classification` of `unreachable`
+or `redundant`, a `justification`, and exact sorted `test_nodeids`. Its
+justification identifies the invariant or equivalent guard, relevant callers
+and failure states, and the assertions that provide alternative evidence.
+The scope binds every committed file path, mode and object except the exception
+registry, plus the protected floor, declaration registry and parser context.
+Use `exception_scope(source, commit_tree(source, head), descriptor)` with the
+descriptor of the independently supplied protected base. Any other tracked
+change requires a fresh scope review. Each approval requires a separately
+reviewed protected-base change before a dependent head can use it.
+
+Only the final full planned local Linux/CPython 3.11 historical comparison
+can apply a match. Each named test needs passing setup, call and teardown in
+validated ordinary or serial reports from that run. Protected replay derives
+proof from those raw reports and rebuilds the comparison. Both decisions check
+the originating Linux, CPython and Coverage versions from the sealed partition
+receipts against the locked parser context. For a matching approval, check the
+tracked checkout's file bytes and executable modes against the committed tree
+before collection and again when deciding coverage in execution and replay.
+The checks read the files directly and rely on the
+existing [supervised raw-evidence boundary](local-ci.md#local-coverage-authority-and-review).
+An absent test, permitted skip, xfail or stale coordinate supplies no approval.
+
+Every newly executable line and newly exposed arc from declaration
+reconciliation remains strict, including when it also appears as changed.
+Any exposed coordinate, including one that executed, rejects the whole entry.
+Coverage artifacts retain all missed coordinates and actual denominators.
+The combined floor, historical checks, per-file tolerances and declaration
+reconciliation use the original evidence. Level 2, functional and
+resource-eligibility comparisons, archive-only checks and preflight retain
+their strict comparisons.
+
+#### Focused coverage preflight
+
+Use the protected `acceptance.py plan` for the literal base and head. Before
+full runs, select a few reviewed ordinary tests around the changed boundary
+and allow up to two minutes for a diagnostic branch coverage run. Use the
+candidate's clean exact head and locked offline Python environment. Keep
+`COVERAGE_FILE`, the JSON report, pytest cache and temporary directories in
+an external run directory. Measure full production scope with
+`--cov=judgmentllm --cov-branch --cov-fail-under=0 --cov-report=json:<external-report>`.
+Use `-o 'addopts=--strict-config --strict-markers'` to replace pytest's
+default report destinations for this invocation.
+
+From the trusted policy environment, call `coverage_equivalence.compare` with
+that report, the candidate source, the protected floor, the literal head as
+`reviewed_ref`, the literal base as `protected_base`, and its authenticated
+descriptor as `coverage_policy`. Omit `passing_nodes` to use the strict
+comparison. Inspect the `modified` entries with paths from the plan's
+`changes` first. Record the changed and newly exposed misses as preliminary
+coverage gaps and surface any timeout or unassessable report. Full acceptance
+requires fresh evidence from the protected plan.
 
 ## Release qualification
 

@@ -35,7 +35,12 @@ WARNINGS = [
 ]
 
 
-def outcomes(receipt: dict[str, Any], expected: set[str]) -> Counter[str]:
+def outcomes(
+    receipt: dict[str, Any],
+    expected: set[str],
+    *,
+    passing_nodes: set[str] | None = None,
+) -> Counter[str]:
     """Require exactly one terminal execution per selected case, including skips."""
     collected = [item["nodeid"] for item in receipt["collected"]]
     if len(collected) != len(set(collected)) or set(collected) != expected:
@@ -53,7 +58,7 @@ def outcomes(receipt: dict[str, Any], expected: set[str]) -> Counter[str]:
             raise ValueError("Unexpected case execution")
         grouped[nodeid].append(report)
     result: Counter[str] = Counter()
-    for reports in grouped.values():
+    for nodeid, reports in grouped.items():
         phases = [report["phase"] for report in reports]
         if len(phases) != len(set(phases)) or not {"setup", "teardown"} <= set(phases):
             raise ValueError("Missing or duplicated case execution")
@@ -72,6 +77,8 @@ def outcomes(receipt: dict[str, Any], expected: set[str]) -> Counter[str]:
             result["skipped"] += 1
         elif phases.count("call") == 1:
             result["passed"] += 1
+            if passing_nodes is not None:
+                passing_nodes.add(nodeid)
         else:
             raise ValueError("Case has no terminal outcome")
     return result
@@ -150,6 +157,33 @@ def verify_skips(
     )
     if unexpected:
         raise ValueError(f"Unexpected qualification skips: {unexpected}")
+
+
+def prepare_exception_proof(
+    source: Path,
+    plan: dict[str, Any] | None,
+    *,
+    coverage: bool,
+    profile: str | None,
+    scope: str,
+    lane: str,
+    partition: str,
+) -> set[str] | None:
+    if not coverage or profile != "full" or plan is None:
+        return None
+    from coverage_authority import (
+        checked_exceptions,
+        commit_tree,
+        exception_proof_enabled,
+    )
+
+    if not exception_proof_enabled(plan, scope, lane, partition):
+        return None
+    tree = commit_tree(source, plan["source_sha"])
+    if tree != plan["source_tree_sha"]:
+        raise ValueError("Coverage review tree differs from the plan")
+    checked_exceptions(source, plan["base_sha"], tree, plan["coverage_policy"])
+    return set()
 
 
 def run(
@@ -401,6 +435,15 @@ def run(
         return code, receipt
 
     try:
+        passing_nodes = prepare_exception_proof(
+            source,
+            plan,
+            coverage=coverage,
+            profile=profile,
+            scope=execution_scope,
+            lane=lane,
+            partition=grid_partition,
+        )
         code, collected = execute("collection", ["--collect-only", "--no-cov", "-q"])
         if code != 0 or not collected.get("collected"):
             raise ValueError("Full-suite collection failed or produced no cases")
@@ -736,7 +779,14 @@ def run(
                     code, receipt = execute(label, arguments)
             else:
                 code, receipt = execute(label, arguments)
-            counts = outcomes(receipt, set(nodes))
+            case_passes: set[str] = set()
+            counts = outcomes(
+                receipt,
+                set(nodes),
+                passing_nodes=case_passes
+                if passing_nodes is not None and logical in {"ordinary", "serial"}
+                else None,
+            )
             if skip_policy is not None:
                 verify_skips(
                     receipt,
@@ -770,6 +820,8 @@ def run(
                         )
                     )
                     group_receipts[label] = receipt
+                    if passing_nodes is not None:
+                        passing_nodes.update(case_passes)
                 save()
             return {"exit_code": 0 if passed else code or 1}
 
@@ -915,7 +967,7 @@ def run(
                 "Qualification partitions did not execute the complete suite"
             )
         if coverage and not failed:
-            from coverage_data import combine, report
+            from coverage_data import combine, proof_interpreter, report
             from coverage_equivalence import compare
 
             combined = combine(
@@ -960,6 +1012,8 @@ def run(
                     baseline,
                     source,
                     reviewed_ref=coverage_ref,
+                    passing_nodes=passing_nodes,
+                    proof_interpreter=proof_interpreter(group_receipts, passing_nodes),
                     **coverage_arguments,
                 )
             summary["coverage"] = comparison

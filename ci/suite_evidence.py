@@ -147,10 +147,28 @@ def validate_suite(
         name for name, nodes in required.items() if nodes
     }:
         raise ValueError("Missing, duplicated or unexpected case partition")
+    rebuild_coverage = (
+        scope == "local" and coverage_enabled and plan.get("schema_version", 1) >= 2
+    )
+    coverage_receipts: dict[str, dict[str, Any]] = {}
+    passing_nodes: set[str] | None = None
+    if rebuild_coverage and profile == "full":
+        from local.coverage_authority import exception_proof_enabled
+
+        if exception_proof_enabled(plan, scope, lane, partition):
+            passing_nodes = set()
     skip_policy = read(Path(__file__).with_name("test-contract.json"))
     for part in parts:
-        receipt = read(root / (part["name"] + ".json"))
-        counts = outcomes(receipt, required[part["name"]])
+        name = part["name"]
+        receipt = read(root / (name + ".json"))
+        case_passes: set[str] = set()
+        counts = outcomes(
+            receipt,
+            required[name],
+            passing_nodes=case_passes
+            if passing_nodes is not None and name != "resource"
+            else None,
+        )
         if (
             receipt.get("provenance") != provenance
             or type(receipt.get("exit_code")) is not int
@@ -159,7 +177,7 @@ def validate_suite(
             or part["exit_code"] != 0
             or counts["failed"]
             or counts["errors"]
-            or part["cases"] != len(required[part["name"]])
+            or part["cases"] != len(required[name])
             or part["counts"] != dict(counts)
         ):
             raise ValueError("Failed, incomplete or foreign partition receipt")
@@ -167,6 +185,10 @@ def validate_suite(
             receipt, skip_policy, platform=platform, require_r=scope == "local"
         )
         total.update(counts)
+        if rebuild_coverage:
+            coverage_receipts[name] = receipt
+        if passing_nodes is not None:
+            passing_nodes.update(case_passes)
     if any(
         total[name] != summary["counts"].get(name, 0)
         for name in ("passed", "failed", "skipped", "errors")
@@ -191,12 +213,19 @@ def validate_suite(
         and set(summary.get("r_gates", {})) != set(plan["r_gates"])
     ):
         raise ValueError("Required named R gates were not independently executed")
-    if scope == "local" and coverage_enabled and plan.get("schema_version", 1) >= 2:
+    if rebuild_coverage:
         if source is None:
             raise ValueError("Coverage admission requires exact source")
         from local.coverage_data import validate_suite_coverage
 
-        rebuilt = validate_suite_coverage(root, source, plan, provenance, set(names))
+        rebuilt = validate_suite_coverage(
+            root,
+            source,
+            plan,
+            provenance,
+            coverage_receipts,
+            passing_nodes=passing_nodes,
+        )
         if rebuilt != summary.get("coverage"):
             raise ValueError("Declared coverage differs from independent admission")
     if scope == "local" and plan.get("schema_version", 1) >= 2:

@@ -16,6 +16,7 @@ from typing import Any, cast
 if __package__:
     from .coverage_authority import (
         AuthorityError,
+        checked_exceptions,
         commit_tree,
         disk_bytes,
         document,
@@ -27,6 +28,7 @@ if __package__:
 else:
     from coverage_authority import (
         AuthorityError,
+        checked_exceptions,
         commit_tree,
         disk_bytes,
         document,
@@ -137,6 +139,56 @@ def arcs(item: dict[str, Any]) -> set[tuple[int, int]]:
     }
 
 
+def validate_parser(parser: dict[str, str], version: Any) -> None:
+    from coverage import __version__
+
+    if (
+        sys.implementation.name != parser["implementation"]
+        or f"{sys.version_info.major}.{sys.version_info.minor}" != parser["python"]
+        or __version__ != parser["coverage"]
+        or version != __version__
+    ):
+        raise ValueError(
+            "Coverage authority requires the locked interpreter/Coverage context"
+        )
+
+
+def validate_proof_interpreter(
+    interpreter: dict[str, Any] | None, parser: dict[str, str]
+) -> None:
+    if (
+        interpreter is None
+        or interpreter.get("platform") != "linux"
+        or interpreter.get("implementation") != parser["implementation"]
+        or not isinstance(version := interpreter.get("version"), str)
+        or re.match(rf"{re.escape(parser['python'])}\.\d+", version) is None
+        or not isinstance(dependencies := interpreter.get("dependencies"), dict)
+        or cast(dict[str, Any], dependencies).get("coverage") != parser["coverage"]
+    ):
+        raise ValueError(
+            "Changed coverage proof origin differs from the locked Linux interpreter/Coverage context"
+        )
+
+
+def validate_locked_source(
+    source: Path, head: str, configuration: bytes, parser: dict[str, str]
+) -> None:
+    lock = git_bytes(source, head, "uv.lock")
+    if (
+        disk_bytes(source, "uv.lock") != lock
+        or git_bytes(source, head, "pyproject.toml") != configuration
+        or [
+            p["version"]
+            for p in tomllib.loads(lock.decode("utf-8"))["package"]
+            if p["name"] == "coverage"
+        ]
+        != [parser["coverage"]]
+    ):
+        raise ValueError(
+            "Candidate coverage configuration/lock differs from the locked context"
+        )
+
+
 def reconcile(
     entry: dict[str, Any],
     expected: dict[str, Any] | None,
@@ -149,17 +201,7 @@ def reconcile(
     parser: dict[str, str],
     version: Any,
 ) -> dict[str, Any]:
-    from coverage import __version__
-
-    if (
-        sys.implementation.name != parser["implementation"]
-        or f"{sys.version_info.major}.{sys.version_info.minor}" != parser["python"]
-        or __version__ != parser["coverage"]
-        or version != __version__
-    ):
-        raise ValueError(
-            "Reconciliation requires the locked interpreter/Coverage context"
-        )
+    validate_parser(parser, version)
     before: dict[str, Any] = (
         base_analysis(old, config)
         if old
@@ -384,12 +426,15 @@ def compare(
     reviewed_ref: str | None = None,
     coverage_policy: dict[str, Any] | None = None,
     protected_base: str | None = None,
+    passing_nodes: set[str] | None = None,
+    proof_interpreter: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Use a trusted base's floor, never a PR's proposed replacement.
 
     A modified module needs committed source, a hash-verified historical snapshot,
-    all changed executable lines/branch origins covered, mapped previously covered
-    equal lines retained, and no file metric loss over one percentage point.
+    mapped previously covered equal lines retained, and no file metric loss over
+    one percentage point. Changed misses block unless independently approved
+    with passing proof from the final planned local suite. Exposed misses always block.
     Overall historical ratios and the 90% combined floor remain blocking.
     Branch identities across edited source are explicitly NOT claimed equivalent.
     Archive/release runs must reconcile modified baselines before staging.
@@ -507,20 +552,7 @@ def compare(
             content, old, mapping, exclusions = prepared[filename]
             parser = cast(dict[str, Any], coverage_policy)["parser"]
             assert reviewed_ref is not None
-            lock = git_bytes(source, reviewed_ref, "uv.lock")
-            if (
-                disk_bytes(source, "uv.lock") != lock
-                or git_bytes(source, reviewed_ref, "pyproject.toml") != configuration
-                or [
-                    p["version"]
-                    for p in tomllib.loads(lock.decode("utf-8"))["package"]
-                    if p["name"] == "coverage"
-                ]
-                != [parser["coverage"]]
-            ):
-                raise ValueError(
-                    "Candidate coverage configuration/lock differs from the locked context"
-                )
+            validate_locked_source(source, reviewed_ref, configuration, parser)
             exposures[filename] = reconcile(
                 entry,
                 original["files"].get(filename),
@@ -536,6 +568,39 @@ def compare(
             applied.append(entry)
         if coverage_policy is not None:
             result["applied_reconciliations"] = applied
+        matched: dict[str, list[dict[str, Any]]] = {}
+        approved: list[dict[str, Any]] = []
+        rejected: list[dict[str, Any]] = []
+        if (
+            passing_nodes is not None
+            and coverage_policy is not None
+            and "exceptions_sha256" in coverage_policy
+        ):
+            assert protected_base is not None and reviewed_ref is not None
+            exceptions, scope = checked_exceptions(
+                source, protected_base, result["source_tree_sha"], coverage_policy
+            )
+            if exceptions:
+                for entry in exceptions:
+                    if entry["scope_sha256"] == scope:
+                        matched.setdefault(entry["path"], []).append(entry)
+                    else:
+                        rejected.append(
+                            {"entry": entry, "reason": "stale source scope"}
+                        )
+                result["changed_coverage_exceptions"] = {
+                    "applied": approved,
+                    "rejected": rejected,
+                }
+            if matched:
+                if sys.platform != "linux":
+                    raise ValueError(
+                        "Changed coverage exceptions require the local Linux lane"
+                    )
+                parser = coverage_policy["parser"]
+                validate_proof_interpreter(proof_interpreter, parser)
+                validate_parser(parser, measured["meta"].get("version"))
+                validate_locked_source(source, reviewed_ref, configuration, parser)
         for filename, actual in measured["files"].items():
             expected = original["files"].get(filename)
             content, old, mapping, exclusions = prepared[filename]
@@ -568,7 +633,9 @@ def compare(
             )
             missing = sorted(changed & set(actual["missing_lines"]))
             missing_arcs = [
-                arc for arc in actual["missing_branches"] if arc[0] in changed
+                arc
+                for arc in cast(list[list[int]], actual["missing_branches"])
+                if arc[0] in changed
             ]
             mapped_hits: set[int] = (
                 {
@@ -610,6 +677,7 @@ def compare(
                 for key, value in previous_rates.items()
                 if current_rates[key] + 1.0 + 1e-9 < value
             }
+            exposed = exposures.get(filename, {})
             detail = {
                 "file": filename,
                 "changed_executable_lines": sorted(changed),
@@ -620,20 +688,50 @@ def compare(
                 "branch_correspondence": "not established across source edits; ratios and changed origins checked",
                 "deleted_source_lines": len(old.decode("utf-8").splitlines())
                 - len(mapping),
-                **exposures.get(filename, {}),
+                **exposed,
             }
             result["modified"].append(detail)
+            uncovered_lines = set(missing)
+            uncovered_arcs = set(map(tuple, missing_arcs))
+            for entry in matched.pop(filename, []):
+                assert passing_nodes is not None
+                lines = set(entry["lines"])
+                branches = set(map(tuple, cast(list[list[int]], entry["arcs"])))
+                if lines.intersection(exposed.get("newly_executable_lines", [])) or (
+                    branches.intersection(
+                        map(tuple, exposed.get("newly_exposed_branches", []))
+                    )
+                ):
+                    reason = "newly exposed outcome"
+                elif not lines <= uncovered_lines or not branches <= uncovered_arcs:
+                    reason = "outcomes are no longer uncovered changed code"
+                elif not passing_nodes.issuperset(entry["test_nodeids"]):
+                    reason = "missing passing proof tests"
+                else:
+                    approved.append(entry)
+                    uncovered_lines.difference_update(lines)
+                    uncovered_arcs.difference_update(branches)
+                    continue
+                rejected.append({"entry": entry, "reason": reason})
             if (
-                missing
-                or missing_arcs
+                uncovered_lines
+                or uncovered_arcs
                 or lost_equal_lines
                 or regressions
                 or any(
-                    exposures.get(filename, {}).get(key)
+                    exposed.get(key)
                     for key in ("missing_exposed_lines", "missing_exposed_branches")
                 )
             ):
                 result["losses"].append(detail)
+        for remaining in matched.values():
+            rejected.extend(
+                {
+                    "entry": entry,
+                    "reason": "outcomes are no longer uncovered changed code",
+                }
+                for entry in remaining
+            )
         result["passed"] = not result["losses"]
     except (
         OSError,
