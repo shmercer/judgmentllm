@@ -508,9 +508,10 @@ remain readable without rewriting their identities or artifacts.
 ## Future commands and integrations
 
 The offline `batch prepare/submit/status/collect/resume/cancel` namespace is
-implemented through the shared [native-batch services](native-batch.md). Real
-provider batch integrations, actual caching controls and model catalogs retain
-their separately assigned workstreams.
+implemented through the shared [native-batch services](native-batch.md), including
+V3 OpenAI Responses and Chat Completions with separate offline Batch evidence.
+Other provider batch integrations, actual caching controls and model catalogs
+retain their separately assigned workstreams.
 The functional CLI-first `rubricLLM` wrapper arrives in Milestone 6; ordinary R
 workflows need no resident Python process or HTTP server. Optional local-loopback
 FastAPI and `serve` arrive in Milestone 7. No future command is implemented as
@@ -689,3 +690,8 @@ keys. Vertex selection uses `api_key` explicitly; `--vertex-auth-mode adc` retai
 ADC and reads no key. The helper and study module are excluded from wheel and
 sdist, and the public distribution retains only the existing `judgmentllm` console.
 See the [operator guide](../examples/study-native/live-qualification.md).
+
+
+## M5 PR3 OpenAI Batch dispatch
+
+Use the existing `batch prepare/submit/status/collect/resume/cancel` commands with a V3 generative OpenAI config. Omit all mock flags; explicitly supplied mock defaults are also rejected. `status` without refresh remains local and `poll` does not collect. Current collection failures use processing exit 1, bounded pending work exit 3 and local inspection keeps a successful envelope with durable failure details. [Contract](native-batch.md#openai-generative-batch-m5-pr3).

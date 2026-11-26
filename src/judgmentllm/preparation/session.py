@@ -497,6 +497,10 @@ class PreparedRun:
         context = self._context
         spec = context.spec if context is not None else self.spec
         template = context.template if context is not None else self.template
+        if self.manifest.schema_version == 13:
+            from judgmentllm.openai_batch_transport import render_request
+
+            return render_request(spec, template, request, self._get)
         if isinstance(
             self.manifest,
             (
@@ -1075,6 +1079,12 @@ class PreparedRun:
                 )
             return render_request_v3(
                 self.spec, self.template, dependency.request, self._get, output
+            )
+        if self.manifest.schema_version == 13:
+            from judgmentllm.openai_batch_transport import render_request
+
+            return render_request(
+                self.spec, self.template, dependency.request, self._get
             )
         return self._render_verified_request(dependency.request)
 

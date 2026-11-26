@@ -8,7 +8,8 @@ from pathlib import Path
 
 from judgmentllm.persistence.models import ExecutionSummary
 from judgmentllm.persistence.ownership import ExecutorOwnership
-from judgmentllm.persistence.repository import Repository
+from judgmentllm.persistence.repository import ReadOnlyRepository, Repository
+from judgmentllm.preparation import _preflight_v12_write  # pyright: ignore[reportPrivateUsage]
 
 
 def cancel_owned(
@@ -72,6 +73,8 @@ def cancel_run(run_id: str, *, store: str | Path) -> ExecutionSummary:
     Live callers cancel the execute_run coroutine. Its cleanup drains writes
     and invokes this same operation before releasing exclusive ownership.
     """
+    with ReadOnlyRepository(store) as inspection:
+        _preflight_v12_write(inspection, run_id)
     with Repository(store) as repository:
         ownership = ExecutorOwnership(repository, run_id)
         owner = ownership.acquire()

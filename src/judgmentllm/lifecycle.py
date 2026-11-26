@@ -102,7 +102,10 @@ from judgmentllm.providers import MockAdapter, MockScenario, ProviderError
 
 if TYPE_CHECKING:
     from judgmentllm.anthropic_transport import AnthropicProductionContext
-    from judgmentllm.execution.batch_exports import BatchAuditReportV1
+    from judgmentllm.execution.batch_exports import (
+        BatchAuditReportV1,
+        BatchAuditReportV2,
+    )
     from judgmentllm.production_transport import ProductionContext
     from judgmentllm.providers.protocol import ProviderAdapter
 
@@ -184,7 +187,11 @@ def _offline_context(
     | gemini_types.GeminiProductionContext
     | None
 ):
-    return _production_context(spec) if isinstance(spec, RunSpecV3) else None
+    return (
+        _production_context(spec)
+        if isinstance(spec, RunSpecV3) and spec.execution.mode != "batch_native"
+        else None
+    )
 
 
 def _execution_adapter(
@@ -527,6 +534,15 @@ def _require_presentation(spec: RunSpecification) -> None:
                 "production Decisions adapters are assigned to PRs C-E",
             )
         return
+    if (
+        isinstance(spec, RunSpecV3)
+        and spec.provider == "openai"
+        and spec.execution.mode == "batch_native"
+    ):
+        from judgmentllm.openai_batch_transport import require_openai_batch
+
+        require_openai_batch(spec)
+        return
     if isinstance(spec, RunSpecV3) and spec.provider in {
         "openai",
         "anthropic",
@@ -678,6 +694,13 @@ def _profile(
         except AnthropicConfigurationError as error:
             raise LifecycleError("unsupported_capability", str(error)) from None
     if spec.provider == "openai" and isinstance(spec, RunSpecV3):
+        if spec.execution.mode == "batch_native":
+            from judgmentllm.openai_batch_transport import batch_context
+            from judgmentllm.providers.openai_batch import OpenAIBatchAdapter
+
+            adapter = OpenAIBatchAdapter(batch_context(spec))
+            adapter.validate(spec)
+            return adapter.capabilities(spec)
         _production_context(spec)
         from judgmentllm.providers.openai import OpenAIAdapter
 
@@ -736,6 +759,7 @@ def validate_inputs(
                 capabilities=profile,
                 exhaustive_rendering=exhaustive_rendering,
                 transport_context=_offline_context(spec),
+                _batch_adapter=_offline_batch_adapter(spec),
             ) as prepared:
                 sources = prepared.manifest.sources
                 return InputValidationReport(
@@ -802,6 +826,7 @@ def estimate_run(
             run_id="plan",
             capabilities=profile,
             transport_context=_offline_context(spec),
+            _batch_adapter=_offline_batch_adapter(spec),
         ) as prepared:
             manifest = prepared.manifest
             responses = sum(
@@ -1224,8 +1249,12 @@ async def aresume_run(
         # execution/retry services perform complete source and context checks.
         with ReadOnlyRepository(root) as repository:
             run = repository.get_run(identifier)
-            from judgmentllm.preparation import _load_manifest  # pyright: ignore[reportPrivateUsage]
+            from judgmentllm.preparation import (
+                _load_manifest,  # pyright: ignore[reportPrivateUsage]
+                _preflight_v12_write,  # pyright: ignore[reportPrivateUsage]
+            )
 
+            _preflight_v12_write(repository, identifier)
             sealed = (
                 _load_manifest(repository, identifier, unsealed=False)
                 if run.manifest_sha256 is not None
@@ -1237,7 +1266,7 @@ async def aresume_run(
                 else isinstance(sealed, ExecutableRunManifestV8)
             )
         decisions_manifest = None
-        if sealed is not None and sealed.schema_version == 12:
+        if sealed is not None and sealed.schema_version in (12, 13):
             from judgmentllm.batch_models import BatchMockOptions
             from judgmentllm.native_batch import aresume_batch
 
@@ -1381,7 +1410,12 @@ def resume_run(
 
 def export_run_provenance(
     run_id: str | Path, *, store: str | Path | None = None
-) -> DecisionsProvenanceReportV1 | BulkProvenanceReport | BatchAuditReportV1:
+) -> (
+    DecisionsProvenanceReportV1
+    | BulkProvenanceReport
+    | BatchAuditReportV1
+    | BatchAuditReportV2
+):
     """Publish the immutable companion selected by a run's sealed manifest."""
     from judgmentllm.preparation import _load_manifest  # pyright: ignore[reportPrivateUsage]
 
@@ -1390,7 +1424,7 @@ def export_run_provenance(
     with _errors(identifier, root):
         with ReadOnlyRepository(root) as repository:
             manifest = _load_manifest(repository, identifier, unsealed=False)
-        if manifest.schema_version == 12:
+        if manifest.schema_version in (12, 13):
             from judgmentllm.native_batch import export_batch_provenance
 
             return export_batch_provenance(identifier, store=root)
@@ -1410,7 +1444,7 @@ def cancel_run(run_id: str | Path, *, store: str | Path | None = None) -> RunSta
         with ReadOnlyRepository(root) as repository:
             batch = (
                 _load_manifest(repository, identifier, unsealed=False).schema_version
-                == 12
+                in (12, 13)
                 if repository.get_run(identifier).manifest_sha256 is not None
                 else False
             )
@@ -1426,9 +1460,9 @@ def cancel_run(run_id: str | Path, *, store: str | Path | None = None) -> RunSta
 def get_run(run_id: str | Path, *, store: str | Path | None = None) -> RunStatus:
     """Inspect persisted state without submitting, retrieving, or reading sources."""
     with _errors():
-        identifier, root = resolve_run(run_id, store)
+        identifier, root = resolve_run(run_id, store, allow_v12_posix_read=True)
     with _errors(identifier, root), ReadOnlyRepository(root) as repository:
-        return inspect_run(repository, identifier)
+        return inspect_run(repository, identifier, allow_v12_posix_read=True)
 
 
 def list_runs(
@@ -1513,3 +1547,16 @@ def export_run_results(
             ),
             artifacts=artifacts,
         )
+
+
+def _offline_batch_adapter(spec: RunSpecification):
+    if (
+        isinstance(spec, RunSpecV3)
+        and spec.provider == "openai"
+        and spec.execution.mode == "batch_native"
+    ):
+        from judgmentllm.openai_batch_transport import batch_context
+        from judgmentllm.providers.openai_batch import OpenAIBatchAdapter
+
+        return OpenAIBatchAdapter(batch_context(spec))
+    return None

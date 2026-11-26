@@ -253,3 +253,8 @@ reviewed live qualification automatically.
 
 Current service-tier configuration, historical compatibility, account-scoped
 qualification and served-tier evidence are documented in [service tiers](service-tiers.md).
+
+
+## Generative native Batch (M5 PR3)
+
+Responses and Chat Completions have separate native Batch adapter scopes. Use V3 `batch_native`, cache OFF, no tier and no bulk limits; native output authority remains unqualified. SDK 3.42.1 is checked before credentials/wire work. Exact per-row bodies include `store=false`; Batch Files still have provider retention and explicit 30-day expiry. [Limits, no-resubmission recovery, privacy and later live gates](native-batch.md#openai-generative-batch-m5-pr3).

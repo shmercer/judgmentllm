@@ -77,9 +77,14 @@ from judgmentllm.persistence.receipts import (
     read_acknowledgment,
     read_receipt,
 )
-from judgmentllm.persistence.repository import Repository
+from judgmentllm.persistence.repository import ReadOnlyRepository, Repository
 from judgmentllm.planning import stable_id
-from judgmentllm.preparation import PreparedRun, RequestDependency, open_prepared_run
+from judgmentllm.preparation import (
+    PreparedRun,
+    RequestDependency,
+    _preflight_v12_write,  # pyright: ignore[reportPrivateUsage]
+    open_prepared_run,
+)
 from judgmentllm.prompts import RenderedPrompt, RenderedPromptV2
 from judgmentllm.providers import (
     PreparedRequest,
@@ -132,6 +137,8 @@ class ExecutionSession:
         self.adapter = adapter
         self.fault = fault
         self.retry_policy = DEFAULT_RETRY_POLICY
+        with ReadOnlyRepository(store) as inspection:
+            _preflight_v12_write(inspection, run_id)
         self.bootstrap = Repository(store)
         self.ownership = ExecutorOwnership(self.bootstrap, run_id)
         self.prepared: PreparedRun | None = None

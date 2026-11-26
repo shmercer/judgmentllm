@@ -20,7 +20,8 @@ from judgmentllm.persistence.models import (
     RunState,
     utc_now,
 )
-from judgmentllm.persistence.repository import Repository
+from judgmentllm.persistence.repository import ReadOnlyRepository, Repository
+from judgmentllm.preparation import _preflight_v12_write  # pyright: ignore[reportPrivateUsage]
 from judgmentllm.r_exports import (
     _validate_na,  # pyright: ignore[reportPrivateUsage]
     export_pairwise_r_csv,
@@ -100,6 +101,8 @@ def export_run(
         if fault is not None:
             fault(stage)
 
+    with ReadOnlyRepository(store) as inspection:
+        _preflight_v12_write(inspection, run_id)
     with Repository(store) as repository:
         run = repository.get_run(run_id)
         maximum = repository.connection.execute(

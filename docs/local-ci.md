@@ -387,6 +387,41 @@ verification. `--platform linux` requires all three Linux lanes;
 Grid evidence is under `/mnt/VM_Fast/judgmentllm-ci/grid/<run-id>/`; native details
 remain in the per-platform roots above. Do not publish raw logs automatically.
 
+### PR #76 focused Windows diagnosis and protected smoke
+
+For the **archive replay**, use the existing native Windows 3.12 guest under
+the shared VM lock and allocate fresh short scratch under `C:\jllm`. Verify the
+staged archive and source file hashes before and after the run. For an overlay,
+record its archive hash and file hashes alongside the underlying commit. From
+the extracted source, use its prepared locked interpreter and the case reporter.
+Retain the commands, logs, exit status and case receipt as diagnostic evidence.
+
+```powershell
+Set-Location -LiteralPath $archiveSource
+& $archivePython -B -m pytest --no-cov -q -p ci.local.pytest_report `
+  "--ci-report=$diagnostic\cases.json" "--basetemp=$diagnostic\t" `
+  -o "cache_dir=$diagnostic\cache" `
+  tests/test_batch_compatibility.py `
+  tests/test_openai_batch_recovery.py::test_upload_resolver_requires_its_owned_preparation `
+  tests/test_openai_batch_recovery.py::test_real_read_boundaries_preserve_accepted_work_on_io_failure
+```
+
+For the **protected 14-case smoke**, use a separate clean Git checkout at the
+exact planned head and its locked Windows 3.12 interpreter. Use the helper from
+the protected policy checkout, the matching ordinary-lane plan, and fresh output
+outside the candidate. The helper rejects native source archives. Its exit and
+case receipt belong to this invocation and its source identity.
+
+```powershell
+& $checkoutPython -B "$protected\ci\windows_smoke.py" run --source $checkout `
+  --plan $plan --head $head --lane windows-3.12 --run-id $runId `
+  --output "$smokeScratch\smoke" --summary "$smokeScratch\summary.md"
+```
+
+The retained `c8bfe353` hosted receipt records 14/14 smoke cases passing. The
+ordinary job at that head still failed six cases. The V12 candidate awaits its
+own Windows evidence.
+
 ## Resource tests and Windows scratch paths
 
 The execution scaling tests now share one immutable numeric measurement of their

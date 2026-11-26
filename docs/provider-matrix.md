@@ -24,7 +24,8 @@ Implemented generative routes require V3 and accept `live` and `bulk_live`: Open
 Decisions are offline. V3 private synthetic transports are fixture infrastructure.
 The eight implemented production routes support managed bulk-live with optional
 per-run request caps. All reject production token caps before credentials.
-Native batch for eligible endpoints remains an M5 target.
+OpenAI generative native Batch is implemented with offline SDK/recovery/R fixtures;
+other eligible batch endpoints remain M5 targets. Batch qualification is separate from live.
 
 New generative preparations use [presentation revision 2](renderer-revision-2.md).
 Retained original-contract live acceptance does not supply its required
@@ -49,8 +50,8 @@ and the intended all-provider qualification requirement.
 
 | Adapter | Live | Native provider batch | Managed bulk-live | Rubric | Pairwise | Notes |
 |---|---|---|---|---|---|---|
-| OpenAI Chat Completions | implemented; reviewed live scope accepted | target | implemented with RPM | generative | generative | Phase 5A, SDK 3.42.1; exact-model capability unknown until qualified |
-| OpenAI Responses | implemented; reviewed live scope accepted | target | implemented with RPM | generative | generative | Phase 5A, SDK 3.42.1; exact-model capability unknown until qualified. [Explicit-cache evidence](prompt-caching.md#scoped-transport-report-and-offline-verification) remains separate; production explicit caching is denied. |
+| OpenAI Chat Completions | implemented; reviewed live scope accepted | implemented; offline evidence | implemented with RPM | generative | generative | Phase 5A, SDK 3.42.1; exact-model capability unknown until qualified |
+| OpenAI Responses | implemented; reviewed live scope accepted | implemented; offline evidence | implemented with RPM | generative | generative | Phase 5A, SDK 3.42.1; exact-model capability unknown until qualified. [Explicit-cache evidence](prompt-caching.md#scoped-transport-report-and-offline-verification) remains separate; production explicit caching is denied. |
 | OpenAI Decisions | implemented, offline fixtures and bounded `gpt-6-luna` smoke | unsupported | implemented with RPM | typed score, 2–10 levels | forced choice | `/v1/decisions`, 1–400 ordered named questions. Cache OFF uses explicit mode without breakpoints. |
 | Anthropic Messages | implemented; live acceptance pending | target | implemented with RPM | generative | generative | Phase 5B; SDK 2.3.0 / API 2026-10-21; text JSON and controlled native output_config.format |
 | Gemini Developer | implemented, historical four-case live scope accepted | M5 target | implemented with RPM | generative | generative | Offline parity with Google SDK 3.5.0. The [live scope](gemini-live-qualification-acceptance.md) used 2.34.0/v1beta. |
@@ -274,3 +275,8 @@ Historical verification uses the original checkout.
 The current adapter uses Google SDK 3.5.0. New preparations use presentation
 revision 2, for which nonstrict `auto` selects text pending native qualification.
 [Current Gemini guide](gemini.md)
+
+
+## M5 PR3 native Batch route scopes
+
+`openai/responses` and `openai/chat.completions` have separate generative Batch implementations and offline synthetic acceptance requirements. This does not qualify native output enforcement, paid transport behavior, Decisions, explicit caching or another provider. Cache remains OFF. [Versions, limitations and gates](native-batch.md#openai-generative-batch-m5-pr3).

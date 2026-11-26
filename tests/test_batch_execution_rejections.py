@@ -111,6 +111,7 @@ async def test_member_acceptance_rechecks_attribution_and_durable_bridge(
     assert submission is not None
     adapter = cast(MockBatchAdapter, session.adapter)
     wire = reconstruct(session.prepared, adapter, member)[1]
+    assert isinstance(wire, PreparedRequestV2)
     raw = adapter.source_row(wire, member.position, member.member_key, "output")
     assert raw is not None
     raw = raw.rstrip(b"\n")

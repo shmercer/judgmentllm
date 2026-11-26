@@ -1,7 +1,7 @@
 """Narrow batch boundary. Encoding and authoritative evidence belong to adapters."""
 
 from collections.abc import AsyncGenerator, AsyncIterator, Callable, Mapping
-from typing import Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
 from judgmentllm.batch_models import (
     BatchContextV1,
@@ -10,18 +10,26 @@ from judgmentllm.batch_models import (
     BatchOperationReceiptV1,
     BatchSourceCommitmentV1,
     BatchStatusEvidenceV1,
+    OpenAIBatchContextV1,
 )
 from judgmentllm.config import RunSpecification
 from judgmentllm.evidence.usage import ReportedUsageInput
 from judgmentllm.persistence.hashing import semantic_digest
 from judgmentllm.planning import CapabilityProfile
 from judgmentllm.preparation.session import RequestDependency
-from judgmentllm.prompts import RenderedAssessmentPrompt
 from judgmentllm.providers.protocol import (
     ParsedResponse,
     PreparedRequestV2,
     ProviderResponse,
 )
+
+if TYPE_CHECKING:
+    from judgmentllm.openai_batch_transport import PreparedOpenAIBatchRequest
+
+if TYPE_CHECKING:
+    BatchPreparedRequest = PreparedRequestV2 | PreparedOpenAIBatchRequest
+else:
+    BatchPreparedRequest = PreparedRequestV2
 
 
 class BatchEvidenceWithheld(Exception):
@@ -33,7 +41,7 @@ def result_index_scope(
     submission_id: str,
     remote_id: str,
     source_id: str,
-    members: list[tuple[str, int, PreparedRequestV2]],
+    members: list[tuple[str, int, Any]],
 ) -> str:
     return semantic_digest(
         "batch-result-index-scope-v1",
@@ -50,7 +58,7 @@ def result_index_scope(
 class NativeBatchAdapter(Protocol):
     identity: str
 
-    def context(self) -> BatchContextV1: ...
+    def context(self) -> BatchContextV1 | OpenAIBatchContextV1: ...
     def capabilities(self, spec: RunSpecification) -> CapabilityProfile: ...
     def validate(self, spec: RunSpecification) -> None: ...
     def capabilities_for(
@@ -60,11 +68,20 @@ class NativeBatchAdapter(Protocol):
         self,
         spec: RunSpecification,
         dependency: RequestDependency,
-        rendered: RenderedAssessmentPrompt,
-    ) -> PreparedRequestV2: ...
+        rendered: Any,
+    ) -> BatchPreparedRequest: ...
     def parse(
         self, response: ProviderResponse, *, strict_output: bool = False
     ) -> ParsedResponse: ...
+    def create_payload(
+        self, manifest_sha256: str, shard: Any, uploaded: BatchOperationReceiptV1
+    ) -> bytes: ...
+    def cancel_payload(
+        self, manifest_sha256: str, submission_id: str, remote_id: str | None
+    ) -> bytes: ...
+    def screen_replay(
+        self, raw: bytes, expected_keys: Mapping[str, Any]
+    ) -> tuple[str, ProviderResponse, ReportedUsageInput, bytes, bool] | None: ...
     async def invoke(
         self,
         intent: BatchOperationIntentV1,
@@ -86,7 +103,7 @@ class NativeBatchAdapter(Protocol):
         submission_id: str,
         remote_id: str,
         source: str,
-        members: list[tuple[str, int, PreparedRequestV2]],
+        members: list[tuple[str, int, Any]],
     ) -> tuple[BatchSourceCommitmentV1, bytes]:
         """Read bounded typed metadata from the original source authority."""
         ...
@@ -96,12 +113,16 @@ class NativeBatchAdapter(Protocol):
         submission_id: str,
         remote_id: str,
         source: str,
-        members: list[tuple[str, int, PreparedRequestV2]],
+        members: list[tuple[str, int, Any]],
         cursor: BatchCursorV1 | None = None,
     ) -> AsyncGenerator[bytes, None]:
         """Stream a range only after its cursor matches the authoritative index."""
         ...
 
     def screen_result(
-        self, raw: bytes, expected_keys: Mapping[str, PreparedRequestV2]
+        self, raw: bytes, expected_keys: Mapping[str, Any]
     ) -> tuple[str, ProviderResponse, ReportedUsageInput, bytes, bool] | None: ...
+
+
+class BatchSourceOverrun(OSError):
+    """An actual content chunk exceeds the pinned file size before admission."""

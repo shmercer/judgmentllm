@@ -239,6 +239,25 @@ def detail(repository: Repository, run_id: str, shard_count: int) -> BatchDetail
             (run_id, run_id),
         ).fetchone()[0]
     )
+    context = connection.execute(
+        "SELECT context_json FROM batch_runs WHERE run_id=?", (run_id,)
+    ).fetchone()
+    if context is not None and '"openai-native-batch-v1"' in context[0]:
+        from judgmentllm.batch_models import OpenAIBatchReadyV1
+        from judgmentllm.execution.openai_batch import collection_summary, source_done
+
+        ready = [
+            OpenAIBatchReadyV1.model_validate_json(row[0])
+            for row in connection.execute(
+                "SELECT record_json FROM batch_facts WHERE run_id=? AND kind='cursor' AND entity_id LIKE 'openai-ready:%'",
+                (run_id,),
+            )
+        ]
+        unread_sources = len(ready) < 2 * accepted or any(
+            not source_done(repository, run_id, source.source_id) for source in ready
+        )
+        collection = collection_summary(repository, run_id)
+        unread_sources |= bool(collection.failed_sources or collection.prelude_failed)
     return BatchDetailV1(
         local_stop=stopped(repository, run_id),
         cancel_all=stopped(repository, run_id, "cancel_all"),

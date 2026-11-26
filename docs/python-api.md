@@ -1350,10 +1350,15 @@ qualification and served-tier evidence are documented in [service tiers](service
 
 `prepare_batch`, `submit_batch`, `get_batch_status`, `poll_batch`, `collect_batch`,
 `resume_batch`, `cancel_batch`, `stop_batch` and `export_batch_provenance` are public.
-Mutating/read-through controls have `a`-prefixed async variants. The only executable
-consumer is V2 `mock/synthetic`, `batch_native`, cache OFF. Typed
+Mutating/read-through controls have `a`-prefixed async variants. PR2 introduced the V2
+`mock/synthetic` consumer, `batch_native`, cache OFF; PR3 adds OpenAI as described below. Typed
 `BatchControlOptionsV1` bounds each invocation; `BatchMockOptions` supplies the
 original synthetic service context. Resume accepts the existing explicit
 `RetrySelection`. Generic `resume_run`, local `cancel_run` and result/provenance
-exports dispatch from manifest 12 without weakening ordinary mode gates. See
+exports dispatch from mock manifest 12 or OpenAI manifest 13 without weakening ordinary mode gates. See
 [native-batch signatures, recovery and audit contracts](native-batch.md).
+
+
+## M5 PR3 OpenAI generative Batch
+
+The existing `prepare_batch`, submit/poll/collect/resume/cancel/stop and provenance services also support V3 OpenAI Responses/Chat configurations with `batch_native`, cache OFF, no tier/bulk limits. OpenAI rejects any `mock` argument. Controls retain typed finite options and add an optional collection summary for OpenAI; status/stop/export stay SDK/credential-free. [Exact scope, recovery, limits and versions](native-batch.md#openai-generative-batch-m5-pr3).

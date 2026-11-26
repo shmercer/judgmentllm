@@ -654,6 +654,23 @@ class MockBatchAdapter(MockAdapter):
     ) -> tuple[str, ProviderResponse, ReportedUsageInput, bytes, bool] | None:
         return screen_row(raw, expected_keys)
 
+    def screen_replay(
+        self, raw: bytes, expected_keys: Mapping[str, PreparedRequestV2]
+    ) -> tuple[str, ProviderResponse, ReportedUsageInput, bytes, bool] | None:
+        return self.screen_result(raw, expected_keys)
+
+    @staticmethod
+    def create_payload(
+        manifest_sha256: str, shard: object, uploaded: BatchOperationReceiptV1
+    ) -> bytes:
+        return canonical_bytes([manifest_sha256, shard, uploaded])
+
+    @staticmethod
+    def cancel_payload(
+        manifest_sha256: str, submission_id: str, remote_id: str | None
+    ) -> bytes:
+        return canonical_bytes([manifest_sha256, submission_id, remote_id])
+
     def prepare(
         self,
         spec: RunSpecification,

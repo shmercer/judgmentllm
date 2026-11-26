@@ -47,7 +47,7 @@ from judgmentllm.persistence.models import (
     utc_now,
 )
 from judgmentllm.persistence.ownership import ExecutorOwnership
-from judgmentllm.persistence.repository import Repository
+from judgmentllm.persistence.repository import ReadOnlyRepository, Repository
 from judgmentllm.planning import CapabilityProfile, ValidationIssue, plan_run
 from judgmentllm.preparation.capture import SourceBuilder as _Builder  # pyright: ignore[reportPrivateUsage]
 from judgmentllm.preparation.freezing import (
@@ -60,6 +60,7 @@ from judgmentllm.preparation.freezing import (
 )
 from judgmentllm.preparation.historical_wire import (
     HistoricalWire,
+    batch_manifest_wire,
     foreign_original,
     manifest_wire,
 )
@@ -72,6 +73,8 @@ from judgmentllm.preparation.manifest import (
     ExecutableRunManifestV3,
     ExecutableRunManifestV4,
     ExecutableRunManifestV5,
+    ExecutableRunManifestV12,
+    ExecutableRunManifestV13,
     ExemplarCommitment,
     FrozenSnapshotAuthorization,
     SourceDiscrepancy,
@@ -234,6 +237,17 @@ def _manifest(
     )
     if spec.schema_version == 2:
         manifest_data["output_selection"] = resolve_schema_selection(spec, capabilities)
+    if spec.schema_version == 3 and spec.execution.mode == "batch_native":
+        from judgmentllm.openai_batch_transport import batch_context
+        from judgmentllm.preparation.manifest import ExecutableRunManifestV13
+
+        manifest_data.update(
+            batch_context=batch_context(spec),
+            batch_shard_count=0,
+            batch_member_count=0,
+            batch_index_sha256="0" * 64,
+        )
+        return ExecutableRunManifestV13.model_validate(manifest_data)
     if spec.schema_version == 3:
         from judgmentllm.transport_dispatch import context_digest
 
@@ -363,7 +377,12 @@ def prepare_run(
             from judgmentllm.persistence.native_batch import require_storage
             from judgmentllm.providers.batch_mock import require_mock_batch
 
-            require_mock_batch(spec)
+            if spec.provider == "openai":
+                from judgmentllm.openai_batch_transport import require_openai_batch
+
+                require_openai_batch(spec)
+            else:
+                require_mock_batch(spec)
             require_storage(repository)
             if _batch_adapter is None:
                 raise PreparationError(
@@ -377,7 +396,11 @@ def prepare_run(
                 raise PreparationError(
                     "bulk-live requires the ordinary production transport"
                 )
-        if spec.schema_version == 3 and transport_context is None:
+        if (
+            spec.schema_version == 3
+            and transport_context is None
+            and _batch_adapter is None
+        ):
             raise PreparationError(
                 "native-capable preparation requires transport context"
             )
@@ -471,13 +494,20 @@ def prepare_run(
             )
             if _batch_adapter is not None:
                 from judgmentllm.preparation.batch import preseal_batches
-                from judgmentllm.preparation.manifest import ExecutableRunManifestV12
+                from judgmentllm.preparation.manifest import (
+                    ExecutableRunManifestV12,
+                    ExecutableRunManifestV13,
+                )
 
-                assert isinstance(spec, RunSpecV2)
-                manifest = ExecutableRunManifestV12.model_validate(
+                manifest_type = (
+                    ExecutableRunManifestV13
+                    if isinstance(spec, RunSpecV3)
+                    else ExecutableRunManifestV12
+                )
+                manifest = manifest_type.model_validate(
                     {
                         **manifest.model_dump(),
-                        "schema_version": 12,
+                        "schema_version": 13 if isinstance(spec, RunSpecV3) else 12,
                         "batch_context": _batch_adapter.context(),
                         "batch_shard_count": 0,
                         "batch_member_count": 0,
@@ -591,7 +621,11 @@ def _compatible_package_version(producer: str, consumer: str) -> bool:
 
 
 def _load_manifest(
-    repository: Repository, run_id: str, *, unsealed: bool
+    repository: Repository,
+    run_id: str,
+    *,
+    unsealed: bool,
+    allow_v12_posix_read: bool = False,
 ) -> ExecutableManifest:
     directory = repository.run_directory(run_id)
     fixed = directory / "manifest.json"
@@ -606,13 +640,26 @@ def _load_manifest(
     except (ValueError, OSError):
         raise PreparationError("published manifest is invalid or incomplete") from None
     encoding = canonical_bytes(manifest)
+    run = repository.get_run(run_id)
+    storage_schema = repository.connection.execute("PRAGMA user_version").fetchone()[0]
     if encoding != raw and (
         not unsealed
         and type(manifest) is ExecutableRunManifestV2
         and manifest.capture == "full"
-        and repository.connection.execute("PRAGMA user_version").fetchone()[0] == 3
+        and storage_schema == 3
     ):
         encoding = manifest_wire(manifest, raw).encode(manifest)
+    elif (
+        encoding != raw
+        and allow_v12_posix_read
+        and isinstance(repository, ReadOnlyRepository)
+        and not unsealed
+        and run.manifest_sha256 is not None
+        and type(manifest) is ExecutableRunManifestV12
+        and manifest.capture == "full"
+        and storage_schema == 4
+    ):
+        encoding = batch_manifest_wire(manifest, raw)
     if manifest.run_id != run_id or encoding != raw:
         raise PreparationError(
             "published manifest identity or encoding is inconsistent"
@@ -622,17 +669,16 @@ def _load_manifest(
         raise PreparationError("published manifest conflicts with its immutable object")
     if not unsealed and repository.get_manifest(run_id).artifact != identity:
         raise PreparationError("published manifest conflicts with the database seal")
-    run = repository.get_run(run_id)
-    if repository.connection.execute("PRAGMA user_version").fetchone()[0] == 4:
+    if storage_schema == 4:
         marker = repository.connection.execute(
             "SELECT context_json FROM batch_runs WHERE run_id=?", (run_id,)
         ).fetchone()
-        if (marker is not None) != (manifest.schema_version == 12):
+        if (marker is not None) != (manifest.schema_version in (12, 13)):
             raise PreparationError("batch marker differs from frozen manifest")
         if marker is not None:
-            from judgmentllm.preparation.manifest import ExecutableRunManifestV12
-
-            assert isinstance(manifest, ExecutableRunManifestV12)
+            assert isinstance(
+                manifest, (ExecutableRunManifestV12, ExecutableRunManifestV13)
+            )
             if marker[0] != canonical_bytes(manifest.batch_context).decode():
                 raise PreparationError("batch context differs from frozen manifest")
     if (repository.decisions_version(run_id) == 4) != (
@@ -650,6 +696,40 @@ def _load_manifest(
     if not _compatible_package_version(manifest.package_version, __version__):
         raise PreparationError("prepared software version is incompatible")
     return manifest
+
+
+def _preflight_v12_write(repository: Repository, run_id: str) -> None:
+    """Check published mock Batch provenance while the caller uses a read-only registry."""
+    if repository.connection.execute("PRAGMA user_version").fetchone()[0] != 4:
+        return
+    run = repository.get_run(run_id)
+    marker = repository.connection.execute(
+        "SELECT 1 FROM batch_runs WHERE run_id=? "
+        "AND json_extract(context_json,'$.protocol')='mock-native-batch-v1'",
+        (run_id,),
+    ).fetchone()
+    if marker is None:
+        from judgmentllm.output_contracts import decode_assessment_output
+
+        fixed = repository.run_directory(run_id) / "manifest.json"
+        if fixed.is_symlink() or not fixed.is_file():
+            return
+        try:
+            data = decode_assessment_output(fixed.read_bytes())
+        except (ValueError, OSError):
+            return
+        version = (
+            cast(dict[str, object], data).get("schema_version")
+            if isinstance(data, dict)
+            else None
+        )
+        if type(version) is not int or version != 12:
+            return
+    manifest = _load_manifest(repository, run_id, unsealed=run.manifest_sha256 is None)
+    if type(manifest) is not ExecutableRunManifestV12 or any(
+        foreign_original(source.original_location) for source in manifest.sources
+    ):
+        raise PreparationError("native V12 source provenance is required for writes")
 
 
 def _verify_metadata(repository: Repository, manifest: ExecutableManifest) -> None:
@@ -842,6 +922,8 @@ def open_prepared_run(
     manifest can finish sealing only after full independent verification under
     ownership. Any earlier interrupted preparation requires a new run.
     """
+    with ReadOnlyRepository(store) as inspection:
+        _preflight_v12_write(inspection, run_id)
     repository = Repository(store)
     prepared: PreparedRun | None = None
     try:

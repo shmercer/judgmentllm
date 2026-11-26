@@ -511,3 +511,8 @@ stop and independent remote cancel-all intent. SQLite 4 and executable manifest
 12 are additive; historical runs retain their original contracts. Only the
 offline public V2 mock consumes this core. Real routes and qualifications belong
 to later adapters. Cache stays OFF; no production registry decision is made.
+
+
+## M5 PR3 implementation scope
+
+OpenAI generative Batch uses the shared native core with manifest 13 and distinct route scopes. It adds screened Files/job binding, exact byte/EOF validation, bounded privacy-preserving replay and durable fair ready-source selection. [Contract and acceptance gates](native-batch.md#openai-generative-batch-m5-pr3). No Decisions, other providers, explicit-cache activation or live qualification is included.

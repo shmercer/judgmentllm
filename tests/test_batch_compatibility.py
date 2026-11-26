@@ -1,10 +1,15 @@
-"""Actual base-produced schema-3 bytes retain their original reader contract."""
+"""Base-produced preparations and native Batch archives keep their wire identity."""
 
+import asyncio
 import base64
 import io
 import json
+import sqlite3
 import tarfile
-from pathlib import Path, PureWindowsPath
+from contextlib import ExitStack
+from functools import partial
+from pathlib import Path, PurePosixPath, PureWindowsPath
+from types import SimpleNamespace
 from typing import Any, Literal, get_args
 
 import pytest
@@ -13,22 +18,43 @@ from test_native_batch import batch_spec
 from test_version_compatibility import old_store as old_store
 
 from judgmentllm import (
+    BatchMockOptions,
     MockExecutionOptions,
     RetrySelection,
+    cancel_batch,
+    export_batch_provenance,
+    export_run_provenance,
     export_run_results,
+    get_batch_status,
     get_run,
+    list_runs,
     prepare_batch,
+    resume_batch,
     resume_run,
+    stop_batch,
 )
 from judgmentllm.config import PromptSpec, RunSpec, RunSpecV2, validate_run_spec_json
+from judgmentllm.execution.batch_exports import BatchAuditManifestV1, BatchAuditReportV1
+from judgmentllm.lifecycle import cancel_run
 from judgmentllm.lifecycle_models import ErrorCategory, LifecycleError
 from judgmentllm.persistence.artifacts import ArtifactStore
-from judgmentllm.persistence.hashing import bytes_digest, canonical_bytes
-from judgmentllm.persistence.models import IntegrityError
+from judgmentllm.persistence.hashing import (
+    bytes_digest,
+    canonical_bytes,
+    semantic_digest,
+)
+from judgmentllm.persistence.models import (
+    ArtifactIntegrityError,
+    IntegrityError,
+    NotFoundError,
+    RunRecord,
+)
+from judgmentllm.persistence.ownership import ExecutorOwnership
 from judgmentllm.persistence.repository import ReadOnlyRepository, Repository
 from judgmentllm.preparation import open_prepared_run
 from judgmentllm.preparation.manifest import (
     ExecutableRunManifestV2,
+    ExecutableRunManifestV12,
     parse_executable_manifest,
 )
 from scripts.version_compatibility_fixture import evidence
@@ -153,6 +179,7 @@ def unavailable_originals(
     import judgmentllm.preparation as preparation
 
     attempts: list[str] = []
+    aliases = originals | {str(Path(location)) for location in originals}
 
     def classified(location: str) -> bool:
         return location in originals
@@ -164,7 +191,7 @@ def unavailable_originals(
         def forbidden(
             self: Path, *args: Any, call: Any = original, **kwargs: Any
         ) -> Any:
-            if str(self) in originals:
+            if str(self) in aliases:
                 attempts.append(str(self))
                 raise AssertionError("foreign source alias was accessed")
             return call(self, *args, **kwargs)
@@ -928,3 +955,745 @@ def test_genuine_schema3_stays_byte_compatible_and_cannot_accept_batch(
             repository.connection.execute("SELECT count(*) FROM runs").fetchone()[0]
             == 1
         )
+
+
+def _pr2_store(
+    tmp_path: Path, name: str = "schema4-manifest12-store"
+) -> tuple[Path, str, dict[str, Any]]:
+    fixture = Path(__file__).parent / "fixtures" / "batch-history"
+    metadata = json.loads((fixture / f"{name}.json").read_text())
+    raw = base64.b64decode(
+        (fixture / f"{name}.tar.gz.base64").read_bytes(), validate=True
+    )
+    assert bytes_digest(raw) == metadata["archive_sha256"]
+    assert metadata["producer_commit"] == "35adfdf1829d1c201a0bcb57dc5cf4292e2d6dd4"
+    assert metadata["producer_tree"] == "2e49dfad4a1d2aba33176ad3e29dff074d595797"
+    with tarfile.open(fileobj=io.BytesIO(raw), mode="r:gz") as archive:
+        archive.extractall(tmp_path, filter="data")
+    return tmp_path / "store", metadata["run_id"], metadata
+
+
+def _v12_location(root: Path, run_id: str) -> Path:
+    with ReadOnlyRepository(root) as repository:
+        return repository.run_directory(run_id)
+
+
+def _block_v12_writes(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    calls: list[str] = []
+
+    def forbid(boundary: str) -> Any:
+        def enter(*args: object, **kwargs: object) -> None:
+            calls.append(boundary)
+            pytest.fail(f"historical V12 reached {boundary}")
+
+        return enter
+
+    monkeypatch.setattr(Repository, "__init__", forbid("writable repository"))
+    monkeypatch.setattr(ExecutorOwnership, "acquire", forbid("executor ownership"))
+    return calls
+
+
+def _durable_v12_bytes(root: Path) -> dict[str, bytes]:
+    return {
+        path.relative_to(root).as_posix(): path.read_bytes()
+        for path in root.rglob("*")
+        if path.is_file() and not path.name.endswith(("-shm", "-wal", ".lock"))
+    }
+
+
+def _v12_rejection(error: LifecycleError) -> BaseException | None:
+    cause = error.__context__
+    while isinstance(cause, LifecycleError):
+        cause = cause.__context__
+    return cause
+
+
+@pytest.fixture
+def windows_v12_consumer(
+    monkeypatch: pytest.MonkeyPatch, windows_wire_presentation: None
+) -> None:
+    import judgmentllm.preparation.historical_wire as wire_module
+
+    monkeypatch.setattr(wire_module, "os", SimpleNamespace(name="nt"))
+
+
+def test_genuine_pr2_schema4_manifest12_audit1_remain_immutable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from test_batch_exports_retry import file_path
+
+    from judgmentllm import openai_batch_transport
+    from judgmentllm.execution import openai_batch as openai_batch_execution
+    from judgmentllm.providers import openai_batch as openai_batch_provider
+
+    root, run_id, metadata = _pr2_store(tmp_path)
+
+    def forbidden() -> None:
+        raise AssertionError("historical local/mock operations reached OpenAI SDK")
+
+    monkeypatch.setattr(openai_batch_transport, "require_sdk", forbidden)
+    monkeypatch.setattr(openai_batch_provider, "require_sdk", forbidden)
+    monkeypatch.setattr(openai_batch_execution, "require_sdk", forbidden)
+    with ReadOnlyRepository(root) as repo:
+        assert repo.connection.execute("PRAGMA user_version").fetchone()[0] == 4
+        directory = repo.run_directory(run_id)
+        sql = [
+            tuple(r)
+            for r in repo.connection.execute(
+                "SELECT type,name,sql FROM sqlite_master ORDER BY type,name"
+            )
+        ]
+        migrations = [
+            tuple(r) for r in repo.connection.execute("SELECT * FROM schema_migrations")
+        ]
+        original = (directory / "manifest.json").read_bytes()
+        manifest = parse_executable_manifest(original)
+        assert type(manifest) is ExecutableRunManifestV12
+        assert bytes_digest(original) == metadata["manifest_sha256"]
+        seal = repo.get_manifest(run_id)
+        assert seal.artifact.sha256 == metadata["manifest_sha256"]
+        store = ArtifactStore(directory, create=False)
+        assert store.read(seal.artifact) == original
+        results = tuple(repo.iter_results(run_id))
+        assert len(results) == metadata["result_count"] == 2
+        assert {r.status for r in results} == {"complete", "cancelled"}
+        receipts = [
+            r[0]
+            for r in repo.connection.execute(
+                "SELECT record_json FROM batch_member_receipts ORDER BY member_key"
+            )
+        ]
+        usage = [json.loads(r)["usage"] for r in receipts]
+        assert sum(u["input_tokens"] or 0 for u in usage) == 7
+        assert sum(u["output_tokens"] or 0 for u in usage) == 3
+        bundle_id = metadata["bundle_id"]
+        audit_path = directory / "batch" / "audits" / f"{bundle_id}.json"
+        audit = audit_path.read_bytes()
+        bundle = BatchAuditManifestV1.model_validate_json(audit)
+        assert store.read(repo.get_artifact(run_id, bytes_digest(audit))) == audit
+        assert bundle.cut.source_manifest_sha256 == seal.artifact.sha256
+        assert bundle.bundle_id == bundle_id
+        files = {file.name: store.read(file.artifact) for file in bundle.files}
+        assert len(files) == len(bundle.files) == 11
+    before = _durable_v12_bytes(root)
+    with monkeypatch.context() as inspection:
+        alias_reads = unavailable_originals(
+            inspection, {source.original_location for source in manifest.sources}
+        )
+        writes = _block_v12_writes(inspection)
+        for identifier, selected_store in ((run_id, root), (directory, None)):
+            assert get_run(identifier, store=selected_store).batch is not None
+            assert not get_batch_status(
+                identifier, store=selected_store
+            ).batch.recovery_required
+            old = export_batch_provenance(
+                identifier, store=selected_store, bundle_id=bundle_id
+            )
+            assert type(old) is BatchAuditReportV1
+            assert old.schema_version == old.manifest.schema_version == 1
+            assert (
+                old.manifest == bundle and Path(old.manifest_path).read_bytes() == audit
+            )
+            assert {
+                f.name: file_path(old, f.name).read_bytes() for f in old.manifest.files
+            } == files
+        assert alias_reads == writes == []
+    assert _durable_v12_bytes(root) == before
+    if canonical_bytes(manifest) == original:
+        result = resume_batch(
+            run_id,
+            store=root,
+            use_frozen_snapshot=True,
+            mock=BatchMockOptions(fixture_path=root / "fixture.json"),
+        )
+        assert not result.batch.recovery_required
+    else:
+        # Keep PR2's foreign native-Path rejection; never rewrite historical IDs.
+        with pytest.raises(LifecycleError, match="integrity"):
+            resume_batch(
+                run_id,
+                store=root,
+                use_frozen_snapshot=True,
+                mock=BatchMockOptions(fixture_path=root / "fixture.json"),
+            )
+    reopened = export_batch_provenance(
+        run_id, store=root, bundle_id=metadata["bundle_id"]
+    )
+    assert Path(reopened.manifest_path).read_bytes() == audit
+    assert {
+        f.name: file_path(reopened, f.name).read_bytes()
+        for f in reopened.manifest.files
+    } == files
+    with ReadOnlyRepository(root) as repo:
+        assert (directory / "manifest.json").read_bytes() == original
+        assert repo.get_manifest(run_id) == seal
+        assert store.read(seal.artifact) == original
+        assert tuple(repo.iter_results(run_id)) == results
+        assert [
+            r[0]
+            for r in repo.connection.execute(
+                "SELECT record_json FROM batch_member_receipts ORDER BY member_key"
+            )
+        ] == receipts
+        assert [
+            tuple(r)
+            for r in repo.connection.execute(
+                "SELECT type,name,sql FROM sqlite_master ORDER BY type,name"
+            )
+        ] == sql
+        assert [
+            tuple(r) for r in repo.connection.execute("SELECT * FROM schema_migrations")
+        ] == migrations
+
+
+def _edit_v12_row(
+    repository: Repository, trigger: str, statement: str, bindings: tuple[object, ...]
+) -> None:
+    # Isolated corrupt archive copies keep the original schema and checksums.
+    ddl = repository.connection.execute(
+        "SELECT sql FROM sqlite_master WHERE type='trigger' AND name=?", (trigger,)
+    ).fetchone()[0]
+    with repository.transaction():
+        repository.connection.execute(f"DROP TRIGGER {trigger}")
+        repository.connection.execute(statement, bindings)
+        repository.connection.execute(ddl)
+
+
+def test_genuine_pr2_v12_pairwise_preserves_both_posix_paths(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, windows_v12_consumer: None
+) -> None:
+    root, run_id, metadata = _pr2_store(tmp_path, "schema4-manifest12-pairwise-store")
+    directory = _v12_location(root, run_id)
+    fixed = directory / "manifest.json"
+    raw = fixed.read_bytes()
+    manifest = parse_executable_manifest(raw)
+    assert type(manifest) is ExecutableRunManifestV12
+    assert manifest.pairs is not None and canonical_bytes(manifest) != raw
+    fields = json.loads(raw)
+    assert PurePosixPath(fields["input"]["path"]).is_absolute()
+    assert PurePosixPath(fields["pairs"]["path"]).is_absolute()
+    before = _durable_v12_bytes(root)
+    with monkeypatch.context() as inspection:
+        aliases = unavailable_originals(
+            inspection, {source.original_location for source in manifest.sources}
+        )
+        writes = _block_v12_writes(inspection)
+        assert get_run(run_id, store=root).task_kind == "pairwise"
+        assert get_batch_status(directory).run_id == run_id
+        with pytest.raises(LifecycleError, match="integrity"):
+            list_runs(store=root)
+        assert aliases == writes == []
+    assert _durable_v12_bytes(root) == before
+    with Repository(root) as repository:
+        seal = repository.get_manifest(run_id)
+        assert seal.artifact.sha256 == bytes_digest(raw) == metadata["manifest_sha256"]
+        objects = ArtifactStore(directory, create=False)
+        assert objects.read(seal.artifact) == raw
+        fields["pairs"]["path"] = str(
+            PurePosixPath(fields["pairs"]["path"]).with_name("different-pairs.jsonl")
+        )
+        changed = canonical_bytes(fields)
+        repository.register_artifact(run_id, objects.put(changed, "application/json"))
+        fixed.unlink()
+        fixed.write_bytes(changed)
+    with pytest.raises(LifecycleError, match="integrity") as rejected:
+        get_run(directory)
+    assert "database seal" in str(rejected.value.__context__)
+
+
+@pytest.mark.parametrize(
+    ("damage", "reason"),
+    [
+        pytest.param("malformed", "invalid or incomplete", id="malformed"),
+        pytest.param("whitespace", "canonical wire differs", id="noncanonical"),
+        pytest.param("dialect", "canonical POSIX", id="unsupported-dialect"),
+        pytest.param("host", "foreign POSIX originals", id="unsupported-host"),
+        pytest.param("route", "V12 mock route", id="unsupported-route"),
+        pytest.param("minimal", "identity or encoding", id="minimal"),
+        pytest.param("nonpath", "database seal", id="changed-nonpath"),
+        pytest.param("object", "missing or unreadable", id="missing-object"),
+        pytest.param("seal", "database seal", id="wrong-seal"),
+        pytest.param("unsealed", "identity or encoding", id="missing-seal"),
+    ],
+)
+def test_v12_inspection_rejects_invalid_archive(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    windows_v12_consumer: None,
+    damage: str,
+    reason: str,
+) -> None:
+    import judgmentllm.preparation.historical_wire as wire_module
+
+    root, run_id, _ = _pr2_store(tmp_path)
+    with Repository(root) as repository:
+        directory = repository.run_directory(run_id)
+        fixed = directory / "manifest.json"
+        raw = fixed.read_bytes()
+        seal = repository.get_manifest(run_id).artifact
+        manifest = parse_executable_manifest(raw)
+        assert type(manifest) is ExecutableRunManifestV12
+        if damage == "host":
+            monkeypatch.setattr(wire_module, "os", SimpleNamespace(name="posix"))
+        elif damage == "object":
+            assert seal.relative_path is not None
+            (directory / seal.relative_path).unlink()
+        elif damage in {"seal", "unsealed"}:
+            repository.connection.execute("PRAGMA ignore_check_constraints=ON")
+            _edit_v12_row(
+                repository,
+                "runs_manifest_immutable",
+                "UPDATE runs SET manifest_sha256=? WHERE run_id=?",
+                (manifest.specification.sha256 if damage == "seal" else None, run_id),
+            )
+            repository.connection.execute("PRAGMA ignore_check_constraints=OFF")
+        else:
+            fields = json.loads(raw)
+            if damage == "malformed":
+                changed = raw[:-1]
+            elif damage == "whitespace":
+                changed = raw + b"\n"
+            elif damage == "dialect":
+                fields["input"]["path"] = r"/foreign/embedded\backslash.jsonl"
+                changed = canonical_bytes(fields)
+            elif damage == "route":
+                fields["execution"]["mode"] = "live"
+                changed = canonical_bytes(fields)
+            elif damage == "minimal":
+                fields["capture"] = "minimal"
+                fields["recovery_policy"] = "unchanged_originals"
+                fields["specification"]["relative_path"] = None
+                for source in fields["sources"]:
+                    source["snapshot"] = None
+                changed = canonical_bytes(fields)
+                assert parse_executable_manifest(changed).capture == "minimal"
+            else:
+                assert damage == "nonpath"
+                fields["seed"] = 987
+                changed = canonical_bytes(fields)
+                store = ArtifactStore(directory, create=False)
+                repository.register_artifact(
+                    run_id, store.put(changed, "application/json")
+                )
+            fixed.unlink()
+            fixed.write_bytes(changed)
+    before = _durable_v12_bytes(root)
+    writes = _block_v12_writes(monkeypatch)
+    with pytest.raises(LifecycleError) as rejected:
+        get_batch_status(run_id, store=root)
+    assert reason in str(_v12_rejection(rejected.value))
+    assert writes == [] and _durable_v12_bytes(root) == before
+
+
+@pytest.mark.parametrize(
+    ("damage", "reason"),
+    [
+        pytest.param("cut", "cut differs from the run seal", id="wrong-cut-seal"),
+        pytest.param("id", "cut differs from the bundle ID", id="wrong-bundle-id"),
+        pytest.param("unregistered", "resource was not found", id="unregistered"),
+        pytest.param("omit", "companion set differs", id="omitted-companion"),
+        pytest.param("duplicate", "companion set differs", id="duplicate-companion"),
+        pytest.param("damage", "failed content verification", id="damaged-companion"),
+        pytest.param("hash-only", "bytes were not retained", id="hash-only-companion"),
+        pytest.param("missing", "bundle identity differs", id="missing-bundle"),
+        pytest.param(
+            "missing-at-read",
+            "retained artifact is missing or unreadable",
+            id="missing-registered-object-at-read",
+        ),
+    ],
+)
+def test_v12_named_audit_requires_original_seal_and_retained_companions(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    windows_v12_consumer: None,
+    damage: str,
+    reason: str,
+) -> None:
+    root, run_id, metadata = _pr2_store(tmp_path)
+    bundle_object: Path | None = None
+    with (
+        ReadOnlyRepository(root, preserve_files=True)
+        if damage == "missing-at-read"
+        else Repository(root)
+    ) as repository:
+        store = ArtifactStore(repository.run_directory(run_id), create=False)
+        bundle_id = metadata["bundle_id"]
+        reference = f"batch/audits/{bundle_id}.json"
+        path = store.reference_path(reference)
+        bundle = BatchAuditManifestV1.model_validate_json(path.read_bytes())
+        fields = bundle.model_dump(mode="json")
+        last = fields["files"][-1]
+        if damage == "missing-at-read":
+            identity = repository.get_artifact(
+                run_id, bytes_digest(canonical_bytes(bundle))
+            )
+            assert identity.relative_path is not None
+            bundle_object = store.root / identity.relative_path
+        elif damage == "missing":
+            path.unlink()
+        elif damage == "damage":
+            companion = store.root / last["artifact"]["relative_path"]
+            companion.write_bytes(b"damaged companion")
+        else:
+            if damage == "cut":
+                fields["cut"]["source_manifest_sha256"] = "a" * 64
+            elif damage in {"id", "unregistered"}:
+                fields["cut"]["event_high_water_mark"] += 1
+            elif damage == "omit":
+                fields["files"] = fields["files"][:-1]
+            elif damage == "duplicate":
+                fields["files"] = [*fields["files"][:-1], fields["files"][0]]
+            else:
+                assert damage == "hash-only"
+                (store.root / last["artifact"]["relative_path"]).unlink()
+                last["artifact"]["relative_path"] = None
+            if damage in {"cut", "unregistered"}:
+                bundle_id = semantic_digest(
+                    "native-batch-audit-v1", [run_id, fields["cut"]]
+                )
+                fields["bundle_id"] = bundle_id
+            else:
+                path.unlink()
+            changed = BatchAuditManifestV1.model_validate_json(canonical_bytes(fields))
+            identity = store.put(canonical_bytes(changed), "application/json")
+            if damage != "unregistered":
+                repository.register_artifact(run_id, identity)
+            store.publish_reference(identity, f"batch/audits/{bundle_id}.json")
+
+    def snapshot() -> dict[str, bytes]:
+        return _durable_v12_bytes(root) | {
+            path.name: path.read_bytes()
+            for path in (root / "registry.sqlite3-wal", root / "registry.sqlite3-shm")
+            if path.is_file()
+        }
+
+    materializing_reads = 0
+    read_bytes = Path.read_bytes
+
+    def read_bundle_object(path: Path) -> bytes:
+        nonlocal materializing_reads
+        if path == bundle_object:
+            materializing_reads += 1
+            if materializing_reads == 1:
+                raise FileNotFoundError
+        return read_bytes(path)
+
+    before = snapshot()
+    with monkeypatch.context() as inspection:
+        writes = _block_v12_writes(inspection)
+        if bundle_object is not None:
+            inspection.setattr(Path, "read_bytes", read_bundle_object)
+        with pytest.raises(LifecycleError) as rejected:
+            export_batch_provenance(store.root, bundle_id=bundle_id)
+    failure = _v12_rejection(rejected.value)
+    if damage == "unregistered":
+        assert isinstance(failure, NotFoundError) and reason in str(rejected.value)
+    else:
+        assert reason in str(failure)
+    if bundle_object is not None:
+        assert materializing_reads == 1
+        assert isinstance(failure, ArtifactIntegrityError)
+        assert isinstance(failure.__context__, FileNotFoundError)
+    assert writes == [] and snapshot() == before
+
+
+def test_native_minimal_v12_named_audit_requires_retained_companions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root, run_id = tmp_path / "store", "001"
+    prepare_batch(batch_spec(tmp_path, capture="minimal"), store=root, run_id=run_id)
+    published = export_batch_provenance(run_id, store=root)
+    assert type(published) is BatchAuditReportV1
+    with ReadOnlyRepository(root) as repository:
+        store = ArtifactStore(repository.run_directory(run_id), create=False)
+        seal = repository.get_manifest(run_id).artifact
+        raw = store.read(seal)
+    manifest = parse_executable_manifest(raw)
+    assert type(manifest) is ExecutableRunManifestV12
+    assert manifest.capture == "minimal" and canonical_bytes(manifest) == raw
+    bundle = published.manifest
+    assert bundle.cut.source_manifest_sha256 == seal.sha256 and len(bundle.files) == 11
+    bundle_id = bundle.bundle_id
+    before = _durable_v12_bytes(root)
+    with monkeypatch.context() as inspection:
+        writes = _block_v12_writes(inspection)
+        reopened = export_batch_provenance(run_id, store=root, bundle_id=bundle_id)
+        assert reopened == published
+        assert writes == [] and _durable_v12_bytes(root) == before
+
+    fields = bundle.model_dump(mode="json")
+    companion = next(
+        file for file in fields["files"] if file["name"] == "results_r.csv"
+    )
+    (store.root / companion["artifact"]["relative_path"]).unlink()
+    companion["artifact"]["relative_path"] = None
+    reference = f"batch/audits/{bundle_id}.json"
+    with Repository(root) as repository:
+        changed = store.put(canonical_bytes(fields), "application/json")
+        repository.register_artifact(run_id, changed)
+        store.reference_path(reference).unlink()
+        store.publish_reference(changed, reference)
+    before = _durable_v12_bytes(root)
+    writes = _block_v12_writes(monkeypatch)
+    with pytest.raises(LifecycleError) as rejected:
+        export_batch_provenance(run_id, store=root, bundle_id=bundle_id)
+    assert "batch audit companion bytes were not retained" in str(
+        _v12_rejection(rejected.value)
+    )
+    assert writes == [] and _durable_v12_bytes(root) == before
+
+
+@pytest.mark.parametrize(
+    "active_wal", [False, True], ids=["checkpointed", "active-wal"]
+)
+def test_named_audit_reopen_preserves_sqlite_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, active_wal: bool
+) -> None:
+    root, run_id = tmp_path / "store", "001"
+    database = root / "registry.sqlite3"
+    wal = root / "registry.sqlite3-wal"
+    shm = root / "registry.sqlite3-shm"
+
+    def registry_files() -> dict[str, bytes]:
+        return {
+            path.name: path.read_bytes()
+            for path in (database, wal, shm)
+            if path.is_file()
+        }
+
+    with ExitStack() as stack:
+        if active_wal:
+            stack.enter_context(Repository(root))
+        prepare_batch(
+            batch_spec(tmp_path, capture="minimal"), store=root, run_id=run_id
+        )
+        published = export_batch_provenance(run_id, store=root)
+        directory = Path(published.manifest_path).parents[2]
+        bundle_id = published.manifest.bundle_id
+        before = registry_files()
+        assert set(before) == (
+            {database.name, wal.name, shm.name} if active_wal else {database.name}
+        )
+        if active_wal:
+            assert before[wal.name] and before[shm.name]
+
+        original_uri = database.resolve().as_uri()
+        connect = sqlite3.connect
+        opened: list[str] = []
+
+        def observe(database_uri: str, *args: Any, **kwargs: Any) -> sqlite3.Connection:
+            assert registry_files() == before
+            if active_wal:
+                assert database_uri.partition("?")[
+                    0
+                ] != original_uri and database_uri.endswith("?mode=ro")
+            else:
+                assert database_uri == original_uri + "?mode=ro&immutable=1"
+            opened.append(database_uri)
+            return connect(database_uri, *args, **kwargs)
+
+        with monkeypatch.context() as inspection:
+            inspection.setenv("JUDGMENTLLM_RUN_HOME", str(root))
+            inspection.setattr(sqlite3, "connect", observe)
+            writes = _block_v12_writes(inspection)
+            for reference, store in (
+                (run_id, root),
+                (run_id, None),
+                (directory, root),
+                (directory, None),
+            ):
+                opened.clear()
+                reopened = export_batch_provenance(
+                    reference, store=store, bundle_id=bundle_id
+                )
+                assert reopened == published
+                # Resolution and bundle reopen each open SQLite.
+                assert len(opened) >= 2 and registry_files() == before
+
+            (directory / "manifest.json").unlink()
+            opened.clear()
+            with pytest.raises(LifecycleError, match="integrity") as rejected:
+                export_batch_provenance(directory, bundle_id=bundle_id)
+            assert "no complete published manifest" in str(
+                _v12_rejection(rejected.value)
+            )
+            assert len(opened) >= 2 and registry_files() == before
+            assert writes == []
+
+
+@pytest.mark.parametrize(
+    ("state", "reason"),
+    [
+        pytest.param("sealed", "native V12 source provenance", id="sealed"),
+        pytest.param(
+            "unsealed", "native V12 source provenance", id="published-unsealed"
+        ),
+        pytest.param("unmarked", "batch marker differs", id="version-only"),
+        pytest.param("marker", "no complete published manifest", id="mock-marker-only"),
+        pytest.param(
+            "invalid", "manifest is invalid or incomplete", id="invalid-marked"
+        ),
+    ],
+)
+def test_v12_refuses_mutation_before_writer_or_ownership(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, state: str, reason: str
+) -> None:
+    from test_preparation_recovery import interrupt_at
+
+    from judgmentllm import lifecycle, native_batch
+    from judgmentllm.execution.cancellation import cancel_run as cancel_idle
+    from judgmentllm.execution.core import execute_run, recover_run
+    from judgmentllm.execution.exports import export_run
+    from judgmentllm.execution.retry import authorize_subset_retry
+    from judgmentllm.providers.mock import MockAdapter
+
+    root, run_id = tmp_path / "store", "001"
+    spec = batch_spec(tmp_path)
+    if state == "sealed":
+        prepare_batch(spec, store=root, run_id=run_id)
+    else:
+        with monkeypatch.context() as interruption:
+            interrupt_at(interruption, "before_seal")
+            with pytest.raises(KeyboardInterrupt):
+                prepare_batch(spec, store=root, run_id=run_id)
+    with Repository(root) as repository:
+        directory = repository.run_directory(run_id)
+        fixed = directory / "manifest.json"
+        raw = fixed.read_bytes()
+        manifest = parse_executable_manifest(raw)
+        assert type(manifest) is ExecutableRunManifestV12
+        assert canonical_bytes(manifest) == raw
+        assert (repository.get_run(run_id).manifest_sha256 is not None) == (
+            state == "sealed"
+        )
+        if state == "unmarked":
+            _edit_v12_row(
+                repository,
+                "batch_runs_immutable_delete",
+                "DELETE FROM batch_runs WHERE run_id=?",
+                (run_id,),
+            )
+        elif state in {"marker", "invalid"}:
+            fixed.unlink()
+            if state == "invalid":
+                fixed.write_bytes(raw[:-1])
+    adapter = MockAdapter(tmp_path / "direct-service.sqlite3")
+    before = _durable_v12_bytes(root)
+    aliases = unavailable_originals(
+        monkeypatch, {source.original_location for source in manifest.sources}
+    )
+    writes = _block_v12_writes(monkeypatch)
+
+    def no_adapter(*args: object, **kwargs: object) -> None:
+        pytest.fail("historical V12 reached adapter work")
+
+    monkeypatch.setattr(lifecycle, "_execution_adapter", no_adapter)
+    monkeypatch.setattr(native_batch, "MockBatchAdapter", no_adapter)
+    monkeypatch.setattr(adapter, "capabilities", no_adapter)
+
+    public_calls = (
+        stop_batch,
+        cancel_batch,
+        cancel_run,
+        export_run_results,
+        export_batch_provenance,
+        partial(resume_run, use_frozen_snapshot=True),
+        partial(resume_batch, use_frozen_snapshot=True),
+    )
+    selectors: list[tuple[str | Path, Path | None]] = [(run_id, root)]
+    if state != "invalid":
+        selectors.append((directory, None))
+    for identifier, store in selectors:
+        for operation in public_calls:
+            with pytest.raises(LifecycleError, match="integrity") as rejected:
+                operation(identifier, store=store)
+            assert reason in str(_v12_rejection(rejected.value))
+        if state == "sealed":
+            with pytest.raises(LifecycleError, match="integrity") as rejected:
+                export_run_provenance(identifier, store=store)
+            assert reason in str(_v12_rejection(rejected.value))
+    with pytest.raises(IntegrityError, match=reason):
+        open_prepared_run(run_id, store=root, use_frozen_snapshot=True)
+    with pytest.raises(IntegrityError, match=reason):
+        cancel_idle(run_id, store=root)
+    with pytest.raises(IntegrityError, match=reason):
+        export_run(run_id, store=root)
+    with pytest.raises(IntegrityError, match=reason):
+        authorize_subset_retry(
+            run_id, store=root, adapter=adapter, task_ids=("001",), operation_id="retry"
+        )
+    for execute in (execute_run, recover_run):
+        with pytest.raises(IntegrityError, match=reason):
+            asyncio.run(
+                execute(run_id, store=root, adapter=adapter, use_frozen_snapshot=True)
+            )
+    assert adapter.submit_calls == 0
+    assert aliases == writes == []
+    assert _durable_v12_bytes(root) == before
+
+
+def test_native_v12_interrupted_publication_keeps_owned_sealing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from test_native_batch import service_counts
+    from test_preparation_recovery import interrupt_at
+
+    from judgmentllm.providers.batch_mock import MockBatchAdapter
+
+    root, run_id = tmp_path / "store", "001"
+    spec = batch_spec(tmp_path)
+    with monkeypatch.context() as interruption:
+        interrupt_at(interruption, "before_seal")
+        with pytest.raises(KeyboardInterrupt):
+            prepare_batch(spec, store=root, run_id=run_id)
+    with ReadOnlyRepository(root) as repository:
+        assert repository.get_run(run_id).manifest_sha256 is None
+        assert repository.get_owner(run_id) is None
+        fixed = repository.run_directory(run_id) / "manifest.json"
+        original = fixed.read_bytes()
+        assert type(parse_executable_manifest(original)) is ExecutableRunManifestV12
+    profile = MockBatchAdapter.capabilities_for(
+        spec.provider, spec.endpoint, spec.model
+    ).model_copy(update={"modes": ("batch_native",)})
+    with open_prepared_run(run_id, store=root, capabilities=profile) as recovered:
+        assert recovered.manifest_sha256 == bytes_digest(original)
+        assert tuple(response.item_id for response in recovered.iter_responses()) == (
+            "000",
+            "001",
+        )
+    assert fixed.read_bytes() == original
+    with ReadOnlyRepository(root) as repository:
+        assert repository.get_manifest(run_id).artifact.sha256 == bytes_digest(original)
+        assert repository.get_owner(run_id) is None
+        assert (
+            sum(event.kind == "manifest_sealed" for event in repository.events(run_id))
+            == 1
+        )
+    assert service_counts(root) == {"forwards": 0, "jobs": 0, "cancelled": 0}
+
+
+def test_ordinary_unsealed_result_export_needs_no_published_manifest(
+    tmp_path: Path,
+) -> None:
+    with Repository(tmp_path) as repository:
+        repository.create_run(
+            RunRecord(
+                run_id="001",
+                task_kind="rubric",
+                provider="mock",
+                endpoint="synthetic",
+                model="fixture",
+            )
+        )
+        directory = repository.run_directory("001")
+    assert not (directory / "manifest.json").exists()
+    exported = export_run_results("001", store=tmp_path)
+    assert exported.row_count == 0 and exported.incomplete_source
+    with ReadOnlyRepository(tmp_path) as repository:
+        assert repository.get_run("001").manifest_sha256 is None
+        assert (
+            repository.connection.execute("SELECT count(*) FROM exports").fetchone()[0]
+            == 1
+        )
+    assert not (directory / "manifest.json").exists()

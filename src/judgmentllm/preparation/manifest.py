@@ -916,6 +916,60 @@ from judgmentllm.batch_models import BatchContextV1  # noqa: E402
 
 ExecutableRunManifestV12.model_rebuild()
 
+
+class ExecutableRunManifestV13(ExecutableRunManifest):
+    """OpenAI generative Batch; never a live or synthetic execution seal."""
+
+    schema_version: Literal[13] = 13  # pyright: ignore[reportIncompatibleVariableOverride]
+    run_spec_version: Literal[3] = 3
+    output_contract_version: Literal[2] = 2
+    output_commitment_version: Literal[4] = 4
+    request_identity_version: Literal[3] = 3  # pyright: ignore[reportIncompatibleVariableOverride]
+    template: TemplateCommitmentV3  # pyright: ignore[reportIncompatibleVariableOverride]
+    batch_context: OpenAIBatchContextV1
+    batch_shard_count: int = Field(ge=0)
+    batch_member_count: int = Field(ge=0)
+    batch_index_sha256: SHA256
+
+    @field_validator("schema_version", mode="before")
+    @classmethod
+    def _version(cls, value: object) -> object:
+        if type(value) is not int or value != 13:
+            raise ValueError("schema_version must be integer 13")
+        return value
+
+    @field_validator(
+        "schema_version",
+        "run_spec_version",
+        "output_contract_version",
+        "output_commitment_version",
+        "request_identity_version",
+        mode="before",
+    )
+    @classmethod
+    def native_versions(cls, value: object) -> object:
+        if type(value) is not int:
+            raise ValueError("batch versions must be integers")
+        return value
+
+    @model_validator(mode="after")
+    def batch_scope(self) -> Self:
+        if (
+            self.generation.provider != "openai"
+            or self.generation.endpoint != self.batch_context.endpoint
+            or self.generation.model != self.batch_context.model
+            or self.execution.mode != "batch_native"
+            or self.execution.cache_policy != "off"
+            or self.execution.tier is not None
+        ):
+            raise ValueError("OpenAI Batch seal has incompatible scope")
+        return self
+
+
+from judgmentllm.batch_models import OpenAIBatchContextV1  # noqa: E402
+
+ExecutableRunManifestV13.model_rebuild()
+
 ExecutableManifest = (
     ExecutableRunManifest
     | ExecutableRunManifestV2
@@ -929,6 +983,7 @@ ExecutableManifest = (
     | ExecutableRunManifestV10
     | ExecutableRunManifestV11
     | ExecutableRunManifestV12
+    | ExecutableRunManifestV13
 )
 
 
@@ -944,6 +999,8 @@ def parse_executable_manifest(raw: bytes) -> ExecutableManifest:
         if isinstance(value, dict)
         else None
     )
+    if type(version) is int and version == 13:
+        return ExecutableRunManifestV13.model_validate_json(raw)
     if type(version) is int and version == 12:
         return ExecutableRunManifestV12.model_validate_json(raw)
     if type(version) is int and version == 11:

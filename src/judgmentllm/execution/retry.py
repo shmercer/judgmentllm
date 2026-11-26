@@ -30,9 +30,14 @@ from judgmentllm.persistence.models import (
     SubmissionRecord,
 )
 from judgmentllm.persistence.ownership import ExecutorOwnership
-from judgmentllm.persistence.repository import Repository
+from judgmentllm.persistence.repository import ReadOnlyRepository, Repository
 from judgmentllm.planning import stable_id
-from judgmentllm.preparation import PreparedRun, RequestDependency, open_prepared_run
+from judgmentllm.preparation import (
+    PreparedRun,
+    RequestDependency,
+    _preflight_v12_write,  # pyright: ignore[reportPrivateUsage]
+    open_prepared_run,
+)
 from judgmentllm.prompts import RenderedPrompt, RenderedPromptV2
 from judgmentllm.providers import ProviderAdapter
 from judgmentllm.providers.batch_protocol import NativeBatchAdapter
@@ -367,6 +372,15 @@ def prepare_subset_retry(
                 existing.payload_sha256,
             ):
                 raise IntegrityError("existing retry transport commitment differs")
+        if prepared_run.manifest.schema_version == 13:
+            wire = adapter.prepare(
+                prepared_run.spec, subset, prepared_run.render_attempt(subset)
+            )
+            if (wire.prompt_sha256, wire.payload_sha256) != (
+                existing.prompt_sha256,
+                existing.payload_sha256,
+            ):
+                raise IntegrityError("existing Batch retry wire differs")
         with repository.execution_transaction(run_id, owner_token):
             if repository.get_attempt(run_id, existing.attempt_id) != existing:
                 raise IntegrityError("existing retry changed during verification")
@@ -540,6 +554,10 @@ def prepare_subset_retry(
             native_artifacts = publish_prepared_transport(
                 repository, prepared_run.store, wire, prepared_run.spec.capture
             )
+    elif version == 13:
+        rendered = prepared_run.render_attempt(subset)
+        wire = adapter.prepare(prepared_run.spec, subset, rendered)
+        prompt_bytes = rendered.text.encode("utf-8")
     else:
         rendered = prepared_run.render_attempt(subset)
         if type(rendered) not in (RenderedPrompt, RenderedPromptV2):
@@ -635,7 +653,7 @@ def prepare_subset_retry(
             repository._register_artifact(run_id, artifact)  # pyright: ignore[reportPrivateUsage]
         repository.create_attempt(attempt, selected)
         checkpoint("during_retry_preparation", request_uid)
-        if version != 12:
+        if version not in (12, 13):
             submission_id = stable_id("submission", run_id, attempt_id)
             repository.create_submission(
                 SubmissionRecord(
@@ -678,6 +696,8 @@ def authorize_subset_retry(
     selected = tuple(task_ids)
     if not selected or len(set(selected)) != len(selected):
         raise RetryAuthorizationError("retry selection requires unique task IDs")
+    with ReadOnlyRepository(store) as inspection:
+        _preflight_v12_write(inspection, run_id)
     with Repository(store) as bootstrap, ExecutorOwnership(bootstrap, run_id) as owner:
         assert owner.owner is not None
         owner_token = owner.owner.token
