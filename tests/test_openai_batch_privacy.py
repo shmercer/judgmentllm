@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from openai_batch_fixture import Service, diagnostic_records, install
 from test_batch_exports_retry import file_path
 from test_openai_batch_recovery import setup
 
@@ -17,6 +18,220 @@ from judgmentllm.persistence.repository import ReadOnlyRepository
 
 def store_bytes(root: Path) -> bytes:
     return b"".join(path.read_bytes() for path in root.rglob("*") if path.is_file())
+
+
+def _snapshot_replay(store: Path, service: Any, source: str) -> tuple[object, ...]:
+    with ReadOnlyRepository(store) as repo:
+        return (
+            tuple(repo.iter_results("001")),
+            (
+                tuple(
+                    repo.connection.execute(
+                        "SELECT * FROM usage_revisions ORDER BY rowid"
+                    )
+                ),
+                tuple(
+                    row[0]
+                    for row in repo.connection.execute(
+                        "SELECT json_extract(record_json, '$.usage') FROM batch_member_receipts ORDER BY rowid"
+                    )
+                ),
+            ),
+            tuple(
+                repo.connection.execute(
+                    "SELECT record_json FROM batch_facts WHERE kind='cursor' AND entity_id=? ORDER BY fact_seq",
+                    (source,),
+                )
+            ),
+            tuple(
+                repo.connection.execute("SELECT * FROM batch_operations ORDER BY rowid")
+            ),
+            tuple(event for event in service.events() if event[0] == "POST"),
+        )
+
+
+@pytest.mark.parametrize("defect", ["receipt-binding", "changed-row"])
+def test_replay_rejects_inconsistent_protected_base_member(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, defect: str
+) -> None:
+    import base64
+    import io
+    import tarfile
+
+    from judgmentllm.batch_models import BatchMemberReceiptV1
+    from judgmentllm.execution.openai_batch import OpenAIBatchSession
+    from judgmentllm.lifecycle_models import LifecycleError
+    from judgmentllm.persistence.artifacts import ArtifactStore
+    from judgmentllm.persistence.hashing import bytes_digest, canonical_bytes
+    from judgmentllm.persistence.models import IntegrityError
+    from judgmentllm.providers.openai_batch import OpenAIBatchAdapter
+    from judgmentllm.providers.openai_batch_diagnostics import OpenAIBatchResultScreenV1
+
+    fixture = Path(__file__).parent / "fixtures" / "batch-history"
+    name = "openai-member-interrupted"
+    metadata = json.loads((fixture / f"{name}.json").read_bytes())
+    assert metadata["producer_commit"] == "d6071de62c139122c2c4ebd9874e15b16807d72e"
+    assert metadata["producer_tree"] == "31d25fc33138f36f9d5a70a556eec7cd606d17c0"
+    assert metadata["synthetic_only"] and metadata["run_id"] == "001"
+    archive_bytes = base64.b64decode(
+        (fixture / f"{name}.tar.gz.base64").read_bytes().strip(), validate=True
+    )
+    assert bytes_digest(archive_bytes) == metadata["archive_sha256"]
+    with tarfile.open(fileobj=io.BytesIO(archive_bytes), mode="r:gz") as archive:
+        archive.extractall(tmp_path, filter="data")
+    store = tmp_path / "store"
+    service = Service(tmp_path / "service.sqlite")
+    install(monkeypatch, service)
+    with ReadOnlyRepository(store) as repo:
+        run = repo.run_directory("001")
+        (reference,) = (run / "batch" / "members").glob("*.json")
+        receipt_bytes = reference.read_bytes()
+        receipt = BatchMemberReceiptV1.model_validate_json(receipt_bytes)
+        artifacts = ArtifactStore(run, create=False)
+        retained = artifacts.read(receipt.retained)
+    assert receipt_bytes == canonical_bytes(receipt)
+    assert bytes_digest(receipt_bytes) == metadata["member_receipt_sha256"]
+    assert receipt.capture == "full" and receipt.disposition == "exact"
+    assert receipt.original is not None
+    assert (
+        bytes_digest(retained) == receipt.retained.sha256 == metadata["retained_sha256"]
+    )
+    wire, declared = service.file("file-output_1")
+    (row,) = wire.splitlines()
+    assert declared == len(wire)
+    assert bytes_digest(row) == receipt.original.sha256 == metadata["wire_sha256"]
+    assert retained == canonical_bytes(json.loads(row))
+    source = receipt.source_id
+    assert _snapshot_replay(store, service, source)[:3] == ((), ((), ()), ())
+
+    if defect == "receipt-binding":
+        fields = receipt.model_dump()
+        fields["identity"]["request_uid"] = "different-synthetic-request"
+        changed_receipt = BatchMemberReceiptV1.model_validate(fields)
+        replacement = artifacts.put(
+            canonical_bytes(changed_receipt), "application/json"
+        )
+        reference.unlink()
+        artifacts.publish_reference(replacement, reference.relative_to(run).as_posix())
+        assert artifacts.read(replacement) == reference.read_bytes()
+        message = "OpenAI Batch replay lacks its original member receipt"
+    else:
+
+        class Interrupted(BaseException):
+            pass
+
+        real_screen = OpenAIBatchAdapter.screen_result
+        real_write = OpenAIBatchSession.write_fact
+        observed: list[bytes] = []
+        cuts: list[OpenAIBatchResultScreenV1] = []
+
+        def check_screen(adapter: OpenAIBatchAdapter, raw: bytes, expected: Any) -> Any:
+            screened = real_screen(adapter, raw, expected)
+            if raw == row:
+                assert screened is not None and not screened[4]
+                assert screened[0] == receipt.member_key
+                assert b"offline-envelope-placeholder" not in screened[3]
+                observed.append(screened[3])
+            return screened
+
+        def interrupt_after_cut(
+            session: OpenAIBatchSession, kind: str, entity: str, record: Any
+        ) -> None:
+            real_write(session, kind, entity, record)
+            if isinstance(record, OpenAIBatchResultScreenV1):
+                cuts.append(record)
+                raise Interrupted
+
+        with monkeypatch.context() as patch:
+            patch.setattr(OpenAIBatchAdapter, "screen_result", check_screen)
+            patch.setattr(OpenAIBatchSession, "write_fact", interrupt_after_cut)
+            with pytest.raises(Interrupted):
+                for _ in range(3):
+                    collect_batch("001", store=store, use_frozen_snapshot=True)
+        assert len(observed) == 1
+        (cut,) = cuts
+        assert (cut.source_id, cut.legacy_positions) == (source, 1)
+        with ReadOnlyRepository(store) as repo:
+            assert tuple(
+                row[0]
+                for row in repo.connection.execute(
+                    "SELECT record_json FROM batch_facts WHERE kind='cursor' AND entity_id=?",
+                    (cut.entity,),
+                )
+            ) == (canonical_bytes(cut).decode(),)
+        message = "OpenAI Batch result screen lacks its historical receipt"
+
+    before = _snapshot_replay(store, service, source)
+    saved_receipt = reference.read_bytes()
+    events = service.events()
+    if defect == "changed-row":
+        assert before[0] and before[1] == (
+            (),
+            (canonical_bytes(receipt.usage).decode(),),
+        )
+        assert before[2] == ()
+        changed = wire.replace(b"req_offline", b"req_offlinf", 1)
+        assert changed != wire and len(changed) == declared
+        assert json.loads(changed)["custom_id"] == receipt.member_key
+        service.file("file-output_1", body=changed)
+    with pytest.raises(LifecycleError) as error:
+        collect_batch("001", store=store, use_frozen_snapshot=True)
+    assert isinstance(error.value.__context__, IntegrityError)
+    assert str(error.value.__context__) == message
+    assert _snapshot_replay(store, service, source) == before
+    assert reference.read_bytes() == saved_receipt
+    assert artifacts.read(receipt.retained) == retained
+    reads = service.events()[len(events) :]
+    if defect == "changed-row":
+        assert reads == [
+            ("GET", "/v1/files/file-output_1"),
+            ("GET", "/v1/files/file-output_1/content"),
+        ]
+    else:
+        assert reads == []
+
+
+def test_impossible_result_screen_cut_is_rejected_before_content(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from judgmentllm.lifecycle_models import LifecycleError
+    from judgmentllm.persistence.artifacts import ArtifactStore
+    from judgmentllm.persistence.hashing import canonical_bytes
+    from judgmentllm.persistence.models import IntegrityError
+    from judgmentllm.persistence.native_batch import register
+    from judgmentllm.persistence.repository import Repository
+    from judgmentllm.providers.openai_batch_diagnostics import OpenAIBatchResultScreenV1
+
+    service, spec, store = setup(tmp_path, monkeypatch, responses=1)
+    with Repository(store) as repo, repo.transaction():
+        run = repo.run_directory("001")
+        assert not list((run / "batch" / "members").glob("*.json"))
+        (source,) = repo.connection.execute(
+            "SELECT json_extract(record_json,'$.source_id') FROM batch_facts "
+            "WHERE kind='cursor' AND entity_id LIKE 'openai-ready:%' "
+            "AND json_extract(record_json,'$.role')='output'"
+        ).fetchone()
+        cut = OpenAIBatchResultScreenV1(source_id=source, legacy_positions=2)
+        artifacts = ArtifactStore(run, create=False)
+        raw = canonical_bytes(cut)
+        identity = artifacts.put(raw, "application/json")
+        register(repo, "001", identity)
+        repo.connection.execute(
+            "INSERT INTO batch_facts(run_id,kind,entity_id,receipt_sha256,record_json) VALUES (?,?,?,?,?)",
+            ("001", "cursor", cut.entity, identity.sha256, raw.decode()),
+        )
+    before = _snapshot_replay(store, service, source)
+    assert before[:3] == ((), ((), ()), ())
+    events = service.events()
+    with pytest.raises(LifecycleError) as error:
+        collect_batch("001", store=store, spec=spec)
+    assert isinstance(error.value.__context__, IntegrityError)
+    assert (
+        str(error.value.__context__)
+        == "OpenAI Batch result screen differs from its source"
+    )
+    assert _snapshot_replay(store, service, source) == before
+    assert service.events()[len(events) :] == [("GET", "/v1/files/file-output_1")]
 
 
 @pytest.mark.parametrize(
@@ -142,7 +357,7 @@ def test_diagnostic_private_ack_requires_closed_full_capture(
 def test_diagnostic_result_fields_remain_attributed_and_screened(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from openai_batch_fixture import Service, diagnostic_records, install, specification
+    from openai_batch_fixture import specification
 
     from judgmentllm import poll_batch, prepare_batch, submit_batch
 
@@ -694,6 +909,10 @@ def test_overrun_rejected_before_any_row_from_bad_chunk(
     result = collect_batch("001", store=store, spec=spec)
     assert result.collection is not None
     assert "source_overrun" in result.collection.codes
+    headers, overrun = diagnostic_records(store, "file_content")
+    assert headers["call_id"] == overrun["call_id"]
+    assert headers["http_status"] == overrun["http_status"] == 200
+    assert (overrun["outcome"], overrun["reason"]) == ("withheld", "bounds")
     with ReadOnlyRepository(store) as repo:
         assert repo.connection.execute(
             "SELECT count(*) FROM batch_member_receipts"

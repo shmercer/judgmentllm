@@ -128,8 +128,6 @@ class OpenAIBatchAdapter:
             if call.reason is None:
                 if not call.forwarded:
                     call.reason = "pre_forward"
-                elif isinstance(exc, BatchSourceOverrun):
-                    call.reason = "bounds"
                 elif isinstance(exc, BatchEvidenceWithheld):
                     call.reason = "binding"
                 else:

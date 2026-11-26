@@ -344,14 +344,6 @@ def _nonnegative(value: object) -> bool:
     return type(value) is int and value >= 0
 
 
-def _file_id(value: object) -> bool:
-    try:
-        safe_id(value, "file-")
-    except ValueError:
-        return False
-    return True
-
-
 def _counts(value: object) -> bool:
     obj = _object(value)
     return set(obj) == {"total", "completed", "failed"} and all(
@@ -362,8 +354,10 @@ def _counts(value: object) -> bool:
 def approved_ack(
     raw: bytes, body: dict[str, object], kind: str, model: str, key: str | None
 ) -> bool:
-    # Only called after existing route and receipt binding validation.
+    # Strict decoding and receipt binding establish the required values and
+    # the create file IDs. The closed shape below admits only canonical JSON.
     optional: dict[str, Callable[[object], bool]]
+    bound_optional: set[str] = set()
     if kind == "upload":
         required = {"id", "filename", "bytes", "purpose"}
         optional = {
@@ -374,11 +368,10 @@ def approved_ack(
         timestamps = ("created_at", "expires_at")
     else:
         required = {"id", "input_file_id", "endpoint", "status", "metadata"}
+        bound_optional = {"output_file_id", "error_file_id"}
         optional = {
             "object": lambda v: v == "batch",
             "completion_window": lambda v: v == "24h",
-            "output_file_id": lambda v: v is None or _file_id(v),
-            "error_file_id": lambda v: v is None or _file_id(v),
             "model": lambda v: v is None or v == model,
             "errors": lambda v: v is None,
             "usage": lambda v: v is None,
@@ -397,7 +390,11 @@ def approved_ack(
         )
     eligible = (
         required <= body.keys()
-        and not body.keys() - required - optional.keys() - set(timestamps)
+        and not body.keys()
+        - required
+        - bound_optional
+        - optional.keys()
+        - set(timestamps)
         and all(check(body[name]) for name, check in optional.items() if name in body)
         and all(
             body.get(name) is None or _nonnegative(body[name]) for name in timestamps
@@ -405,7 +402,4 @@ def approved_ack(
     )
     if not eligible or not clean(raw, key):
         return False
-    try:
-        return clean(canonical_bytes(body), key)
-    except ValueError:
-        return False
+    return clean(canonical_bytes(body), key)
