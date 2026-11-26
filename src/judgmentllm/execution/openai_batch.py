@@ -7,6 +7,9 @@ scientific attempts and submission operation allowances are never reused here.
 from __future__ import annotations
 
 import asyncio
+import sqlite3
+from collections.abc import Generator
+from contextlib import contextmanager
 from math import ceil
 from typing import Any
 
@@ -14,7 +17,10 @@ from judgmentllm.batch_models import (
     BatchCursorV1,
     BatchDiagnosticV1,
     BatchMemberReceiptV1,
+    BatchMemberV1,
+    BatchOperationIntentV1,
     BatchOperationReceiptV1,
+    BatchShardV1,
     OpenAIBatchAbsentV1,
     OpenAIBatchAdmissionV1,
     OpenAIBatchCollectionV1,
@@ -47,6 +53,13 @@ from judgmentllm.providers.batch_protocol import (
     BatchSourceOverrun,
 )
 from judgmentllm.providers.openai_batch import CONTROL_MAX_BYTES, OpenAIBatchAdapter
+from judgmentllm.providers.openai_batch_diagnostics import (
+    PREFIX,
+    RESULT_SCREEN_PREFIX,
+    OpenAIBatchDiagnosticV1,
+    OpenAIBatchResultScreenV1,
+)
+from judgmentllm.providers.openai_batch_response import ScreenedResult
 
 _TERMINAL_ERRORS = frozenset(
     {
@@ -137,6 +150,10 @@ class OpenAIBatchSession(BatchSession):
             self.status_model = OpenAIBatchStatusV1
             self.adapter.budget = self.budget
             self.adapter.upload_resolver = self.upload_bytes
+            self.adapter.publish_diagnostic = self.publish_diagnostic
+            self.adapter.before_forward = self.check_diagnostic_storage
+            self.adapter.capture_ack = self.manifest.capture == "full"
+            self.diagnostic_storage_failed = False
             self.selection_pending = False
             self.selection_progress = False
             self.collection_budget_unfit = False
@@ -147,13 +164,164 @@ class OpenAIBatchSession(BatchSession):
     def write_fact(self, kind: str, entity: str, model: Any) -> None:
         fact(self.repository, self.run_id, self.token, kind, entity, model)
 
-    def save_member(self, *args: Any, **kwargs: Any) -> str:
+    def publish_diagnostic(self, record: OpenAIBatchDiagnosticV1) -> None:
+        if not self.diagnostic_storage_failed:
+            try:
+                self.write_fact("cursor", record.entity, record)
+            except (OSError, PersistenceError, sqlite3.Error):
+                self.diagnostic_storage_failed = True
+
+    def check_diagnostic_storage(self) -> None:
+        if self.diagnostic_storage_failed:
+            raise PersistenceError(
+                "OpenAI Batch diagnostic evidence could not be published"
+            ) from None
+
+    @contextmanager
+    def diagnostic_boundary(self) -> Generator[None]:
+        from judgmentllm.lifecycle import LifecycleError
+
         try:
-            return super().save_member(*args, **kwargs)
+            yield
+        except (OSError, BudgetExhausted, BatchEvidenceWithheld, LifecycleError):
+            self.check_diagnostic_storage()
+            raise
+        else:
+            self.check_diagnostic_storage()
+
+    async def mutate(
+        self,
+        shard: BatchShardV1,
+        kind: str,
+        payload: bytes,
+        remote_id: str | None = None,
+    ) -> BatchOperationReceiptV1 | None:
+        with self.diagnostic_boundary():
+            return await super().mutate(shard, kind, payload, remote_id)
+
+    async def recover_operations(self) -> None:
+        with self.diagnostic_boundary():
+            await super().recover_operations()
+
+    def accept_receipt(
+        self, intent: BatchOperationIntentV1, receipt: BatchOperationReceiptV1
+    ) -> None:
+        super().accept_receipt(intent, receipt)
+        self.adapter.publish_receipt_diagnostic(intent.instance_id)
+        approved = self.adapter.approved_ack
+        if approved is not None and approved[0] == intent.instance_id:
+            self.adapter.approved_ack = None
+            try:
+                self.store.publish_reference(
+                    self.store.put(approved[1], "application/json"),
+                    f"batch/openai-ack/{intent.instance_id}/{bytes_digest(canonical_bytes(receipt))}.json",
+                )
+            except (OSError, PersistenceError):
+                raise PersistenceError(
+                    "OpenAI Batch private acknowledgment could not be published"
+                ) from None
+
+    def publish_row_diagnostic(
+        self,
+        raw: bytes,
+        source: str,
+        position: int,
+        member: str | None,
+        kind: str | None,
+    ) -> None:
+        if (
+            latest(
+                self.repository,
+                self.run_id,
+                "cursor",
+                f"{PREFIX}row:{source}:{position}",
+                OpenAIBatchDiagnosticV1,
+            )
+            is None
+        ):
+            self.publish_diagnostic(
+                self.adapter.diagnose_row(raw, source, position, member, kind)
+            )
+        self.check_diagnostic_storage()
+        self.checkpoint("after_openai_batch_row_diagnostic", source)
+
+    def save_member(
+        self,
+        member: BatchMemberV1,
+        submission: SubmissionRecord,
+        source_id: str,
+        position: int,
+        raw: bytes,
+        *,
+        replay: bool = False,
+    ) -> str:
+        try:
+            if replay:
+                prior = self._bound_member_receipt(member, submission)
+                if prior is None or bytes_digest(raw) != prior.retained.sha256:
+                    raise IntegrityError(
+                        "OpenAI Batch replay lacks its original member receipt"
+                    )
+            return super().save_member(
+                member, submission, source_id, position, raw, replay=replay
+            )
         except OSError:
             raise PersistenceError(
                 "OpenAI Batch member evidence could not be durably published"
             ) from None
+
+    def _bound_member_receipt(
+        self,
+        member: BatchMemberV1,
+        submission: SubmissionRecord,
+    ) -> BatchMemberReceiptV1 | None:
+        prior = read_reference(
+            self.repository,
+            self.run_id,
+            f"batch/members/{member.member_key}.json",
+            BatchMemberReceiptV1,
+        )
+        if prior is None or (
+            prior.member_key,
+            prior.identity.run_id,
+            prior.identity.submission_id,
+            prior.identity.request_uid,
+            prior.identity.attempt_id,
+            prior.identity.observation_id,
+        ) != (
+            member.member_key,
+            self.run_id,
+            submission.submission_id,
+            member.request_uid,
+            member.attempt_id,
+            semantic_digest(
+                "batch-observation-id-v1", [submission.submission_id, member.member_key]
+            ),
+        ):
+            return None
+        return prior
+
+    def _committed_row(
+        self,
+        raw: bytes,
+        compiled: Any,
+        member: BatchMemberV1,
+        submission: SubmissionRecord,
+    ) -> tuple[BatchMemberReceiptV1, ScreenedResult] | None:
+        prior = self._bound_member_receipt(member, submission)
+        if prior is None:
+            return None
+        previous = self.adapter.verify_result_prefix(raw, compiled)
+        if (
+            previous is not None
+            and previous[0] == member.member_key
+            and previous[1].kind == prior.kind
+            and previous[1].observation_key == prior.observation_key
+            and previous[4] == (prior.disposition == "exact")
+            and bytes_digest(previous[3]) == prior.retained.sha256
+        ):
+            return prior, previous
+        return None
 
     def intent_for(
         self, submission: SubmissionRecord
@@ -228,54 +396,67 @@ class OpenAIBatchSession(BatchSession):
                 if submission is None:
                     continue
                 intent, _ = self.intent_for(submission)
-                try:
-                    status = await self.budget.call(
-                        lambda submission=submission: self.adapter.status(
-                            submission.submission_id, submission.remote_id
-                        )
-                    )
-                except BatchEvidenceWithheld:
-                    self.write_fact(
-                        "withheld",
-                        submission.submission_id,
-                        BatchDiagnosticV1(code="unsafe_evidence"),
-                    )
-                    raise OSError("OpenAI Batch status evidence was withheld") from None
-                status = OpenAIBatchStatusV1.model_validate_json(
-                    canonical_bytes(status)
-                )
-                previous = latest(
-                    self.repository,
-                    self.run_id,
-                    "status",
-                    submission.submission_id,
-                    OpenAIBatchStatusV1,
-                )
-                if (
-                    status.submission_id != submission.submission_id
-                    or status.remote_id != submission.remote_id
-                    or status.input_file_id != intent.remote_id
-                    or status.endpoint != ROUTES[self.manifest.batch_context.endpoint]
-                    or (
-                        previous is not None
-                        and previous.state != "running"
-                        and status != previous
-                    )
+                with (
+                    self.diagnostic_boundary(),
+                    self.adapter.diagnose("job_get", submission.submission_id) as call,
                 ):
-                    self.write_fact(
-                        "conflict",
-                        submission.submission_id,
-                        BatchDiagnosticV1(code="conflicting_terminal"),
-                    )
-                    for role in ("output", "error"):
-                        source = source_id(
-                            self.manifest_sha256,
-                            shard.shard_id,
-                            submission.submission_id,
-                            role,
+                    try:
+                        status = await self.budget.call(
+                            lambda submission=submission: self.adapter.status(
+                                submission.submission_id, submission.remote_id
+                            )
                         )
-                        self.fail_source(source, "source_conflict")
-                    continue
+                    except BatchEvidenceWithheld:
+                        if call.reason is None:
+                            call.reason = "binding"
+                        self.check_diagnostic_storage()
+                        self.write_fact(
+                            "withheld",
+                            submission.submission_id,
+                            BatchDiagnosticV1(code="unsafe_evidence"),
+                        )
+                        raise OSError(
+                            "OpenAI Batch status evidence was withheld"
+                        ) from None
+                    self.check_diagnostic_storage()
+                    status = OpenAIBatchStatusV1.model_validate_json(
+                        canonical_bytes(status)
+                    )
+                    previous = latest(
+                        self.repository,
+                        self.run_id,
+                        "status",
+                        submission.submission_id,
+                        OpenAIBatchStatusV1,
+                    )
+                    if (
+                        status.submission_id != submission.submission_id
+                        or status.remote_id != submission.remote_id
+                        or status.input_file_id != intent.remote_id
+                        or status.endpoint
+                        != ROUTES[self.manifest.batch_context.endpoint]
+                        or (
+                            previous is not None
+                            and previous.state != "running"
+                            and status != previous
+                        )
+                    ):
+                        call.reason = "binding"
+                        self.write_fact(
+                            "conflict",
+                            submission.submission_id,
+                            BatchDiagnosticV1(code="conflicting_terminal"),
+                        )
+                        for role in ("output", "error"):
+                            source = source_id(
+                                self.manifest_sha256,
+                                shard.shard_id,
+                                submission.submission_id,
+                                role,
+                            )
+                            self.fail_source(source, "source_conflict")
+                        continue
+                    self.adapter.diagnose_job(call, status)
                 artifact = put(
                     self.repository,
                     self.run_id,
@@ -696,24 +877,32 @@ class OpenAIBatchSession(BatchSession):
                     )
         self.budget.remaining()
         try:
-            metadata = await self.budget.call(
-                lambda: self.adapter.file_metadata(file_id)
-            )
+            with (
+                self.diagnostic_boundary(),
+                self.adapter.diagnose("file_metadata_initial", source) as call,
+            ):
+                metadata = await self.budget.call(
+                    lambda: self.adapter.file_metadata(file_id)
+                )
+                self.check_diagnostic_storage()
+                candidate = OpenAIBatchSourceBindingV1(
+                    ready=ready,
+                    create_receipt_sha256=bytes_digest(canonical_bytes(receipt)),
+                    job=status,
+                    file_id=metadata[0],
+                    purpose=metadata[1],
+                    byte_size=metadata[2],
+                )
+                if binding is not None and binding != candidate:
+                    call.reason = "binding"
+                    self.fail_source(source, "source_conflict")
+                    return
+                if candidate.byte_size > self.manifest.batch_context.max_source_bytes:
+                    call.reason = "bounds"
         except BatchEvidenceWithheld:
             self.fail_source(
                 source, "source_conflict" if binding is not None else "unsafe_metadata"
             )
-            return
-        candidate = OpenAIBatchSourceBindingV1(
-            ready=ready,
-            create_receipt_sha256=bytes_digest(canonical_bytes(receipt)),
-            job=status,
-            file_id=metadata[0],
-            purpose=metadata[1],
-            byte_size=metadata[2],
-        )
-        if binding is not None and binding != candidate:
-            self.fail_source(source, "source_conflict")
             return
         if binding is None:
             fact(
@@ -748,128 +937,241 @@ class OpenAIBatchSession(BatchSession):
         position = received = 0
         prefix = semantic_digest("openai-batch-prefix-v1", [source])
         target = cursor.position if cursor else 0
+        screening_id = RESULT_SCREEN_PREFIX + source
+        screening = latest(
+            self.repository,
+            self.run_id,
+            "cursor",
+            screening_id,
+            OpenAIBatchResultScreenV1,
+        )
+        legacy_positions = target if screening is None else screening.legacy_positions
+        if screening is not None and (
+            screening.source_id != source or legacy_positions > target + 1
+        ):
+            raise IntegrityError("OpenAI Batch result screen differs from its source")
         buffer = bytearray()
         stream = self.adapter.content(file_id, size)
         eof = False
         try:
-            while True:
-                self.budget.remaining()
-                while b"\n" in buffer or (eof and buffer):
-                    if (
-                        position >= target
-                        and self.budget.result_rows
-                        >= self.budget.options.max_result_rows
-                    ):
-                        self.fail_source(source, "collection_partial", stalls=0)
-                        return
-                    line, separator, tail = buffer.partition(b"\n")
-                    if (
-                        len(line) + len(separator)
-                        > self.manifest.batch_context.limits.max_record_bytes
-                        or not line.strip()
-                    ):
-                        self.fail_source(source, "source_framing")
-                        return
-                    raw = bytes(line)
-                    screened = self.adapter.screen_result(raw, compiled)
-                    if screened is None:
-                        digest = semantic_digest(
-                            "batch-withheld-v1", [source, position]
-                        )
-                    elif position < target:
-                        digest = bytes_digest(screened[3])
-                    else:
-                        digest = self.save_member(
-                            by_key[screened[0]], submission, source, position, raw
-                        )
-                    next_prefix = semantic_digest(
-                        "batch-result-prefix-step-v1", [prefix, position, digest]
-                    )
-                    if position < target:
-                        if (
-                            position + 1 == target
-                            and cursor is not None
-                            and next_prefix != cursor.prefix_sha256
-                        ):
-                            self.fail_source(source, "source_conflict")
-                            return
-                    else:
-                        if screened is None:
-                            self.write_fact(
-                                "withheld",
-                                source + ":" + str(position),
-                                BatchDiagnosticV1(code="unsafe_evidence"),
-                            )
-                        new_cursor = BatchCursorV1(
-                            run_id=self.run_id,
-                            submission_id=submission.submission_id,
-                            source_id=source,
-                            position=position + 1,
-                            prefix_sha256=next_prefix,
-                        )
-                        self.write_fact("cursor", source, new_cursor)
-                        self.checkpoint("after_openai_batch_cursor", source)
-                        self.budget.result_rows += 1
-                    position += 1
-                    prefix = next_prefix
-                    buffer = bytearray(tail)
-                if eof:
-                    if position < target:
-                        self.fail_source(source, "source_conflict")
-                        return
-                    try:
-                        final_metadata = await self.budget.call(
-                            lambda: self.adapter.file_metadata(file_id)
-                        )
-                    except BatchEvidenceWithheld:
-                        self.fail_source(source, "source_conflict")
-                        return
-                    if final_metadata != metadata:
-                        self.fail_source(source, "source_conflict")
-                        return
-                    self.write_fact(
-                        "cursor",
-                        source,
-                        BatchCursorV1(
-                            run_id=self.run_id,
-                            submission_id=submission.submission_id,
-                            source_id=source,
-                            position=position,
-                            prefix_sha256=prefix,
-                            exhausted=True,
-                        ),
-                    )
-                    self.fail_source(source, "source_exhausted", stalls=0)
-                    return
-                if (
-                    position < target
-                    and self.budget.options.max_io_steps - self.budget.steps
-                    <= 32 + 2 * ceil(size / 65_536) + 2
-                ):
-                    raise BudgetExhausted
+            binding_id = bytes_digest(canonical_bytes(binding))
+            with (
+                self.diagnostic_boundary(),
+                self.adapter.diagnose("file_content", binding_id) as call,
+            ):
                 try:
-                    chunk = await self.budget.call(lambda: anext(stream))
-                except StopAsyncIteration:
-                    if received != size:
-                        self.fail_source(source, "source_underrun")
-                        return
-                    eof = True
-                    continue
-                received += len(chunk)
-                if (
-                    position >= target
-                    and self.budget.result_rows >= self.budget.options.max_result_rows
-                    and chunk
-                ):
-                    self.fail_source(source, "collection_partial", stalls=0)
-                    return
-                buffer.extend(chunk)
-                if (
-                    len(buffer) > self.manifest.batch_context.limits.max_record_bytes
-                    and b"\n" not in buffer
-                ):
-                    self.fail_source(source, "source_framing")
-                    return
+                    while True:
+                        self.budget.remaining()
+                        while b"\n" in buffer or (eof and buffer):
+                            if (
+                                position >= target
+                                and self.budget.result_rows
+                                >= self.budget.options.max_result_rows
+                            ):
+                                self.fail_source(source, "collection_partial", stalls=0)
+                                return
+                            line, separator, tail = buffer.partition(b"\n")
+                            if (
+                                len(line) + len(separator)
+                                > self.manifest.batch_context.limits.max_record_bytes
+                                or not line.strip()
+                            ):
+                                call.reason = "body_decode"
+                                self.fail_source(source, "source_framing")
+                                return
+                            raw = bytes(line)
+                            screened = (
+                                self.adapter.verify_result_prefix(raw, compiled)
+                                if position < legacy_positions
+                                else self.adapter.screen_result(raw, compiled)
+                            )
+                            committed = None
+                            if position >= target:
+                                if screened is not None and (
+                                    position < legacy_positions or not screened[4]
+                                ):
+                                    committed = self._committed_row(
+                                        raw,
+                                        compiled,
+                                        by_key[screened[0]],
+                                        submission,
+                                    )
+                                if screening is None:
+                                    # An older member receipt may precede its cursor.
+                                    if (
+                                        committed is not None
+                                        and committed[1][4]
+                                        and (
+                                            committed[0].source_id,
+                                            committed[0].source_position,
+                                        )
+                                        == (source, position)
+                                    ):
+                                        screened = committed[1]
+                                        legacy_positions = position + 1
+                                    screening = OpenAIBatchResultScreenV1(
+                                        source_id=source,
+                                        legacy_positions=legacy_positions,
+                                    )
+                                    self.write_fact("cursor", screening_id, screening)
+                                elif position < legacy_positions:
+                                    if (
+                                        committed is None
+                                        or (
+                                            committed[0].source_id,
+                                            committed[0].source_position,
+                                        )
+                                        != (source, position)
+                                        or not committed[1][4]
+                                    ):
+                                        raise IntegrityError(
+                                            "OpenAI Batch result screen lacks its historical receipt"
+                                        )
+                                if position >= legacy_positions:
+                                    self.publish_row_diagnostic(
+                                        raw,
+                                        source,
+                                        position,
+                                        screened[0] if screened is not None else None,
+                                        screened[1].kind
+                                        if screened is not None
+                                        else None,
+                                    )
+                            if screened is None:
+                                digest = semantic_digest(
+                                    "batch-withheld-v1", [source, position]
+                                )
+                            elif position < target:
+                                digest = bytes_digest(screened[3])
+                            elif committed is not None:
+                                # Historical equality permits receipt reuse only. The
+                                # current screen still determines the new cursor hash.
+                                prior, previous = committed
+                                if not self.repository.get_results_for_attempt(
+                                    self.run_id, prior.identity.attempt_id
+                                ):
+                                    self.save_member(
+                                        by_key[screened[0]],
+                                        submission,
+                                        source,
+                                        position,
+                                        previous[3],
+                                        replay=True,
+                                    )
+                                digest = bytes_digest(screened[3])
+                            else:
+                                digest = self.save_member(
+                                    by_key[screened[0]],
+                                    submission,
+                                    source,
+                                    position,
+                                    raw,
+                                )
+                            next_prefix = semantic_digest(
+                                "batch-result-prefix-step-v1",
+                                [prefix, position, digest],
+                            )
+                            if position < target:
+                                if (
+                                    position + 1 == target
+                                    and cursor is not None
+                                    and next_prefix != cursor.prefix_sha256
+                                ):
+                                    self.fail_source(source, "source_conflict")
+                                    return
+                            else:
+                                if screened is None:
+                                    self.write_fact(
+                                        "withheld",
+                                        source + ":" + str(position),
+                                        BatchDiagnosticV1(code="unsafe_evidence"),
+                                    )
+                                new_cursor = BatchCursorV1(
+                                    run_id=self.run_id,
+                                    submission_id=submission.submission_id,
+                                    source_id=source,
+                                    position=position + 1,
+                                    prefix_sha256=next_prefix,
+                                )
+                                self.write_fact("cursor", source, new_cursor)
+                                self.checkpoint("after_openai_batch_cursor", source)
+                                self.budget.result_rows += 1
+                            position += 1
+                            prefix = next_prefix
+                            buffer = bytearray(tail)
+                        if eof:
+                            if position < target:
+                                self.fail_source(source, "source_conflict")
+                                return
+                            break
+                        if (
+                            position < target
+                            and self.budget.options.max_io_steps - self.budget.steps
+                            <= 32 + 2 * ceil(size / 65_536) + 2
+                        ):
+                            raise BudgetExhausted
+                        try:
+                            chunk = await self.budget.call(lambda: anext(stream))
+                            self.check_diagnostic_storage()
+                        except StopAsyncIteration:
+                            self.check_diagnostic_storage()
+                            if received != size:
+                                call.reason = "body_read"
+                                self.fail_source(source, "source_underrun")
+                                return
+                            eof = True
+                            continue
+                        received += len(chunk)
+                        if (
+                            position >= target
+                            and self.budget.result_rows
+                            >= self.budget.options.max_result_rows
+                            and chunk
+                        ):
+                            self.fail_source(source, "collection_partial", stalls=0)
+                            return
+                        buffer.extend(chunk)
+                        if (
+                            len(buffer)
+                            > self.manifest.batch_context.limits.max_record_bytes
+                            and b"\n" not in buffer
+                        ):
+                            call.reason = "body_decode"
+                            self.fail_source(source, "source_framing")
+                            return
+                finally:
+                    from typing import cast
+
+                    from judgmentllm.lifecycle import _close_adapter  # pyright: ignore[reportPrivateUsage]
+
+                    await _close_adapter(cast(Any, stream))
+            with (
+                self.diagnostic_boundary(),
+                self.adapter.diagnose("file_metadata_final", binding_id) as call,
+            ):
+                final_metadata = await self.budget.call(
+                    lambda: self.adapter.file_metadata(file_id)
+                )
+                if final_metadata != metadata:
+                    call.reason = "binding"
+            if final_metadata != metadata:
+                self.fail_source(source, "source_conflict")
+                return
+            self.write_fact(
+                "cursor",
+                source,
+                BatchCursorV1(
+                    run_id=self.run_id,
+                    submission_id=submission.submission_id,
+                    source_id=source,
+                    position=position,
+                    prefix_sha256=prefix,
+                    exhausted=True,
+                ),
+            )
+            self.fail_source(source, "source_exhausted", stalls=0)
+        except BatchEvidenceWithheld:
+            self.fail_source(source, "source_conflict")
         except BatchSourceOverrun:
             self.fail_source(source, "source_overrun")
         except (BudgetExhausted, TimeoutError, OSError):
@@ -883,9 +1185,3 @@ class OpenAIBatchSession(BatchSession):
                 "collection_partial" if stalls < 3 else "collection_no_progress",
                 stalls=stalls,
             )
-        finally:
-            from typing import cast
-
-            from judgmentllm.lifecycle import _close_adapter  # pyright: ignore[reportPrivateUsage]
-
-            await _close_adapter(cast(Any, stream))

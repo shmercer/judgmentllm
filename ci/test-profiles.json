@@ -2349,6 +2349,7 @@
     "src/judgmentllm/execution/openai_batch.py",
     "src/judgmentllm/openai_batch_transport.py",
     "src/judgmentllm/providers/openai_batch.py",
+    "src/judgmentllm/providers/openai_batch_diagnostics.py",
     "src/judgmentllm/providers/openai_batch_response.py"
   ],
   "smoke": [
@@ -2451,6 +2452,7 @@
     "src/judgmentllm/providers/vertex.py": "vertex",
     "src/judgmentllm/providers/vertex_response.py": "vertex",
     "src/judgmentllm/providers/openai_batch.py": "openai",
+    "src/judgmentllm/providers/openai_batch_diagnostics.py": "openai",
     "src/judgmentllm/providers/openai_batch_response.py": "openai"
   }
 }

@@ -6,7 +6,14 @@ redirects and automatic successors are disabled.
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator, AsyncIterator, Awaitable, Callable
+from collections.abc import (
+    AsyncGenerator,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Generator,
+)
+from contextlib import aclosing, contextmanager
 from contextvars import ContextVar
 from email.parser import BytesParser
 from email.policy import default
@@ -40,6 +47,18 @@ from judgmentllm.providers.batch_protocol import (
     BatchSourceOverrun,
 )
 from judgmentllm.providers.openai import _SDK_LOGGING, _protected_client, _sdk
+from judgmentllm.providers.openai_batch_diagnostics import (
+    Call,
+    OpenAIBatchDiagnosticV1,
+    Operation,
+    Reason,
+    approved_ack,
+    error_code,
+    job_code,
+    request_id,
+    row_record,
+    status_code,
+)
 from judgmentllm.providers.openai_batch_response import parse, safe_id, screen_result
 from judgmentllm.providers.openai_response import _mapping
 from judgmentllm.providers.protocol import ProviderIntegrityError
@@ -51,6 +70,9 @@ CONTROL_MAX_BYTES = 1_048_576
 _CALL: ContextVar[
     tuple[str, str, bytes, Any, Callable[[], None], int, dict[str, bool]] | None
 ] = ContextVar("openai_batch_authorized_call", default=None)
+_DIAGNOSTIC: ContextVar[Call | None] = ContextVar(
+    "openai_batch_diagnostic", default=None
+)
 
 
 class OpenAIBatchAdapter:
@@ -72,6 +94,75 @@ class OpenAIBatchAdapter:
         self._uploads: dict[str, bytes] = {}
         self.upload_resolver: Callable[[Any], bytes | None] | None = None
         self.reconcile_uploads = True
+        self.publish_diagnostic: Callable[[OpenAIBatchDiagnosticV1], None] | None = None
+        self.before_forward: Callable[[], None] = lambda: None
+        self.capture_ack = False
+        self.approved_ack: tuple[str, bytes] | None = None
+        self._receipt_diagnostic: Call | None = None
+
+    def emit(self, call: Call, reason: Reason) -> None:
+        if self.publish_diagnostic is not None:
+            self.publish_diagnostic(call.record(reason))
+
+    def _finish_diagnostic(self, call: Call) -> None:
+        if call.deferred_headers:
+            self.emit(call, "headers")
+        if call.reason is not None:
+            self.emit(call, call.reason)
+
+    def publish_receipt_diagnostic(self, instance_id: str) -> None:
+        call = self._receipt_diagnostic
+        if call is not None and call.binding_id == instance_id:
+            self._receipt_diagnostic = None
+            self._finish_diagnostic(call)
+
+    @contextmanager
+    def diagnose(self, operation: Operation, binding_id: str) -> Generator[Call]:
+        from asyncio import CancelledError
+
+        call = Call(operation, binding_id)
+        token = _DIAGNOSTIC.set(call)
+        try:
+            yield call
+        except (Exception, CancelledError) as exc:
+            if call.reason is None:
+                if not call.forwarded:
+                    call.reason = "pre_forward"
+                elif isinstance(exc, BatchSourceOverrun):
+                    call.reason = "bounds"
+                elif isinstance(exc, BatchEvidenceWithheld):
+                    call.reason = "binding"
+                else:
+                    call.reason = "unknown_stage"
+            raise
+        finally:
+            _DIAGNOSTIC.reset(token)
+            call.response = None
+            if self._receipt_diagnostic is not call:
+                self._finish_diagnostic(call)
+
+    def diagnose_row(
+        self,
+        raw: bytes,
+        source: str,
+        position: int,
+        member: str | None,
+        kind: str | None,
+    ) -> OpenAIBatchDiagnosticV1:
+        body = decode_assessment_output(raw) if member is not None else None
+        return row_record(body, source, position, member, kind, self._key)
+
+    @staticmethod
+    def diagnose_job(call: Call, status: OpenAIBatchStatusV1) -> None:
+        if (
+            call.http_status is not None
+            and 200 <= call.http_status < 300
+            and status.provider_state in ("failed", "expired")
+        ):
+            call.reason = (
+                "job_failed" if status.provider_state == "failed" else "job_expired"
+            )
+            call.provider_code = call.bound_job_code
 
     def context(self) -> OpenAIBatchContextV1:
         return self._context
@@ -112,16 +203,32 @@ class OpenAIBatchAdapter:
     parse = staticmethod(parse)
 
     def screen_result(self, raw: Any, expected_keys: Any) -> Any:
+        return self._screen_wire_result(raw, expected_keys, verify_prefix=False)
+
+    def verify_result_prefix(self, raw: Any, expected_keys: Any) -> Any:
+        return self._screen_wire_result(raw, expected_keys, verify_prefix=True)
+
+    def _screen_wire_result(
+        self, raw: Any, expected_keys: Any, *, verify_prefix: bool
+    ) -> Any:
         from judgmentllm.providers.google_response import contains_credential
 
-        screened = screen_result(raw, expected_keys, self.endpoint)
+        screened = screen_result(
+            raw,
+            expected_keys,
+            self.endpoint,
+            verify_prefix=verify_prefix,
+            active_key=self._key,
+        )
         if screened is not None and self._key is not None:
             if contains_credential(screened[3], self._key):
                 return None
         return screened
 
     def screen_replay(self, raw: Any, expected_keys: Any) -> Any:
-        return screen_result(raw, expected_keys, self.endpoint, allow_replay=True)
+        return screen_result(
+            raw, expected_keys, self.endpoint, allow_replay=True, active_key=self._key
+        )
 
     def control_projection(self, value: Any) -> Any:
         from judgmentllm.providers.google_response import contains_credential
@@ -181,13 +288,16 @@ class OpenAIBatchAdapter:
         delegate = self._http_transport or http.AsyncHTTPTransport(retries=0)
 
         class BoundedStream(http.AsyncByteStream):
-            def __init__(self, stream: Any, limit: int) -> None:
+            def __init__(self, stream: Any, limit: int, call: Call | None) -> None:
                 self.stream, self.limit = stream, limit
+                self.call = call
                 self.total = 0
 
             def receive(self, chunk: bytes) -> None:
                 self.total += len(chunk)
                 if self.total > self.limit:
+                    if self.call is not None:
+                        self.call.reason = "bounds"
                     adapter.budget.bytes += len(chunk)
                     if adapter.budget.bytes > adapter.budget.byte_limit:
                         adapter.budget.closed = True
@@ -198,18 +308,31 @@ class OpenAIBatchAdapter:
                 adapter.budget.remaining()
 
             async def __aiter__(self) -> AsyncIterator[bytes]:
+                from judgmentllm.execution.native_batch import BudgetExhausted
+
                 stream = self.stream.__aiter__()
                 while True:
                     try:
                         chunk = await adapter.budget.call(lambda: anext(stream))
                     except StopAsyncIteration:
                         break
+                    except BudgetExhausted:
+                        raise
+                    except Exception:
+                        if self.call is not None:
+                            self.call.reason = "body_read"
+                        raise
                     self.receive(chunk)
                     for offset in range(0, len(chunk), 65_536):
                         yield chunk[offset : offset + 65_536]
 
             async def aclose(self) -> None:
-                await self.stream.aclose()
+                try:
+                    await self.stream.aclose()
+                except Exception:
+                    if self.call is not None and self.call.reason is None:
+                        self.call.reason = "unknown_stage"
+                    raise
 
         class GuardedTransport(http.AsyncBaseTransport):
             async def handle_async_request(self, request: Any) -> Any:
@@ -285,15 +408,41 @@ class OpenAIBatchAdapter:
                     raise ProviderIntegrityError(
                         "OpenAI Batch forwarding was already consumed"
                     )
+                adapter.before_forward()
                 adapter.budget.remaining()
                 guard()
                 forwarded["sent"] = True
-                response = await delegate.handle_async_request(request)
+                call = _DIAGNOSTIC.get()
+                if call is not None:
+                    call.forwarded = True
+                try:
+                    response = await delegate.handle_async_request(request)
+                except Exception:
+                    if call is not None:
+                        call.reason = "delegate"
+                    raise
+                if call is not None:
+                    call.response = response
+                    call.http_status = status_code(response.status_code)
+                    ids = response.headers.get_list("x-request-id")
+                    if len(ids) == 1:
+                        call.http_request_id = request_id(ids[0], key)
+                    # A buffered mutation acknowledgment needs only local
+                    # settlement. Let that finish before the diagnostic write.
+                    call.deferred_headers = (
+                        call.operation in ("upload_post", "create_post")
+                        and response.is_success
+                        and response.is_stream_consumed
+                    )
+                    if not call.deferred_headers:
+                        adapter.emit(call, "headers")
                 if not response.is_success:
                     from judgmentllm.lifecycle import _close_adapter  # pyright: ignore[reportPrivateUsage]
 
                     # Reject status before the SDK eagerly reads error bodies.
                     # Unread bodies are truncated; cached bytes already arrived.
+                    if call is not None:
+                        call.reason = "http_status"
                     try:
                         try:
                             if response.is_stream_consumed:
@@ -304,6 +453,18 @@ class OpenAIBatchAdapter:
                                         "OpenAI Batch HTTP error exceeds control bound"
                                     )
                             adapter.budget.remaining()
+                            if (
+                                call is not None
+                                and response.is_stream_consumed
+                                and response.headers.get("content-encoding", "identity")
+                                == "identity"
+                            ):
+                                try:
+                                    body = decode_assessment_output(response.content)
+                                except ValueError:
+                                    pass
+                                else:
+                                    call.provider_code = error_code(body, key)
                         except BaseException:
                             adapter.budget.closed = True
                             raise
@@ -315,9 +476,11 @@ class OpenAIBatchAdapter:
                             raise
                     raise OSError("OpenAI Batch HTTP response is unavailable")
                 if response.headers.get("content-encoding", "identity") != "identity":
+                    if call is not None:
+                        call.reason = "encoding"
                     await response.aclose()
                     raise OSError("encoded OpenAI Batch response is unsupported")
-                stream = BoundedStream(response.stream, limit)
+                stream = BoundedStream(response.stream, limit, call)
                 if response.is_stream_consumed:
                     stream.receive(response.content)
                 response.stream = stream
@@ -356,14 +519,40 @@ class OpenAIBatchAdapter:
             (method, path, query, body, guard, CONTROL_MAX_BYTES, {"sent": False})
         )
         logging = _SDK_LOGGING.set(True)
+        call = _DIAGNOSTIC.get()
         try:
-            response = await function(await self.client())
+            try:
+                response = await function(await self.client())
+            except Exception as exc:
+                from openai import APIResponseValidationError
+
+                if (
+                    call is not None
+                    and call.reason is None
+                    and isinstance(exc, APIResponseValidationError)
+                    and call.response is exc.response
+                    and call.http_status is not None
+                    and 200 <= call.http_status < 300
+                ):
+                    call.reason = "sdk_wrapper"
+                raise
             self.budget.remaining()
             raw = response.http_response.content
             try:
-                return _mapping(decode_assessment_output(raw))
+                result = _mapping(decode_assessment_output(raw))
             except (ValueError, TypeError):
+                if call is not None:
+                    call.reason = "body_decode"
                 raise BatchEvidenceWithheld("unsafe control representation") from None
+            if (
+                self.capture_ack
+                and call is not None
+                and call.operation in ("upload_post", "create_post")
+                and call.http_status is not None
+                and 200 <= call.http_status < 300
+            ):
+                call.pending_ack = raw
+            return result
         except BatchSourceOverrun:
             raise BatchEvidenceWithheld("oversized control representation") from None
         except (ProviderIntegrityError, BatchEvidenceWithheld):
@@ -406,6 +595,16 @@ class OpenAIBatchAdapter:
         return receipt
 
     async def invoke(self, intent: Any, payload: Any, guard: Any) -> Any:
+        if intent.kind == "cancel":
+            return await self._invoke(intent, payload, guard)
+        operation = "upload_post" if intent.kind == "upload" else "create_post"
+        with self.diagnose(operation, intent.instance_id) as call:
+            receipt = await self._invoke(intent, payload, guard)
+            call.pending_ack = None
+            self._receipt_diagnostic = call
+            return receipt
+
+    async def _invoke(self, intent: Any, payload: Any, guard: Any) -> Any:
         require_sdk()
         data = bytearray()
         async for chunk in payload:
@@ -413,6 +612,7 @@ class OpenAIBatchAdapter:
         data = bytes(data)
         if bytes_digest(data) != intent.payload_sha256 or intent.sequence != 1:
             raise ProviderIntegrityError("OpenAI Batch operation payload differs")
+        status = None
         if intent.kind == "upload":
             filename = self.filename(intent)
             self.authorize_upload(data)
@@ -458,7 +658,7 @@ class OpenAIBatchAdapter:
                 body=data,
                 guard=guard,
             )
-            self._screen_job(body, intent.instance_id, intent=intent)
+            status = self._screen_job(body, intent.instance_id, intent=intent)
         else:
             job_id = self.provider_id(intent.remote_id, "batch_")
             if data:
@@ -471,11 +671,21 @@ class OpenAIBatchAdapter:
             )
             if body.get("id") != job_id:
                 raise BatchEvidenceWithheld("unsafe cancel acknowledgment")
-        return self._receipt(intent, body.get("id"))
+        receipt = self._receipt(intent, body.get("id"))
+        call = _DIAGNOSTIC.get()
+        if call is not None:
+            if status is not None and status.provider_state in ("failed", "expired"):
+                call.bound_job_code = job_code(body, self._key)
+                self.diagnose_job(call, status)
+            if call.pending_ack is not None and approved_ack(
+                call.pending_ack, body, intent.kind, self.model, self._key
+            ):
+                self.approved_ack = (intent.instance_id, call.pending_ack)
+        return receipt
 
     def _screen_job(
         self, body: dict[str, Any], submission_id: Any, *, intent: Any = None
-    ) -> Any:
+    ) -> OpenAIBatchStatusV1:
         try:
             remote = self.provider_id(body.get("id"), "batch_")
             input_file = self.provider_id(body.get("input_file_id"), "file-")
@@ -522,7 +732,7 @@ class OpenAIBatchAdapter:
         except (ValueError, TypeError, KeyError):
             raise BatchEvidenceWithheld("unsafe job evidence") from None
 
-    async def status(self, submission_id: Any, remote_id: Any) -> Any:
+    async def status(self, submission_id: Any, remote_id: Any) -> OpenAIBatchStatusV1:
         remote_id = self.provider_id(remote_id, "batch_")
         body = await self._json(
             "GET",
@@ -532,6 +742,9 @@ class OpenAIBatchAdapter:
         status = self._screen_job(body, submission_id)
         if status.remote_id != remote_id:
             raise BatchEvidenceWithheld("job identity differs")
+        call = _DIAGNOSTIC.get()
+        if call is not None and status.provider_state in ("failed", "expired"):
+            call.bound_job_code = job_code(body, self._key)
         return status
 
     async def file_metadata(
@@ -610,23 +823,80 @@ class OpenAIBatchAdapter:
             )
         resource = "files" if intent.kind == "upload" else "batches"
         query = b"limit=100&purpose=batch" if resource == "files" else b"limit=100"
-        body = await self._json(
-            "GET",
-            "/v1/" + resource,
-            (lambda c: c.files.with_raw_response.list(limit=100, purpose="batch"))
-            if resource == "files"
-            else (lambda c: c.batches.with_raw_response.list(limit=100)),
-            query=query,
-        )
+        operation = "upload_list" if resource == "files" else "create_list"
+        upload: tuple[str, bytes] | None = None
+        status: OpenAIBatchStatusV1 | None = None
+        with self.diagnose(operation, intent.instance_id) as call:
+            body = await self._json(
+                "GET",
+                "/v1/" + resource,
+                (lambda c: c.files.with_raw_response.list(limit=100, purpose="batch"))
+                if resource == "files"
+                else (lambda c: c.batches.with_raw_response.list(limit=100)),
+                query=query,
+            )
+            found = self._unique_match(body, intent, resource, call)
+            if found is None:
+                return None
+            if resource == "files":
+                expected = self._uploads.get(intent.payload_sha256)
+                if expected is None and self.upload_resolver is not None:
+                    expected = self.upload_resolver(intent)
+                if expected is None:
+                    call.reason = "inconclusive_lookup"
+                    return None
+                upload = self.provider_id(found.get("id"), "file-"), expected
+            else:
+                status = self._screen_job(found, intent.instance_id, intent=intent)
+
+        if upload is not None:
+            file_id, expected = upload
+            with self.diagnose("upload_metadata", intent.instance_id) as call:
+                if await self.file_metadata(file_id, purpose="batch") != (
+                    file_id,
+                    "batch",
+                    len(expected),
+                ):
+                    call.reason = "inconclusive_lookup"
+                    return None
+            received = 0
+            with self.diagnose("upload_content", intent.instance_id) as call:
+                async with aclosing(self.content(file_id, len(expected))) as stream:
+                    async for chunk in stream:
+                        end = received + len(chunk)
+                        # Compare authorized input bytes before any returned-data digest.
+                        if chunk != expected[received:end]:
+                            call.reason = "inconclusive_lookup"
+                            return None
+                        received = end
+                if received != len(expected):
+                    call.reason = "inconclusive_lookup"
+                    return None
+        else:
+            assert status is not None
+            # A positive match still requires the exact identified job retrieval.
+            with self.diagnose("create_get", intent.instance_id) as call:
+                if await self.status(intent.instance_id, status.remote_id) != status:
+                    call.reason = "binding"
+                    return None
+                self.diagnose_job(call, status)
+        return self._receipt(intent, found.get("id"))
+
+    def _unique_match(
+        self, body: dict[str, Any], intent: Any, resource: str, call: Call
+    ) -> dict[str, Any] | None:
         if type(body.get("has_more")) is not bool or body["has_more"]:
+            call.reason = "inconclusive_lookup"
             return None
         candidates: list[dict[str, Any]] = []
         items: Any = body.get("data")
         if not isinstance(items, list) or len(cast(list[Any], items)) > 100:
+            call.reason = "inconclusive_lookup"
             return None
         for value in cast(list[Any], items):
             item: dict[str, Any] = value
             if not isinstance(value, dict):
+                call.reason = "inconclusive_lookup"
                 return None
             if resource == "files":
                 if (
@@ -643,36 +913,15 @@ class OpenAIBatchAdapter:
                 ):
                     candidates.append(item)
         if len(candidates) != 1:
+            call.reason = (
+                "no_match"
+                if not candidates
+                and call.http_status is not None
+                and 200 <= call.http_status < 300
+                else "inconclusive_lookup"
+            )
             return None
-        found = candidates[0]
-        if resource == "files":
-            expected = self._uploads.get(intent.payload_sha256)
-            if expected is None and self.upload_resolver is not None:
-                expected = self.upload_resolver(intent)
-            if expected is None:
-                return None
-            file_id = self.provider_id(found.get("id"), "file-")
-            if await self.file_metadata(file_id, purpose="batch") != (
-                file_id,
-                "batch",
-                len(expected),
-            ):
-                return None
-            received = 0
-            async for chunk in self.content(file_id, len(expected)):
-                end = received + len(chunk)
-                # Compare authorized input bytes before any returned-data digest.
-                if chunk != expected[received:end]:
-                    return None
-                received = end
-            if received != len(expected):
-                return None
-        else:
-            status = self._screen_job(found, intent.instance_id, intent=intent)
-            # A positive match still requires the exact identified job retrieval.
-            if await self.status(intent.instance_id, status.remote_id) != status:
-                return None
-        return self._receipt(intent, found.get("id"))
+        return candidates[0]
 
     def authorize_upload(self, raw: bytes) -> None:
         self._uploads = {bytes_digest(raw): raw}
@@ -688,6 +937,8 @@ class OpenAIBatchAdapter:
 
     async def aclose(self) -> Any:
         self._uploads.clear()
+        self.approved_ack = None
+        self._receipt_diagnostic = None
         self._key = None
         if self._client is not None:
             await self._client.close()
