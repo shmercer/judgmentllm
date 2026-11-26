@@ -213,6 +213,38 @@
       ],
       "removed_excluded_lines": [],
       "reason": "Exact frozen PR76 TYPE_CHECKING import/type alias, structural NativeBatchAdapter Protocol stubs and adjoining whitespace, including blank-only trailer 125-126; no implemented runtime body is excluded, and executable class 127 remains in the runtime parser universe; no historical floor entry."
+    },
+    {
+      "path": "src/judgmentllm/preparation/__init__.py",
+      "candidate_source_sha256": "69cbd793dcfd1a2dab1e29365d441225f0f2c0dcdd00d661a04bd0b5e60ea499",
+      "historical_source_sha256": "812631443e70499a9cc0e99dc7e2276b0451dd66f59fd1cc9dfe8cbf9647709c",
+      "added_excluded_lines": [
+        96
+      ],
+      "removed_excluded_lines": [],
+      "reason": "Exact frozen PR76 cb16b89 NativeBatchAdapter import inside TYPE_CHECKING only."
+    },
+    {
+      "path": "src/judgmentllm/native_batch.py",
+      "candidate_source_sha256": "3ec8bc47ce76034e752bc449032d9d66fdaf45c7b7495fbb3de501ec80250aaa",
+      "historical_source_sha256": null,
+      "added_excluded_lines": [
+        40,
+        41,
+        42
+      ],
+      "removed_excluded_lines": [],
+      "reason": "Exact frozen PR76 cb16b89 TYPE_CHECKING guard and batch audit report import, with adjacent blank line 40."
+    },
+    {
+      "path": "src/judgmentllm/lifecycle.py",
+      "candidate_source_sha256": "b1bd962abfad3706db0fe3e178f642d3e13a0bebac0578c49e341f9d55f55a0d",
+      "historical_source_sha256": "309ce231298e6ccfe06c4768ae4f5d284b47bdd20765b1d8a014a5ff3c15bcf2",
+      "added_excluded_lines": [
+        105
+      ],
+      "removed_excluded_lines": [],
+      "reason": "Exact frozen PR76 cb16b89 batch audit report import inside TYPE_CHECKING only."
     }
   ]
 }

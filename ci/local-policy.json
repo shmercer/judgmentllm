@@ -179,7 +179,7 @@
     "ci/risk.py": "c03561466b8c57f42c12f73dfe6dfa6d594cc1e7d616ef575a33163d53ac3d8a",
     "ci/selection.py": "1a730571dd2dbb4afd7b0e1d3ccb5ff22aaa3ade0381d0e943145984e3c5c8fd",
     "ci/source_lines.py": "cc7b54e1bf5e20c23e1470eb1d4680d520452a546bcd7700958c80b7f3df1216",
-    "ci/suite_evidence.py": "208bae2c568e5ade309e1aebd64755e419db18953ad11f9ac6eff0a9cb131ece",
+    "ci/suite_evidence.py": "eb17c91ff552e85dc284a8256b4023e3e12ed4ce9c8cd8a3b0149e6efed6a4d5",
     "ci/test-contract.json": "411c53f5db4e034c572f95c3f12e0ba5e6aeb8f1f6709a09814ec8f196364094",
     "ci/test-inventory.json": "8a5025dad0a3e44621a229469ef4f79485e9f31f43efc0beca1956aa22ab74f5",
     "ci/test-profiles.json": "637a52b67b34d275a66fb277f4c7d3dd0cc21b23b4fca09102c8f45439827f9b",
