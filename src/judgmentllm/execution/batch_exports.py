@@ -6,7 +6,7 @@ import csv
 import tempfile
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Literal, cast
 
 from pydantic import Field, field_validator
 
@@ -45,6 +45,7 @@ from judgmentllm.batch_models import (
 )
 from judgmentllm.evidence._base import EvidenceModel
 from judgmentllm.io import export_results_csv, write_results_jsonl
+from judgmentllm.output_contracts import decode_assessment_output
 from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.hashing import (
     bytes_digest,
@@ -63,6 +64,12 @@ from judgmentllm.preparation.manifest import (
     ExecutableRunManifestV13,
     ExecutableRunManifestV14,
     NativeBatchManifest,
+)
+from judgmentllm.providers.openai_batch_diagnostics import (
+    PREFIX,
+    RESULT_SCREEN_PREFIX,
+    OpenAIBatchDiagnosticV1,
+    OpenAIBatchResultScreenV1,
 )
 from judgmentllm.r_exports import export_pairwise_r_csv, export_rubric_r_csv
 from judgmentllm.results import PairwiseResult, RubricResult
@@ -160,6 +167,8 @@ class OpenAIBatchControlProvenanceV1(EvidenceModel):
         | OpenAIBatchAdmissionV1
         | OpenAIBatchSourceBindingV1
         | OpenAIBatchAbsentV1
+        | OpenAIBatchDiagnosticV1
+        | OpenAIBatchResultScreenV1
     )
 
 
@@ -259,6 +268,67 @@ _OPENAI_CONTROLS = {
         OpenAIBatchAbsentV1,
     )
 }
+
+
+def _read_namespaced_control(
+    manifest: NativeBatchManifest,
+    kind: str,
+    entity: str,
+    fields: dict[str, object],
+    raw: str,
+) -> EvidenceModel | None:
+    tag = fields.get("record_type")
+    for prefix, model, seal, event in (
+        (PREFIX, OpenAIBatchDiagnosticV1, ExecutableRunManifestV13, "cursor"),
+        (
+            RESULT_SCREEN_PREFIX,
+            OpenAIBatchResultScreenV1,
+            ExecutableRunManifestV13,
+            "cursor",
+        ),
+        (
+            "anthropic-http:",
+            AnthropicBatchHTTPDiagnosticV1,
+            ExecutableRunManifestV14,
+            "status",
+        ),
+    ):
+        reserved_entity = entity.startswith(prefix)
+        reserved_type = tag == model.model_fields["record_type"].default
+        if not (reserved_entity or reserved_type):
+            continue
+        # Historical run-scoped facts use the sealed run ID verbatim.
+        if (
+            reserved_entity
+            and entity == manifest.run_id
+            and "record_type" not in fields
+        ):
+            if kind in ("stop", "cancel_all"):
+                command = BatchStopV1.model_validate_json(raw)
+                if (command.run_id, command.kind) != (entity, kind):
+                    raise IntegrityError("batch stop fact binding differs")
+                return command
+            if kind == "withheld":
+                return BatchDiagnosticV1.model_validate_json(raw)
+        name = (
+            "Anthropic Batch HTTP diagnostic"
+            if seal is ExecutableRunManifestV14
+            else "OpenAI Batch diagnostic"
+        )
+        if not (reserved_entity and reserved_type):
+            raise IntegrityError(f"{name} namespace differs")
+        if not isinstance(manifest, seal):
+            raise IntegrityError(f"{name} provider differs")
+        if kind != event:
+            raise IntegrityError(f"{name} kind differs")
+        record = model.model_validate_json(raw)
+        if isinstance(record, AnthropicBatchHTTPDiagnosticV1):
+            if entity != prefix + record.call_id:
+                raise IntegrityError("Anthropic Batch HTTP diagnostic call differs")
+        elif entity != record.entity:
+            raise IntegrityError("OpenAI Batch diagnostic identity differs")
+        return record
+    return None
 
 
 def _chunks(path: Path) -> Iterator[bytes]:
@@ -559,50 +629,51 @@ def export_batch_audit(
                         models["status"] = OpenAIBatchStatusV1
                     elif anthropic:
                         models["status"] = AnthropicBatchStatusV1
-                    for row in connection.execute(
+                    for sequence, kind, entity, digest, raw in connection.execute(
                         "SELECT fact_seq,kind,entity_id,receipt_sha256,record_json FROM batch_facts WHERE run_id=? AND fact_seq<=? ORDER BY fact_seq",
                         (run_id, cut.fact_high_water_mark),
                     ):
-                        model = models[row[1]]
-                        if (openai or anthropic) and row[1] == "cursor":
-                            from judgmentllm.output_contracts import (
-                                decode_assessment_output,
-                            )
-
-                            fields = decode_assessment_output(row[4])
-                            if not isinstance(fields, dict):
+                        fields = decode_assessment_output(raw)
+                        if not isinstance(fields, dict):
+                            if kind == "cursor":
                                 raise IntegrityError("batch cursor record is invalid")
-                            tag = cast(dict[str, Any], fields).get("record_type")
-                            model = (
-                                _OPENAI_CONTROLS if openai else _ANTHROPIC_CURSORS
-                            ).get(tag, BatchCursorV1)
-                        elif (
-                            anthropic
-                            and row[1] == "status"
-                            and row[2].startswith("anthropic-http:")
-                        ):
-                            model = AnthropicBatchHTTPDiagnosticV1
-                        elif anthropic and row[1] == "operation":
-                            intent_kind = connection.execute(
-                                "SELECT kind FROM batch_operations WHERE run_id=? AND instance_id=?",
-                                (run_id, row[2]),
-                            ).fetchone()
-                            if intent_kind is None:
-                                raise IntegrityError(
-                                    "Anthropic Batch operation fact lacks its intent"
+                            raise IntegrityError("batch control record is invalid")
+                        fields = cast(dict[str, object], fields)
+                        record = _read_namespaced_control(
+                            manifest, kind, entity, fields, raw
+                        )
+                        if record is None:
+                            model = models[kind]
+                            tag = fields.get("record_type")
+                            if (
+                                (openai or anthropic)
+                                and kind == "cursor"
+                                and isinstance(tag, str)
+                            ):
+                                model = (
+                                    _OPENAI_CONTROLS if openai else _ANTHROPIC_CURSORS
+                                ).get(tag, BatchCursorV1)
+                            elif anthropic and kind == "operation":
+                                intent_kind = connection.execute(
+                                    "SELECT kind FROM batch_operations WHERE run_id=? AND instance_id=?",
+                                    (run_id, entity),
+                                ).fetchone()
+                                if intent_kind is None:
+                                    raise IntegrityError(
+                                        "Anthropic Batch operation fact lacks its intent"
+                                    )
+                                model = operation_receipt_model(
+                                    manifest.batch_context, intent_kind[0]
                                 )
-                            model = operation_receipt_model(
-                                manifest.batch_context, intent_kind[0]
-                            )
-                        record = model.model_validate_json(row[4])
+                            record = model.model_validate_json(raw)
                         if (
-                            canonical_bytes(record).decode() != row[4]
-                            or bytes_digest(canonical_bytes(record)) != row[3]
+                            canonical_bytes(record).decode() != raw
+                            or bytes_digest(canonical_bytes(record)) != digest
                         ):
                             raise IntegrityError(
                                 "batch control evidence encoding conflicts"
                             )
-                        store.verify(repository.get_artifact(run_id, row[3]))
+                        store.verify(repository.get_artifact(run_id, digest))
                         if isinstance(record, AnthropicBatchHTTPDiagnosticV1):
                             _verify_http_diagnostic(
                                 repository,
@@ -610,16 +681,16 @@ def export_batch_audit(
                                 run_id,
                                 manifest.capture,
                                 cut.source_manifest_sha256,
-                                row[0],
-                                row[2],
+                                sequence,
+                                entity,
                                 record,
                             )
                         yield control_model.model_validate(
                             dict(
-                                fact_seq=row[0],
-                                kind=row[1],
-                                entity_id=row[2],
-                                receipt_sha256=row[3],
+                                fact_seq=sequence,
+                                kind=kind,
+                                entity_id=entity,
+                                receipt_sha256=digest,
                                 record=record,
                             )
                         )

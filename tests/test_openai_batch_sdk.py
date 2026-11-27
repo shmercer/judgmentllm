@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from openai_batch_fixture import Service, install, specification
+from openai_batch_fixture import Service, diagnostic_records, install, specification
 
 from judgmentllm import (
     collect_batch,
@@ -1340,7 +1340,9 @@ def _sdk_operation_evidence(store: Path, kind: str) -> dict[str, Any]:
         }
 
 
-@pytest.mark.parametrize("case", ["upload-filename", "create-input", "cancel-id"])
+@pytest.mark.parametrize(
+    "case", ["upload-filename", "create-input", "cancel-id", "create-output-file"]
+)
 def test_sdk_control_ack_requires_original_operation_binding(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
 ) -> None:
@@ -1359,11 +1361,13 @@ def test_sdk_control_ack_requires_original_operation_binding(
         "upload-filename": "upload",
         "create-input": "create",
         "cancel-id": "cancel",
+        "create-output-file": "create",
     }[case]
     field = {
         "upload-filename": "filename",
         "create-input": "input_file_id",
         "cancel-id": "id",
+        "create-output-file": "output_file_id",
     }[case]
     initial_acceptance = None
     if case == "cancel-id":
@@ -1405,6 +1409,8 @@ def test_sdk_control_ack_requires_original_operation_binding(
             replacement_body["filename"] = filename + ".unrelated"
         elif case == "create-input":
             replacement_body["input_file_id"] = "file-unrelated_input"
+        elif case == "create-output-file":
+            replacement_body["output_file_id"] = "invalid-optional-file"
         else:
             assert case == "cancel-id"
             remote_id = body["id"]
@@ -1436,6 +1442,9 @@ def test_sdk_control_ack_requires_original_operation_binding(
     assert first.batch.accepted_jobs == (1 if case == "cancel-id" else 0)
     before = _sdk_operation_evidence(store, kind)
     assert before["receipt"] is None and before["reference"] is None
+    with ReadOnlyRepository(store) as repo:
+        ack = repo.run_directory("001") / "batch" / "openai-ack" / before["intent"][1]
+        assert not ack.exists()
     assert before["results"] == before["members"] == 0
     if case == "cancel-id":
         assert initial_acceptance is not None
@@ -2030,6 +2039,293 @@ async def test_sdk_mutation_payload_rejection_preserves_journal(
     assert evidence["reference"] is None and evidence["receipt"] is None
     assert evidence["results"] == evidence["members"] == 0
     assert service.events() == events
+    if kind == "create":
+        (record,) = diagnostic_records(store, "create_post")
+        assert record["binding_id"] == instance
+        assert (record["outcome"], record["reason"]) == ("local_failure", "pre_forward")
+        assert record["http_status"] is record["http_request_id"] is None
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "buffered-upload",
+        "streamed-create",
+        "body-read",
+        "sdk-wrapper",
+        "unknown-stage",
+        "unbound-sdk",
+        "strict-json",
+    ],
+)
+def test_diagnostic_correlates_headers_with_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    case: str,
+) -> None:
+    from collections.abc import AsyncIterator
+
+    import httpx2
+    from openai import APIResponseValidationError
+    from openai._base_client import AsyncAPIClient
+
+    service = Service(tmp_path / "service.sqlite")
+    spec = specification(tmp_path, responses=1, capture="minimal")
+    store = tmp_path / "store"
+    target = "/v1/files" if case == "buffered-upload" else "/v1/batches"
+    original = service.request
+    events: list[str] = []
+    posts: list[str] = []
+    http = (
+        400 if case == "buffered-upload" else 503 if case == "streamed-create" else 200
+    )
+    secret = b"PROHIBITED_DIAGNOSTIC_BODY"
+    body = b'{"error":{"code":"invalid_json_line","message":"' + secret + b'"}}'
+    headers = [(b"x-request-id", b"req_synthetic_failure")]
+    if case == "streamed-create":
+        headers.append((b"x-request-id", b"req_duplicate"))
+
+    class Stream(httpx2.AsyncByteStream):
+        async def __aiter__(self) -> AsyncIterator[bytes]:
+            events.append("read")
+            raise httpx2.ReadError("PROHIBITED_STREAM_ERROR")
+            yield b""  # pragma: no cover
+
+        async def aclose(self) -> None:
+            events.append("close")
+
+    def wire(request: Any) -> Any:
+        if request.method == "POST":
+            posts.append(request.url.path)
+        if request.method != "POST" or request.url.path != target:
+            return original(request)
+        if case in ("streamed-create", "body-read"):
+            return httpx2.Response(http, headers=headers, stream=Stream())
+        return httpx2.Response(
+            http, headers=headers, content=b"{" if case == "strict-json" else body
+        )
+
+    original_process = AsyncAPIClient._process_response  # pyright: ignore[reportPrivateUsage]
+
+    async def process(self: Any, **kwargs: Any) -> Any:
+        response = kwargs["response"]
+        request = response.request
+        if request.method == "POST" and request.url.path == target:
+            if case == "unknown-stage":
+                raise ValueError("PROHIBITED_UNATTRIBUTED_ERROR")
+            if case == "unbound-sdk":
+                response = httpx2.Response(200, request=request)
+            raise APIResponseValidationError(
+                response, body=None, message="PROHIBITED_SDK_WRAPPER"
+            )
+        return await original_process(self, **kwargs)
+
+    monkeypatch.setattr(service, "request", wire)
+    if case in ("sdk-wrapper", "unknown-stage", "unbound-sdk"):
+        monkeypatch.setattr(AsyncAPIClient, "_process_response", process)
+    install(monkeypatch, service)
+    prepare_batch(spec, store=store, run_id="001")
+    service.configure(store, spec)
+    caplog.set_level("DEBUG")
+    result = submit_batch("001", store=store, spec=spec)
+    assert result.batch.unresolved_operations == 1 and result.batch.accepted_jobs == 0
+    operation = "upload_post" if case == "buffered-upload" else "create_post"
+    first, failure = diagnostic_records(store, operation)
+    assert first["outcome"] == "observed" and first["reason"] == "headers"
+    assert first["provider_code"] is None
+    assert first["call_id"] == failure["call_id"]
+    assert first["binding_id"] == failure["binding_id"]
+    assert first["http_status"] == failure["http_status"] == http
+    assert (
+        first["http_request_id"]
+        == failure["http_request_id"]
+        == (None if case == "streamed-create" else "req_synthetic_failure")
+    )
+    assert (failure["outcome"], failure["reason"]) == {
+        "buffered-upload": ("http_failure", "http_status"),
+        "streamed-create": ("http_failure", "http_status"),
+        "body-read": ("transport_failure", "body_read"),
+        "sdk-wrapper": ("indeterminate", "sdk_wrapper"),
+        "unknown-stage": ("indeterminate", "unknown_stage"),
+        "unbound-sdk": ("indeterminate", "unknown_stage"),
+        "strict-json": ("withheld", "body_decode"),
+    }[case]
+    assert failure["provider_code"] == (
+        "invalid_json_line" if case == "buffered-upload" else None
+    )
+    assert events == {
+        "streamed-create": ["close"],
+        "body-read": ["read", "close"],
+    }.get(case, [])
+    assert posts.count(target) == 1
+    assert "PROHIBITED_" not in caplog.text
+    assert not list(store.rglob("openai-ack"))
+    for path in store.rglob("*"):
+        if path.is_file():
+            assert secret not in path.read_bytes()
+    if operation == "create_post":
+        original_intent = _sdk_operation_evidence(store, "create")
+        assert original_intent["submissions"] == (
+            (first["binding_id"], None, "unknown"),
+        )
+        assert original_intent["reference"] is original_intent["receipt"] is None
+        restarted = resume_batch("001", store=store, spec=spec)
+        assert restarted.batch.unresolved_operations == 1
+        _, lookup = diagnostic_records(store, "create_list")
+        assert (
+            lookup["reason"] == "no_match"
+            and lookup["binding_id"] == first["binding_id"]
+        )
+        assert posts == ["/v1/files", "/v1/batches"]
+        final_intent = _sdk_operation_evidence(store, "create")
+        assert final_intent["journal"] == original_intent["journal"]
+        assert final_intent["submissions"] == original_intent["submissions"]
+        assert final_intent["reference"] is final_intent["receipt"] is None
+
+
+def test_diagnostic_job_failure_requires_bound_success_status() -> None:
+    from judgmentllm.providers.openai_batch_diagnostics import Call
+
+    for status in (None, 101, 404, 503):
+        call = Call("job_get", "a" * 64, http_status=status)
+        with pytest.raises(ValueError):
+            call.record("job_failed")
+        with pytest.raises(ValueError):
+            call.record("job_expired")
+        with pytest.raises(ValueError):
+            call.record("sdk_wrapper")
+    assert (
+        Call("job_get", "a" * 64, http_status=200).record("job_failed").outcome
+        == "provider_rejected"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("delivery", ["buffered", "streamed"])
+async def test_diagnostic_deadline_preserves_only_arrived_upload_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, delivery: str
+) -> None:
+    from collections.abc import AsyncIterator
+
+    import httpx2
+    from batch_clock import batch_clock
+
+    from judgmentllm import asubmit_batch
+    from judgmentllm.execution.openai_batch import OpenAIBatchSession
+
+    service = Service(tmp_path / "service.sqlite")
+    request = service.request
+    io: list[str] = []
+
+    def wire(req: Any) -> Any:
+        response = request(req)
+        if (req.method, req.url.path) != ("POST", "/v1/files"):
+            return response
+        data = response.read()
+
+        class Unread(httpx2.AsyncByteStream):
+            async def __aiter__(self) -> AsyncIterator[bytes]:
+                io.append("read")
+                yield data
+
+            async def aclose(self) -> None:
+                io.append("close")
+
+        return (
+            httpx2.Response(200, content=data)
+            if delivery == "buffered"
+            else httpx2.Response(200, stream=Unread())
+        )
+
+    monkeypatch.setattr(service, "request", wire)
+    install(monkeypatch, service)
+    spec = specification(tmp_path, responses=1)
+    store = tmp_path / "store"
+    prepare_batch(spec, store=store, run_id="001")
+    service.configure(store, spec)
+    write = OpenAIBatchSession.write_fact
+    with batch_clock(monkeypatch) as clock, monkeypatch.context() as patch:
+
+        def slow(self: Any, kind: str, entity: str, record: Any) -> None:
+            if (
+                getattr(record, "operation", None) == "upload_post"
+                and record.reason == "headers"
+            ):
+                clock.advance(clock.budgets[0].options.deadline_seconds + 1)
+            write(self, kind, entity, record)
+
+        patch.setattr(OpenAIBatchSession, "write_fact", slow)
+        result = await asubmit_batch("001", store=store, spec=spec)
+    assert clock.now > clock.budgets[0].deadline
+    assert result.batch.accepted_jobs == 0
+    assert service.events() == [("POST", "/v1/files")]
+    evidence = _sdk_operation_evidence(store, "upload")
+    assert not evidence["submissions"] and len(evidence["journal"]) == 1
+    if delivery == "streamed":
+        assert io == ["close"]
+        assert evidence["receipt"] is evidence["reference"] is None
+    else:
+        assert not io
+        assert evidence["receipt"] is not None
+        assert evidence["reference"] == evidence["receipt"].encode()
+        receipt = json.loads(evidence["receipt"])
+        assert (receipt["outcome"], receipt["remote_id"]) == (
+            "accepted",
+            "file-input_1",
+        )
+        assert receipt["intent_sha256"] == evidence["intent"][2]
+        assert (
+            await asubmit_batch("001", store=store, spec=spec)
+        ).batch.accepted_jobs == 1
+        assert service.events() == [("POST", "/v1/files"), ("POST", "/v1/batches")]
+
+
+def test_diagnostic_header_write_failure_preserves_accepted_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from judgmentllm.execution.openai_batch import OpenAIBatchSession
+    from judgmentllm.lifecycle_models import LifecycleError
+
+    service = Service(tmp_path / "service.sqlite")
+    install(monkeypatch, service)
+    spec = specification(tmp_path, responses=1)
+    store = tmp_path / "store"
+    prepare_batch(spec, store=store, run_id="001")
+    service.configure(store, spec)
+    original = OpenAIBatchSession.write_fact
+    failed: list[str] = []
+
+    def fail_create_headers(self: Any, kind: str, entity: str, record: Any) -> None:
+        if (
+            getattr(record, "operation", None) == "create_post"
+            and record.reason == "headers"
+        ):
+            failed.append(entity)
+            raise OSError("PROHIBITED_HEADER_WRITE")
+        original(self, kind, entity, record)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(OpenAIBatchSession, "write_fact", fail_create_headers)
+        with pytest.raises(LifecycleError) as error:
+            submit_batch("001", store=store, spec=spec)
+    assert error.value.category == "execution" and "PROHIBITED_" not in str(error.value)
+    assert len(failed) == 1
+    evidence = _sdk_operation_evidence(store, "create")
+    assert evidence["reference"] is not None and evidence["receipt"] is not None
+    with ReadOnlyRepository(store) as repo:
+        assert tuple(
+            repo.connection.execute(
+                "SELECT certainty,remote_id FROM submissions"
+            ).fetchone()
+        ) == (
+            "accepted",
+            "batch_1",
+        )
+    posts = [event for event in service.events() if event[0] == "POST"]
+    assert posts == [("POST", "/v1/files"), ("POST", "/v1/batches")]
+    assert resume_batch("001", store=store, spec=spec).batch.accepted_jobs == 1
+    assert [event for event in service.events() if event[0] == "POST"] == posts
 
 
 @pytest.mark.asyncio
@@ -2383,3 +2679,503 @@ def test_audit_rejects_nonobject_cursor_without_replacing_prior_bundle(
     assert {path: path.read_bytes() for path in prior} == prior
     assert service.events() == events
     assert_accepted_chain_unchanged(store, before)
+
+
+@pytest.mark.parametrize("http_status", [None, 503])
+def test_audit_rejects_impossible_no_match_with_valid_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    http_status: int | None,
+) -> None:
+    from test_batch_exports_retry import file_path
+    from test_openai_batch_recovery import setup
+
+    from judgmentllm import export_batch_provenance
+    from judgmentllm.lifecycle_models import LifecycleError
+    from judgmentllm.persistence.artifacts import ArtifactStore
+    from judgmentllm.persistence.hashing import bytes_digest, canonical_bytes
+    from judgmentllm.persistence.native_batch import register
+    from judgmentllm.persistence.repository import Repository
+    from judgmentllm.providers.openai_batch_diagnostics import Call
+
+    service, _, store = setup(tmp_path, monkeypatch, responses=1)
+    old = export_batch_provenance("001", store=store)
+    controls = file_path(old, "controls.jsonl").read_bytes()
+    events = service.events()
+    with Repository(store) as repo, repo.transaction():
+        binding = repo.connection.execute(
+            "SELECT submission_id FROM submissions"
+        ).fetchone()[0]
+        good = Call("create_list", binding, http_status=200).record("no_match")
+        value = good.model_dump()
+        value["http_status"] = http_status
+        raw = canonical_bytes(value)
+        assert canonical_bytes(json.loads(raw)) == raw
+        artifacts = ArtifactStore(repo.run_directory("001"), create=False)
+        identity = artifacts.put(raw, "application/json")
+        assert identity.sha256 == bytes_digest(raw) and artifacts.read(identity) == raw
+        register(repo, "001", identity)
+        repo.connection.execute(
+            "INSERT INTO batch_facts(run_id,kind,entity_id,receipt_sha256,record_json) VALUES (?,?,?,?,?)",
+            ("001", "cursor", good.entity, identity.sha256, raw.decode()),
+        )
+        assert repo.connection.execute("PRAGMA integrity_check").fetchone()[0] == "ok"
+        assert not repo.connection.execute("PRAGMA foreign_key_check").fetchall()
+    with pytest.raises(LifecycleError) as error:
+        export_batch_provenance("001", store=store)
+    assert isinstance(error.value.__context__, ValueError)
+    assert file_path(old, "controls.jsonl").read_bytes() == controls
+    assert service.events() == events
+
+
+@pytest.mark.parametrize(
+    ("defect", "message"),
+    [
+        ("namespace", "OpenAI Batch diagnostic namespace differs"),
+        ("kind", "OpenAI Batch diagnostic kind differs"),
+        ("identity", "OpenAI Batch diagnostic identity differs"),
+    ],
+)
+def test_audit_rejects_misbound_diagnostic_fact(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, defect: str, message: str
+) -> None:
+    from test_batch_exports_retry import file_path
+    from test_openai_batch_recovery import setup
+
+    from judgmentllm import export_batch_provenance
+    from judgmentllm.lifecycle_models import LifecycleError
+    from judgmentllm.persistence.artifacts import ArtifactStore
+    from judgmentllm.persistence.hashing import canonical_bytes
+    from judgmentllm.persistence.models import IntegrityError
+    from judgmentllm.persistence.native_batch import register
+    from judgmentllm.persistence.repository import Repository
+    from judgmentllm.providers.openai_batch_diagnostics import Call
+
+    service, _, store = setup(tmp_path, monkeypatch, responses=1)
+    old = export_batch_provenance("001", store=store)
+    before = {
+        file.name: file_path(old, file.name).read_bytes() for file in old.manifest.files
+    }
+    events = service.events()
+    with Repository(store) as repo, repo.transaction():
+        (binding,) = repo.connection.execute(
+            "SELECT submission_id FROM submissions"
+        ).fetchone()
+        good = Call("job_get", binding, http_status=200).record("headers")
+        kind, entity = "cursor", good.entity
+        if defect == "namespace":
+            entity = "ordinary-cursor"
+        elif defect == "kind":
+            kind = "status"
+        else:
+            entity = Call("job_get", binding, http_status=200).record("headers").entity
+            assert entity != good.entity
+        raw = canonical_bytes(good)
+        artifacts = ArtifactStore(repo.run_directory("001"), create=False)
+        identity = artifacts.put(raw, "application/json")
+        assert artifacts.read(identity) == raw
+        register(repo, "001", identity)
+        repo.connection.execute(
+            "INSERT INTO batch_facts(run_id,kind,entity_id,receipt_sha256,record_json) VALUES (?,?,?,?,?)",
+            ("001", kind, entity, identity.sha256, raw.decode()),
+        )
+    with pytest.raises(LifecycleError) as error:
+        export_batch_provenance("001", store=store)
+    assert isinstance(error.value.__context__, IntegrityError)
+    assert str(error.value.__context__) == message
+    reopened = export_batch_provenance(
+        "001", store=store, bundle_id=old.manifest.bundle_id
+    )
+    assert reopened.manifest == old.manifest
+    assert {name: file_path(reopened, name).read_bytes() for name in before} == before
+    assert service.events() == events
+
+
+@pytest.mark.parametrize("fail_write", [False, True])
+def test_malformed_buffered_create_error_preserves_unresolved_intent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fail_write: bool
+) -> None:
+    import httpx2
+
+    from judgmentllm.execution.openai_batch import OpenAIBatchSession
+    from judgmentllm.lifecycle_models import LifecycleError
+    from judgmentllm.persistence.models import PersistenceError
+
+    service = Service(tmp_path / "service.sqlite")
+    spec = specification(tmp_path, responses=1, capture="minimal")
+    store = tmp_path / "store"
+    request = service.request
+    lookups: list[tuple[int, Any]] = []
+
+    def wire(req: httpx2.Request) -> httpx2.Response:
+        if (req.method, req.url.path) == ("POST", "/v1/batches"):
+            with service.connect() as db:
+                db.execute(
+                    "INSERT INTO events(method,path) VALUES (?,?)",
+                    (req.method, req.url.path),
+                )
+            return httpx2.Response(
+                503, content=b"{", headers={"x-request-id": "req_test_503"}
+            )
+        response: httpx2.Response = request(req)
+        if (req.method, req.url.path) == ("GET", "/v1/batches"):
+            lookups.append((response.status_code, json.loads(response.read())["data"]))
+        return response
+
+    monkeypatch.setattr(service, "request", wire)
+    install(monkeypatch, service)
+    prepare_batch(spec, store=store, run_id="001")
+    service.configure(store, spec)
+    writes: list[str] = []
+    notify: list[str] = []
+    write = OpenAIBatchSession.write_fact
+    publish = OpenAIBatchSession.publish_diagnostic
+
+    def write_fact(
+        session: OpenAIBatchSession, kind: str, entity: str, record: Any
+    ) -> None:
+        if getattr(record, "operation", None) == "create_post":
+            writes.append(record.reason)
+            if record.reason == "headers":
+                raise OSError("synthetic header write failure")
+        write(session, kind, entity, record)
+
+    def observe_publish(session: OpenAIBatchSession, record: Any) -> None:
+        if record.operation == "create_post":
+            notify.append(record.reason)
+        publish(session, record)
+
+    if fail_write:
+        with monkeypatch.context() as patch:
+            patch.setattr(OpenAIBatchSession, "write_fact", write_fact)
+            patch.setattr(OpenAIBatchSession, "publish_diagnostic", observe_publish)
+            with pytest.raises(LifecycleError) as error:
+                submit_batch("001", store=store, spec=spec)
+        assert isinstance(error.value.__context__, PersistenceError)
+        assert (
+            str(error.value.__context__)
+            == "OpenAI Batch diagnostic evidence could not be published"
+        )
+        assert notify == ["headers", "http_status"] and writes == ["headers"]
+        assert not diagnostic_records(store, "create_post")
+    else:
+        assert (
+            submit_batch("001", store=store, spec=spec).batch.unresolved_operations == 1
+        )
+        headers, rejected = diagnostic_records(store, "create_post")
+        assert (headers["reason"], rejected["reason"]) == ("headers", "http_status")
+        assert headers["call_id"] == rejected["call_id"]
+        assert headers["http_status"] == rejected["http_status"] == 503
+        assert (
+            headers["http_request_id"] == rejected["http_request_id"] == "req_test_503"
+        )
+        assert (
+            rejected["outcome"] == "http_failure" and rejected["provider_code"] is None
+        )
+
+    before = _sdk_operation_evidence(store, "create")
+    assert before["submissions"] == ((before["intent"][1], None, "unknown"),)
+    assert before["reference"] is before["receipt"] is None
+    events = service.events()
+    posts = [event for event in events if event[0] == "POST"]
+    assert posts == [("POST", "/v1/files"), ("POST", "/v1/batches")]
+    with service.connect() as db:
+        assert db.execute("SELECT count(*) FROM jobs").fetchone() == (0,)
+    lookups.clear()
+    assert resume_batch("001", store=store, spec=spec).batch.unresolved_operations == 1
+    assert lookups == [(200, [])]
+    assert service.events()[len(events) :] == [("GET", "/v1/batches")]
+    assert _sdk_operation_evidence(store, "create") == before
+    _, no_match = diagnostic_records(store, "create_list")
+    assert no_match["reason"] == "no_match"
+    assert no_match["binding_id"] == before["intent"][1]
+
+
+def test_private_ack_write_failure_preserves_upload_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from judgmentllm.lifecycle_models import LifecycleError
+    from judgmentllm.persistence.artifacts import ArtifactStore
+    from judgmentllm.persistence.models import PersistenceError
+
+    service = Service(tmp_path / "service.sqlite")
+    install(monkeypatch, service)
+    spec = specification(tmp_path, responses=1, capture="full")
+    store = tmp_path / "store"
+    prepare_batch(spec, store=store, run_id="001")
+    service.configure(store, spec)
+    publish = ArtifactStore.publish_reference
+    failed: list[str] = []
+
+    def fail_private(self: ArtifactStore, identity: Any, path: str) -> Path:
+        if path.startswith("batch/openai-ack/"):
+            failed.append(path)
+            raise OSError("synthetic private reference failure")
+        return publish(self, identity, path)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(ArtifactStore, "publish_reference", fail_private)
+        with pytest.raises(LifecycleError) as error:
+            submit_batch("001", store=store, spec=spec)
+    assert isinstance(error.value.__context__, PersistenceError)
+    assert (
+        str(error.value.__context__)
+        == "OpenAI Batch private acknowledgment could not be published"
+    )
+    (failure,) = failed
+    before = _sdk_operation_evidence(store, "upload")
+    assert before["receipt"] and before["reference"] == before["receipt"].encode()
+    assert json.loads(before["receipt"])["remote_id"] == "file-input_1"
+    assert failure.startswith(f"batch/openai-ack/{before['intent'][1]}/")
+    assert [row[0] for row in before["journal"]] == ["upload"]
+    assert service.events() == [("POST", "/v1/files")]
+    assert resume_batch("001", store=store, spec=spec).batch.accepted_jobs == 1
+    after = _sdk_operation_evidence(store, "upload")
+    assert (after["intent"], after["receipt"], after["reference"]) == (
+        before["intent"],
+        before["receipt"],
+        before["reference"],
+    )
+    assert [event for event in service.events() if event[0] == "POST"] == [
+        ("POST", "/v1/files"),
+        ("POST", "/v1/batches"),
+    ]
+
+
+@pytest.mark.parametrize("fault", ["decode", "close"])
+def test_job_get_failure_preserves_observed_status_and_receipt(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fault: str
+) -> None:
+    from collections.abc import AsyncIterator
+
+    import httpx2
+    from test_openai_batch_recovery import setup
+
+    service, _, store = setup(tmp_path, monkeypatch, responses=1)
+    before = _sdk_operation_evidence(store, "create")
+    _, remote = before["accepted"][0]
+    count = len(diagnostic_records(store, "job_get"))
+    events: list[str] = []
+    request = service.request
+
+    class FailingClose(httpx2.AsyncByteStream):
+        def __init__(self, body: bytes) -> None:
+            self.body = body
+
+        async def __aiter__(self) -> AsyncIterator[bytes]:
+            yield self.body
+            events.append("eof")
+
+        async def aclose(self) -> None:
+            events.append("close")
+            raise OSError("synthetic close failure")
+
+    def wire(req: httpx2.Request) -> httpx2.Response:
+        response: httpx2.Response = request(req)
+        if (req.method, req.url.path) != ("GET", f"/v1/batches/{remote}"):
+            return response
+        headers = {"x-request-id": "req_job_test"}
+        if fault == "decode":
+            return httpx2.Response(200, headers=headers, content=b"{")
+        return httpx2.Response(
+            200, headers=headers, stream=FailingClose(response.read())
+        )
+
+    monkeypatch.setattr(service, "request", wire)
+    assert poll_batch("001", store=store).outcome == "partial"
+    headers, failure = diagnostic_records(store, "job_get")[count:]
+    assert headers["reason"] == "headers"
+    assert headers["http_status"] == failure["http_status"] == 200
+    assert headers["http_request_id"] == failure["http_request_id"] == "req_job_test"
+    assert headers["call_id"] == failure["call_id"]
+    assert failure["binding_id"] == before["intent"][1]
+    if fault == "decode":
+        assert (failure["outcome"], failure["reason"]) == ("withheld", "body_decode")
+        assert events == []
+    else:
+        assert (failure["outcome"], failure["reason"]) == (
+            "indeterminate",
+            "unknown_stage",
+        )
+        assert events == ["eof", "close"]
+    assert _sdk_operation_evidence(store, "create") == before
+    assert [event for event in service.events() if event[0] == "POST"] == [
+        ("POST", "/v1/files"),
+        ("POST", "/v1/batches"),
+    ]
+
+
+@pytest.mark.parametrize("fault", ["delegate", "read", "close", "encoding", "decode"])
+def test_cancel_failures_have_no_diagnostic_context(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, fault: str
+) -> None:
+    from collections.abc import AsyncIterator
+
+    import httpx2
+
+    from judgmentllm import cancel_batch
+
+    service = Service(tmp_path / "service.sqlite")
+    install(monkeypatch, service)
+    spec = specification(tmp_path, responses=1)
+    store = tmp_path / "store"
+    prepare_batch(spec, store=store, run_id="001")
+    service.configure(store, spec)
+    service.set("initial_status", "in_progress")
+    assert submit_batch("001", store=store, spec=spec).batch.accepted_jobs == 1
+    before = _sdk_operation_evidence(store, "create")
+    _, remote = before["accepted"][0]
+    target = ("POST", f"/v1/batches/{remote}/cancel")
+    request = service.request
+    events: list[str] = []
+
+    def diagnostics() -> tuple[Any, ...]:
+        with ReadOnlyRepository(store) as repo:
+            return tuple(
+                repo.connection.execute(
+                    "SELECT fact_seq, record_json FROM batch_facts "
+                    "WHERE entity_id LIKE 'openai-diagnostic:%' ORDER BY fact_seq"
+                )
+            )
+
+    class Stream(httpx2.AsyncByteStream):
+        def __init__(self, body: bytes) -> None:
+            self.body = body
+
+        async def __aiter__(self) -> AsyncIterator[bytes]:
+            events.append("read")
+            if fault == "read":
+                raise httpx2.ReadError("synthetic cancel read failure")
+            yield self.body
+
+        async def aclose(self) -> None:
+            events.append("close")
+            if fault == "close":
+                raise OSError("synthetic cancel close failure")
+
+    def wire(req: httpx2.Request) -> httpx2.Response:
+        if (req.method, req.url.path) != target:
+            return request(req)
+        if fault == "delegate":
+            with service.connect() as db:
+                db.execute("INSERT INTO events(method,path) VALUES (?,?)", target)
+            raise httpx2.ConnectError("synthetic cancel delegate failure")
+        response: httpx2.Response = request(req)
+        if fault == "decode":
+            return httpx2.Response(200, content=b"{")
+        headers = {"content-encoding": "gzip"} if fault == "encoding" else {}
+        return httpx2.Response(200, headers=headers, stream=Stream(response.read()))
+
+    facts = diagnostics()
+    monkeypatch.setattr(service, "request", wire)
+    result = cancel_batch("001", store=store)
+    assert result.batch.unresolved_operations == 1
+    assert result.batch.accepted_jobs == 1
+    cancelled = _sdk_operation_evidence(store, "cancel")
+    assert cancelled["receipt"] is cancelled["reference"] is None
+    assert cancelled["accepted"] == before["accepted"]
+    after = _sdk_operation_evidence(store, "create")
+    assert (after["receipt"], after["reference"]) == (
+        before["receipt"],
+        before["reference"],
+    )
+    assert diagnostics() == facts
+    assert (
+        events
+        == {
+            "delegate": [],
+            "read": ["read", "close"],
+            "close": ["read", "close"],
+            "encoding": ["close"],
+            "decode": [],
+        }[fault]
+    )
+    assert [event for event in service.events() if event[0] == "POST"] == [
+        ("POST", "/v1/files"),
+        ("POST", "/v1/batches"),
+        target,
+    ]
+
+
+@pytest.mark.parametrize(
+    "defect", ["classification", "row-binding", "call-binding", "code"]
+)
+def test_diagnostic_validation_rejects_unattributed_fields(defect: str) -> None:
+    from pydantic import ValidationError
+
+    from judgmentllm.providers.openai_batch_diagnostics import (
+        Call,
+        OpenAIBatchDiagnosticV1,
+        row_record,
+    )
+
+    call = Call("job_get", "a" * 64, http_status=200).record("headers").model_dump()
+    if defect == "row-binding":
+        fields = row_record(None, "a" * 64, 0, None, None, None).model_dump()
+        fields["call_id"] = call["call_id"]
+    else:
+        fields = {
+            **call,
+            **{
+                "classification": {"outcome": "withheld"},
+                "call-binding": {"member_status": 200},
+                "code": {"provider_code": "invalid_json_line"},
+            }[defect],
+        }
+    with pytest.raises(ValidationError, match="Invalid evidence record"):
+        OpenAIBatchDiagnosticV1.model_validate(fields)
+
+
+@pytest.mark.parametrize(
+    ("items", "code"),
+    [
+        ([{"code": "invalid_json_line"}] * 33, None),
+        (["not-an-object"], None),
+        (
+            [{}, {"code": "invalid_json_line"}, {"code": "invalid_json_line"}],
+            "invalid_json_line",
+        ),
+    ],
+    ids=["over-limit", "non-object", "repeated"],
+)
+def test_failed_create_reports_only_bound_allowed_code(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, items: list[Any], code: str | None
+) -> None:
+    import httpx2
+
+    service = Service(tmp_path / "service.sqlite")
+    service.set("initial_status", "failed")
+    spec = specification(tmp_path, responses=1, capture="full")
+    store = tmp_path / "store"
+    request = service.request
+    marker = "PROHIBITED_TEST_JOB_ERROR"
+
+    def wire(req: httpx2.Request) -> httpx2.Response:
+        response: httpx2.Response = request(req)
+        if (req.method, req.url.path) != ("POST", "/v1/batches"):
+            return response
+        body = json.loads(response.read())
+        body["errors"] = {"data": items, "message": marker}
+        return httpx2.Response(200, json=body)
+
+    monkeypatch.setattr(service, "request", wire)
+    install(monkeypatch, service)
+    prepare_batch(spec, store=store, run_id="001")
+    service.configure(store, spec)
+    assert submit_batch("001", store=store, spec=spec).batch.accepted_jobs == 1
+    headers, rejection = diagnostic_records(store, "create_post")
+    assert (rejection["outcome"], rejection["reason"]) == (
+        "provider_rejected",
+        "job_failed",
+    )
+    assert headers["call_id"] == rejection["call_id"]
+    assert headers["http_status"] == rejection["http_status"] == 200
+    assert rejection["provider_code"] == code
+    accepted = _sdk_operation_evidence(store, "create")
+    assert accepted["accepted"] == ((rejection["binding_id"], "batch_1"),)
+    assert accepted["receipt"] is not None
+    assert accepted["reference"] == accepted["receipt"].encode()
+    assert service.events() == [("POST", "/v1/files"), ("POST", "/v1/batches")]
+    for path in store.rglob("*"):
+        if path.is_file():
+            assert marker.encode() not in path.read_bytes()

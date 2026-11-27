@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from openai_batch_fixture import Service, diagnostic_records, install
 from test_batch_exports_retry import file_path
 from test_openai_batch_recovery import setup
 
@@ -17,6 +18,753 @@ from judgmentllm.persistence.repository import ReadOnlyRepository
 
 def store_bytes(root: Path) -> bytes:
     return b"".join(path.read_bytes() for path in root.rglob("*") if path.is_file())
+
+
+def _snapshot_replay(store: Path, service: Any, source: str) -> tuple[object, ...]:
+    with ReadOnlyRepository(store) as repo:
+        return (
+            tuple(repo.iter_results("001")),
+            (
+                tuple(
+                    repo.connection.execute(
+                        "SELECT * FROM usage_revisions ORDER BY rowid"
+                    )
+                ),
+                tuple(
+                    row[0]
+                    for row in repo.connection.execute(
+                        "SELECT json_extract(record_json, '$.usage') FROM batch_member_receipts ORDER BY rowid"
+                    )
+                ),
+            ),
+            tuple(
+                repo.connection.execute(
+                    "SELECT record_json FROM batch_facts WHERE kind='cursor' AND entity_id=? ORDER BY fact_seq",
+                    (source,),
+                )
+            ),
+            tuple(
+                repo.connection.execute("SELECT * FROM batch_operations ORDER BY rowid")
+            ),
+            tuple(event for event in service.events() if event[0] == "POST"),
+        )
+
+
+@pytest.mark.parametrize("defect", ["receipt-binding", "changed-row"])
+def test_replay_rejects_inconsistent_protected_base_member(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, defect: str
+) -> None:
+    import base64
+    import io
+    import tarfile
+
+    from judgmentllm.batch_models import BatchMemberReceiptV1
+    from judgmentllm.execution.openai_batch import OpenAIBatchSession
+    from judgmentllm.lifecycle_models import LifecycleError
+    from judgmentllm.persistence.artifacts import ArtifactStore
+    from judgmentllm.persistence.hashing import bytes_digest, canonical_bytes
+    from judgmentllm.persistence.models import IntegrityError
+    from judgmentllm.providers.openai_batch import OpenAIBatchAdapter
+    from judgmentllm.providers.openai_batch_diagnostics import OpenAIBatchResultScreenV1
+
+    fixture = Path(__file__).parent / "fixtures" / "batch-history"
+    name = "openai-member-interrupted"
+    metadata = json.loads((fixture / f"{name}.json").read_bytes())
+    assert metadata["producer_commit"] == "d6071de62c139122c2c4ebd9874e15b16807d72e"
+    assert metadata["producer_tree"] == "31d25fc33138f36f9d5a70a556eec7cd606d17c0"
+    assert metadata["synthetic_only"] and metadata["run_id"] == "001"
+    archive_bytes = base64.b64decode(
+        (fixture / f"{name}.tar.gz.base64").read_bytes().strip(), validate=True
+    )
+    assert bytes_digest(archive_bytes) == metadata["archive_sha256"]
+    with tarfile.open(fileobj=io.BytesIO(archive_bytes), mode="r:gz") as archive:
+        archive.extractall(tmp_path, filter="data")
+    store = tmp_path / "store"
+    service = Service(tmp_path / "service.sqlite")
+    install(monkeypatch, service)
+    with ReadOnlyRepository(store) as repo:
+        run = repo.run_directory("001")
+        (reference,) = (run / "batch" / "members").glob("*.json")
+        receipt_bytes = reference.read_bytes()
+        receipt = BatchMemberReceiptV1.model_validate_json(receipt_bytes)
+        artifacts = ArtifactStore(run, create=False)
+        retained = artifacts.read(receipt.retained)
+    assert receipt_bytes == canonical_bytes(receipt)
+    assert bytes_digest(receipt_bytes) == metadata["member_receipt_sha256"]
+    assert receipt.capture == "full" and receipt.disposition == "exact"
+    assert receipt.original is not None
+    assert (
+        bytes_digest(retained) == receipt.retained.sha256 == metadata["retained_sha256"]
+    )
+    wire, declared = service.file("file-output_1")
+    (row,) = wire.splitlines()
+    assert declared == len(wire)
+    assert bytes_digest(row) == receipt.original.sha256 == metadata["wire_sha256"]
+    assert retained == canonical_bytes(json.loads(row))
+    source = receipt.source_id
+    assert _snapshot_replay(store, service, source)[:3] == ((), ((), ()), ())
+
+    if defect == "receipt-binding":
+        fields = receipt.model_dump()
+        fields["identity"]["request_uid"] = "different-synthetic-request"
+        changed_receipt = BatchMemberReceiptV1.model_validate(fields)
+        replacement = artifacts.put(
+            canonical_bytes(changed_receipt), "application/json"
+        )
+        reference.unlink()
+        artifacts.publish_reference(replacement, reference.relative_to(run).as_posix())
+        assert artifacts.read(replacement) == reference.read_bytes()
+        message = "OpenAI Batch replay lacks its original member receipt"
+    else:
+
+        class Interrupted(BaseException):
+            pass
+
+        real_screen = OpenAIBatchAdapter.screen_result
+        real_write = OpenAIBatchSession.write_fact
+        observed: list[bytes] = []
+        cuts: list[OpenAIBatchResultScreenV1] = []
+
+        def check_screen(adapter: OpenAIBatchAdapter, raw: bytes, expected: Any) -> Any:
+            screened = real_screen(adapter, raw, expected)
+            if raw == row:
+                assert screened is not None and not screened[4]
+                assert screened[0] == receipt.member_key
+                assert b"offline-envelope-placeholder" not in screened[3]
+                observed.append(screened[3])
+            return screened
+
+        def interrupt_after_cut(
+            session: OpenAIBatchSession, kind: str, entity: str, record: Any
+        ) -> None:
+            real_write(session, kind, entity, record)
+            if isinstance(record, OpenAIBatchResultScreenV1):
+                cuts.append(record)
+                raise Interrupted
+
+        with monkeypatch.context() as patch:
+            patch.setattr(OpenAIBatchAdapter, "screen_result", check_screen)
+            patch.setattr(OpenAIBatchSession, "write_fact", interrupt_after_cut)
+            with pytest.raises(Interrupted):
+                for _ in range(3):
+                    collect_batch("001", store=store, use_frozen_snapshot=True)
+        assert len(observed) == 1
+        (cut,) = cuts
+        assert (cut.source_id, cut.legacy_positions) == (source, 1)
+        with ReadOnlyRepository(store) as repo:
+            assert tuple(
+                row[0]
+                for row in repo.connection.execute(
+                    "SELECT record_json FROM batch_facts WHERE kind='cursor' AND entity_id=?",
+                    (cut.entity,),
+                )
+            ) == (canonical_bytes(cut).decode(),)
+        message = "OpenAI Batch result screen lacks its historical receipt"
+
+    before = _snapshot_replay(store, service, source)
+    saved_receipt = reference.read_bytes()
+    events = service.events()
+    if defect == "changed-row":
+        assert before[0] and before[1] == (
+            (),
+            (canonical_bytes(receipt.usage).decode(),),
+        )
+        assert before[2] == ()
+        changed = wire.replace(b"req_offline", b"req_offlinf", 1)
+        assert changed != wire and len(changed) == declared
+        assert json.loads(changed)["custom_id"] == receipt.member_key
+        service.file("file-output_1", body=changed)
+    with pytest.raises(LifecycleError) as error:
+        collect_batch("001", store=store, use_frozen_snapshot=True)
+    assert isinstance(error.value.__context__, IntegrityError)
+    assert str(error.value.__context__) == message
+    assert _snapshot_replay(store, service, source) == before
+    assert reference.read_bytes() == saved_receipt
+    assert artifacts.read(receipt.retained) == retained
+    reads = service.events()[len(events) :]
+    if defect == "changed-row":
+        assert reads == [
+            ("GET", "/v1/files/file-output_1"),
+            ("GET", "/v1/files/file-output_1/content"),
+        ]
+    else:
+        assert reads == []
+
+
+def test_impossible_result_screen_cut_is_rejected_before_content(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from judgmentllm.lifecycle_models import LifecycleError
+    from judgmentllm.persistence.artifacts import ArtifactStore
+    from judgmentllm.persistence.hashing import canonical_bytes
+    from judgmentllm.persistence.models import IntegrityError
+    from judgmentllm.persistence.native_batch import register
+    from judgmentllm.persistence.repository import Repository
+    from judgmentllm.providers.openai_batch_diagnostics import OpenAIBatchResultScreenV1
+
+    service, spec, store = setup(tmp_path, monkeypatch, responses=1)
+    with Repository(store) as repo, repo.transaction():
+        run = repo.run_directory("001")
+        assert not list((run / "batch" / "members").glob("*.json"))
+        (source,) = repo.connection.execute(
+            "SELECT json_extract(record_json,'$.source_id') FROM batch_facts "
+            "WHERE kind='cursor' AND entity_id LIKE 'openai-ready:%' "
+            "AND json_extract(record_json,'$.role')='output'"
+        ).fetchone()
+        cut = OpenAIBatchResultScreenV1(source_id=source, legacy_positions=2)
+        artifacts = ArtifactStore(run, create=False)
+        raw = canonical_bytes(cut)
+        identity = artifacts.put(raw, "application/json")
+        register(repo, "001", identity)
+        repo.connection.execute(
+            "INSERT INTO batch_facts(run_id,kind,entity_id,receipt_sha256,record_json) VALUES (?,?,?,?,?)",
+            ("001", "cursor", cut.entity, identity.sha256, raw.decode()),
+        )
+    before = _snapshot_replay(store, service, source)
+    assert before[:3] == ((), ((), ()), ())
+    events = service.events()
+    with pytest.raises(LifecycleError) as error:
+        collect_batch("001", store=store, spec=spec)
+    assert isinstance(error.value.__context__, IntegrityError)
+    assert (
+        str(error.value.__context__)
+        == "OpenAI Batch result screen differs from its source"
+    )
+    assert _snapshot_replay(store, service, source) == before
+    assert service.events()[len(events) :] == [("GET", "/v1/files/file-output_1")]
+
+
+@pytest.mark.parametrize(
+    "case", ["full-approved", "minimal", "escaped-credential", "extra-field"]
+)
+def test_diagnostic_private_ack_requires_closed_full_capture(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    from types import SimpleNamespace
+
+    import httpx2
+    from openai_batch_fixture import Service, install, specification
+
+    from judgmentllm import prepare_batch, submit_batch
+    from judgmentllm.batch_models import BatchOperationReceiptV1
+    from judgmentllm.persistence.hashing import canonical_bytes
+    from judgmentllm.providers import openai_batch
+    from judgmentllm.providers.openai_batch_diagnostics import approved_ack
+
+    service = Service(tmp_path / "service.sqlite")
+    original = service.request
+    transmitted: dict[str, bytes] = {}
+    status = "processed"
+    dummy_key = status if case == "escaped-credential" else "synthetic-batch-key"
+
+    def wire(request: Any) -> Any:
+        response = original(request)
+        if request.method != "POST":
+            return response
+        body = json.loads(response.read())
+        if request.url.path == "/v1/batches":
+            body["request_counts"] = {"total": 1, "completed": 1, "failed": 0}
+            if case == "extra-field":
+                body["request_counts"]["description"] = "PROHIBITED_PRIVATE_ACK"
+        else:
+            body["status"] = status
+        raw = ("  " + json.dumps(body) + "\n").encode()
+        if request.url.path == "/v1/files":
+            raw = raw.replace(b'"processed"', rb'"\u0070rocessed"')
+            assert json.loads(raw)["status"] == status and status.encode() not in raw
+        transmitted[request.url.path] = raw
+        return httpx2.Response(
+            200, content=raw, headers={"x-request-id": f"req_{dummy_key}"}
+        )
+
+    monkeypatch.setattr(service, "request", wire)
+    install(monkeypatch, service)
+
+    def credentials(_: str) -> Any:
+        return SimpleNamespace(_api_key=lambda: dummy_key)
+
+    monkeypatch.setattr(openai_batch, "_resolve_credentials", credentials)
+    spec = specification(
+        tmp_path, responses=1, capture="minimal" if case == "minimal" else "full"
+    )
+    store = tmp_path / "store"
+    prepare_batch(spec, store=store, run_id="001")
+    service.configure(store, spec)
+    assert submit_batch("001", store=store, spec=spec).batch.accepted_jobs == 1
+    with ReadOnlyRepository(store) as repo:
+        run = repo.run_directory("001")
+        (submission,) = repo.connection.execute(
+            "SELECT certainty,remote_id FROM submissions"
+        )
+        assert tuple(submission) == ("accepted", "batch_1")
+        receipts = {
+            kind: (instance, digest, intent, record)
+            for kind, instance, digest, intent, record in repo.connection.execute(
+                "SELECT o.kind,o.instance_id,f.receipt_sha256,o.intent_sha256,f.record_json FROM batch_operations o "
+                "JOIN batch_facts f ON f.entity_id=o.instance_id AND f.kind='operation'"
+            )
+        }
+    audit = export_batch_provenance("001", store=store)
+    controls = file_path(audit, "controls.jsonl").read_bytes()
+    assert dummy_key.encode() not in controls
+    objects = [
+        file_path(audit, record.name).read_bytes() for record in audit.manifest.files
+    ]
+    for kind, target, remote in (
+        ("upload", "/v1/files", "file-input_1"),
+        ("create", "/v1/batches", "batch_1"),
+    ):
+        instance, receipt, intent, record = receipts[kind]
+        expected = canonical_bytes(
+            BatchOperationReceiptV1(
+                instance_id=instance,
+                intent_sha256=intent,
+                outcome="accepted",
+                remote_id=remote,
+            )
+        )
+        assert record.encode() == expected and sha256(expected).hexdigest() == receipt
+        assert (
+            run / "batch" / "operations" / f"{instance}.json"
+        ).read_bytes() == expected
+        reference = run / "batch" / "openai-ack" / instance / f"{receipt}.json"
+        raw = transmitted[target]
+        digest = sha256(raw).hexdigest()
+        assert all(
+            digest.encode() not in artifact and raw not in artifact
+            for artifact in objects
+        )
+        if case == "full-approved" or (case, kind) in (
+            ("extra-field", "upload"),
+            ("escaped-credential", "create"),
+        ):
+            assert reference.read_bytes() == raw
+        else:
+            assert not reference.exists()
+            assert not (run / "objects" / digest[:2] / digest).exists()
+    saved = store_bytes(store)
+    assert dummy_key.encode() not in saved
+    if case == "escaped-credential":
+        upload = transmitted["/v1/files"]
+        body = json.loads(upload)
+        assert approved_ack(upload, body, "upload", spec.model, "synthetic-batch-key")
+        assert not approved_ack(upload, body, "upload", spec.model, dummy_key)
+        assert rb"\u0070rocessed" not in saved
+    assert b"PROHIBITED_PRIVATE_ACK" not in saved
+    assert service.events() == [("POST", "/v1/files"), ("POST", "/v1/batches")]
+
+
+def test_diagnostic_result_fields_remain_attributed_and_screened(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from openai_batch_fixture import specification
+
+    from judgmentllm import poll_batch, prepare_batch, submit_batch
+
+    service = Service(tmp_path / "service.sqlite")
+    original = service.request
+    spec = specification(tmp_path, capture="minimal", responses=2)
+    store = tmp_path / "store"
+
+    def wire(request: Any) -> Any:
+        response = original(request)
+        if request.method == "GET":
+            response.headers["x-request-id"] = "req_transport"
+        return response
+
+    monkeypatch.setattr(service, "request", wire)
+    install(monkeypatch, service)
+    prepare_batch(spec, store=store, run_id="001")
+    service.configure(store, spec)
+    submit_batch("001", store=store, spec=spec)
+    with service.connect() as db:
+        job = json.loads(db.execute("SELECT body FROM jobs").fetchone()[0])
+        job["status"] = "failed"
+        job["errors"] = {
+            "data": [{"code": "invalid_json_line"}, {"code": "batch_expired"}]
+        }
+        db.execute("UPDATE jobs SET body=?", (json.dumps(job),))
+    rows = [json.loads(line) for line in service.file("file-output_1")[0].splitlines()]
+    for row, identifier in zip(
+        rows, ["req_member", "req_synthetic-batch-key"], strict=True
+    ):
+        row["response"] = dict(
+            status_code=429,
+            request_id=identifier,
+            body={
+                "error": {"code": "batch_expired", "message": "PROHIBITED_MEMBER_BODY"}
+            },
+        )
+    raw = b"".join(json.dumps(row).encode() + b"\n" for row in rows)
+    service.file("file-output_1", body=raw, declared=len(raw))
+    poll_batch("001", store=store)
+    collect_batch("001", store=store, spec=spec)
+    _, failure = diagnostic_records(store, "job_get")
+    assert (failure["outcome"], failure["provider_code"]) == ("provider_rejected", None)
+    (initial,) = diagnostic_records(store, "file_metadata_initial")
+    (content,) = diagnostic_records(store, "file_content")
+    (final,) = diagnostic_records(store, "file_metadata_final")
+    assert initial["binding_id"] != content["binding_id"] == final["binding_id"]
+    assert len({initial["call_id"], content["call_id"], final["call_id"]}) == 3
+    assert (
+        content["http_request_id"] == "req_transport"
+        and content["member_request_id"] is None
+    )
+    first, second = diagnostic_records(store, "result_row")
+    assert [row["member_request_id"] for row in (first, second)] == ["req_member", None]
+    for row, source in zip((first, second), rows, strict=True):
+        assert row["member_key"] == source["custom_id"]
+        assert row["http_status"] is row["http_request_id"] is None
+        assert (row["outcome"], row["member_status"], row["provider_code"]) == (
+            "provider_rejected",
+            429,
+            "batch_expired",
+        )
+    assert b"PROHIBITED_MEMBER_BODY" not in store_bytes(store)
+    assert b"synthetic-batch-key" not in store_bytes(store)
+
+
+@pytest.mark.parametrize("case", ["full", "minimal", "legacy-prefix", "legacy-receipt"])
+def test_decoded_result_marker_is_screened_only_for_new_retention(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    from judgmentllm import BatchControlOptionsV1
+    from judgmentllm.batch_models import BatchMemberReceiptV1
+    from judgmentllm.execution import native_batch, openai_batch
+    from judgmentllm.execution.openai_batch import OpenAIBatchSession
+    from judgmentllm.persistence import hashing
+    from judgmentllm.persistence.hashing import canonical_bytes
+    from judgmentllm.providers.openai_batch import OpenAIBatchAdapter
+
+    legacy = case.startswith("legacy")
+    service, spec, store = setup(
+        tmp_path,
+        monkeypatch,
+        responses=3,
+        capture="minimal" if case == "minimal" else "full",
+    )
+    decoded: list[bytes] = []
+    wire: list[bytes] = []
+    markers = [b"PROHIBITED_OLD_REPLY", b"PROHIBITED_NEW_REPLY", b"PROHIBITED_NEW_TAIL"]
+    for line, marker in zip(
+        service.file("file-output_1")[0].splitlines(), markers, strict=True
+    ):
+        row = json.loads(line)
+        # A documented message ID remains shape-valid. Only the wire spelling hides the marker.
+        row["response"]["body"]["output"][0]["id"] = "msg_" + marker.decode()
+        decoded.append(canonical_bytes(row))
+        escaped = decoded[-1].replace(marker, rb"\u0050" + marker[1:])
+        assert marker not in escaped
+        wire.append(escaped)
+    lines = [*wire[:2], wire[0], wire[2]] if legacy else wire
+    data = b"\n".join(lines) + b"\n"
+    service.file("file-output_1", body=data, declared=len(data))
+    posts = [event for event in service.events() if event[0] == "POST"]
+    options = BatchControlOptionsV1(max_result_rows=1)
+
+    class Interrupted(BaseException):
+        pass
+
+    def interrupt(stage: str, _: str) -> None:
+        if stage == "after_batch_member_receipt":
+            raise Interrupted
+
+    def receipts() -> list[BatchMemberReceiptV1]:
+        with ReadOnlyRepository(store) as repo:
+            return [
+                BatchMemberReceiptV1.model_validate_json(path.read_bytes())
+                for path in (repo.run_directory("001") / "batch" / "members").glob(
+                    "*.json"
+                )
+            ]
+
+    if legacy:
+        original_write = OpenAIBatchSession.write_fact
+
+        def previous_write(
+            self: OpenAIBatchSession, kind: str, entity: str, record: Any
+        ) -> None:
+            if not entity.startswith("openai-result-screen:"):
+                original_write(self, kind, entity, record)
+
+        with monkeypatch.context() as old:
+            old.setattr(
+                OpenAIBatchAdapter,
+                "screen_result",
+                OpenAIBatchAdapter.verify_result_prefix,
+            )
+            old.setattr(OpenAIBatchSession, "write_fact", previous_write)
+            if case == "legacy-receipt":
+                with pytest.raises(Interrupted):
+                    collect_batch(
+                        "001", store=store, spec=spec, options=options, _fault=interrupt
+                    )
+            else:
+                collect_batch("001", store=store, spec=spec, options=options)
+        (prior,) = receipts()
+        assert (
+            prior.disposition == "exact"
+            and prior.retained.sha256 == sha256(decoded[0]).hexdigest()
+        )
+        if case == "legacy-receipt":
+
+            def interrupt_at_cut(
+                self: OpenAIBatchSession, kind: str, entity: str, record: Any
+            ) -> None:
+                original_write(self, kind, entity, record)
+                if entity.startswith("openai-result-screen:"):
+                    assert record.legacy_positions == 1
+                    raise Interrupted
+
+            with monkeypatch.context() as transition:
+                transition.setattr(OpenAIBatchSession, "write_fact", interrupt_at_cut)
+                with pytest.raises(Interrupted):
+                    for _ in range(3):
+                        collect_batch("001", store=store, spec=spec, options=options)
+
+    original_digest = hashing.bytes_digest
+    new_unsafe = set(wire[int(legacy) :] + decoded[int(legacy) :])
+
+    def screened_digest(data: bytes) -> str:
+        assert data not in new_unsafe
+        return original_digest(data)
+
+    for module in (hashing, native_batch, openai_batch):
+        monkeypatch.setattr(module, "bytes_digest", screened_digest)
+    result = None
+    for _ in range(6):
+        result = collect_batch("001", store=store, spec=spec, options=options)
+        if not result.batch.recovery_required:
+            break
+    assert result is not None and not result.batch.recovery_required
+    assert result.batch.conflicts == 0
+    with ReadOnlyRepository(store) as repo:
+        assert repo.summary("001").successful_results == 3
+    rows = sorted(receipts(), key=lambda item: item.source_position)
+    assert len(rows) == 3
+    saved = store_bytes(store)
+    for i, receipt in enumerate(rows):
+        if i == 0 and legacy:
+            assert receipt.retained.sha256 == sha256(decoded[0]).hexdigest()
+            assert receipt.disposition == "exact"
+            continue
+        assert receipt.disposition == "redacted" and receipt.original is None
+        assert (receipt.retained.relative_path is None) == (case == "minimal")
+        assert markers[i] not in saved
+        assert sha256(wire[i]).hexdigest().encode() not in saved
+        assert sha256(decoded[i]).hexdigest().encode() not in saved
+    assert [event for event in service.events() if event[0] == "POST"] == posts
+
+
+@pytest.mark.parametrize("capture", ["full", "minimal"])
+def test_decoded_envelope_metadata_never_becomes_exact_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capture: str
+) -> None:
+    from judgmentllm.execution import native_batch, openai_batch
+    from judgmentllm.persistence import hashing
+    from judgmentllm.persistence.hashing import canonical_bytes
+    from judgmentllm.providers.openai_batch_response import unsafe
+
+    service, spec, store = setup(
+        tmp_path, monkeypatch, endpoint="chat.completions", capture=capture
+    )
+    row, clean = map(json.loads, service.file("file-output_1")[0].splitlines())
+    marker = b"offline-envelope-placeholder"
+    # The optional fingerprint is part of the exact envelope, but not the derivative.
+    row["response"]["body"]["system_fingerprint"] = "Bearer\t" + marker.decode()
+    clean["response"]["body"]["system_fingerprint"] = "fp_offline_fixture"
+    raw, canonical = json.dumps(row).encode(), canonical_bytes(row)
+    assert raw != canonical and not unsafe(raw) and not unsafe(canonical)
+    assert json.loads(raw)["response"]["body"]["system_fingerprint"] == (
+        "Bearer\t" + marker.decode()
+    )
+    data = raw + b"\n" + canonical_bytes(clean) + b"\n"
+    service.file("file-output_1", body=data, declared=len(data))
+    digest = hashing.bytes_digest
+
+    def screened_digest(value: bytes) -> str:
+        assert marker not in value
+        return digest(value)
+
+    for module in (hashing, native_batch, openai_batch):
+        monkeypatch.setattr(module, "bytes_digest", screened_digest)
+
+    assert collect_batch("001", store=store, spec=spec).batch.missing_members == 0
+    with ReadOnlyRepository(store) as repo:
+        assert repo.summary("001").successful_results == 2
+        receipts = {
+            key: json.loads(record)
+            for key, record in repo.connection.execute(
+                "SELECT member_key,record_json FROM batch_member_receipts"
+            )
+        }
+    derivative = receipts[row["custom_id"]]
+    assert derivative["disposition"] == "redacted" and derivative["original"] is None
+    assert (derivative["retained"]["relative_path"] is None) == (capture == "minimal")
+    assert receipts[clean["custom_id"]]["disposition"] == "exact"
+    export_batch_provenance("001", store=store)
+    saved = store_bytes(store)
+    assert marker not in saved
+    for representation in (raw, canonical):
+        assert representation not in saved
+        assert sha256(representation).hexdigest().encode() not in saved
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "full",
+        "minimal",
+        "legacy-committed",
+        "legacy-interrupted",
+        "full-tab",
+        "minimal-newline",
+        "full-unicode-line",
+    ],
+)
+def test_decoded_assessment_is_screened_before_new_evidence(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    from openai_batch_fixture import Service, install, specification
+
+    from judgmentllm import (
+        BatchControlOptionsV1,
+        poll_batch,
+        prepare_batch,
+        submit_batch,
+    )
+    from judgmentllm.execution import native_batch, openai_batch
+    from judgmentllm.persistence import hashing
+    from judgmentllm.persistence.hashing import canonical_bytes
+    from judgmentllm.providers.openai_batch import OpenAIBatchAdapter
+    from judgmentllm.providers.openai_batch_response import unsafe
+    from judgmentllm.results import CategoricalOutput
+
+    service = Service(tmp_path / "service.sqlite")
+    install(monkeypatch, service)
+    spec = specification(
+        tmp_path,
+        responses=2,
+        explanations=True,
+        capture="minimal" if case.startswith("minimal") else "full",
+    )
+    store = tmp_path / "store"
+    prepare_batch(spec, store=store, run_id="001")
+    service.configure(store, spec)
+    submit_batch("001", store=store, spec=spec)
+    poll_batch("001", store=store)
+    first, clean = service.file("file-output_1")[0].splitlines()
+    row = json.loads(first)
+    part = row["response"]["body"]["output"][0]["content"][0]
+    output = json.loads(part["text"])
+    assert output["scores"][0]["explanation"].startswith("Synthetic")
+    separator = {
+        "full-tab": "\t",
+        "minimal-newline": "\n",
+        "full-unicode-line": "\u2028",
+    }.get(case)
+    fragment = (
+        b"ROHIBITED_DECODED_ASSESSMENT" if separator is None else b"offline-placeholder"
+    )
+    marker = (
+        b"P" + fragment
+        if separator is None
+        else b"Bearer" + separator.encode() + fragment
+    )
+    output["scores"][0]["explanation"] = marker.decode()
+    part["text"] = json.dumps(output)
+    if separator is None:
+        part["text"] = part["text"].replace(
+            marker.decode(), r"\u0050" + fragment.decode()
+        )
+    else:
+        assert not unsafe(canonical_bytes(output))
+    validated = CategoricalOutput.model_validate_json(part["text"])
+    assert validated.scores[0].explanation == marker.decode()
+    wire = canonical_bytes(row)
+    assert marker not in wire and not unsafe(wire)
+    data = b"\n".join((wire, clean, wire)) + b"\n"
+    service.file("file-output_1", body=data, declared=len(data))
+    posts = [event for event in service.events() if event[0] == "POST"]
+    options = BatchControlOptionsV1(max_result_rows=1)
+    legacy = case.startswith("legacy")
+    prior = None
+
+    class Interrupted(BaseException):
+        pass
+
+    def interrupt(stage: str, _: str) -> None:
+        if stage == "after_batch_member_receipt":
+            raise Interrupted
+
+    with ReadOnlyRepository(store) as repo:
+        reference = (
+            repo.run_directory("001") / "batch" / "members" / f"{row['custom_id']}.json"
+        )
+    if legacy:
+        writer = openai_batch.OpenAIBatchSession.write_fact
+
+        def before_cut(self: Any, kind: str, entity: str, record: Any) -> None:
+            if not entity.startswith("openai-result-screen:"):
+                writer(self, kind, entity, record)
+
+        with monkeypatch.context() as old:
+            old.setattr(
+                OpenAIBatchAdapter,
+                "screen_result",
+                OpenAIBatchAdapter.verify_result_prefix,
+            )
+            old.setattr(openai_batch.OpenAIBatchSession, "write_fact", before_cut)
+            if case == "legacy-interrupted":
+                with pytest.raises(Interrupted):
+                    collect_batch(
+                        "001", store=store, spec=spec, options=options, _fault=interrupt
+                    )
+            else:
+                collect_batch("001", store=store, spec=spec, options=options)
+        prior = reference.read_bytes()
+        with ReadOnlyRepository(store) as repo:
+            results = tuple(repo.iter_results("001"))
+        if case == "legacy-committed":
+            (result,) = results
+            assert getattr(result, "explanation", None) == marker.decode()
+        else:
+            assert not results
+    else:
+        original_digest = hashing.bytes_digest
+
+        def screened_digest(data: bytes) -> str:
+            assert data != wire and fragment not in data
+            return original_digest(data)
+
+        for module in (hashing, native_batch, openai_batch):
+            monkeypatch.setattr(module, "bytes_digest", screened_digest)
+
+    result = None
+    for _ in range(6):
+        result = collect_batch("001", store=store, spec=spec, options=options)
+        if not result.batch.recovery_required:
+            break
+    assert result is not None and result.batch.conflicts == 0
+    assert result.batch.missing_members == int(case != "legacy-committed")
+    with ReadOnlyRepository(store) as repo:
+        explanations = [
+            getattr(item, "explanation", None) for item in repo.iter_results("001")
+        ]
+        ids = repo.connection.execute(
+            "SELECT member_key FROM batch_member_receipts"
+        ).fetchall()
+    assert len(ids) == 1 + int(case == "legacy-committed")
+    assert sum(str(text).startswith("Synthetic") for text in explanations) == 1
+    assert explanations.count(marker.decode()) == int(case == "legacy-committed")
+    if legacy:
+        assert reference.read_bytes() == prior
+    else:
+        assert not reference.exists()
+        saved = store_bytes(store)
+        assert fragment not in saved
+        assert sha256(wire).hexdigest().encode() not in saved
+    assert [event for event in service.events() if event[0] == "POST"] == posts
 
 
 @pytest.mark.parametrize("capture", ["full", "minimal"])
@@ -161,6 +909,10 @@ def test_overrun_rejected_before_any_row_from_bad_chunk(
     result = collect_batch("001", store=store, spec=spec)
     assert result.collection is not None
     assert "source_overrun" in result.collection.codes
+    headers, overrun = diagnostic_records(store, "file_content")
+    assert headers["call_id"] == overrun["call_id"]
+    assert headers["http_status"] == overrun["http_status"] == 200
+    assert (overrun["outcome"], overrun["reason"]) == ("withheld", "bounds")
     with ReadOnlyRepository(store) as repo:
         assert repo.connection.execute(
             "SELECT count(*) FROM batch_member_receipts"

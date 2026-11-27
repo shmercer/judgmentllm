@@ -403,6 +403,63 @@ raw/encrypted spool is used to bypass screening. Upload and result Files request
 30-day expiry; output expiry is explicit at create. This is not a zero-retention
 claim, and `store=false` does not eliminate provider-side Files retention.
 
+#### OpenAI Batch diagnostics
+
+Audit v2's `controls.jsonl` and `controls.csv` include
+`openai_batch_diagnostic_v1` records under the `openai-diagnostic:` cursor
+namespace. Each call records its phase, operation, and local call ID. Its
+neutral header fact preserves a screened HTTP status and request ID even when
+the body, SDK wrapper, or local JSON decoder later fails. A second fact can
+describe the failure or lookup outcome. SDK validation failure requires the SDK
+exception to identify the same successful HTTP response. Unattributed failures
+remain indeterminate. Result rows use their own status and
+request ID, tied to a sealed member and source position. Initial metadata
+binds to the ready slot. File content and the post-EOF metadata check bind to
+the pinned source. Optional metadata is explicitly null when unavailable.
+
+One syntactically valid, credential-free `req_` request ID is eligible per
+call or row. A code is eligible only when all reported non-null candidates
+agree on one of `batch_cancelled`, `batch_expired`, and `invalid_json_line`.
+The only sources are buffered HTTP error `error.code`, bound failed or expired
+job `errors.data[*].code` (up to 32 entries), and attributed member
+`error.code` or `response.body.error.code`. Unread error bodies are closed
+without draining. Buffered bodies must pass the existing byte debit, control
+ceiling and identity-encoding check before code extraction. The diagnostic record
+contains no error text, arbitrary headers, or assessment text.
+
+The sole original control-body retention exception is a screened direct
+upload/create `2xx` acknowledgment in full capture. The upload body must match
+the sealed filename, purpose, byte size and screened file ID. The create body
+must match the sealed input file, endpoint and exact three operation bindings,
+with a screened job ID and documented status. Only closed typed fields are
+eligible, including documented timestamps, screened file IDs, and the
+three integer request counts. Free text, unknown fields, non-null job errors
+or usage, and credentials in the original or decoded body disqualify this
+private copy. Eligible exact bytes are linked privately to the original intent
+and committed acknowledgment. Neither the bytes, digest, nor private reference
+appears in audit exports or is captured in minimal mode.
+
+Diagnostics are append-only and independent of acceptance and source progress.
+A successful empty lookup can report `no_match`. Empty and inconclusive lookups
+leave the original intent unresolved. An observed HTTP rejection authorizes no
+retry. A restarted collection leaves
+earlier prefixes as recorded and reuses an already published row diagnostic
+if interruption preceded its cursor advance. A diagnostic write failure
+preserves response cleanup and any valid acknowledgment before surfacing
+a local persistence failure. For an already buffered mutation response, the
+header diagnostic waits for byte charging and local receipt settlement. Later
+diagnostic work on a valid receipt also follows settlement. The existing
+deadline still blocks new forwards and body reads.
+
+New result receipts screen the original wire bytes and decoded envelope strings
+before retaining an exact body or its digest. This includes metadata omitted by
+the derivative. Decoded assessment strings are screened directly before
+retention or normalization. A safe derivative may still be kept under the
+existing capture rules. A source-bound screening cut preserves committed prefix
+positions and a bound historical receipt whose cursor has yet to advance. An
+identical repeat may reuse its bound receipt. New evidence uses the current
+screen.
+
 ### Pinned source bytes and real EOF
 
 A stable source slot binds manifest, shard, original accepted create/submission

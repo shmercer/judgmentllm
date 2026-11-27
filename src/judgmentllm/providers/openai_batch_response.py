@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping
-from typing import Literal
+from collections.abc import Iterator, Mapping
+from itertools import chain
+from typing import Literal, cast
 
 from judgmentllm.evidence._base import EvidenceModel
 from judgmentllm.evidence.usage import ReportedUsageInput
@@ -12,6 +13,7 @@ from judgmentllm.openai_batch_transport import PreparedOpenAIBatchRequest
 from judgmentllm.output_contracts import decode_assessment_output
 from judgmentllm.persistence.hashing import canonical_bytes, semantic_digest
 from judgmentllm.providers.evidence import ProviderEvidence, ProviderObservationContext
+from judgmentllm.providers.google_response import contains_credential
 from judgmentllm.providers.openai_response import (
     _chat_output,
     _extract_assessment_component,
@@ -24,14 +26,51 @@ from judgmentllm.providers.protocol import ParsedResponse, ProviderResponse
 
 # pyright: reportPrivateUsage=false
 
+_UNSAFE_TEXT = re.compile(
+    r'(?:sk-[A-Za-z0-9_-]{8,}|PROHIBITED_[A-Z_]+|Bearer\s+[^\s"]+)'
+)
+_UNSAFE_BYTES = re.compile(_UNSAFE_TEXT.pattern.encode("ascii"))
+
 
 def unsafe(raw: bytes) -> bool:
-    return (
-        re.search(
-            rb"(?:sk-[A-Za-z0-9_-]{8,}|PROHIBITED_[A-Z_]+|Bearer\s+[^\s\"]+)", raw
-        )
-        is not None
-    )
+    return _UNSAFE_BYTES.search(raw) is not None
+
+
+def unsafe_assessment(text: str | None, active_key: str | None) -> bool:
+    if text is None:
+        return False
+    try:
+        decoded = decode_assessment_output(text)
+    except ValueError:
+        # Invalid assessment syntax remains subject to the ordinary text screen.
+        return False
+    return _unsafe_decoded(decoded, active_key)
+
+
+def _unsafe_decoded(decoded: object, active_key: str | None) -> bool:
+    # Keep one iterator per open container and screen values before JSON escaping.
+    pending: list[Iterator[object]] = [iter((decoded,))]
+    while pending:
+        try:
+            item = next(pending[-1])
+        except StopIteration:
+            pending.pop()
+            continue
+        if isinstance(item, str):
+            raw = item.encode("utf-8")
+            if _UNSAFE_TEXT.search(item) or (
+                active_key is not None and contains_credential(raw, active_key)
+            ):
+                return True
+        elif isinstance(item, list):
+            pending.append(iter(cast(list[object], item)))
+        elif isinstance(item, dict):
+            fields = cast(dict[str, object], item)
+            pending.append(chain(fields, fields.values()))
+    return False
+
+
+ScreenedResult = tuple[str, ProviderResponse, ReportedUsageInput, bytes, bool]
 
 
 class ScreenedOpenAIBatchRowV1(EvidenceModel):
@@ -74,14 +113,20 @@ def screen_result(
     endpoint: str,
     *,
     allow_replay: bool = False,
-) -> tuple[str, ProviderResponse, ReportedUsageInput, bytes, bool] | None:
+    verify_prefix: bool = False,
+    active_key: str | None = None,
+) -> ScreenedResult | None:
     try:
         row = _mapping(decode_assessment_output(raw))
         if row.get("record_type") == "screened_openai_batch_row_v1":
             if not allow_replay:
                 return None
             saved = ScreenedOpenAIBatchRowV1.model_validate_json(raw)
-            if saved.custom_id not in expected_keys or unsafe(canonical_bytes(saved)):
+            if (
+                saved.custom_id not in expected_keys
+                or unsafe(canonical_bytes(saved))
+                or unsafe_assessment(saved.assessment_text, active_key)
+            ):
                 return None
             return observation(saved, canonical_bytes(saved), False)
         if set(row) - {
@@ -159,6 +204,8 @@ def screen_result(
                 return None
         if row.get("id") is not None:
             safe_id(row["id"], "batch_req_")
+        if not verify_prefix and unsafe_assessment(text, active_key):
+            return None
         saved = ScreenedOpenAIBatchRowV1.model_validate(
             dict(
                 custom_id=key,
@@ -173,15 +220,30 @@ def screen_result(
         safe = canonical_bytes(saved)
         if unsafe(safe):
             return None
-        exact = exact and "api_key" not in row and not unsafe(raw)
-        return observation(saved, canonical_bytes(row) if exact else safe, exact)
+        # Retained exact evidence is already bound by its member receipt. Its
+        # canonical bytes can differ from the original wire spelling.
+        exact = exact and "api_key" not in row and (allow_replay or not unsafe(raw))
+        if exact:
+            original = canonical_bytes(row)
+            # Previously committed prefixes and receipts use the original screen.
+            if (
+                allow_replay
+                or verify_prefix
+                or (
+                    not unsafe(original)
+                    and not _unsafe_decoded(row, active_key)
+                    and (active_key is None or not contains_credential(raw, active_key))
+                )
+            ):
+                return observation(saved, original, True)
+        return observation(saved, safe, False)
     except (ValueError, TypeError, KeyError, UnicodeError):
         return None
 
 
 def observation(
     saved: ScreenedOpenAIBatchRowV1, safe: bytes, exact: bool
-) -> tuple[str, ProviderResponse, ReportedUsageInput, bytes, bool]:
+) -> ScreenedResult:
     key = semantic_digest(
         "batch-observation-v1",
         [saved.custom_id, "output" if saved.kind == "response" else "error"],

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import csv
 import importlib.util
 import json
 import shutil
@@ -58,15 +59,16 @@ def test_real_r_openai_grouped_and_reversed_pair(
     rscript = shutil.which("Rscript")
     assert rscript is not None, "Required local Rscript is unavailable"
 
-    def consume() -> subprocess.CompletedProcess[str]:
+    def consume(manifest: str, *args: str) -> subprocess.CompletedProcess[str]:
         return subprocess.run(
             [
                 rscript,
                 "--vanilla",
                 str(root / "examples/openai_batch_interoperability.R"),
-                report.manifest_path,
+                manifest,
                 endpoint,
                 capture,
+                *args,
             ],
             capture_output=True,
             text=True,
@@ -74,11 +76,41 @@ def test_real_r_openai_grouped_and_reversed_pair(
             check=False,
         )
 
-    result = consume()
+    result = consume(report.manifest_path, "--diagnostics")
     assert result.returncode == 0, (result.stdout, result.stderr)
+
+    service.set("stall_poll", "batch_1")
+    before = [event for event in service.events() if event[0] == "POST"]
+    assert poll_batch("001", store=store).outcome == "partial"
+    service.set("stall_poll", None)
+    assert poll_batch("001", store=store).batch.accepted_jobs == 1
+    assert [event for event in service.events() if event[0] == "POST"] == before
+    recovered = export_batch_provenance("001", store=store)
+    controls = [
+        json.loads(line)["record"]
+        for line in file_path(recovered, "controls.jsonl").read_text().splitlines()
+    ]
+    with file_path(recovered, "controls.csv").open(newline="") as stream:
+        assert [json.loads(row["record"]) for row in csv.DictReader(stream)] == controls
+    header, failure = [
+        record for record in controls if record.get("http_status") == 503
+    ]
+    assert (header["reason"], failure["reason"]) == ("headers", "http_status")
+    assert header["call_id"] == failure["call_id"]
+    for record in (header, failure):
+        for field in (
+            "http_request_id",
+            "member_status",
+            "member_request_id",
+            "provider_code",
+        ):
+            assert field in record and record[field] is None
+    result = consume(recovered.manifest_path)
+    assert result.returncode == 0, (result.stdout, result.stderr)
+
     # Independent negative check: usage cannot be charged per normalized trait.
     path = file_path(report, "members.jsonl")
     rows = [json.loads(line) for line in path.read_text().splitlines()]
     rows[0]["evidence"]["usage"]["input_tokens"] = 40
     path.write_text("".join(json.dumps(row) + "\n" for row in rows))
-    assert consume().returncode != 0
+    assert consume(report.manifest_path, "--diagnostics").returncode != 0
