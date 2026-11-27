@@ -17,6 +17,7 @@ from contextlib import aclosing, contextmanager
 from contextvars import ContextVar
 from email.parser import BytesParser
 from email.policy import default
+from http.cookiejar import CookieJar, DefaultCookiePolicy
 from typing import Any, cast
 
 from judgmentllm._auth import _resolve_credentials
@@ -494,6 +495,7 @@ class OpenAIBatchAdapter:
             max_retries=0,
             http_client=http.AsyncClient(
                 transport=GuardedTransport(),
+                cookies=CookieJar(policy=DefaultCookiePolicy(allowed_domains=())),
                 trust_env=False,
                 follow_redirects=False,
                 timeout=30,

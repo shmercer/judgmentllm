@@ -96,7 +96,9 @@ def test_incompatible_scope_fails_before_sdk_or_credentials(
     tmp_path: Any, monkeypatch: Any, setting: Any, value: Any
 ) -> Any:
     from judgmentllm import openai_batch_transport
+    from judgmentllm.execution import openai_batch as openai_batch_execution
     from judgmentllm.lifecycle_models import LifecycleError
+    from judgmentllm.providers import openai_batch as openai_batch_provider
 
     spec = specification(tmp_path)
     setattr(spec.execution, setting, value)
@@ -104,9 +106,13 @@ def test_incompatible_scope_fails_before_sdk_or_credentials(
     def forbidden(*args: Any, **kwargs: Any) -> Any:
         raise AssertionError("SDK guard reached for an incompatible scope")
 
-    monkeypatch.setattr(openai_batch_transport, "require_sdk", forbidden)
-    with pytest.raises(LifecycleError):
-        prepare_batch(spec, store=tmp_path / "never")
+    # Load both consumers above so their import-time bindings can be restored.
+    with monkeypatch.context() as patch:
+        patch.setattr(openai_batch_transport, "require_sdk", forbidden)
+        patch.setattr(openai_batch_execution, "require_sdk", forbidden)
+        patch.setattr(openai_batch_provider, "require_sdk", forbidden)
+        with pytest.raises(LifecycleError):
+            prepare_batch(spec, store=tmp_path / "never")
     assert not (tmp_path / "never").exists()
 
 
@@ -3176,6 +3182,55 @@ def test_failed_create_reports_only_bound_allowed_code(
     assert accepted["receipt"] is not None
     assert accepted["reference"] == accepted["receipt"].encode()
     assert service.events() == [("POST", "/v1/files"), ("POST", "/v1/batches")]
+    for path in store.rglob("*"):
+        if path.is_file():
+            assert marker.encode() not in path.read_bytes()
+
+
+def test_sdk_upload_then_create_stays_cookie_free(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import httpx2
+
+    service = Service(tmp_path / "service.sqlite")
+    request = service.request
+    marker = "batch-upload-cookie-canary"
+
+    def wire(req: httpx2.Request) -> httpx2.Response:
+        response: httpx2.Response = request(req)
+        if (req.method, req.url.path) == ("POST", "/v1/files"):
+            assert response.status_code == 200
+            response.headers["Set-Cookie"] = f"probe={marker}; Path=/; Secure"
+        if (req.method, req.url.path) == ("POST", "/v1/batches"):
+            assert "cookie" not in req.headers
+        return response
+
+    monkeypatch.setattr(service, "request", wire)
+    install(monkeypatch, service)
+    spec = specification(tmp_path, responses=1, capture="full")
+    store = tmp_path / "store"
+    prepare_batch(spec, store=store, run_id="001")
+    service.configure(store, spec)
+
+    send = httpx2.AsyncClient.send
+    clients: list[httpx2.AsyncClient] = []
+    upload_cookie_counts: list[int] = []
+
+    async def observe_send(
+        client: httpx2.AsyncClient, req: httpx2.Request, **kwargs: Any
+    ) -> httpx2.Response:
+        clients.append(client)
+        response = await send(client, req, **kwargs)
+        if (req.method, req.url.path) == ("POST", "/v1/files"):
+            upload_cookie_counts.append(len(client.cookies))
+        return response
+
+    monkeypatch.setattr(httpx2.AsyncClient, "send", observe_send)
+    result = submit_batch("001", store=store, spec=spec)
+    assert service.events() == [("POST", "/v1/files"), ("POST", "/v1/batches")]
+    assert result.outcome == "ok" and result.batch.accepted_jobs == 1
+    assert len(clients) == 2 and clients[0] is clients[1]
+    assert upload_cookie_counts == [0]
     for path in store.rglob("*"):
         if path.is_file():
             assert marker.encode() not in path.read_bytes()

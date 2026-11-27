@@ -268,6 +268,9 @@ check covers exact multipart fields/file bytes, create metadata/body and the
 original cancel target. Upload intent precedes forwarding; screened acceptance
 receipts precede SQL projection. An acknowledged upload is reused.
 
+The Batch HTTP client ignores response cookies, and the final wire check
+rejects outbound `Cookie` headers.
+
 Lost upload acknowledgment requires a unique bounded Files-list match by opaque
 operation filename **and exact reconstructed authorized input bytes**. Lost create
 acknowledgment requires positive original operation metadata/input/route matching
