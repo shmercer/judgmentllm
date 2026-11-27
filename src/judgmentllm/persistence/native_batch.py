@@ -113,7 +113,13 @@ def fact(
 
 
 def latest(
-    repository: Repository, run_id: str, kind: str, entity: str, model: type[T]
+    repository: Repository,
+    run_id: str,
+    kind: str,
+    entity: str,
+    model: type[T],
+    *,
+    require_retained: bool = False,
 ) -> T | None:
     row = repository.connection.execute(
         "SELECT record_json,receipt_sha256 FROM batch_facts WHERE run_id=? AND kind=? AND entity_id=? ORDER BY fact_seq DESC LIMIT 1",
@@ -124,9 +130,11 @@ def latest(
     result = model.model_validate_json(row[0])
     if bytes_digest(canonical_bytes(result)) != row[1]:
         raise IntegrityError("batch fact identity conflicts")
-    ArtifactStore(repository.run_directory(run_id), create=False).verify(
+    retained = ArtifactStore(repository.run_directory(run_id), create=False).verify(
         repository.get_artifact(run_id, row[1])
     )
+    if require_retained and retained is None:
+        raise IntegrityError("batch fact requires a retained artifact")
     return result
 
 

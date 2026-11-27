@@ -30,6 +30,9 @@ _UNSAFE_TEXT = re.compile(
     r'(?:sk-[A-Za-z0-9_-]{8,}|PROHIBITED_[A-Z_]+|Bearer\s+[^\s"]+)'
 )
 _UNSAFE_BYTES = re.compile(_UNSAFE_TEXT.pattern.encode("ascii"))
+_RESPONSE_REQUEST_UUID_V4 = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}"
+)
 
 
 def unsafe(raw: bytes) -> bool:
@@ -107,6 +110,19 @@ def safe_id(value: object, prefix: str) -> str:
     return value
 
 
+def _response_request_uuid(value: object) -> bool:
+    return type(value) is str and _RESPONSE_REQUEST_UUID_V4.fullmatch(value) is not None
+
+
+def uses_responses_request_uuid(raw: bytes) -> bool:
+    """Identify the UUID form in an already screened Responses wire row."""
+    row = _mapping(decode_assessment_output(raw))
+    response = _mapping(row.get("response") or {})
+    return response.get("status_code") == 200 and _response_request_uuid(
+        response.get("request_id")
+    )
+
+
 def screen_result(
     raw: bytes,
     expected_keys: Mapping[str, PreparedOpenAIBatchRequest],
@@ -174,8 +190,11 @@ def screen_result(
                 exact = _safe_original_envelope(
                     body, endpoint, _mapping(decode_assessment_output(wire.payload))
                 )
-                if response.get("request_id") is not None:
-                    safe_id(response["request_id"], "req_")
+                request_id = response.get("request_id")
+                if request_id is not None and not (
+                    endpoint == "responses" and _response_request_uuid(request_id)
+                ):
+                    safe_id(request_id, "req_")
         else:
             error = _mapping(row.get("error"))
             if set(error) - {"code", "message"}:

@@ -314,6 +314,12 @@ without draining. Buffered bodies must pass the existing byte debit, control
 ceiling and identity-encoding check before code extraction. The diagnostic record
 contains no error text, arbitrary headers, or assessment text.
 
+On HTTP 200 OpenAI Responses Batch rows, `response.request_id` may be omitted,
+null, a screened `req_` ID, or a canonical lowercase hyphenated UUID v4 with
+the RFC variant. The UUID is eligible for exact evidence after the usual wire
+and decoded secret scans. The screened derivative omits it, and the row
+diagnostic reports `member_request_id` as null.
+
 The sole original control-body retention exception is a screened direct
 upload/create `2xx` acknowledgment in full capture. The upload body must match
 the sealed filename, purpose, byte size and screened file ID. The create body
@@ -346,6 +352,30 @@ existing capture rules. A source-bound screening cut preserves committed prefix
 positions and a bound historical receipt whose cursor has yet to advance. An
 identical repeat may reuse its bound receipt. New evidence uses the current
 screen.
+
+Newly withheld Responses rows commit a versioned, source-position digest in the
+cursor. A pre-upgrade withheld step is eligible on replay only when it matches
+the exact legacy cursor at that position. Both that historical cursor and the
+active cursor require retained, verified artifacts. Validated rows use their
+retained-byte digests, and the complete committed prefix must match before
+collection can admit unread rows.
+
+Use the repaired version for Responses Batch collection and recovery. Even with
+identical file bytes, older collectors compute a different prefix for an
+unfinished Responses source if the committed prefix contains a new withheld
+digest or an accepted row with a UUID request ID. They record a sticky
+`source_conflict`, which excludes that source from collection across restarts
+and after upgrading.
+
+In full capture, an interruption can leave an exact UUID receipt on disk before
+the normalized result is committed. Older recovery rejects the UUID when it
+re-screens the retained row and records `unsafe_evidence`. The receipt stays in
+place and normalization remains pending. If the row is still ahead of the
+cursor, older collection can advance past it as withheld.
+
+Local status, audit inspection, and export can read the existing `BatchCursorV1`
+schema in either version without replaying provider rows. Exhaustion closes the
+source to backfill.
 
 ### Pinned source bytes and real EOF
 
