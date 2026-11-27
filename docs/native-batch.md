@@ -198,8 +198,9 @@ The existing **seventh** strict local R gate remains R-driven: outside the
 checkout, it launches installed separate CLI processes for prepare, submit,
 status, partial collect, resume, recovery and export. R checks process exits,
 single stdout envelopes, stderr diagnostics, artifacts, both retention modes,
-late cancellation and original/presented pair identities. It retains its existing
-**180-second total deadline**. All seven gates and separate Windows/macOS process
+late cancellation and original/presented pair identities. The wrapper uses the
+[installed gate deadline](r-interoperability.md#subphase-5-installed-cli-lifecycle-acceptance).
+All seven gates and separate Windows/macOS process
 correctness remain mandatory; focused R export checks do not replace this gate.
 The installed driver reuses `check_batch_audit` from the standalone R consumer for
 actual canonical and R CSV contents, compares complete member/evidence records on
@@ -478,7 +479,7 @@ not be mislabeled as a successful controlled fixture.
 
 Independent code review and exact-source Level 3 local/hosted qualification remain
 separate from focused implementation checks. Preserve all seven strict R gates,
-the installed seventh gate's 180-second deadline, historical coverage/floor,
+the [installed gate deadline](r-interoperability.md#subphase-5-installed-cli-lifecycle-acceptance), historical coverage/floor,
 resource/memory/cleanup bounds and Windows/macOS process correctness. A separate
 key-safe runner gate must attest writable roots, immutable Git/temp, disabled
 external networking for offline work and private scratch. **Live authorization is

@@ -1003,7 +1003,7 @@
     "scripts/audit_distribution.py": "e0af95fd8149448452a180dfe706754e6d2165cf0a930fba09da92ddfebd7a80",
     "scripts/audit_test_efficiency.py": "e51c838f8cdb3779688d19af20698b8cd160dfdbb767c8b3f5533637cb94ec88",
     "scripts/cli_lifecycle_fixture.py": "676124b902f514256daeaaf543e9c05418138b749e82c1b53101e0f2df7db0a7",
-    "scripts/cli_lifecycle_r_gate.py": "a044165267ddff88151c2b090c7c198745436fc3f62d056156ba1992903017d5",
+    "scripts/cli_lifecycle_r_gate.py": "4d595a9827ef470ebe50ace6eddf7a0877335ac79fe0523a672c83c7b7622574",
     "scripts/cli_process_supervisor.py": "861fd31c039aa1da5930df95d065ceae42a9041ba734a4e23b70d7a65ea9672e",
     "scripts/cli_process_windows.py": "ce9545edcc529db63d77a23eff0de89db2e25c9c8347be1c4172bea3b5a097ed",
     "scripts/execution_memory_fixture.py": "57b3a2cd48d9f87a881b72fa31eb826cc11d5b0fb8d34b88a09b2f3f36630b1e",
