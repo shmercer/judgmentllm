@@ -29,7 +29,10 @@ from judgmentllm import (
     submit_batch,
 )
 from judgmentllm.anthropic_batch_transport import BATCH_PATH
-from judgmentllm.batch_models import BatchControlOptionsV1
+from judgmentllm.batch_models import (
+    AnthropicBatchMemberReceiptV1,
+    BatchControlOptionsV1,
+)
 from judgmentllm.evidence.usage import ReportedUsageInput
 from judgmentllm.execution.anthropic_batch import AnthropicBatchSession
 from judgmentllm.execution.native_batch import InvocationBudget
@@ -853,6 +856,96 @@ def test_named_receipt_survives_death_before_sql(
         if receipt_kind == "member":
             assert proof in receipts
     assert_private(tmp_path)
+
+
+@pytest.mark.parametrize(
+    "stop_reason, kind, provider_outcome, result_status",
+    [
+        pytest.param("refusal", "refusal", "refusal", "refused", id="refusal"),
+        pytest.param(
+            "max_tokens", "provider_error", "output_limit", "errored", id="max-tokens"
+        ),
+    ],
+)
+def test_typed_text_batch_outcome_survives_receipt_replay(
+    tmp_path: Path,
+    stop_reason: str,
+    kind: str,
+    provider_outcome: str,
+    result_status: str,
+) -> None:
+    store = tmp_path / "store"
+    service = ready(tmp_path, capture="full")
+    requests = json.loads(service.body())["requests"]
+    affected, sibling = service.result_rows(1, requests, canceled=False)
+    assert affected["result"]["type"] == sibling["result"]["type"] == "succeeded"
+    affected["result"]["message"]["stop_reason"] = stop_reason
+    service.set("first_wire_row", canonical_bytes(affected).decode())
+
+    stopped = child(tmp_path, "collect", "after_batch_member_receipt")
+    assert stopped.returncode == 77, stopped.stderr
+    with ReadOnlyRepository(store, preserve_files=True) as repo:
+        run_dir = repo.run_directory("001")
+        (reference,) = (run_dir / "batch" / "members").glob("*.json")
+        pending = AnthropicBatchMemberReceiptV1.model_validate_json(
+            reference.read_bytes()
+        )
+        assert pending.member_key == affected["custom_id"]
+        assert pending.source_position == 0
+        assert pending.provider_result == "succeeded"
+        assert pending.kind == kind
+        assert pending.usage.provider_outcome == provider_outcome
+        assert pending.disposition == "redacted" and pending.original is None
+        artifacts = ArtifactStore(run_dir, create=False)
+        derivative = json.loads(artifacts.read(pending.retained))
+        assert derivative["record_type"] == "screened_anthropic_batch_row_v1"
+        assert repo.summary("001").results == 0
+        assert not repo.connection.execute(
+            "SELECT 1 FROM batch_member_receipts"
+        ).fetchone()
+
+    service.set("interrupt_result_job", 1)
+    with installed(service):
+        partial = resume_batch("001", store=store)
+    assert partial.outcome == "partial" and partial.batch.missing_members == 1
+    with ReadOnlyRepository(store) as repo:
+        recovered = repo.get_results_for_attempt("001", pending.identity.attempt_id)
+        assert [result.status for result in recovered] == [result_status, result_status]
+        (row,) = repo.connection.execute(
+            "SELECT record_json FROM batch_member_receipts"
+        ).fetchall()
+        assert AnthropicBatchMemberReceiptV1.model_validate_json(row[0]) == pending
+
+    service.set("interrupt_result_job", None)
+    with installed(service):
+        finished = resume_batch("001", store=store)
+    assert finished.outcome == "ok" and not finished.batch.recovery_required
+    with ReadOnlyRepository(store) as repo:
+        receipts = [
+            AnthropicBatchMemberReceiptV1.model_validate_json(row[0])
+            for row in repo.connection.execute(
+                "SELECT record_json FROM batch_member_receipts"
+            )
+        ]
+        assert len(receipts) == 2
+        by_member = {receipt.member_key: receipt for receipt in receipts}
+        assert by_member[affected["custom_id"]] == pending
+        accepted = by_member[sibling["custom_id"]]
+        assert (accepted.provider_result, accepted.kind) == ("succeeded", "response")
+        assert (
+            repo.get_results_for_attempt("001", pending.identity.attempt_id)
+            == recovered
+        )
+        successful = repo.get_results_for_attempt("001", accepted.identity.attempt_id)
+        assert [result.status for result in successful] == ["complete", "complete"]
+        assert repo.summary("001").results == 4
+        assert (
+            repo.connection.execute("SELECT count(*) FROM observations").fetchone()[0]
+            == 2
+        )
+        assert sum(receipt.usage.input_tokens or 0 for receipt in receipts) == 14
+        assert sum(receipt.usage.output_tokens or 0 for receipt in receipts) == 6
+    assert service.events().count(("POST", BATCH_PATH)) == 1
 
 
 @pytest.mark.parametrize("field", ["created_at", "expires_at"])

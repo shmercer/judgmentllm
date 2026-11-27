@@ -31,7 +31,8 @@
       "test_second_shard_cannot_accept_an_already_bound_job": {"": []},
       "test_source_failures_do_not_claim_completion": {"[false_length]": [], "[fragmented_frame]": [], "[incomplete_json]": [], "[missing]": [], "[outer_tally]": [], "[over_source]": [], "[stalled_eof]": []},
       "test_stream_interrupt_commits_first_short_row_and_replays": {"[full]": [], "[minimal]": []},
-      "test_success_mixed_replay_and_http_provenance": {"[full]": [], "[minimal]": []}
+      "test_success_mixed_replay_and_http_provenance": {"[full]": [], "[minimal]": []},
+      "test_typed_text_batch_outcome_survives_receipt_replay": {"[max-tokens]": [], "[refusal]": []}
     },
     "tests/test_anthropic_batch_r.py": {
       "test_actual_anthropic_batch_exports_in_r": {"[full-False]": ["r_interop"], "[minimal-True]": ["r_interop"]}
