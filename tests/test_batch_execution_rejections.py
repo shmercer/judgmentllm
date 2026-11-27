@@ -171,13 +171,14 @@ async def test_collection_rejects_unverified_index_metadata_before_results(
 
     session = batch_session
     await session.submit()
-    original = session.adapter.result_index
+    adapter = cast(MockBatchAdapter, session.adapter)
+    original = adapter.result_index
     if fault == "source":
 
         async def source(*args: object) -> str:
             return "f" * 64
 
-        monkeypatch.setattr(session.adapter, "result_source", source)
+        monkeypatch.setattr(adapter, "result_source", source)
         await session.collect()
     else:
         if fault == "budget":
@@ -187,12 +188,12 @@ async def test_collection_rejects_unverified_index_metadata_before_results(
             )
 
         async def index(
-            submission: str,
-            remote: str,
+            submission_id: str,
+            remote_id: str,
             source: str,
             members: list[tuple[str, int, PreparedRequestV2]],
         ) -> tuple[BatchSourceCommitmentV1, bytes]:
-            commitment, raw = await original(submission, remote, source, members)
+            commitment, raw = await original(submission_id, remote_id, source, members)
             if fault == "index-size":
                 return commitment, b" " * (
                     session.manifest.batch_context.limits.max_record_bytes + 1
@@ -206,7 +207,7 @@ async def test_collection_rejects_unverified_index_metadata_before_results(
                 )
             return commitment, raw
 
-        monkeypatch.setattr(session.adapter, "result_index", index)
+        monkeypatch.setattr(adapter, "result_index", index)
         with pytest.raises(BudgetExhausted if fault == "budget" else IntegrityError):
             await session.collect()
     assert session.repository.summary("001").results == 0
