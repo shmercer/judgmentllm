@@ -1550,6 +1550,7 @@
       "test_observation_lookup_experiment_closes_connection": {"[False]": [], "[True]": []}
     },
     "tests/test_openai_batch_privacy.py": {
+      "test_batch_result_request_id_screening": {"[chat.completions]": [], "[responses]": []},
       "test_current_synthetic_key_is_screened_before_control_or_result_durability": {"[result_model-full]": [], "[result_model-minimal]": [], "[upload_id-full]": [], "[upload_id-minimal]": []},
       "test_decoded_assessment_is_screened_before_new_evidence": {"[full-tab]": [], "[full-unicode-line]": [], "[full]": [], "[legacy-committed]": [], "[legacy-interrupted]": [], "[minimal-newline]": [], "[minimal]": []},
       "test_decoded_envelope_metadata_never_becomes_exact_evidence": {"[full]": [], "[minimal]": []},
@@ -1564,6 +1565,9 @@
       "test_post_eof_size_change_conflicts_without_rewriting_evidence": {"[full]": [], "[minimal]": []},
       "test_replay_rejects_inconsistent_protected_base_member": {"[changed-row]": [], "[receipt-binding]": []},
       "test_response_interpretation_preserves_only_screened_member_evidence": {"[absent-identifiers]": [], "[escaped-surrogate]": [], "[unsafe-model]": []},
+      "test_responses_collects_uuid_request_id": {"": []},
+      "test_responses_non_200_uuid_projects_error_without_usage": {"": []},
+      "test_responses_upgrade_replays_withheld_uuid": {"[changed-accepted-row]": [], "[frontier-hash-only]": [], "[frontier-missing]": [], "[legacy-hash-only]": [], "[legacy-missing]": [], "[unchanged-prefix]": []},
       "test_screened_member_receipt_replays_without_forged_provider_effects": {"[full-chat.completions]": [], "[full-responses]": [], "[minimal-chat.completions]": [], "[minimal-responses]": []},
       "test_screened_response_requires_member_and_envelope_identity": {"[kind-disagreement]": [], "[unowned-replay]": []},
       "test_untrusted_derivative_and_forbidden_hashes_never_reach_store": {"[full]": [], "[minimal]": []},
@@ -1607,6 +1611,7 @@
       "test_real_read_boundaries_preserve_accepted_work_on_io_failure": {"[accepted-reference]": [], "[minimal-source]": []},
       "test_reconstruction_store_open_failure_preserves_accepted_work": {"": []},
       "test_replay_prefix_conflict_preserves_committed_results": {"[changed-prefix]": [], "[shortened-prefix]": []},
+      "test_responses_rejects_substitution_of_new_withheld_row_after_restart": {"": []},
       "test_row_diagnostics_survive_restart_without_backfilling_prefix": {"[historical-prefix]": [], "[interrupted]": []},
       "test_scientific_subset_retry_recovers_its_original_attempt": {"": []},
       "test_scientific_subset_retry_rejects_changed_attempt_payload": {"": []},

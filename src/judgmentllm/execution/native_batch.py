@@ -706,6 +706,9 @@ class BatchSession(AbstractContextManager["BatchSession"]):
                     lambda: asyncio.sleep(self.budget.options.poll_interval_seconds)
                 )
 
+    def _withheld_result_digest(self, source_id: str, position: int) -> str:
+        return semantic_digest("batch-withheld-v1", [source_id, position])
+
     def save_member(
         self,
         member: BatchMemberV1,
@@ -726,7 +729,7 @@ class BatchSession(AbstractContextManager["BatchSession"]):
                 source_id + ":" + str(position),
                 BatchDiagnosticV1(code="unsafe_evidence"),
             )
-            return semantic_digest("batch-withheld-v1", [source_id, position])
+            return self._withheld_result_digest(source_id, position)
         _, response, reported, safe, exact = screened
         expected_key = semantic_digest(
             "batch-observation-v1",
@@ -1150,8 +1153,8 @@ class BatchSession(AbstractContextManager["BatchSession"]):
                                 bytes(raw), expected_wires
                             )
                             if screened is None:
-                                digest = semantic_digest(
-                                    "batch-withheld-v1", [source_id, position]
+                                digest = self._withheld_result_digest(
+                                    source_id, position
                                 )
                             else:
                                 digest = bytes_digest(screened[3])

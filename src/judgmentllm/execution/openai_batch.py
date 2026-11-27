@@ -59,7 +59,10 @@ from judgmentllm.providers.openai_batch_diagnostics import (
     OpenAIBatchDiagnosticV1,
     OpenAIBatchResultScreenV1,
 )
-from judgmentllm.providers.openai_batch_response import ScreenedResult
+from judgmentllm.providers.openai_batch_response import (
+    ScreenedResult,
+    uses_responses_request_uuid,
+)
 
 _TERMINAL_ERRORS = frozenset(
     {
@@ -690,7 +693,51 @@ class OpenAIBatchSession(BatchSession):
         return None
 
     def cursor(self, source: str) -> BatchCursorV1 | None:
-        return latest(self.repository, self.run_id, "cursor", source, BatchCursorV1)
+        return latest(
+            self.repository,
+            self.run_id,
+            "cursor",
+            source,
+            BatchCursorV1,
+            require_retained=True,
+        )
+
+    def _withheld_result_digest(self, source_id: str, position: int) -> str:
+        if self.adapter.endpoint == "responses":
+            return semantic_digest("openai-batch-withheld-v2", [source_id, position])
+        return super()._withheld_result_digest(source_id, position)
+
+    def _committed_withheld_digest(
+        self, submission_id: str, source: str, position: int, prefix: str
+    ) -> str | None:
+        withheld = super()._withheld_result_digest(source, position)
+        cursor = BatchCursorV1(
+            run_id=self.run_id,
+            submission_id=submission_id,
+            source_id=source,
+            position=position + 1,
+            prefix_sha256=semantic_digest(
+                "batch-result-prefix-step-v1", [prefix, position, withheld]
+            ),
+        )
+        record = canonical_bytes(cursor)
+        receipt = bytes_digest(record)
+        # A withheld marker alone can survive an interruption before cursor commit.
+        committed = self.repository.connection.execute(
+            "SELECT 1 FROM batch_facts WHERE run_id=? AND kind='cursor' AND entity_id=? "
+            "AND receipt_sha256=? AND record_json=?",
+            (self.run_id, source, receipt, record.decode()),
+        ).fetchone()
+        if committed is None:
+            return None
+        if (
+            self.store.verify(self.repository.get_artifact(self.run_id, receipt))
+            is None
+        ):
+            raise IntegrityError(
+                "legacy OpenAI Batch cursor requires a retained artifact"
+            )
+        return withheld
 
     def fail_source(
         self,
@@ -1037,10 +1084,21 @@ class OpenAIBatchSession(BatchSession):
                                         if screened is not None
                                         else None,
                                     )
-                            if screened is None:
-                                digest = semantic_digest(
-                                    "batch-withheld-v1", [source, position]
+                            legacy_withheld = (
+                                self._committed_withheld_digest(
+                                    submission.submission_id, source, position, prefix
                                 )
+                                if position < target
+                                and self.adapter.endpoint == "responses"
+                                and (
+                                    screened is None or uses_responses_request_uuid(raw)
+                                )
+                                else None
+                            )
+                            if legacy_withheld is not None:
+                                digest = legacy_withheld
+                            elif screened is None:
+                                digest = self._withheld_result_digest(source, position)
                             elif position < target:
                                 digest = bytes_digest(screened[3])
                             elif committed is not None:
