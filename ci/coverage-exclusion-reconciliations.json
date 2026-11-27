@@ -245,6 +245,120 @@
       ],
       "removed_excluded_lines": [],
       "reason": "Exact frozen PR76 cb16b89 batch audit report import inside TYPE_CHECKING only."
+    },
+    {
+      "path": "src/judgmentllm/lifecycle.py",
+      "candidate_source_sha256": "35600271d98c6ebf5ae79ec03bea5ed5244c14b54a60a82799e4dd83bb50b85a",
+      "historical_source_sha256": "309ce231298e6ccfe06c4768ae4f5d284b47bdd20765b1d8a014a5ff3c15bcf2",
+      "added_excluded_lines": [
+        106
+      ],
+      "removed_excluded_lines": [],
+      "reason": "Private parser proof of exact declaration-only exclusion delta."
+    },
+    {
+      "path": "src/judgmentllm/native_batch.py",
+      "candidate_source_sha256": "aa2aea59ae9b66092e70f36547b0971a1323c407fb5d429e19949a74c5fa377b",
+      "historical_source_sha256": null,
+      "added_excluded_lines": [
+        46,
+        47,
+        48,
+        53
+      ],
+      "removed_excluded_lines": [],
+      "reason": "Private parser proof of exact declaration-only exclusion delta."
+    },
+    {
+      "path": "src/judgmentllm/preparation/__init__.py",
+      "candidate_source_sha256": "1650478dd8b2b259393e8e7780afb31d675cbf38a15d988c5dc96ce15e7d6237",
+      "historical_source_sha256": "812631443e70499a9cc0e99dc7e2276b0451dd66f59fd1cc9dfe8cbf9647709c",
+      "added_excluded_lines": [
+        98
+      ],
+      "removed_excluded_lines": [],
+      "reason": "Private parser proof of exact declaration-only exclusion delta."
+    },
+    {
+      "path": "src/judgmentllm/preparation/batch.py",
+      "candidate_source_sha256": "bfd2f03888d23fb808e5fcba3fc147036c0bd5a63d651159a6d820f742768313",
+      "historical_source_sha256": null,
+      "added_excluded_lines": [
+        44,
+        45,
+        46,
+        47,
+        48
+      ],
+      "removed_excluded_lines": [],
+      "reason": "Private parser proof of exact declaration-only exclusion delta."
+    },
+    {
+      "path": "src/judgmentllm/providers/batch_protocol.py",
+      "candidate_source_sha256": "f5457964d27afacd8a83e325a8828b289a84b1cbeec3a42a14d31c4fccd36be0",
+      "historical_source_sha256": null,
+      "added_excluded_lines": [
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        62,
+        63,
+        64,
+        65,
+        66,
+        67,
+        68,
+        69,
+        70,
+        71,
+        72,
+        73,
+        74,
+        75,
+        76,
+        77,
+        78,
+        79,
+        80,
+        81,
+        82,
+        83,
+        84,
+        85,
+        86,
+        87,
+        88,
+        89,
+        90,
+        91,
+        92,
+        93,
+        94,
+        95,
+        96,
+        97,
+        101,
+        102,
+        103,
+        104,
+        105,
+        106,
+        107,
+        108,
+        109,
+        110,
+        119,
+        120,
+        130,
+        131,
+        132
+      ],
+      "removed_excluded_lines": [],
+      "reason": "Private parser proof of exact declaration-only exclusion delta."
     }
   ]
 }

@@ -1339,7 +1339,7 @@ def test_wire_shape_rejection_cannot_publish_member(
             assert cursor.submission_id == binding.ready.submission_id
             prefix = semantic_digest("openai-batch-prefix-v1", [source])
             if binding.ready.role == "output":
-                digest = semantic_digest("batch-withheld-v1", [source, 0])
+                digest = semantic_digest("openai-batch-withheld-v2", [source, 0])
                 prefix = semantic_digest(
                     "batch-result-prefix-step-v1", [prefix, 0, digest]
                 )
@@ -1478,3 +1478,341 @@ def test_screened_response_requires_member_and_envelope_identity(
                 adapter.parse(inconsistent)
     assert service.events() == events
     assert_accepted_chain_unchanged(store, before)
+
+
+def test_responses_collects_uuid_request_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from judgmentllm import BatchControlOptionsV1, resume_batch
+    from judgmentllm.batch_models import BatchMemberReceiptV1
+    from judgmentllm.io import read_results
+    from judgmentllm.persistence.artifacts import ArtifactStore
+    from judgmentllm.persistence.hashing import canonical_bytes
+    from judgmentllm.persistence.native_batch import read_reference
+    from judgmentllm.results import RubricResult
+
+    service, spec, store = setup(tmp_path, monkeypatch, responses=1)
+    row = json.loads(service.file("file-output_1")[0])
+    row["response"]["request_id"] = "01234567-89ab-4cde-8fab-0123456789ab"
+    raw = json.dumps(row).encode()
+    data = (raw + b"\n") * 2
+    service.file("file-output_1", body=data, declared=len(data))
+
+    status = collect_batch(
+        "001", store=store, spec=spec, options=BatchControlOptionsV1(max_result_rows=1)
+    )
+    assert status.batch.missing_members == 0 and status.batch.recovery_required
+    assert len(diagnostic_records(store, "result_row")) == 1
+    for _ in range(3):
+        status = resume_batch("001", store=store, spec=spec)
+        if not status.batch.recovery_required:
+            break
+    assert not status.batch.recovery_required
+    member_key = row["custom_id"]
+    with ReadOnlyRepository(store) as repo:
+        receipt = read_reference(
+            repo, "001", f"batch/members/{member_key}.json", BatchMemberReceiptV1
+        )
+        assert receipt is not None and receipt.member_key == member_key
+        assert receipt.disposition == "exact" and receipt.original is not None
+        assert receipt.original.sha256 == sha256(raw).hexdigest()
+        assert receipt.usage.remote_response_id == row["response"]["body"]["id"]
+        assert (
+            receipt.usage.input_tokens,
+            receipt.usage.output_tokens,
+            receipt.usage.total_tokens,
+        ) == (20, 10, 30)
+        artifacts = ArtifactStore(repo.run_directory("001"), create=False)
+        assert artifacts.read(receipt.retained) == canonical_bytes(row)
+
+    diagnostics = diagnostic_records(store, "result_row")
+    assert [record["row_position"] for record in diagnostics] == [0, 1]
+    for record in diagnostics:
+        assert record["member_key"] == member_key
+        assert record["member_status"] == 200
+        assert record["member_request_id"] is None
+    report = export_batch_provenance("001", store=store)
+    assert report.manifest.cut.member_receipt_count == 1
+    (member,) = file_path(report, "members.jsonl").read_text().splitlines()
+    assert json.loads(member)["evidence"] == receipt.model_dump(mode="json")
+    (result,) = read_results(file_path(report, "results.jsonl"))
+    assert isinstance(result, RubricResult) and result.status == "complete"
+    assert result.category_label == spec.rubric.traits[0].levels[0].label
+    assert result.request_uid == receipt.identity.request_uid
+    assert result.attempt_id == receipt.identity.attempt_id
+
+
+@pytest.mark.parametrize("endpoint", ["responses", "chat.completions"])
+def test_batch_result_request_id_screening(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, endpoint: str
+) -> None:
+    from judgmentllm.openai_batch_transport import (
+        PreparedOpenAIBatchRequest,
+        batch_context,
+    )
+    from judgmentllm.persistence.hashing import canonical_bytes
+    from judgmentllm.preparation import open_prepared_run
+    from judgmentllm.preparation.batch import members_for, reconstruct
+    from judgmentllm.providers.openai_batch import OpenAIBatchAdapter
+    from judgmentllm.providers.openai_batch_response import screen_result
+
+    service, spec, store = setup(tmp_path, monkeypatch, endpoint=endpoint, responses=1)
+    row = json.loads(service.file("file-output_1")[0])
+    adapter = OpenAIBatchAdapter(batch_context(spec))
+    with open_prepared_run(
+        "001", store=store, spec=spec, capabilities=adapter.capabilities(spec)
+    ) as prepared:
+        shard = prepared.repository.connection.execute(
+            "SELECT shard_id FROM batch_preparations"
+        ).fetchone()[0]
+        member = next(members_for(prepared, shard))
+        _, wire = reconstruct(prepared, adapter, member)
+    assert isinstance(wire, PreparedOpenAIBatchRequest)
+    expected = {member.member_key: wire}
+    legacy = adapter.screen_result(canonical_bytes(row), expected)
+    assert legacy is not None and legacy[4]
+    response = row["response"]
+    del response["request_id"]
+    omitted = adapter.screen_result(canonical_bytes(row), expected)
+    response["request_id"] = None
+    null = adapter.screen_result(canonical_bytes(row), expected)
+    assert omitted is not None and omitted[1].raw == legacy[1].raw
+    assert null is not None and null[1].raw == legacy[1].raw
+
+    uuid = "01234567-89ab-4cde-8fab-0123456789ab"
+    response["request_id"] = uuid
+    raw = canonical_bytes(row)
+    observed = adapter.screen_result(raw, expected)
+    if endpoint == "chat.completions":
+        assert observed is None
+        return
+    assert observed is not None and observed[0] == member.member_key
+    assert observed[1].raw == legacy[1].raw
+    assert observed[1].observation_key == legacy[1].observation_key
+    parsed = adapter.parse(observed[1])
+    assert parsed.kind == "response" and parsed.output is not None
+    assert parsed == adapter.parse(legacy[1])
+    assert observed[3:] == (raw, True)
+    assert adapter.verify_result_prefix(raw, expected) == observed
+    assert adapter.screen_replay(raw, expected) == observed
+
+    for unbound in (
+        {**row, "custom_id": "unknown-member"},
+        {**row, "id": uuid},
+        {**row, "response": {**response, "body": {**response["body"], "id": uuid}}},
+    ):
+        assert adapter.screen_result(canonical_bytes(unbound), expected) is None
+
+    canary = uuid.encode()
+    escaped = raw.replace(canary, canary.replace(b"-", b"\\u002d", 1))
+    assert canary not in escaped and json.loads(escaped) == row
+    assert adapter.screen_result(escaped, expected) == observed
+    for encoded in (raw, escaped):
+        screened = screen_result(encoded, expected, endpoint, active_key=uuid)
+        assert screened is not None and screened[3:] == (observed[1].raw, False)
+        assert canary not in screened[3]
+
+    for invalid in (
+        17,
+        "req_",
+        "req_sk-synthetic-marker",
+        uuid[:-1],
+        uuid.upper(),
+        uuid.replace("-", ""),
+        "{" + uuid + "}",
+        "urn:uuid:" + uuid,
+        uuid + "\n",
+        "01234567-89ab-7cde-8fab-0123456789ab",
+        "01234567-89ab-4cde-7fab-0123456789ab",
+    ):
+        response["request_id"] = invalid
+        assert adapter.screen_result(canonical_bytes(row), expected) is None, invalid
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "unchanged-prefix",
+        "changed-accepted-row",
+        "legacy-missing",
+        "legacy-hash-only",
+        "frontier-missing",
+        "frontier-hash-only",
+    ],
+)
+def test_responses_upgrade_replays_withheld_uuid(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, case: str
+) -> None:
+    import re
+
+    from judgmentllm import BatchControlOptionsV1, resume_batch
+    from judgmentllm.batch_models import BatchCursorV1, BatchDiagnosticV1
+    from judgmentllm.execution.openai_batch import OpenAIBatchSession
+    from judgmentllm.lifecycle_models import LifecycleError
+    from judgmentllm.persistence.hashing import semantic_digest
+    from judgmentllm.persistence.models import IntegrityError
+    from judgmentllm.persistence.native_batch import latest
+    from judgmentllm.persistence.repository import Repository
+    from judgmentllm.providers import openai_batch_response
+
+    service, spec, store = setup(tmp_path, monkeypatch, responses=3)
+    withheld, accepted, unread = map(
+        json.loads, service.file("file-output_1")[0].splitlines()
+    )
+    legacy_id = "req_" + "x" * 32
+    withheld["response"]["request_id"] = "01234567-89ab-4cde-8fab-0123456789ab"
+    accepted["response"]["request_id"] = legacy_id
+    unread["response"]["request_id"] = "01234567-89ab-4cde-9fab-0123456789ac"
+    data = b"".join(
+        json.dumps(row).encode() + b"\n" for row in (withheld, accepted, unread)
+    )
+    service.file("file-output_1", body=data, declared=len(data))
+
+    def legacy_digest(_: OpenAIBatchSession, source_id: str, position: int) -> str:
+        return semantic_digest("batch-withheld-v1", [source_id, position])
+
+    with monkeypatch.context() as old_reader:
+        # Reproduce the pinned reader's field check and committed digest.
+        old_reader.setattr(
+            openai_batch_response, "_RESPONSE_REQUEST_UUID_V4", re.compile(r"(?!)")
+        )
+        old_reader.setattr(OpenAIBatchSession, "_withheld_result_digest", legacy_digest)
+        status = collect_batch(
+            "001",
+            store=store,
+            spec=spec,
+            options=BatchControlOptionsV1(max_result_rows=2),
+        )
+    assert status.batch.missing_members == 2
+    receipt_rows = "SELECT member_key,receipt_sha256 FROM batch_member_receipts"
+    with ReadOnlyRepository(store) as repo:
+        (cursor_row,) = repo.connection.execute(
+            "SELECT record_json FROM batch_facts WHERE kind='cursor' "
+            "AND json_extract(record_json,'$.position')=2"
+        )
+        cursor = BatchCursorV1.model_validate_json(cursor_row[0])
+        assert not cursor.exhausted
+        source = cursor.source_id
+        marker = latest(repo, "001", "withheld", f"{source}:0", BatchDiagnosticV1)
+        assert marker is not None and marker.code == "unsafe_evidence"
+        before = dict(repo.connection.execute(receipt_rows))
+        assert set(before) == {accepted["custom_id"]}
+
+    if case.endswith(("-missing", "-hash-only")):
+        position = 1 if case.startswith("legacy-") else 2
+        with Repository(store) as repo:
+            (sha,) = repo.connection.execute(
+                "SELECT receipt_sha256 FROM batch_facts WHERE kind='cursor' "
+                "AND entity_id=? AND json_extract(record_json,'$.position')=?",
+                (source, position),
+            ).fetchone()
+            artifact = repo.get_artifact("001", sha)
+            assert artifact.relative_path is not None
+            if case.endswith("-missing"):
+                (repo.run_directory("001") / artifact.relative_path).unlink()
+            else:
+                with repo.transaction():
+                    (guard,) = repo.connection.execute(
+                        "SELECT sql FROM sqlite_master WHERE name='artifacts_no_update'"
+                    ).fetchone()
+                    repo.connection.execute("DROP TRIGGER artifacts_no_update")
+                    repo.connection.execute(
+                        "UPDATE artifacts SET relative_path=NULL WHERE run_id=? AND sha256=?",
+                        ("001", sha),
+                    )
+                    repo.connection.execute(guard)
+                assert repo.get_artifact("001", sha).relative_path is None
+        with pytest.raises(LifecycleError) as error:
+            for _ in range(3):
+                resume_batch("001", store=store, spec=spec)
+        assert isinstance(error.value.__context__, IntegrityError)
+        with ReadOnlyRepository(store) as repo:
+            assert dict(repo.connection.execute(receipt_rows)) == before
+            assert repo.summary("001").successful_results == 1
+        return
+
+    if case == "changed-accepted-row":
+        changed = data.replace(
+            legacy_id.encode(), b"01234567-89ab-4cde-afab-0123456789ad"
+        )
+        assert len(changed) == len(data) and changed != data
+        service.file("file-output_1", body=changed)
+    posts = [event for event in service.events() if event[0] == "POST"]
+    for _ in range(3):
+        status = resume_batch("001", store=store, spec=spec)
+        assert status.collection is not None
+        if status.collection.failed_sources or not status.collection.pending_sources:
+            break
+
+    collection = status.collection
+    assert collection is not None
+    with ReadOnlyRepository(store) as repo:
+        after = dict(repo.connection.execute(receipt_rows))
+        final = latest(repo, "001", "cursor", source, BatchCursorV1)
+        assert (
+            latest(repo, "001", "withheld", f"{source}:0", BatchDiagnosticV1) == marker
+        )
+        assert repo.summary("001").successful_results == len(after)
+        if case == "changed-accepted-row":
+            assert "source_conflict" in collection.codes
+            assert final == cursor and after == before
+        else:
+            assert collection.failed_sources == collection.pending_sources == 0
+            assert final is not None and final.exhausted and final.position == 3
+            assert status.batch.missing_members == 1
+            assert after.keys() == before.keys() | {unread["custom_id"]}
+            assert after[accepted["custom_id"]] == before[accepted["custom_id"]]
+    assert [event for event in service.events() if event[0] == "POST"] == posts
+
+
+def test_responses_non_200_uuid_projects_error_without_usage(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from judgmentllm.batch_models import BatchMemberReceiptV1
+    from judgmentllm.evidence.usage import ReportedUsageInput
+    from judgmentllm.persistence.artifacts import ArtifactStore
+    from judgmentllm.providers.openai_batch_response import ScreenedOpenAIBatchRowV1
+
+    service, spec, store = setup(tmp_path, monkeypatch, responses=1)
+    row = json.loads(service.file("file-output_1")[0])
+    uuid = "01234567-89ab-4cde-8fab-0123456789ab"
+    row["response"].update(status_code=429, request_id=uuid)
+    data = json.dumps(row).encode() + b"\n"
+    service.file("file-output_1", body=data, declared=len(data))
+
+    assert collect_batch("001", store=store, spec=spec).batch.missing_members == 0
+    with ReadOnlyRepository(store) as repo:
+        (result,) = repo.iter_results("001")
+        assert (
+            result.status == "errored"
+            and result.input_tokens is result.output_tokens is None
+        )
+        (record,) = repo.connection.execute(
+            "SELECT record_json FROM batch_member_receipts"
+        )
+        receipt = BatchMemberReceiptV1.model_validate_json(record[0])
+        assert (
+            receipt.member_key == row["custom_id"] and receipt.disposition == "redacted"
+        )
+        assert receipt.original is None and receipt.kind == "provider_error"
+        assert (
+            receipt.usage.input_tokens
+            is receipt.usage.output_tokens
+            is receipt.usage.total_tokens
+            is None
+        )
+        artifacts = ArtifactStore(repo.run_directory("001"), create=False)
+        safe = artifacts.read(receipt.retained)
+        assert uuid.encode() not in safe
+        saved = ScreenedOpenAIBatchRowV1.model_validate_json(safe)
+        assert (
+            saved.provider_outcome == "provider_failure"
+            and saved.assessment_text is None
+        )
+        assert saved.remote_response_id is None
+        assert saved.usage == ReportedUsageInput()
+    (diagnostic,) = diagnostic_records(store, "result_row")
+    assert diagnostic["member_key"] == row["custom_id"]
+    assert (
+        diagnostic["member_status"] == 429 and diagnostic["member_request_id"] is None
+    )

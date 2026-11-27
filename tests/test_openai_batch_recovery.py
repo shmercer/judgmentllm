@@ -686,6 +686,81 @@ def test_one_row_budget_replays_prefix_and_finishes_eligible_sibling(
     assert len([event for event in service.events() if event[0] == "POST"]) == 2
 
 
+def test_responses_rejects_substitution_of_new_withheld_row_after_restart(
+    tmp_path: Any, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from judgmentllm import resume_batch
+    from judgmentllm.batch_models import BatchCursorV1
+    from judgmentllm.config import load_run_spec
+    from judgmentllm.persistence.hashing import semantic_digest
+    from judgmentllm.persistence.native_batch import latest
+
+    service = Service(tmp_path / "service.sqlite")
+    install(monkeypatch, service)
+    config = tmp_path / "spec.json"
+    config.write_text(
+        specification(tmp_path, capture="minimal", responses=3).model_dump_json(),
+        encoding="utf-8",
+    )
+    spec = load_run_spec(config)
+    store = tmp_path / "store"
+    prepare_batch(spec, store=store, run_id="001")
+    service.configure(store, spec)
+    submit_batch("001", store=store, spec=spec)
+    poll_batch("001", store=store)
+    withheld, accepted, unread = map(
+        json.loads, service.file("file-output_1")[0].splitlines()
+    )
+    invalid = "01234567-89ab-7cde-8fab-0123456789ab"
+    valid = "01234567-89ab-4cde-8fab-0123456789ab"
+    withheld["response"]["request_id"] = invalid
+    accepted["response"]["request_id"] = "01234567-89ab-4cde-9fab-0123456789ac"
+    data = b"".join(
+        json.dumps(row).encode() + b"\n" for row in (withheld, accepted, unread)
+    )
+    service.file("file-output_1", body=data, declared=len(data))
+    options = BatchControlOptionsV1(max_result_rows=1)
+    status = collect_batch("001", store=store, spec=spec, options=options)
+    assert status.batch.missing_members == 3
+    with ReadOnlyRepository(store) as repo:
+        (record, receipt) = repo.connection.execute(
+            "SELECT record_json,receipt_sha256 FROM batch_facts WHERE kind='cursor' "
+            "AND json_extract(record_json,'$.position')=1"
+        ).fetchone()
+        first_cursor = BatchCursorV1.model_validate_json(record)
+        assert repo.get_artifact("001", receipt).relative_path is not None
+    source = first_cursor.source_id
+
+    for _ in range(3):
+        status = resume_batch("001", store=store, spec=spec, options=options)
+        if status.batch.missing_members == 2:
+            break
+    assert status.batch.missing_members == 2
+    with ReadOnlyRepository(store) as repo:
+        cursor = latest(repo, "001", "cursor", source, BatchCursorV1)
+        assert cursor is not None and cursor.position == 2 and not cursor.exhausted
+
+    changed = data.replace(invalid.encode(), valid.encode(), 1)
+    assert changed != data and len(changed) == len(data)
+    service.file("file-output_1", body=changed)
+    restarted = child(tmp_path, "resume")
+    assert "source_conflict" in restarted["collection"]["codes"]
+    assert restarted["batch"]["missing_members"] == 2
+    prefix = semantic_digest("openai-batch-prefix-v1", [source])
+    step = semantic_digest("openai-batch-withheld-v2", [source, 0])
+    assert first_cursor.prefix_sha256 == semantic_digest(
+        "batch-result-prefix-step-v1", [prefix, 0, step]
+    )
+    with ReadOnlyRepository(store) as repo:
+        assert latest(repo, "001", "cursor", source, BatchCursorV1) == cursor
+        (member,) = repo.connection.execute(
+            "SELECT member_key FROM batch_member_receipts"
+        )
+        assert member[0] == accepted["custom_id"]
+        assert repo.summary("001").successful_results == 1
+    assert len([event for event in service.events() if event[0] == "POST"]) == 2
+
+
 @pytest.mark.parametrize("capture", ["full", "minimal"])
 def test_fresh_process_prelude_failure_is_surfaced_and_sticky(
     tmp_path: Any, capture: Any
