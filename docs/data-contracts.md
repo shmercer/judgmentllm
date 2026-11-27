@@ -1038,3 +1038,14 @@ keys or a submission. See the [operator guide](../examples/study-native/live-qua
 ## M5 PR3 additive OpenAI Batch records
 
 OpenAI generative Batch adds executable manifest 13, prepared request 10 (shared output commitment 4), typed OpenAI context/shard/source/ready/selection/admission facts and audit/report 2. SQLite schema 4, historical/mock manifest 12, normalized result/export schema 1 and CLI envelope 1 are unchanged. File bindings pin accepted job/input/role and Files id/purpose/strict byte size; only actual exact-size EOF exhausts a present source. [Record invariants](native-batch.md#pinned-source-bytes-and-real-eof).
+
+## M5 PR4 additive Anthropic Batch records
+
+Anthropic Message Batches add manifest 14, prepared request 11, output commitment
+5 and audit/report 3. Initial and child shards seal the complete direct POST
+body. V14 readers select the Anthropic receipt type for retry, recovery and
+audit. The member receipt separately records the provider's outer
+classification. Typed HTTP header and completion facts reference eligible
+private control evidence in the existing schema-4 artifact store. Audit 3
+verifies these references and their capture mode when reopening a named cut.
+The 11 companions retain their existing formats. [Anthropic evidence contract](native-batch.md#anthropic-messages-batch-m5-pr4).

@@ -21,7 +21,7 @@ from judgmentllm._auth import (
     ProviderId,
 )
 from judgmentllm.auth import CredentialStatus, CredentialStatusV2
-from judgmentllm.lifecycle import LifecycleError, ProgressEvent, get_run
+from judgmentllm.lifecycle import LifecycleError, ProgressEvent, _get_run_status  # pyright: ignore[reportPrivateUsage]
 from judgmentllm.lifecycle_models import ErrorCategory
 from judgmentllm.models import StrictModel, VersionedModel
 from judgmentllm.persistence.models import RunState
@@ -223,7 +223,7 @@ def fail(
     if run_id is not None:
         try:
             run_id, state, artifacts, data = _parts(
-                get_run(run_id, store=invocation.store)
+                _get_run_status(run_id, store=invocation.store, control_preflight=True)
             )
         except Exception:
             # Failure to inspect an interrupted/unsealed store cannot conceal the

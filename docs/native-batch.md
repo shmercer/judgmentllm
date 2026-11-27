@@ -1,6 +1,10 @@
-# M5 native Batch: shared core and OpenAI generative routes
+# M5 native Batch: shared core and generative routes
 
 M5 PR3 adds OpenAI Responses and Chat Completions as separate generative Batch scopes, using RunSpec V3 and manifest 13. The OpenAI contract below supersedes only the provider-specific collection/transport details. Decisions, other providers and explicit caching are outside PR3.
+
+M5 PR4 adds offline preparation and synthetic verification for Anthropic Messages
+Batch, using RunSpec V3 and manifest 14. Public Anthropic remote controls are
+disabled. The route contract is below.
 
 ## Retained PR2 contract
 
@@ -101,9 +105,18 @@ storage and stop-publication failures retain their existing safe diagnostics.
 The adapter must authorize control/result representations, member keys and
 source/cursor identities in memory before any durable hash, staging file,
 receipt, SQLite row, WAL, or export. A successful typed parse alone does not
-authorize arbitrary provider fields or identifiers. Control receipts retain only
-the authorized typed representation; raw control bytes and their hashes are not
-retained. Status must match the exact accepted submission and remote job.
+authorize arbitrary provider fields or identifiers. Status must match the exact
+accepted submission and remote job.
+
+Every Batch provider must preserve durable private HTTP diagnostics for each
+physical call. Record screened status and request ID as soon as headers arrive,
+then attach an allowlisted error code or fixed interruption code when known.
+Full capture may retain complete eligible control bodies or screened derivatives
+under the route's byte and deadline limits. Minimal capture may keep permitted
+digests and typed metadata. Withhold unsafe bytes and their hashes in either mode.
+Diagnostics do not prove mutation acceptance, source progress or retry eligibility.
+PR4 implements this requirement for Anthropic. OpenAI's existing projection-only
+control retention is accounted for in its separate diagnostics work.
 
 Member receipts distinguish:
 
@@ -214,6 +227,109 @@ Windows 3.12/macOS 3.11 ordinary and serial correctness. Preserve systemd owners
 locks, cleanup, memory/pressure gates and original fixture deadlines. No focused
 check or PR acceptance authorizes paid tests, registry promotion or publication.
 
+
+## Anthropic Messages Batch (M5 PR4)
+
+The offline route accepts V3 `anthropic/messages` with `batch_native`, cache
+`off` and non-strict `text` or `auto` output. It uses locally validated text
+for rubric, grouped traits and pairwise work. Tier, account, bulk-live,
+sampling, explicit reasoning, native output and prompt-cache overrides fail
+locally. The Sonnet 4.6 output-token bound is 128,000. Unknown models can be
+sealed offline with unknown serving capability. The route checks actual and
+loaded Anthropic 2.3.0 and HTTPX2 2.16.0 before constructing any client.
+Public submit, refresh, collect, resume and remote cancel fail before opening a
+writer or constructing a client. Local preparation, status, stop and exports
+remain available.
+Both V14 resume entry points inspect the registry without changing its files,
+including when the original SHM is absent. Dispatch checks the registry's
+immutable provider identity against a private snapshot that can tolerate an
+verified WAL append. A checkpoint that invalidates the snapshot triggers one
+fresh dispatch probe. V12 and V13 controls then use SQLite's usual concurrent
+committed reader for preflight.
+
+Each member uses an opaque deterministic `custom_id` and the exact rendered
+Messages body. The adapter seals `stream=false`, `service_tier=standard_only`
+and the requested `max_tokens` or adapter default 4096. Initial and explicit
+scientific retry shards use the same deterministic framing, a JSON object with
+a `requests` array. The complete POST body is limited to 1,000 members and
+16 MiB. Manifest 14, prepared request 11, output commitment 5 and audit 3
+are additive. SQLite 4, the normalized schema-one files and the 11 audit
+companions retain their existing layouts.
+
+### Submission, cancellation and recovery
+
+The sealed body goes directly to `POST /v1/messages/batches`. There is no upload
+step. The durable journal precedes each mutation. Create and remote cancel
+each have one eligible POST for the original intent. A stored acceptance
+receipt can repair the SQLite projection after process death. The create receipt
+pins the job ID and creation and expiry timestamps before the first status read.
+An accepted job ID belongs to one shard in the run. Listing does not
+expose an exact correlation for a lost create receipt. Missing or ambiguous
+acceptance stays unresolved, even after a rejection or interruption. A GET of
+the same accepted job can show cancellation at the job level. That observation
+has separate provenance from a POST acknowledgment and never assigns outcomes
+to individual members. Explicit scientific retry uses the existing selection
+and attempt cap after physical work is resolved.
+
+An `ended` response with no URL can become ready. The immutable ready record
+pins the sealed shard, accepted create, job ID, creation/expiry/end timestamps,
+terminal counts and the job's same-origin `/results` URL. Archive makes an
+unread source unavailable. Collection starts at byte zero, verifies the
+screened prefix and pins a receipt published just before the cursor to its
+original position. Provider outer classifications are counted once per
+attributable member, including succeeded responses with invalid assessments.
+Unreported usage remains null. A missing member at EOF remains unresolved.
+
+### Collection limits and private diagnostics
+
+Each invocation can admit one 8 MiB result stream. A framed JSONL record is at
+most 1 MiB and delivered blocks are at most 64 KiB. The locked SDK's
+context-managed results call first retrieves job metadata. The guarded
+transport charges that hidden GET, screens its raw response against a
+separate 1 MiB limit and checks the pinned source before the SDK can follow
+the URL. Content admission requires 578 steps (64 control steps plus four
+times 128 controlled reads plus two final steps) and 17 MiB (two 8 MiB
+source allowances plus 1 MiB for final metadata) remaining after the hidden
+GET. Register the durable debit at the guarded content forward. An invocation
+then makes the results GET and, after real EOF, one confirmation GET.
+Noncoalescing raw reads charge actual transport advances and bytes.
+Partial responses, ranges, multipart responses and ambiguous framing are
+rejected before row ingestion. Already buffered bytes are charged before
+framing validation. Each row is checked against the invocation budget even
+when one transport chunk contains several rows.
+Fragmentation can end an invocation before these upper bounds. Cleanup closes
+unread bodies and awaits owned work. Row quotas, a matching length and a stall
+after the last row supply no EOF evidence. Valid committed prefix rows and
+usage survive interruption. Three admitted attempts without advancing that
+source's frontier or verifying EOF terminate collection for that source.
+
+The 1,000-member and token settings are offline input limits. They do not
+establish that a result will fit either collector ceiling. A 1,000-member
+job with 9 KiB per result already exceeds 8 MiB. Later live admission needs
+an independently verified envelope for both framed output size and aggregate
+shard size for the exact model and features.
+
+Each physical HTTP call has a private typed header record and, when available,
+a completion record linked to it. They bind the call stage to the original
+mutation or accepted job and source. A process can recover the header record
+after death before the body is read. Full capture can keep eligible job
+bodies and sanitized rejection derivatives within the metadata limit.
+Minimal capture keeps typed evidence and permitted digests. Unknown fields,
+free-form error messages, unsafe IDs, authentication data and remote rows
+claiming to be local derivatives cannot acquire an unsafe retained hash.
+The protected SDK logging scope covers parsing, streaming and cleanup.
+The diagnostic records are independent of the operational receipts and cursor.
+
+The candidate requires protected Level 3 verification, including the locked
+SDK seams, fresh-process recovery, local historical and changed-branch
+coverage, all seven strict R gates and same-source hosted ordinary and serial
+correctness. The seventh R gate keeps its 180-second installed deadline.
+Independent review and qualification precede any separately authorized paid
+smoke. Its proposed scope is one synthetic Sonnet 4.6 Messages Batch job with
+omitted reasoning and one or two identifiable rows. Verify the designated
+credential project, endpoint, exact billing and cap, retention and model
+scope independently before any activation. The reviewed US$0.056832 estimate
+is planning evidence.
 
 ## OpenAI generative Batch (M5 PR3)
 

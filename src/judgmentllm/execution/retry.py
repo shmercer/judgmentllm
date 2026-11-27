@@ -40,7 +40,7 @@ from judgmentllm.preparation import (
 )
 from judgmentllm.prompts import RenderedPrompt, RenderedPromptV2
 from judgmentllm.providers import ProviderAdapter
-from judgmentllm.providers.batch_protocol import NativeBatchAdapter
+from judgmentllm.providers.batch_protocol import BatchAdapter
 
 
 class RetryPolicy(ExecutionModel):
@@ -315,7 +315,7 @@ def authorize_automatic_retry(
 
 def prepare_subset_retry(
     prepared_run: PreparedRun,
-    adapter: ProviderAdapter | NativeBatchAdapter,
+    adapter: ProviderAdapter | BatchAdapter,
     *,
     dependency: RequestDependency,
     task_ids: Sequence[str],
@@ -372,7 +372,7 @@ def prepare_subset_retry(
                 existing.payload_sha256,
             ):
                 raise IntegrityError("existing retry transport commitment differs")
-        if prepared_run.manifest.schema_version == 13:
+        if prepared_run.manifest.schema_version in (13, 14):
             wire = adapter.prepare(
                 prepared_run.spec, subset, prepared_run.render_attempt(subset)
             )
@@ -554,7 +554,7 @@ def prepare_subset_retry(
             native_artifacts = publish_prepared_transport(
                 repository, prepared_run.store, wire, prepared_run.spec.capture
             )
-    elif version == 13:
+    elif version in (13, 14):
         rendered = prepared_run.render_attempt(subset)
         wire = adapter.prepare(prepared_run.spec, subset, rendered)
         prompt_bytes = rendered.text.encode("utf-8")
@@ -653,7 +653,7 @@ def prepare_subset_retry(
             repository._register_artifact(run_id, artifact)  # pyright: ignore[reportPrivateUsage]
         repository.create_attempt(attempt, selected)
         checkpoint("during_retry_preparation", request_uid)
-        if version not in (12, 13):
+        if version not in (12, 13, 14):
             submission_id = stable_id("submission", run_id, attempt_id)
             repository.create_submission(
                 SubmissionRecord(

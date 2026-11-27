@@ -1,6 +1,42 @@
 {
   "schema_version": 1,
   "modules": {
+    "tests/test_anthropic_batch.py": {
+      "test_both_resume_routes_deny_v14_without_touching_registry_files": {"[active-wal]": [], "[orphan-wal]": []},
+      "test_budget_is_checked_between_rows_from_one_transport_chunk": {"": []},
+      "test_buffered_bad_length_is_debited_before_framing_rejection": {"": []},
+      "test_cancel_read_does_not_create_post_receipt": {"": []},
+      "test_collection_reserve_boundary": {"[False-bytes]": [], "[False-steps]": [], "[True-bytes]": [], "[True-steps]": []},
+      "test_control_probe_rejects_wal_growth_with_a_rewritten_prefix": {"": []},
+      "test_exact_local_source_and_record_limits_replay_over_default_quota": {"": ["serial"]},
+      "test_explicit_retry_seals_one_selected_task_in_a_new_direct_create": {"": []},
+      "test_first_status_cannot_rebind_create_timestamps": {"[created_at]": [], "[expires_at]": []},
+      "test_hard_death_preserves_diagnostics_and_authority": {"[headers-full]": [], "[headers-minimal]": [], "[result-full]": [], "[result-minimal]": []},
+      "test_hidden_prelude_is_bounded_before_content_admission": {"[oversized]": [], "[unsafe]": []},
+      "test_legacy_batch_resume_reads_committed_orphan_wal": {"[12]": [], "[13]": []},
+      "test_legacy_preflight_observes_concurrent_committed_wal": {"[append-batch-12]": [], "[append-batch-13]": [], "[append-runs-12]": [], "[append-runs-13]": [], "[checkpoint-batch-12]": [], "[checkpoint-batch-13]": [], "[checkpoint-runs-12]": [], "[checkpoint-runs-13]": []},
+      "test_named_audit_reopen_verifies_retained_diagnostic_body": {"": []},
+      "test_named_receipt_survives_death_before_sql": {"[create-full]": [], "[create-minimal]": [], "[member-full]": [], "[member-minimal]": []},
+      "test_non_whole_source_is_closed_before_ingestion": {"[ambiguous-length]": [], "[content-range]": [], "[multipart]": [], "[partial-status]": []},
+      "test_offline_auto_seals_the_requested_model_and_cap": {"": []},
+      "test_only_three_admitted_replays_without_progress": {"": []},
+      "test_outer_tally_is_independent_of_assessment_validity": {"[errored]": [], "[expired]": [], "[succeeded]": []},
+      "test_pending_ready_repair_and_archive": {"": []},
+      "test_preparation_rejects_unqualified_controls_before_store_and_client": {"[account]": [], "[cache]": [], "[native]": [], "[reasoning]": [], "[sampling]": [], "[sdk]": [], "[strict]": [], "[tier]": [], "[tokens]": []},
+      "test_public_remote_controls_fail_before_writer": {"": []},
+      "test_ready_rotation_picks_another_shard_after_a_stall_and_restart": {"": []},
+      "test_rejection_is_diagnostic_and_never_reposts": {"[full]": [], "[minimal]": []},
+      "test_remote_derivative_and_credential_echo_cannot_enter_the_store": {"[full]": [], "[minimal]": []},
+      "test_restart_rejects_moving_a_receipt_ahead_of_the_cursor": {"": []},
+      "test_second_shard_cannot_accept_an_already_bound_job": {"": []},
+      "test_source_failures_do_not_claim_completion": {"[false_length]": [], "[fragmented_frame]": [], "[incomplete_json]": [], "[missing]": [], "[outer_tally]": [], "[over_source]": [], "[stalled_eof]": []},
+      "test_stream_interrupt_commits_first_short_row_and_replays": {"[full]": [], "[minimal]": []},
+      "test_success_mixed_replay_and_http_provenance": {"[full]": [], "[minimal]": []},
+      "test_typed_text_batch_outcome_survives_receipt_replay": {"[max-tokens]": [], "[refusal]": []}
+    },
+    "tests/test_anthropic_batch_r.py": {
+      "test_actual_anthropic_batch_exports_in_r": {"[full-False]": ["r_interop"], "[minimal-True]": ["r_interop"]}
+    },
     "tests/test_anthropic_cancellation.py": {
       "test_cancel_before_http_forward_does_not_create_invocation_evidence": {"[messages]": []},
       "test_cancellation_after_http_forward_retains_unknown_usage": {"[full-messages]": [], "[minimal-messages]": []},
@@ -236,7 +272,9 @@
       "test_row_screening_withholds_unsafe_or_unattributable_material": {"[body]": [], "[indices]": [], "[json]": [], "[output]": [], "[probabilities]": [], "[root]": [], "[secret]": []}
     },
     "tests/test_batch_audit_rejections.py": {
+      "test_audit_accepts_run_scoped_facts_under_reserved_prefix": {"[anthropic-http]": [], "[openai-call]": [], "[openai-screen]": []},
       "test_audit_reference_must_name_its_original_run_and_bundle": {"[bundle]": [], "[missing]": [], "[run]": []},
+      "test_audit_rejects_reserved_facts_without_run_scope": {"[other_entity]": [], "[other_kind]": [], "[stop_binding]": [], "[tag]": []},
       "test_native_audit_rejects_an_ordinary_manifest": {"": []},
       "test_new_audit_rejects_corrupt_records_without_rewriting_old_bundle": {"[control]": [], "[member]": [], "[operation]": []},
       "test_pairwise_audit_exports_the_presented_and_original_identities": {"": []}

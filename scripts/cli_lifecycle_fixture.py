@@ -158,6 +158,9 @@ def create(root: Path) -> None:
     from openai_batch_fixture import create as create_openai_batch
 
     create_openai_batch(root)
+    from anthropic_batch_fixture import create as create_anthropic_batch
+
+    create_anthropic_batch(root)
     for name, original, version in (
         ("bulk-generative", "recovery-minimal", 2),
         ("bulk-decisions", "grouped-full", 4),

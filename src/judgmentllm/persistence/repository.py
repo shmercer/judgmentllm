@@ -1328,6 +1328,11 @@ class Repository:
                 raise OwnershipError("ownership token does not match")
 
 
+class RegistrySnapshotChanged(IntegrityError):
+    def __init__(self) -> None:
+        super().__init__("read-only registry changed during inspection")
+
+
 class ReadOnlyRepository(Repository):
     """Inspect an existing registry without initialization or write pragmas.
 
@@ -1344,17 +1349,21 @@ class ReadOnlyRepository(Repository):
         *,
         busy_timeout_ms: int = 5000,
         preserve_files: bool = False,
+        allow_wal_appends: bool = False,
     ) -> None:
         if type(busy_timeout_ms) is not int or busy_timeout_ms < 0:
             raise ValueError("busy timeout must be a nonnegative integer")
         if type(preserve_files) is not bool:
             raise ValueError("preserve_files must be a boolean")
+        if type(allow_wal_appends) is not bool:
+            raise ValueError("allow_wal_appends must be a boolean")
         self.root = Path(root).resolve()
         database = self.root / "registry.sqlite3"
         self._checkpointed_signature: tuple[int, int, int, int, int] | None = None
         self._inspection_snapshot: tempfile.TemporaryDirectory[str] | None = None
         self._database = database
         self._wal = database.with_name(database.name + "-wal")
+        self._allow_wal_appends = allow_wal_appends
         immutable = preserve_files and not self._wal.exists()
         if not database.is_file():
             raise NotFoundError("durable registry was not found")
@@ -1370,7 +1379,9 @@ class ReadOnlyRepository(Repository):
         if immutable:
             self._checkpointed_signature = self._snapshot_signature()
         elif (
-            preserve_files and not database.with_name(database.name + "-shm").is_file()
+            preserve_files
+            and not allow_wal_appends
+            and not database.with_name(database.name + "-shm").is_file()
         ):
             raise IntegrityError("read-only WAL coordination is unavailable")
         opened_database = database
@@ -1416,8 +1427,9 @@ class ReadOnlyRepository(Repository):
 
         Opening SQLite only on this private snapshot avoids touching original
         shared-memory coordination, including a final-writer checkpoint race.
-        Copying streams bounded chunks; a changing source fails closed. The
-        ordinary reader still observes live WAL; this mode is point-in-time.
+        SQLite rebuilds the WAL index on the copy even if the original SHM is absent.
+        A control probe can ignore appended frames after verifying the copied
+        prefix. Other preserved inspections still require unchanged files.
         """
         paths = (self._database, self._wal)
         try:
@@ -1434,22 +1446,55 @@ class ReadOnlyRepository(Repository):
                     path.open("rb") as source,
                     (Path(temporary.name) / path.name).open("xb") as destination,
                 ):
-                    if self._file_signature(path) != original:
-                        raise IntegrityError(
-                            "read-only registry changed during inspection"
-                        )
-                    shutil.copyfileobj(source, destination, length=65_536)
-            if tuple(self._file_signature(path) for path in paths) != before:
-                raise IntegrityError("read-only registry changed during inspection")
+                    if path == self._wal and self._allow_wal_appends:
+                        remaining = original[2]
+                        while remaining:
+                            chunk = source.read(min(remaining, 65_536))
+                            if not chunk:
+                                raise RegistrySnapshotChanged
+                            destination.write(chunk)
+                            remaining -= len(chunk)
+                    elif self._file_signature(path) != original:
+                        raise RegistrySnapshotChanged
+                    else:
+                        shutil.copyfileobj(source, destination, length=65_536)
+            if self._file_signature(self._wal) != before[1] and (
+                not self._allow_wal_appends
+                or not self._wal_prefix_matches(
+                    target.with_name(self._wal.name), before[1]
+                )
+            ):
+                raise RegistrySnapshotChanged
+            if self._file_signature(self._database) != before[0]:
+                raise RegistrySnapshotChanged
             return target
-        except OSError:
+        except OSError as error:
             if self._inspection_snapshot is not None:
                 self._inspection_snapshot.cleanup()
+            if self._allow_wal_appends and isinstance(error, FileNotFoundError):
+                raise RegistrySnapshotChanged from None
             raise IntegrityError("read-only registry snapshot is unavailable") from None
         except BaseException:
             if self._inspection_snapshot is not None:
                 self._inspection_snapshot.cleanup()
             raise
+
+    def _wal_prefix_matches(
+        self, copied: Path, original: tuple[int, int, int, int, int]
+    ) -> bool:
+        current = self._file_signature(self._wal)
+        if (
+            self._wal.is_symlink()
+            or current[:2] != original[:2]
+            or current[2] <= original[2]
+        ):
+            return False
+        with self._wal.open("rb") as live, copied.open("rb") as frozen:
+            while chunk := frozen.read(65_536):
+                if live.read(len(chunk)) != chunk:
+                    return False
+        current = self._file_signature(self._wal)
+        return current[:2] == original[:2] and current[2] > original[2]
 
     @staticmethod
     def _file_signature(path: Path) -> tuple[int, int, int, int, int]:
@@ -1478,9 +1523,10 @@ class ReadOnlyRepository(Repository):
     def _verify_snapshot(self) -> None:
         signature = self._checkpointed_signature
         if signature is not None and (
-            self._snapshot_signature() != signature or self._wal.exists()
+            self._snapshot_signature() != signature
+            or (not self._allow_wal_appends and self._wal.exists())
         ):
-            raise IntegrityError("read-only registry changed during inspection")
+            raise RegistrySnapshotChanged
 
     def close(self) -> None:
         try:

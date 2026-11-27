@@ -695,3 +695,13 @@ and all proven outcomes while reporting current conflicts separately.
 ## M5 PR3: OpenAI generative Batch
 
 Adopt the OpenAI-specific transport, immutable file/byte/EOF binding and durable ready-first collection contract in [native-batch.md](native-batch.md#openai-generative-batch-m5-pr3). Keep Responses and Chat separate, schema 4 unchanged, manifest 13/audit 2 additive, cache OFF and native Batch authority empty. Unknown acceptance never permits resubmission. Independent review, exact-source offline/hosted qualification, key-safe runner attestation and explicit live authorization are separate gates.
+
+## M5 PR4: Anthropic Messages Batch
+
+Use a direct, journaled create and a single pinned result source. Gate public
+remote controls before the writer, and use the locked SDK with an offline
+transport for synthetic qualification. Require durable private HTTP
+diagnostics for every Batch provider and implement Anthropic's typed records
+in PR4. Merge the OpenAI diagnostics PR first, then rebase Anthropic PR4
+onto the resulting main before exact-source qualification. Serving and paid
+smoke authority remain separate. [Anthropic route and limits](native-batch.md#anthropic-messages-batch-m5-pr4).

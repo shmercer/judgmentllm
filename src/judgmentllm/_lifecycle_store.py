@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import base64
 import os
+from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 from typing import cast
 
@@ -23,7 +25,11 @@ from judgmentllm.models import VersionedModel
 from judgmentllm.persistence.hashing import bytes_digest
 from judgmentllm.persistence.models import NotFoundError
 from judgmentllm.persistence.ownership import executor_is_active
-from judgmentllm.persistence.repository import ReadOnlyRepository, Repository
+from judgmentllm.persistence.repository import (
+    ReadOnlyRepository,
+    RegistrySnapshotChanged,
+    Repository,
+)
 from judgmentllm.preparation import _load_manifest  # pyright: ignore[reportPrivateUsage]
 from judgmentllm.preparation.manifest import ExecutableRunManifestV2
 
@@ -51,7 +57,9 @@ def require_store(store: Path) -> None:
         raise LifecycleError("not_found", "run store was not found", store=str(store))
 
 
-def _directory_id(directory: Path, root: Path, *, preserve_files: bool) -> str:
+def _directory_id(
+    directory: Path, root: Path, reader: Callable[[Path], ReadOnlyRepository]
+) -> str:
     path = directory / "manifest.json"
     if path.is_symlink():
         raise LifecycleError("validation", "run directory manifest is invalid")
@@ -66,7 +74,7 @@ def _directory_id(directory: Path, root: Path, *, preserve_files: bool) -> str:
         return identifier
     # Unsealed preparations have no manifest. Compare established directory
     # hashes through bounded registry pages, without retaining an ID inventory.
-    with ReadOnlyRepository(root, preserve_files=preserve_files) as repository:
+    with reader(root) as repository:
         after = ""
         while True:
             rows = repository.connection.execute(
@@ -89,17 +97,56 @@ def resolve_run(
     allow_v12_posix_read: bool = False,
     preserve_files: bool = False,
 ) -> tuple[str, Path]:
+    identifier, root, _ = _resolve_run(
+        run_id,
+        store,
+        spec,
+        allow_v12_posix_read,
+        partial(ReadOnlyRepository, preserve_files=preserve_files),
+    )
+    return identifier, root
+
+
+def resolve_control_run(
+    run_id: str | Path,
+    store: str | Path | None,
+    spec: RunSpecification | None = None,
+    *,
+    allow_v12_posix_read: bool = False,
+) -> tuple[str, Path, bool]:
+    """Use the immutable registry provider to choose SQLite coordination."""
+    reader = partial(ReadOnlyRepository, preserve_files=True, allow_wal_appends=True)
+    try:
+        identifier, root, provider = _resolve_run(
+            run_id, store, spec, allow_v12_posix_read, reader
+        )
+    except RegistrySnapshotChanged:
+        # An unrelated checkpoint can invalidate the first copy.
+        identifier, root, provider = _resolve_run(
+            run_id, store, spec, allow_v12_posix_read, reader
+        )
+    # V14 requires an Anthropic run in the registry as well as a V14 manifest.
+    return identifier, root, provider not in ("mock", "openai")
+
+
+def _resolve_run(
+    run_id: str | Path,
+    store: str | Path | None,
+    spec: RunSpecification | None,
+    allow_v12_posix_read: bool,
+    reader: Callable[[Path], ReadOnlyRepository],
+) -> tuple[str, Path, str]:
     # Existing IDs are arbitrary stable strings, including path-like strings.
     # With an explicit store, an exact registry identity takes precedence.
     if store is not None:
         selected = Path(store).resolve()
         require_store(selected)
-        with ReadOnlyRepository(selected, preserve_files=preserve_files) as repository:
+        with reader(selected) as repository:
             row = repository.connection.execute(
-                "SELECT 1 FROM runs WHERE run_id=?", (str(run_id),)
+                "SELECT provider FROM runs WHERE run_id=?", (str(run_id),)
             ).fetchone()
             if row is not None:
-                return str(run_id), selected
+                return str(run_id), selected, str(row[0])
     reference = Path(run_id)
     if reference.is_absolute():
         directory = reference.resolve()
@@ -109,26 +156,27 @@ def resolve_run(
         if store is not None and Path(store).resolve() != root:
             raise LifecycleError("validation", "run directory and store disagree")
         require_store(root)
-        identifier = _directory_id(directory, root, preserve_files=preserve_files)
-        with ReadOnlyRepository(root, preserve_files=preserve_files) as repository:
+        identifier = _directory_id(directory, root, reader)
+        with reader(root) as repository:
             if repository.run_directory(identifier) != directory:
                 raise LifecycleError("validation", "run directory identity disagrees")
-            if repository.get_run(identifier).manifest_sha256 is not None:
+            run = repository.get_run(identifier)
+            if run.manifest_sha256 is not None:
                 _load_manifest(
                     repository,
                     identifier,
                     unsealed=False,
                     allow_v12_posix_read=allow_v12_posix_read,
                 )
-        return identifier, root
+        return identifier, root, run.provider
     root = discover_store(store, spec)
     require_store(root)
     # Resolve only existing, verified identities. Callers that will later export
     # or execute must not reach a write-capable constructor on an unknown run or
     # an uninitialized registry merely to discover that identity.
-    with ReadOnlyRepository(root, preserve_files=preserve_files) as repository:
+    with reader(root) as repository:
         try:
-            repository.get_run(str(run_id))
+            run = repository.get_run(str(run_id))
         except NotFoundError:
             raise LifecycleError(
                 "not_found",
@@ -136,7 +184,7 @@ def resolve_run(
                 run_id=str(run_id),
                 store=str(root),
             ) from None
-    return str(run_id), root
+    return str(run_id), root, run.provider
 
 
 def load_resume_spec(
@@ -149,8 +197,10 @@ def load_resume_spec(
         discovery = _load_run_spec(
             config, document_reader=read_document, cache_policy_version=1
         )
-    identifier, root = resolve_run(run_id, store, discovery)
-    with ReadOnlyRepository(root) as repository:
+    identifier, root, preserve = resolve_control_run(run_id, store, discovery)
+    with ReadOnlyRepository(
+        root, preserve_files=preserve, allow_wal_appends=preserve
+    ) as repository:
         manifest = _load_manifest(repository, identifier, unsealed=False)
     return _load_run_spec(
         config,
@@ -213,16 +263,11 @@ def inspect_run(
             else None
         )
         from judgmentllm.persistence.native_batch import detail
-        from judgmentllm.preparation.manifest import (
-            ExecutableRunManifestV12,
-            ExecutableRunManifestV13,
-        )
+        from judgmentllm.preparation.manifest import NativeBatchManifest
 
         batch = (
             detail(repository, run_id, manifest.batch_shard_count)
-            if isinstance(
-                manifest, (ExecutableRunManifestV12, ExecutableRunManifestV13)
-            )
+            if isinstance(manifest, NativeBatchManifest)
             else None
         )
         row = repository.connection.execute(

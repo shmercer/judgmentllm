@@ -1,8 +1,8 @@
 """Explicit scientific retry reuses the existing subset authorization and cap."""
 
 from judgmentllm.batch_models import (
-    BatchMemberReceiptV1,
     BatchMemberV1,
+    member_receipt_model,
     shard_model,
 )
 from judgmentllm.execution.native_batch import BatchSession
@@ -16,7 +16,7 @@ from judgmentllm.persistence.hashing import (
 from judgmentllm.persistence.models import IntegrityError, utc_now
 from judgmentllm.persistence.native_batch import put, read_reference, register, stopped
 from judgmentllm.planning import stable_id
-from judgmentllm.preparation.batch import encode_row
+from judgmentllm.preparation.batch import encode_row, frame_shard
 
 
 def prepare_batch_retry(session: BatchSession, retry: RetrySelection) -> None:
@@ -77,7 +77,10 @@ def prepare_batch_retry(session: BatchSession, retry: RetrySelection) -> None:
     if parent_row is None:
         raise IntegrityError("batch retry lacks its parent member")
     parent = read_reference(
-        repository, run_id, f"batch/members/{parent_row[0]}.json", BatchMemberReceiptV1
+        repository,
+        run_id,
+        f"batch/members/{parent_row[0]}.json",
+        member_receipt_model(context),
     )
     if parent is None:
         raise IntegrityError("batch retry lacks its proven parent outcome")
@@ -91,7 +94,8 @@ def prepare_batch_retry(session: BatchSession, retry: RetrySelection) -> None:
         "batch-member-key-v1", [run_id, request_uid, attempt.attempt_id]
     )
     row = encode_row(key, wire)
-    if len(row) > session.manifest.batch_context.limits.max_input_bytes:
+    body, media = frame_shard(context, (row,))
+    if len(body) > session.manifest.batch_context.limits.max_input_bytes:
         raise IntegrityError("retry member exceeds sealed batch limit")
     ordinal = int(
         repository.connection.execute(
@@ -124,11 +128,9 @@ def prepare_batch_retry(session: BatchSession, retry: RetrySelection) -> None:
         parent_receipt_sha256=bytes_digest(canonical_bytes(parent)),
     )
     source = (
-        prepared.store.put(row, "application/x-ndjson")
+        prepared.store.put(body, media)
         if prepared.spec.capture == "full"
-        else prepared.store.hash_only(
-            bytes_digest(row), len(row), "application/x-ndjson"
-        )
+        else prepared.store.hash_only(bytes_digest(body), len(body), media)
     )
     shard = shard_model(context).model_validate(
         dict(

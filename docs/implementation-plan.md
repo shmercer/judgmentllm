@@ -432,6 +432,13 @@ and release go/no-go evidence are in
 
 Begin after PR F acceptance. Alpha remains a separate post-M5 decision.
 
+PR4 adds [Anthropic Messages Batch](native-batch.md#anthropic-messages-batch-m5-pr4)
+with direct sealed create, bounded single-source replay and durable private HTTP
+diagnostics. Public sends stay disabled. Independent review and protected Level 3
+qualification apply to the frozen candidate. The five historical coverage pins
+remain part of baseline comparison. Adopt a reconciled declaration variant only
+where the frozen candidate requires it, then replan against the adopted policy.
+
 PR3 adds only the [OpenAI generative Batch route scopes](native-batch.md#openai-generative-batch-m5-pr3), with exact SDK/wire checks, screened file size/EOF and durable fair ready-source collection. This is offline implementation; independent review, exact-source Level 3 acceptance, a key-safe runner and explicit live authorization remain separate gates.
 
 PR2 implements the [provider-neutral native-batch core](native-batch.md) with

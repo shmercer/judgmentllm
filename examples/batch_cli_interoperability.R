@@ -104,3 +104,4 @@ stopifnot(identical(replayed_pairs$members, pair_snapshot$members),
   identical(replayed_pairs$results, pair_snapshot$results))
 
 source(file.path(dirname(helper), "..", "examples", "openai_batch_cli_interoperability.R"), local = TRUE)
+source(file.path(dirname(helper), "..", "examples", "anthropic_batch_cli_interoperability.R"), local = TRUE)

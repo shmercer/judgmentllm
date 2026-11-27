@@ -4,13 +4,12 @@ from collections.abc import AsyncGenerator, AsyncIterator, Callable, Mapping
 from typing import TYPE_CHECKING, Any, Protocol
 
 from judgmentllm.batch_models import (
-    BatchContextV1,
+    BatchContext,
     BatchCursorV1,
     BatchOperationIntentV1,
     BatchOperationReceiptV1,
     BatchSourceCommitmentV1,
     BatchStatusEvidenceV1,
-    OpenAIBatchContextV1,
 )
 from judgmentllm.config import RunSpecification
 from judgmentllm.evidence.usage import ReportedUsageInput
@@ -24,10 +23,13 @@ from judgmentllm.providers.protocol import (
 )
 
 if TYPE_CHECKING:
+    from judgmentllm.anthropic_batch_transport import PreparedAnthropicBatchRequest
     from judgmentllm.openai_batch_transport import PreparedOpenAIBatchRequest
 
 if TYPE_CHECKING:
-    BatchPreparedRequest = PreparedRequestV2 | PreparedOpenAIBatchRequest
+    BatchPreparedRequest = (
+        PreparedRequestV2 | PreparedOpenAIBatchRequest | PreparedAnthropicBatchRequest
+    )
 else:
     BatchPreparedRequest = PreparedRequestV2
 
@@ -55,10 +57,10 @@ def result_index_scope(
     )
 
 
-class NativeBatchAdapter(Protocol):
+class BatchAdapter(Protocol):
     identity: str
 
-    def context(self) -> BatchContextV1 | OpenAIBatchContextV1: ...
+    def context(self) -> BatchContext: ...
     def capabilities(self, spec: RunSpecification) -> CapabilityProfile: ...
     def validate(self, spec: RunSpecification) -> None: ...
     def capabilities_for(
@@ -73,9 +75,6 @@ class NativeBatchAdapter(Protocol):
     def parse(
         self, response: ProviderResponse, *, strict_output: bool = False
     ) -> ParsedResponse: ...
-    def create_payload(
-        self, manifest_sha256: str, shard: Any, uploaded: BatchOperationReceiptV1
-    ) -> bytes: ...
     def cancel_payload(
         self, manifest_sha256: str, submission_id: str, remote_id: str | None
     ) -> bytes: ...
@@ -91,6 +90,17 @@ class NativeBatchAdapter(Protocol):
     def decode_receipt(
         self, raw: bytes, intent: BatchOperationIntentV1
     ) -> BatchOperationReceiptV1: ...
+    def screen_result(
+        self, raw: bytes, expected_keys: Mapping[str, Any]
+    ) -> tuple[str, ProviderResponse, ReportedUsageInput, bytes, bool] | None: ...
+
+
+class NativeBatchAdapter(BatchAdapter, Protocol):
+    """Existing upload-backed and indexed-result operations."""
+
+    def create_payload(
+        self, manifest_sha256: str, shard: Any, uploaded: BatchOperationReceiptV1
+    ) -> bytes: ...
     async def reconcile_operation(
         self, intent: BatchOperationIntentV1
     ) -> bytes | None: ...
@@ -118,10 +128,6 @@ class NativeBatchAdapter(Protocol):
     ) -> AsyncGenerator[bytes, None]:
         """Stream a range only after its cursor matches the authoritative index."""
         ...
-
-    def screen_result(
-        self, raw: bytes, expected_keys: Mapping[str, Any]
-    ) -> tuple[str, ProviderResponse, ReportedUsageInput, bytes, bool] | None: ...
 
 
 class BatchSourceOverrun(OSError):

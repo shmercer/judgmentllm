@@ -6,12 +6,30 @@ import pytest
 from test_batch_exports_retry import file_path
 from test_batch_preparation_rejections import corrupt_row
 from test_batch_rejections import prepared_batch as prepared_batch
+from test_native_batch import batch_spec
 
-from judgmentllm import RunSpecV2, export_batch_provenance, resume_batch, stop_batch
-from judgmentllm.execution.batch_exports import export_batch_audit
+from judgmentllm import (
+    RunSpecV2,
+    export_batch_provenance,
+    prepare_batch,
+    resume_batch,
+    stop_batch,
+)
+from judgmentllm.batch_models import (
+    AnthropicBatchHTTPDiagnosticV1,
+    BatchDiagnosticV1,
+    BatchStopV1,
+)
+from judgmentllm.execution.batch_exports import (
+    BatchControlProvenanceV1,
+    export_batch_audit,
+)
 from judgmentllm.lifecycle_models import LifecycleError
 from judgmentllm.persistence.artifacts import ArtifactStore
 from judgmentllm.persistence.hashing import canonical_bytes
+from judgmentllm.persistence.models import IntegrityError
+from judgmentllm.persistence.native_batch import fact, record_stop
+from judgmentllm.persistence.ownership import ExecutorOwnership
 from judgmentllm.persistence.repository import Repository
 from judgmentllm.preparation import prepare_run
 
@@ -90,6 +108,80 @@ def test_new_audit_rejects_corrupt_records_without_rewriting_old_bundle(
         "001", store=root, bundle_id=original.manifest.bundle_id
     )
     assert file_path(reopened, "results.jsonl").read_bytes() == before
+
+
+@pytest.mark.parametrize(
+    "run_id",
+    [
+        pytest.param("openai-diagnostic:call:" + "0" * 32, id="openai-call"),
+        pytest.param("openai-result-screen:" + "0" * 64, id="openai-screen"),
+        pytest.param("anthropic-http:" + "0" * 32, id="anthropic-http"),
+    ],
+)
+def test_audit_accepts_run_scoped_facts_under_reserved_prefix(
+    tmp_path: Path, run_id: str
+) -> None:
+    root = tmp_path / "store"
+    prepare_batch(batch_spec(tmp_path, responses=1), store=root, run_id=run_id)
+    with Repository(root) as repository, ExecutorOwnership(repository, run_id) as owner:
+        assert owner.owner is not None
+        record_stop(repository, run_id, owner.owner.token, remote=True)
+        fact(
+            repository,
+            run_id,
+            owner.owner.token,
+            "withheld",
+            run_id,
+            BatchDiagnosticV1(code="unsafe_evidence"),
+        )
+
+    audit = export_batch_provenance(run_id, store=root)
+    controls = [
+        BatchControlProvenanceV1.model_validate_json(line)
+        for line in file_path(audit, "controls.jsonl").read_bytes().splitlines()
+    ]
+    assert [control.kind for control in controls] == ["cancel_all", "stop", "withheld"]
+    assert all(control.entity_id == run_id for control in controls)
+
+
+@pytest.mark.parametrize("fault", ["other_entity", "other_kind", "tag", "stop_binding"])
+def test_audit_rejects_reserved_facts_without_run_scope(
+    tmp_path: Path, fault: str
+) -> None:
+    call_id = "0" * 32
+    run_id = "anthropic-http:" + call_id
+    root = tmp_path / "store"
+    prepare_batch(batch_spec(tmp_path, responses=1), store=root, run_id=run_id)
+    kind, entity = "withheld", run_id
+    record: BatchDiagnosticV1 | AnthropicBatchHTTPDiagnosticV1 | BatchStopV1 = (
+        BatchDiagnosticV1(code="unsafe_evidence")
+    )
+    message = "Anthropic Batch HTTP diagnostic namespace differs"
+    if fault == "other_entity":
+        entity += "-other"
+    elif fault == "other_kind":
+        kind = "conflict"
+    elif fault == "tag":
+        record = AnthropicBatchHTTPDiagnosticV1(
+            call_id=call_id,
+            stage="create",
+            phase="headers",
+            intent_id="0" * 64,
+            http_status=200,
+        )
+        message = "Anthropic Batch HTTP diagnostic provider differs"
+    else:
+        kind = "stop"
+        record = BatchStopV1(run_id="other-run", kind="stop")
+        message = "batch stop fact binding differs"
+    with Repository(root) as repository, ExecutorOwnership(repository, run_id) as owner:
+        assert owner.owner is not None
+        fact(repository, run_id, owner.owner.token, kind, entity, record)
+
+    with pytest.raises(LifecycleError) as error:
+        export_batch_provenance(run_id, store=root)
+    assert isinstance(error.value.__context__, IntegrityError)
+    assert error.value.__context__.args == (message,)
 
 
 def test_pairwise_audit_exports_the_presented_and_original_identities(

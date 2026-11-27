@@ -848,3 +848,13 @@ correctness and focused R export consumers do not replace installed acceptance.
 ## M5 PR3 OpenAI Batch acceptance
 
 OpenAI audit/report 2 preserves normalized JSONL/CSV/R schema 1, original/presented IDs, nonuniform ordinal mappings, null unreported probabilities/costs and usage once per physical member. Extend the existing seventh installed R-driven CLI gate with small Responses/full/grouped-rubric and Chat/minimal/reversed-pair cases; retain all seven gates, PR2 probability fixtures and the unchanged 180-second installed deadline. Heavy restart/pressure campaigns remain Python tests. [Acceptance contract](native-batch.md#acceptance-and-later-gates).
+
+## M5 PR4 Anthropic Batch acceptance
+
+The existing seventh installed gate also exercises a full-capture grouped
+rubric and a minimal-capture pair through separate offline Anthropic CLI
+processes. R reads partial and final audit 3 exports, verifies stable string
+IDs, outcome and usage provenance, capture differences and the immutable
+earlier cut. All seven strict gates retain the existing 180-second installed
+deadline. The independent R consumer also reads the same Python-generated
+exports in focused tests. [Anthropic acceptance contract](native-batch.md#anthropic-messages-batch-m5-pr4).

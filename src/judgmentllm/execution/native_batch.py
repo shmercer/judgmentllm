@@ -6,7 +6,7 @@ import asyncio
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from contextlib import AbstractContextManager
 from pathlib import Path
-from typing import TypeVar
+from typing import Any, TypeVar, cast
 
 from judgmentllm.batch_models import (
     BatchControlOptionsV1,
@@ -21,6 +21,8 @@ from judgmentllm.batch_models import (
     BatchSourceIndexV1,
     BatchStatusEvidenceV1,
     BatchStopV1,
+    member_receipt_model,
+    operation_receipt_model,
     shard_model,
 )
 from judgmentllm.config import RunSpecification
@@ -54,16 +56,20 @@ from judgmentllm.persistence.native_batch import (
 from judgmentllm.persistence.ownership import ExecutorOwnership
 from judgmentllm.persistence.repository import Repository
 from judgmentllm.preparation import _load_manifest, open_prepared_run  # pyright: ignore[reportPrivateUsage]
-from judgmentllm.preparation.batch import encode_row, members_for, reconstruct
-from judgmentllm.preparation.manifest import (
-    ExecutableRunManifestV12,
-    ExecutableRunManifestV13,
+from judgmentllm.preparation.batch import (
+    encode_row,
+    frame_shard,
+    members_for,
+    reconstruct,
 )
+from judgmentllm.preparation.manifest import NativeBatchManifest
 from judgmentllm.providers.batch_protocol import (
+    BatchAdapter,
     BatchEvidenceWithheld,
     NativeBatchAdapter,
     result_index_scope,
 )
+from judgmentllm.providers.protocol import ProviderResponse
 
 T = TypeVar("T")
 Fault = Callable[[str, str], None]
@@ -165,7 +171,7 @@ class InvocationBudget:
         return self.options.max_io_steps * 65_536
 
     def receive_bytes(self, size: int) -> None:
-        """Charge physical OpenAI reads before SDK buffering or row processing."""
+        """Charge physical reads before SDK buffering or row processing."""
         self.bytes += size
         if self.bytes > self.byte_limit:
             self.closed = True
@@ -186,7 +192,7 @@ class BatchSession(AbstractContextManager["BatchSession"]):
         self,
         run_id: str,
         root: Path,
-        adapter: NativeBatchAdapter,
+        adapter: BatchAdapter,
         budget: InvocationBudget,
         fault: Fault | None = None,
     ):
@@ -199,9 +205,7 @@ class BatchSession(AbstractContextManager["BatchSession"]):
         try:
             require_storage(self.repository)
             manifest = _load_manifest(self.repository, run_id, unsealed=False)
-            if not isinstance(
-                manifest, (ExecutableRunManifestV12, ExecutableRunManifestV13)
-            ):
+            if not isinstance(manifest, NativeBatchManifest):
                 raise IntegrityError("run is not a native batch preparation")
             owner = self.ownership.acquire()
             self.token = owner.token
@@ -282,19 +286,20 @@ class BatchSession(AbstractContextManager["BatchSession"]):
     def operation_receipt(
         self, intent: BatchOperationIntentV1
     ) -> BatchOperationReceiptV1 | None:
+        model = operation_receipt_model(self.manifest.batch_context, intent.kind)
         receipt = latest(
             self.repository,
             self.run_id,
             "operation",
             intent.instance_id,
-            BatchOperationReceiptV1,
+            model,
         )
         if receipt is None:
             receipt = read_reference(
                 self.repository,
                 self.run_id,
                 self.receipt_reference(intent.instance_id),
-                BatchOperationReceiptV1,
+                model,
             )
         if receipt is not None:
             self.adapter.decode_receipt(canonical_bytes(receipt), intent)
@@ -434,7 +439,7 @@ class BatchSession(AbstractContextManager["BatchSession"]):
             async def reconcile_and_record(
                 intent: BatchOperationIntentV1 = intent,
             ) -> BatchOperationReceiptV1 | None:
-                raw = await self.adapter.reconcile_operation(intent)
+                raw = await self.reconcile_operation(intent)
                 if raw is None:
                     return None
                 receipt = self.adapter.decode_receipt(raw, intent)
@@ -449,6 +454,9 @@ class BatchSession(AbstractContextManager["BatchSession"]):
             if receipt.outcome != "accepted":
                 self.block_mutations = True
                 self.blocked_logicals.add(intent.logical_id)
+
+    async def reconcile_operation(self, intent: BatchOperationIntentV1) -> bytes | None:
+        return await cast(NativeBatchAdapter, self.adapter).reconcile_operation(intent)
 
     def forward_guard(self, intent: BatchOperationIntentV1) -> None:
         self.budget.remaining()
@@ -493,9 +501,7 @@ class BatchSession(AbstractContextManager["BatchSession"]):
             if prior.sequence >= 3:
                 return None
             # The independent service reasserts the exact durable fence.
-            proof = await self.budget.call(
-                lambda: self.adapter.reconcile_operation(prior)
-            )
+            proof = await self.budget.call(lambda: self.reconcile_operation(prior))
             if proof is None or self.adapter.decode_receipt(proof, prior) != receipt:
                 self.block_mutations = True
                 return None
@@ -592,26 +598,39 @@ class BatchSession(AbstractContextManager["BatchSession"]):
                 continue
             if shard.context != self.adapter.context():
                 raise IntegrityError("unfinished shard requires its original fixture")
-            data = bytearray()
-            for member in members_for(self.prepared, shard.shard_id):
-                _, wire = reconstruct(self.prepared, self.adapter, member)
-                data.extend(encode_row(member.member_key, wire))
-            if (bytes_digest(bytes(data)), len(data)) != (
+            payload, media = frame_shard(
+                self.manifest.batch_context,
+                (
+                    encode_row(
+                        member.member_key,
+                        reconstruct(self.prepared, self.adapter, member)[1],
+                    )
+                    for member in members_for(self.prepared, shard.shard_id)
+                ),
+            )
+            if (bytes_digest(payload), len(payload), media) != (
                 shard.input.sha256,
                 shard.input.byte_length,
+                shard.input.media_type,
             ):
                 raise IntegrityError("batch shard bytes differ from seal")
-            uploaded = await self.mutate(shard, "upload", bytes(data))
-            if uploaded is None or uploaded.outcome != "accepted":
-                return
-            created = await self.mutate(
-                shard,
-                "create",
-                self.adapter.create_payload(self.manifest_sha256, shard, uploaded),
-                uploaded.remote_id,
-            )
+            created = await self.submit_shard(shard, payload)
             if created is None or created.outcome != "accepted":
                 return
+
+    async def submit_shard(
+        self, shard: BatchShardV1, payload: bytes
+    ) -> BatchOperationReceiptV1 | None:
+        uploaded = await self.mutate(shard, "upload", payload)
+        if uploaded is None or uploaded.outcome != "accepted":
+            return None
+        adapter = cast(NativeBatchAdapter, self.adapter)
+        return await self.mutate(
+            shard,
+            "create",
+            adapter.create_payload(self.manifest_sha256, shard, uploaded),
+            uploaded.remote_id,
+        )
 
     async def cancel_known(self) -> None:
         if not stopped(self.repository, self.run_id, "cancel_all"):
@@ -663,9 +682,9 @@ class BatchSession(AbstractContextManager["BatchSession"]):
                 remote_id = submission.remote_id
                 try:
                     status = await self.budget.call(
-                        lambda submission=submission, remote_id=remote_id: (
-                            self.adapter.status(submission.submission_id, remote_id)
-                        )
+                        lambda submission=submission, remote_id=remote_id: cast(
+                            NativeBatchAdapter, self.adapter
+                        ).status(submission.submission_id, remote_id)
                     )
                 except OSError:
                     raise
@@ -772,7 +791,7 @@ class BatchSession(AbstractContextManager["BatchSession"]):
             self.repository,
             self.run_id,
             f"batch/members/{member.member_key}.json",
-            BatchMemberReceiptV1,
+            member_receipt_model(self.manifest.batch_context),
         )
         safe_sha = bytes_digest(safe)
         if prior is not None:
@@ -794,7 +813,8 @@ class BatchSession(AbstractContextManager["BatchSession"]):
                 if self.manifest.capture == "full"
                 else self.store.hash_only(safe_sha, len(safe), "application/json")
             )
-            receipt = BatchMemberReceiptV1(
+            receipt = self.build_member_receipt(
+                response,
                 identity=identity,
                 member_key=member.member_key,
                 source_id=source_id,
@@ -889,6 +909,11 @@ class BatchSession(AbstractContextManager["BatchSession"]):
         self.checkpoint("after_batch_member_results", member.member_key)
         return safe_sha
 
+    def build_member_receipt(
+        self, response: ProviderResponse, **fields: Any
+    ) -> BatchMemberReceiptV1:
+        return BatchMemberReceiptV1.model_validate(fields)
+
     def result_cursor(
         self, shard: BatchShardV1, submission: SubmissionRecord, source: str
     ) -> tuple[str, BatchCursorV1 | None]:
@@ -908,6 +933,7 @@ class BatchSession(AbstractContextManager["BatchSession"]):
         return source_id, cursor
 
     async def collect(self) -> None:
+        adapter = cast(NativeBatchAdapter, self.adapter)
         assert self.prepared is not None
         for shard in rows(
             self.repository, "batch_preparations", self.run_id, self.shard_model
@@ -996,7 +1022,7 @@ class BatchSession(AbstractContextManager["BatchSession"]):
                 try:
                     returned_source = await self.budget.call(
                         lambda submission=submission, source=source: (
-                            self.adapter.result_source(submission.submission_id, source)
+                            adapter.result_source(submission.submission_id, source)
                         )
                     )
                     if returned_source != source_id:
@@ -1005,7 +1031,7 @@ class BatchSession(AbstractContextManager["BatchSession"]):
                         )
                     commitment, raw_index = await self.budget.call(
                         lambda submission=submission, remote_id=remote_id, source=source, compiled=compiled: (
-                            self.adapter.result_index(
+                            adapter.result_index(
                                 submission.submission_id,
                                 remote_id,
                                 source,
@@ -1076,7 +1102,7 @@ class BatchSession(AbstractContextManager["BatchSession"]):
                     index_sha256=commitment.index_sha256,
                 )
                 buffer = bytearray()
-                stream = self.adapter.results(
+                stream = adapter.results(
                     submission.submission_id,
                     submission.remote_id,
                     source,

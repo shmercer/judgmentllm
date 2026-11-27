@@ -29,7 +29,8 @@
     "tests/test_vertex_qualification_execution.py::test_concurrent_guards_cannot_consume_the_same_allocation_twice",
     "tests/test_vertex_qualification_execution.py::test_guard_token_duplicate_and_ledger_reset_cannot_replenish",
     "tests/test_vertex_qualification_execution.py::test_authorization_before_credentials_or_clients",
-    "tests/test_cache_policy.py"
+    "tests/test_cache_policy.py",
+    "tests/test_anthropic_batch.py"
   ],
   "mandatory_smoke": [
     "tests/test_persistence_hashing.py::test_scalar_subclasses_do_not_bypass_canonical_validation",
@@ -57,6 +58,22 @@
     "tests/test_vertex_lifecycle.py::test_missing_credentials_fail_before_store_or_submission"
   ],
   "modules": {
+    "tests/test_anthropic_batch.py": {
+      "cost": "heavy",
+      "domain": "provider-sdk",
+      "platforms": [
+        "linux",
+        "win32",
+        "darwin"
+      ],
+      "reason": "Locked SDK transport, bounded raw replay, private HTTP evidence, and real restart and WAL recovery across native OS paths; exact-limit replay uses the serial partition"
+    },
+    "tests/test_anthropic_batch_r.py": {
+      "cost": "process",
+      "domain": "r-interface",
+      "platforms": [],
+      "reason": "Actual local R/jsonlite parses Python-produced full and minimal audit 3 without provider access"
+    },
     "tests/test_anthropic_cancellation.py": {
       "cost": "io",
       "domain": "provider-sdk",
@@ -1982,6 +1999,8 @@
   },
   "providers": {
     "anthropic": [
+      "tests/test_anthropic_batch.py",
+      "tests/test_anthropic_batch_r.py",
       "tests/test_anthropic_cancellation.py",
       "tests/test_anthropic_diagnostics.py",
       "tests/test_anthropic_integrity.py",
@@ -2161,6 +2180,7 @@
     "src/judgmentllm/_lifecycle_store.py",
     "src/judgmentllm/_verification.py",
     "src/judgmentllm/anthropic_assessment.py",
+    "src/judgmentllm/anthropic_batch_transport.py",
     "src/judgmentllm/anthropic_diagnostics.py",
     "src/judgmentllm/anthropic_prompts.py",
     "src/judgmentllm/anthropic_qualification.py",
@@ -2194,6 +2214,7 @@
     "src/judgmentllm/evidence/scope.py",
     "src/judgmentllm/evidence/usage.py",
     "src/judgmentllm/execution/__init__.py",
+    "src/judgmentllm/execution/anthropic_batch.py",
     "src/judgmentllm/execution/cancellation.py",
     "src/judgmentllm/execution/core.py",
     "src/judgmentllm/execution/durable_evidence.py",
@@ -2350,7 +2371,9 @@
     "src/judgmentllm/openai_batch_transport.py",
     "src/judgmentllm/providers/openai_batch.py",
     "src/judgmentllm/providers/openai_batch_diagnostics.py",
-    "src/judgmentllm/providers/openai_batch_response.py"
+    "src/judgmentllm/providers/openai_batch_response.py",
+    "src/judgmentllm/providers/anthropic_batch.py",
+    "src/judgmentllm/providers/anthropic_batch_response.py"
   ],
   "smoke": [
     "tests/test_persistence_hashing.py::test_scalar_subclasses_do_not_bypass_canonical_validation",
@@ -2432,6 +2455,8 @@
   },
   "provider_sources": {
     "src/judgmentllm/providers/anthropic.py": "anthropic",
+    "src/judgmentllm/providers/anthropic_batch.py": "anthropic",
+    "src/judgmentllm/providers/anthropic_batch_response.py": "anthropic",
     "src/judgmentllm/providers/anthropic_response.py": "anthropic",
     "src/judgmentllm/providers/anthropic_schema.py": "anthropic",
     "src/judgmentllm/providers/gemini.py": "gemini",

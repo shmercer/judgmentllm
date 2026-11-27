@@ -1,4 +1,4 @@
-"""Public native-batch lifecycle. The only executable adapter is offline mock."""
+"""Public native-batch lifecycle and local inspection."""
 
 from __future__ import annotations
 
@@ -7,8 +7,13 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal, TypedDict, Unpack
 
-from judgmentllm._lifecycle_store import discover_store, resolve_run
+from judgmentllm._lifecycle_store import (
+    discover_store,
+    resolve_control_run,
+    resolve_run,
+)
 from judgmentllm.batch_models import (
+    AnthropicBatchContextV1,
     BatchControlOptionsV1,
     BatchDiagnosticV1,
     BatchMockOptions,
@@ -22,7 +27,7 @@ from judgmentllm.execution.native_batch import (
     InvocationBudget,
 )
 from judgmentllm.lifecycle import _checked_spec, _errors, _no_event_loop  # pyright: ignore[reportPrivateUsage]
-from judgmentllm.lifecycle_models import RetrySelection
+from judgmentllm.lifecycle_models import LifecycleError, RetrySelection
 from judgmentllm.persistence.native_batch import detail, record_stop, require_storage
 from judgmentllm.persistence.ownership import ExecutorOwnership
 from judgmentllm.persistence.repository import ReadOnlyRepository, Repository
@@ -32,8 +37,9 @@ from judgmentllm.preparation import (
     prepare_run,
 )
 from judgmentllm.preparation.manifest import (
-    ExecutableRunManifestV12,
     ExecutableRunManifestV13,
+    ExecutableRunManifestV14,
+    NativeBatchManifest,
 )
 from judgmentllm.providers.batch_mock import MockBatchAdapter, require_mock_batch
 from judgmentllm.providers.batch_protocol import BatchEvidenceWithheld
@@ -42,6 +48,15 @@ if TYPE_CHECKING:
     from judgmentllm.execution.batch_exports import (
         BatchAuditReportV1,
         BatchAuditReportV2,
+        BatchAuditReportV3,
+    )
+    from judgmentllm.providers.anthropic_batch import AnthropicBatchAdapter
+
+
+def _admit_anthropic_fixture(context: AnthropicBatchContextV1) -> AnthropicBatchAdapter:
+    """Only the private offline test harness supplies a transport here."""
+    raise LifecycleError(
+        "unsupported_capability", "Anthropic Batch remote controls are disabled"
     )
 
 
@@ -76,6 +91,16 @@ def prepare_batch(
             if mock is not None:
                 raise ValueError("mock controls cannot configure an OpenAI Batch run")
             adapter = OpenAIBatchAdapter(batch_context(spec))
+            adapter.validate(spec)
+        elif spec.provider == "anthropic":
+            from judgmentllm.anthropic_batch_transport import batch_context
+            from judgmentllm.providers.anthropic_batch import AnthropicBatchAdapter
+
+            if mock is not None:
+                raise ValueError(
+                    "mock controls cannot configure an Anthropic Batch run"
+                )
+            adapter = AnthropicBatchAdapter(batch_context(spec))
             adapter.validate(spec)
         else:
             require_mock_batch(spec)
@@ -127,9 +152,7 @@ def _batch_status(
                 unsealed=False,
                 allow_v12_posix_read=allow_v12_posix_read,
             )
-            if not isinstance(
-                manifest, (ExecutableRunManifestV12, ExecutableRunManifestV13)
-            ):
+            if not isinstance(manifest, NativeBatchManifest):
                 raise ValueError("run has no native batch manifest")
             state = repository.get_run(identifier).state
             batch_detail = detail(repository, identifier, manifest.batch_shard_count)
@@ -138,6 +161,12 @@ def _batch_status(
                 from judgmentllm.execution.openai_batch import collection_summary
 
                 collection = collection_summary(repository, identifier)
+            if isinstance(manifest, ExecutableRunManifestV14):
+                from judgmentllm.execution.anthropic_batch import (
+                    collection_summary as anthropic_collection_summary,
+                )
+
+                collection = anthropic_collection_summary(repository, identifier)
         finally:
             repository.connection.execute("ROLLBACK")
         directory = repository.run_directory(identifier)
@@ -172,24 +201,41 @@ async def _control(
     retry: RetrySelection | None = None,
 ) -> BatchRunStatusV1:
     with _errors():
-        identifier, root = resolve_run(run_id, store)
+        identifier, root, preserve = resolve_control_run(run_id, store)
         budget = InvocationBudget(options or BatchControlOptionsV1())
-    with _errors(identifier, root), ReadOnlyRepository(root) as repository:
+    with (
+        _errors(identifier, root),
+        ReadOnlyRepository(
+            root, preserve_files=preserve, allow_wal_appends=preserve
+        ) as repository,
+    ):
         _preflight_v12_write(repository, identifier)
         manifest = _load_manifest(repository, identifier, unsealed=False)
-        if not isinstance(
-            manifest, (ExecutableRunManifestV12, ExecutableRunManifestV13)
-        ):
+        if not isinstance(manifest, NativeBatchManifest):
             raise ValueError("run has no native batch manifest")
-    if action == "cancel":
+    anthropic_adapter = None
+    if isinstance(manifest, ExecutableRunManifestV14):
+        with _errors(identifier, root):
+            if mock is not None:
+                raise ValueError(
+                    "mock controls cannot configure an Anthropic Batch run"
+                )
+            anthropic_adapter = _admit_anthropic_fixture(manifest.batch_context)
+            if anthropic_adapter.context() != manifest.batch_context:
+                raise ValueError("Anthropic Batch fixture context differs from seal")
+    if action == "cancel" and anthropic_adapter is None:
         with _errors(identifier, root), Repository(root) as repository:
             with ExecutorOwnership(repository, identifier) as ownership:
                 assert ownership.owner is not None
                 record_stop(repository, identifier, ownership.owner.token, remote=True)
     openai = isinstance(manifest, ExecutableRunManifestV13)
+    from judgmentllm.execution.anthropic_batch import AnthropicBatchSession
     from judgmentllm.execution.openai_batch import OpenAIBatchSession
 
-    if openai:
+    if anthropic_adapter is not None:
+        adapter = anthropic_adapter
+        session_type = AnthropicBatchSession
+    elif isinstance(manifest, ExecutableRunManifestV13):
         with _errors(identifier, root):
             from judgmentllm.openai_batch_transport import require_sdk
             from judgmentllm.providers.openai_batch import OpenAIBatchAdapter
@@ -215,7 +261,9 @@ async def _control(
             if action in ("cancel", "stop"):
                 session.stop(remote=action == "cancel")
             selected = False
-            if isinstance(session, OpenAIBatchSession) and action in (
+            if isinstance(
+                session, (OpenAIBatchSession, AnthropicBatchSession)
+            ) and action in (
                 "collect",
                 "resume",
             ):
@@ -225,11 +273,15 @@ async def _control(
                         True  # The caller's retry is deferred, never silently consumed.
                     )
             if action != "stop" and not selected:
-                if openai and action in ("submit", "resume", "collect"):
+                if (openai or anthropic_adapter is not None) and action in (
+                    "submit",
+                    "resume",
+                    "collect",
+                ):
                     session.open_sources(spec, use_frozen_snapshot)
                 await session.recover_operations()
                 if action in ("submit", "collect", "resume"):
-                    if not openai:
+                    if not openai and anthropic_adapter is None:
                         session.open_sources(spec, use_frozen_snapshot)
                     from judgmentllm.preparation.batch_retry import (
                         recover_retry_preparations,
@@ -251,7 +303,7 @@ async def _control(
                 if action in ("poll", "resume"):
                     await session.poll()
                 if action in ("collect", "resume"):
-                    if isinstance(session, OpenAIBatchSession):
+                    if isinstance(session, (OpenAIBatchSession, AnthropicBatchSession)):
                         await session.collect_ready(spec, use_frozen_snapshot)
                     else:
                         await session.collect()
@@ -267,7 +319,9 @@ async def _control(
             if budget.external_cancelled():
                 session.stop(remote=False)
                 raise asyncio.CancelledError from None
-            if isinstance(session, OpenAIBatchSession) and action in (
+            if isinstance(
+                session, (OpenAIBatchSession, AnthropicBatchSession)
+            ) and action in (
                 "collect",
                 "resume",
             ):
@@ -278,7 +332,7 @@ async def _control(
                 session.stop(remote=False)
             raise
         finally:
-            if isinstance(session, OpenAIBatchSession):
+            if isinstance(session, (OpenAIBatchSession, AnthropicBatchSession)):
                 from typing import Any, cast
 
                 from judgmentllm.lifecycle import _close_adapter  # pyright: ignore[reportPrivateUsage]
@@ -291,7 +345,7 @@ async def _control(
     if action == "submit":
         partial = partial or status.batch.accepted_jobs != status.batch.jobs
     if (
-        isinstance(session, OpenAIBatchSession)
+        isinstance(session, (OpenAIBatchSession, AnthropicBatchSession))
         and session.selection_pending
         and status.collection is not None
     ):
@@ -401,7 +455,7 @@ def stop_batch(
 
 def export_batch_provenance(
     run_id: str | Path, *, store: str | Path | None = None, bundle_id: str | None = None
-) -> BatchAuditReportV1 | BatchAuditReportV2:
+) -> BatchAuditReportV1 | BatchAuditReportV2 | BatchAuditReportV3:
     """Publish or reopen the normalized/provenance bundle from one audit cut."""
     from judgmentllm.execution.batch_exports import export_batch_audit
 
