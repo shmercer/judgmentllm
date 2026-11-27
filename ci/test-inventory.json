@@ -1699,6 +1699,7 @@
       "test_sdk_control_ack_requires_original_operation_binding": {"[cancel-id]": [], "[create-input]": [], "[create-output-file]": [], "[upload-filename]": []},
       "test_sdk_control_guard_blocks_unapproved_forward": {"[authorization]": [], "[body]": [], "[duplicate-part]": [], "[forbidden-header]": [], "[multipart-bound]": [], "[repeat]": [], "[route]": [], "[unowned]": []},
       "test_sdk_mutation_payload_rejection_preserves_journal": {"[cancel-body]": [], "[create-binding]": []},
+      "test_sdk_upload_then_create_stays_cookie_free": {"": []},
       "test_source_size_overrun_keeps_its_integrity_classification": {"[False-chat.completions]": [], "[False-responses]": [], "[True-chat.completions]": [], "[True-responses]": []},
       "test_status_stop_export_remain_sdk_and_credential_free": {"": []},
       "test_uncertain_create_requires_complete_consistent_discovery": {"": []},
