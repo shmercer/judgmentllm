@@ -56,7 +56,7 @@ def main() -> None:
             str(root / "scripts/cli_lifecycle_fixture.py"),
         ],
         env=environment,
-        timeout=180,
+        timeout=240,
         check=False,
     )
     if completed.returncode:

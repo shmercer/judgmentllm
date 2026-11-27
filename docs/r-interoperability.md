@@ -591,9 +591,9 @@ uv run --offline --no-sync python scripts/cli_lifecycle_r_gate.py --output /tmp/
 ```
 
 Use a fresh output directory. The wrapper resolves the installed console beside
-its Python interpreter and passes explicit absolute paths to R. The equivalent
-R invocation takes the output directory, installed executable, fixture Python,
-and helper path:
+its Python interpreter and passes explicit absolute paths to R. It gives the
+entire Rscript invocation 240 seconds. The equivalent R invocation takes the
+output directory, installed executable, fixture Python, and helper path:
 
 ```bash
 Rscript --vanilla examples/cli_lifecycle_interoperability.R OUT ABS_CONSOLE ABS_PYTHON ABS_HELPER
@@ -839,12 +839,12 @@ artifact bytes and JSON-cell companions, leading-zero IDs, pair orientations,
 missing values and exactly-once physical usage. The terminal two-row fixture
 proves a success with 7 input/3 output tokens and an explicitly cancelled sibling
 after late cancellation; missing sibling evidence stays unresolved. Full/minimal
-and error-only fixtures remain synthetic and offline. The total gate deadline
-stays 180 seconds, all seven gates remain required, and source-process OS
+and error-only fixtures remain synthetic and offline. The wrapper deadline was
+180 seconds during PR2. All seven gates remain required, and source-process OS
 correctness and focused R export consumers do not replace installed acceptance.
 [Native-batch contracts and qualification boundaries](native-batch.md)
 
 
 ## M5 PR3 OpenAI Batch acceptance
 
-OpenAI audit/report 2 preserves normalized JSONL/CSV/R schema 1, original/presented IDs, nonuniform ordinal mappings, null unreported probabilities/costs and usage once per physical member. Extend the existing seventh installed R-driven CLI gate with small Responses/full/grouped-rubric and Chat/minimal/reversed-pair cases; retain all seven gates, PR2 probability fixtures and the unchanged 180-second installed deadline. Heavy restart/pressure campaigns remain Python tests. [Acceptance contract](native-batch.md#acceptance-and-later-gates).
+OpenAI audit/report 2 preserves normalized JSONL/CSV/R schema 1, original/presented IDs, nonuniform ordinal mappings, null unreported probabilities/costs and usage once per physical member. PR3 extended the seventh installed R-driven CLI gate with small Responses/full/grouped-rubric and Chat/minimal/reversed-pair cases, retaining all seven gates, PR2 probability fixtures and the then-current 180-second wrapper deadline. Heavy restart/pressure campaigns remain Python tests. [Acceptance contract](native-batch.md#acceptance-and-later-gates).
