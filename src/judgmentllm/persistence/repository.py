@@ -1378,6 +1378,12 @@ class ReadOnlyRepository(Repository):
             raise IntegrityError("read-only registry cannot contain symbolic links")
         if immutable:
             self._checkpointed_signature = self._snapshot_signature()
+        elif (
+            preserve_files
+            and not allow_wal_appends
+            and not database.with_name(database.name + "-shm").is_file()
+        ):
+            raise IntegrityError("read-only WAL coordination is unavailable")
         opened_database = database
         if preserve_files and not immutable:
             opened_database = self._copy_wal_snapshot()

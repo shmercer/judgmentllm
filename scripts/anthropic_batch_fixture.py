@@ -9,9 +9,11 @@ import socket
 import sqlite3
 import sys
 from collections.abc import AsyncIterator, Generator
-from contextlib import closing, contextmanager
+from contextlib import closing, contextmanager, nullcontext
+from inspect import currentframe
 from pathlib import Path
-from typing import Any
+from threading import local
+from typing import Any, NoReturn
 from unittest.mock import patch
 
 import httpx2
@@ -311,19 +313,78 @@ class Service:
 
 @contextmanager
 def installed(service: Service) -> Generator[None, None, None]:
-    def no_network(*args: Any, **kwargs: Any) -> None:
+    stdlib_socketpair = socket.socketpair
+    original_connect = socket.socket.connect
+    socketpair_code = (
+        getattr(stdlib_socketpair, "__code__", None)
+        if getattr(stdlib_socketpair, "__globals__", None) is vars(socket)
+        else None
+    )
+    pair_scope = local()
+
+    def no_network(*args: Any, **kwargs: Any) -> NoReturn:
         raise AssertionError("fixture attempted external network")
+
+    def scoped_socketpair(
+        *args: Any, **kwargs: Any
+    ) -> tuple[socket.socket, socket.socket]:
+        if args or kwargs:
+            return stdlib_socketpair(*args, **kwargs)
+        previous = getattr(pair_scope, "frame", None)
+        pair_scope.frame = currentframe()
+        try:
+            return stdlib_socketpair()
+        finally:
+            pair_scope.frame = previous
+
+    def guarded_connect(current: socket.socket, address: object) -> None:
+        scope = getattr(pair_scope, "frame", None)
+        if scope is None:
+            no_network()
+        # The Windows fallback must connect its own client to its own listener.
+        caller = currentframe()
+        caller = caller.f_back if caller is not None else None
+        if (
+            caller is None
+            or caller.f_back is not scope
+            or caller.f_code is not socketpair_code
+            or caller.f_locals.get("csock") is not current
+        ):
+            no_network()
+        listener: object = caller.f_locals.get("lsock")
+        if (
+            not isinstance(listener, socket.socket)
+            or current.family != socket.AF_INET
+            or current.type != socket.SOCK_STREAM
+            or listener.family != socket.AF_INET
+            or listener.type != socket.SOCK_STREAM
+        ):
+            no_network()
+        endpoint: tuple[str, int] = listener.getsockname()
+        if (
+            endpoint[0] != "127.0.0.1"
+            or not 0 < endpoint[1] <= 65_535
+            or address != endpoint
+        ):
+            no_network()
+        original_connect(current, endpoint)
 
     def adapter(context: AnthropicBatchContextV1) -> AnthropicBatchAdapter:
         return AnthropicBatchAdapter(
             context, fixture_transport=httpx2.MockTransport(service.request)
         )
 
+    pair_patch = (
+        patch.object(socket, "socketpair", scoped_socketpair)
+        if sys.platform == "win32" and socketpair_code is not None
+        else nullcontext()
+    )
     with (
         patch.object(native_batch, "_admit_anthropic_fixture", adapter),
+        pair_patch,
         patch.object(socket, "getaddrinfo", no_network),
         patch.object(socket, "create_connection", no_network),
-        patch.object(socket.socket, "connect", no_network),
+        patch.object(socket.socket, "connect", guarded_connect),
         patch.object(socket.socket, "connect_ex", no_network),
     ):
         yield
