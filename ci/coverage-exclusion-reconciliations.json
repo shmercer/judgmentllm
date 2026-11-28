@@ -359,6 +359,64 @@
       ],
       "removed_excluded_lines": [],
       "reason": "Private parser proof of exact declaration-only exclusion delta."
+    },
+    {
+      "path": "src/judgmentllm/_gemini_batch_wire.py",
+      "candidate_source_sha256": "1ab6d6fc1a8860ce1f34d8851391f62612427c9460a6dbdc245468398330ea55",
+      "historical_source_sha256": null,
+      "added_excluded_lines": [
+        14,
+        15,
+        16
+      ],
+      "removed_excluded_lines": [],
+      "reason": "Coverage parser lines for the type-only httpx2 Response import."
+    },
+    {
+      "path": "src/judgmentllm/lifecycle.py",
+      "candidate_source_sha256": "4119b36b40b6d04cf541ede98c3d30cf75873432d4460e16b7aacdcd8413dff8",
+      "historical_source_sha256": "309ce231298e6ccfe06c4768ae4f5d284b47bdd20765b1d8a014a5ff3c15bcf2",
+      "added_excluded_lines": [
+        106
+      ],
+      "removed_excluded_lines": [],
+      "reason": "Coverage parser line for the type-only native Batch audit import."
+    },
+    {
+      "path": "src/judgmentllm/native_batch.py",
+      "candidate_source_sha256": "747ece2a8afd2f2dd99b8e9df3c10e1399461a567fed635e2c0504296906145b",
+      "historical_source_sha256": null,
+      "added_excluded_lines": [
+        43,
+        44,
+        45
+      ],
+      "removed_excluded_lines": [],
+      "reason": "Coverage parser lines for the type-only audit import and guard."
+    },
+    {
+      "path": "src/judgmentllm/preparation/__init__.py",
+      "candidate_source_sha256": "75c66de1062bbcc7e4baf9679f9af36e2beeca3570ae8afed49308ac14492425",
+      "historical_source_sha256": "812631443e70499a9cc0e99dc7e2276b0451dd66f59fd1cc9dfe8cbf9647709c",
+      "added_excluded_lines": [
+        101
+      ],
+      "removed_excluded_lines": [],
+      "reason": "Coverage parser line for the type-only NativeBatchAdapter import."
+    },
+    {
+      "path": "src/judgmentllm/preparation/batch.py",
+      "candidate_source_sha256": "93eb3990138b4bcf13635b2453031ae2d7564e746b62aeaa1a3ea1dbcfb96e3d",
+      "historical_source_sha256": null,
+      "added_excluded_lines": [
+        47,
+        48,
+        49,
+        50,
+        51
+      ],
+      "removed_excluded_lines": [],
+      "reason": "Coverage parser lines for the type-only Batch preparation imports and guard."
     }
   ]
 }
